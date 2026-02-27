@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pim1-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pim1
+    ports:
+      - "5432:5432"
+    volumes:
+      - pim1_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pim1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: pim1-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - pim1_redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pim1-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - pim1_rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  pim1_postgres_data:
+  pim1_redis_data:
+  pim1_rabbitmq_data:

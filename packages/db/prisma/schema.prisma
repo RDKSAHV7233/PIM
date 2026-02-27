@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordStatus {
+  draft
+  active
+  archived
+}
+
+enum AttributeDataType {
+  text
+  number
+  boolean
+  select
+  json
+}
+
+enum AppliesTo {
+  product
+  variant
+}
+
+enum RuleSeverity {
+  error
+  warning
+}
+
+enum RuleType {
+  required_field
+  regex_field
+  value_in_set
+}
+
+enum ValidationIssueStatus {
+  open
+  resolved
+}
+
+enum MarketplaceChannel {
+  amazon
+  flipkart
+  meesho
+}
+
+enum ExportJobStatus {
+  queued
+  processing
+  retrying
+  completed
+  failed
+  dead_letter
+}
+
+model Category {
+  id                   String                @id @default(cuid())
+  name                 String
+  slug                 String                @unique
+  path                 String
+  parentId             String?
+  parent               Category?             @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children             Category[]            @relation("CategoryHierarchy")
+  products             Product[]
+  attributeDefinitions AttributeDefinition[]
+  complianceRules      ComplianceRule[]
+  mappingTemplates     ChannelMappingTemplate[]
+  exportJobs           MarketplaceExportJob[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([parentId])
+  @@index([path])
+}
+
+model Product {
+  id               String            @id @default(cuid())
+  title            String
+  description      String            @default("")
+  brand            String            @default("")
+  status           RecordStatus      @default(draft)
+  categoryId       String
+  category         Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  hsnCode          String?
+  gstRate          Float?
+  attributes       Json              @default("{}")
+  variants         Variant[]
+  validationIssues ValidationIssue[] @relation("ProductValidationIssues")
+  exportJobs       MarketplaceExportJob[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([hsnCode])
+}
+
+model Variant {
+  id               String            @id @default(cuid())
+  productId        String
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  skuCode          String            @unique
+  attributes       Json              @default("{}")
+  mrp              Float?
+  sellingPrice     Float?
+  inventoryQty     Int               @default(0)
+  status           RecordStatus      @default(draft)
+  validationIssues ValidationIssue[] @relation("VariantValidationIssues")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([productId])
+  @@index([status])
+}
+
+model AttributeDefinition {
+  id            String            @id @default(cuid())
+  categoryId    String
+  category      Category          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key           String
+  name          String
+  dataType      AttributeDataType
+  required      Boolean           @default(false)
+  allowedValues Json?
+  appliesTo     AppliesTo         @default(product)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([categoryId, key, appliesTo])
+  @@index([categoryId])
+  @@index([appliesTo])
+}
+
+model ComplianceRule {
+  id        String           @id @default(cuid())
+  ruleCode  String           @unique
+  name      String
+  categoryId String?
+  category  Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  severity  RuleSeverity     @default(error)
+  ruleType  RuleType
+  config    Json
+  active    Boolean          @default(true)
+  issues    ValidationIssue[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([categoryId, active])
+  @@index([ruleType])
+}
+
+model ValidationIssue {
+  id        String                @id @default(cuid())
+  productId String
+  product   Product               @relation("ProductValidationIssues", fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   Variant?              @relation("VariantValidationIssues", fields: [variantId], references: [id], onDelete: Cascade)
+  ruleId    String?
+  rule      ComplianceRule?       @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  severity  RuleSeverity
+  ruleCode  String
+  message   String
+  fieldPath String?
+  status    ValidationIssueStatus @default(open)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  @@index([productId])
+  @@index([variantId])
+  @@index([status])
+  @@index([ruleCode])
+}
+
+model ChannelMappingTemplate {
+  id             String               @id @default(cuid())
+  name           String
+  categoryId     String
+  category       Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  channel        MarketplaceChannel
+  requiredFields Json
+  fieldMap       Json
+  isDefault      Boolean              @default(false)
+  jobs           MarketplaceExportJob[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([categoryId, channel, name])
+  @@index([categoryId, channel])
+}
+
+model MarketplaceExportJob {
+  id           String                 @id @default(cuid())
+  productId    String
+  product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  channel      MarketplaceChannel
+  templateId   String?
+  template     ChannelMappingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status       ExportJobStatus        @default(queued)
+  retryCount   Int                    @default(0)
+  maxRetries   Int                    @default(3)
+  failureReason String?
+  dlqReason    String?
+  payload      Json?
+  exportPayload Json?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([productId, channel])
+  @@index([status, updatedAt])
+  @@index([templateId])
+}

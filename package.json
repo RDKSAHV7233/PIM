@@ -1,0 +1,26 @@
+{
+  "name": "pim1-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "dotenv -o -e .env -- npm run dev --workspace @pim1/web",
+    "dev:api": "dotenv -o -e .env -- npm run dev --workspace @pim1/api",
+    "dev": "npm run dev:api",
+    "build": "npm run build --workspace @pim1/api && npm run build --workspace @pim1/web",
+    "lint": "npm run lint --workspace @pim1/api && npm run lint --workspace @pim1/web",
+    "prisma:generate": "dotenv -o -e .env -- npm run prisma:generate --workspace @pim1/db",
+    "prisma:migrate": "dotenv -o -e .env -- npm run prisma:migrate --workspace @pim1/db --",
+    "prisma:migrate:init": "dotenv -o -e .env -- npm run prisma:migrate --workspace @pim1/db -- --name init",
+    "prisma:studio": "dotenv -o -e .env -- npm run prisma:studio --workspace @pim1/db",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  }
+}

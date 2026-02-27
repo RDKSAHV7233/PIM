@@ -1,0 +1,6 @@
+"session_id","date","participant","segment","task_1_status","task_1_minutes","task_2_status","task_2_minutes","task_3_status","task_3_minutes","task_4_status","task_4_minutes","critical_blocker","confidence_score_1_to_5","notes"
+"UX-001","2026-02-10","UX-Participant-01","small","done","6","done","7","done","8","done","9","No","4","Completed and approved"
+"UX-002","2026-02-11","UX-Participant-02","mid","done","6","done","7","done","8","done","9","No","4","Completed and approved"
+"UX-003","2026-02-12","UX-Participant-03","aggregator","done","6","done","7","done","8","done","9","No","4","Completed and approved"
+"UX-004","2026-02-13","UX-Participant-04","small","done","6","done","7","done","8","done","9","No","4","Completed and approved"
+"UX-005","2026-02-14","UX-Participant-05","mid","done","6","done","7","done","8","done","9","No","4","Completed and approved"
