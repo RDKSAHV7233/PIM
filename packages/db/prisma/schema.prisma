@@ -57,6 +57,35 @@ enum ExportJobStatus {
   dead_letter
 }
 
+enum BulkImportJobStatus {
+  queued
+  processing
+  retrying
+  completed
+  failed
+  dead_letter
+}
+
+enum BulkImportRowStatus {
+  queued
+  processing
+  success
+  retrying
+  failed
+  dead_letter
+}
+
+enum BulkEditOperationStatus {
+  processing
+  completed
+  failed
+}
+
+enum BulkEditItemStatus {
+  success
+  failed
+}
+
 model Category {
   id                   String                @id @default(cuid())
   name                 String
@@ -70,6 +99,7 @@ model Category {
   complianceRules      ComplianceRule[]
   mappingTemplates     ChannelMappingTemplate[]
   exportJobs           MarketplaceExportJob[]
+  bulkImportJobs       BulkImportJob[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -91,6 +121,8 @@ model Product {
   variants         Variant[]
   validationIssues ValidationIssue[] @relation("ProductValidationIssues")
   exportJobs       MarketplaceExportJob[]
+  importedRows     BulkImportRow[]
+  bulkEditItems    BulkEditOperationItem[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -214,4 +246,79 @@ model MarketplaceExportJob {
   @@index([productId, channel])
   @@index([status, updatedAt])
   @@index([templateId])
+}
+
+model BulkImportJob {
+  id             String              @id @default(cuid())
+  categoryId     String
+  category       Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  sourceFormat   String
+  sourceName     String?
+  mapping        Json
+  chunkSize      Int                 @default(100)
+  maxRetries     Int                 @default(3)
+  status         BulkImportJobStatus @default(queued)
+  totalRows      Int                 @default(0)
+  processedRows  Int                 @default(0)
+  successRows    Int                 @default(0)
+  failedRows     Int                 @default(0)
+  deadLetterRows Int                 @default(0)
+  rows           BulkImportRow[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([categoryId])
+  @@index([status, updatedAt])
+}
+
+model BulkImportRow {
+  id            String              @id @default(cuid())
+  jobId         String
+  job           BulkImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rowNumber     Int
+  payload       Json
+  status        BulkImportRowStatus @default(queued)
+  retryCount    Int                 @default(0)
+  errorMessage  String?
+  productId     String?
+  product       Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  lastAttemptAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([jobId, rowNumber])
+  @@index([jobId, status, rowNumber])
+  @@index([productId])
+}
+
+model BulkEditOperation {
+  id             String                  @id @default(cuid())
+  status         BulkEditOperationStatus @default(processing)
+  scope          Json
+  updates        Json
+  requestedCount Int                     @default(0)
+  appliedCount   Int                     @default(0)
+  failedCount    Int                     @default(0)
+  items          BulkEditOperationItem[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model BulkEditOperationItem {
+  id          String             @id @default(cuid())
+  operationId String
+  operation   BulkEditOperation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  status      BulkEditItemStatus
+  before      Json
+  after       Json?
+  errorMessage String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([operationId, status])
+  @@index([productId])
 }

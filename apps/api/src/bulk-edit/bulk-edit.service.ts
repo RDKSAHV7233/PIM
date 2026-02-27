@@ -1,0 +1,374 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma, RecordStatus } from "@prisma/client";
+import { ComplianceService } from "../compliance/compliance.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
+
+const RECORD_STATUSES = ["draft", "active", "archived"] as const;
+const EDITABLE_FIELDS = ["title", "description", "brand", "status", "hsnCode", "gstRate"] as const;
+type EditableField = (typeof EDITABLE_FIELDS)[number];
+
+type ProductSnapshot = {
+  id: string;
+  title: string;
+  description: string;
+  brand: string;
+  status: RecordStatus;
+  hsnCode: string | null;
+  gstRate: number | null;
+  categoryId: string;
+};
+
+type NormalizedUpdates = {
+  title?: string;
+  description?: string;
+  brand?: string;
+  status?: RecordStatus;
+  hsnCode?: string | null;
+  gstRate?: number | null;
+};
+
+@Injectable()
+export class BulkEditService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly complianceService: ComplianceService,
+  ) {}
+
+  async preview(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
+    const normalizedScope = this.normalizeScope(scope);
+    const normalizedUpdates = this.normalizeUpdates(updatesInput);
+    const where = this.buildWhere(normalizedScope);
+
+    const [requestedCount, sample] = await Promise.all([
+      this.prisma.product.count({ where }),
+      this.prisma.product.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }],
+        take: 25,
+        select: this.productSelect,
+      }),
+    ]);
+
+    return {
+      scope: normalizedScope,
+      updates: normalizedUpdates,
+      requestedCount,
+      sampleCount: sample.length,
+      sample,
+    };
+  }
+
+  async apply(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
+    const normalizedScope = this.normalizeScope(scope);
+    const normalizedUpdates = this.normalizeUpdates(updatesInput);
+    const where = this.buildWhere(normalizedScope);
+    const updateData = this.toUpdateData(normalizedUpdates);
+
+    const products = await this.prisma.product.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }],
+      select: this.productSelect,
+    });
+
+    const operation = await this.prisma.bulkEditOperation.create({
+      data: {
+        status: "processing",
+        scope: normalizedScope as Prisma.JsonObject,
+        updates: normalizedUpdates as Prisma.JsonObject,
+        requestedCount: products.length,
+      },
+    });
+
+    let appliedCount = 0;
+    let failedCount = 0;
+
+    for (const product of products) {
+      const before = this.toSnapshot(product);
+      try {
+        const updated = await this.prisma.product.update({
+          where: { id: product.id },
+          data: updateData,
+          select: this.productSelect,
+        });
+
+        await this.complianceService.validateAndPersistProduct(updated.id);
+
+        await this.prisma.bulkEditOperationItem.create({
+          data: {
+            operationId: operation.id,
+            productId: updated.id,
+            status: "success",
+            before: before as Prisma.JsonObject,
+            after: this.toSnapshot(updated) as Prisma.JsonObject,
+          },
+        });
+        appliedCount += 1;
+      } catch (error: unknown) {
+        await this.prisma.bulkEditOperationItem.create({
+          data: {
+            operationId: operation.id,
+            productId: product.id,
+            status: "failed",
+            before: before as Prisma.JsonObject,
+            errorMessage: this.extractErrorMessage(error),
+          },
+        });
+        failedCount += 1;
+      }
+    }
+
+    const status = failedCount > 0 && appliedCount === 0 ? "failed" : "completed";
+
+    return this.prisma.bulkEditOperation.update({
+      where: { id: operation.id },
+      data: {
+        status,
+        appliedCount,
+        failedCount,
+      },
+      include: {
+        items: {
+          orderBy: [{ createdAt: "desc" }],
+        },
+      },
+    });
+  }
+
+  async listOperations(limit = 20) {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.floor(limit))) : 20;
+    return this.prisma.bulkEditOperation.findMany({
+      take: safeLimit,
+      orderBy: [{ createdAt: "desc" }],
+      include: {
+        items: {
+          take: 100,
+          orderBy: [{ createdAt: "desc" }],
+        },
+      },
+    });
+  }
+
+  async getOperation(operationId: string) {
+    const operation = await this.prisma.bulkEditOperation.findUnique({
+      where: { id: operationId },
+      include: {
+        items: {
+          orderBy: [{ createdAt: "desc" }],
+        },
+      },
+    });
+    if (!operation) {
+      throw new NotFoundException("Bulk edit operation not found");
+    }
+    return operation;
+  }
+
+  private readonly productSelect = {
+    id: true,
+    title: true,
+    description: true,
+    brand: true,
+    status: true,
+    hsnCode: true,
+    gstRate: true,
+    categoryId: true,
+  } satisfies Prisma.ProductSelect;
+
+  private normalizeScope(scope?: BulkEditScopeDto) {
+    const input = scope ?? {};
+    const productIds = Array.from(
+      new Set((input.productIds ?? []).map((id) => String(id).trim()).filter((id) => id.length > 0)),
+    );
+
+    const normalized: {
+      categoryId?: string;
+      status?: RecordStatus;
+      brandContains?: string;
+      productIds?: string[];
+    } = {};
+
+    if (input.categoryId?.trim()) {
+      normalized.categoryId = input.categoryId.trim();
+    }
+
+    if (input.status) {
+      if (!RECORD_STATUSES.includes(input.status)) {
+        throw new BadRequestException("Invalid scope status value.");
+      }
+      normalized.status = input.status;
+    }
+
+    if (input.brandContains?.trim()) {
+      normalized.brandContains = input.brandContains.trim();
+    }
+
+    if (productIds.length > 0) {
+      normalized.productIds = productIds;
+    }
+
+    return normalized;
+  }
+
+  private normalizeUpdates(updatesInput: Record<string, unknown>): NormalizedUpdates {
+    if (!updatesInput || typeof updatesInput !== "object" || Array.isArray(updatesInput)) {
+      throw new BadRequestException("updates must be a JSON object.");
+    }
+
+    const updates: NormalizedUpdates = {};
+
+    for (const [key, rawValue] of Object.entries(updatesInput)) {
+      if (!EDITABLE_FIELDS.includes(key as EditableField)) {
+        throw new BadRequestException(`Unsupported bulk edit field: ${key}`);
+      }
+
+      switch (key as EditableField) {
+        case "title": {
+          const value = String(rawValue ?? "").trim();
+          if (!value) {
+            throw new BadRequestException("title cannot be empty.");
+          }
+          updates.title = value;
+          break;
+        }
+        case "description": {
+          const value = String(rawValue ?? "").trim();
+          if (!value) {
+            throw new BadRequestException("description cannot be empty.");
+          }
+          updates.description = value;
+          break;
+        }
+        case "brand": {
+          const value = String(rawValue ?? "").trim();
+          if (!value) {
+            throw new BadRequestException("brand cannot be empty.");
+          }
+          updates.brand = value;
+          break;
+        }
+        case "status": {
+          const value = String(rawValue ?? "").trim();
+          if (!RECORD_STATUSES.includes(value as RecordStatus)) {
+            throw new BadRequestException("status must be draft, active, or archived.");
+          }
+          updates.status = value as RecordStatus;
+          break;
+        }
+        case "hsnCode": {
+          if (rawValue === null || rawValue === undefined) {
+            updates.hsnCode = null;
+            break;
+          }
+          const value = String(rawValue).trim();
+          updates.hsnCode = value.length > 0 ? value : null;
+          break;
+        }
+        case "gstRate": {
+          if (rawValue === null || rawValue === undefined || String(rawValue).trim() === "") {
+            updates.gstRate = null;
+            break;
+          }
+          const value = Number(rawValue);
+          if (!Number.isFinite(value) || value < 0) {
+            throw new BadRequestException("gstRate must be a non-negative number or null.");
+          }
+          updates.gstRate = value;
+          break;
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new BadRequestException("At least one supported update field is required.");
+    }
+
+    return updates;
+  }
+
+  private toUpdateData(updates: NormalizedUpdates): Prisma.ProductUpdateInput {
+    const data: Prisma.ProductUpdateInput = {};
+
+    if (updates.title !== undefined) {
+      data.title = updates.title;
+    }
+    if (updates.description !== undefined) {
+      data.description = updates.description;
+    }
+    if (updates.brand !== undefined) {
+      data.brand = updates.brand;
+    }
+    if (updates.status !== undefined) {
+      data.status = updates.status;
+    }
+    if (updates.hsnCode !== undefined) {
+      data.hsnCode = updates.hsnCode;
+    }
+    if (updates.gstRate !== undefined) {
+      data.gstRate = updates.gstRate;
+    }
+
+    return data;
+  }
+
+  private buildWhere(scope: {
+    categoryId?: string;
+    status?: RecordStatus;
+    brandContains?: string;
+    productIds?: string[];
+  }): Prisma.ProductWhereInput {
+    const where: Prisma.ProductWhereInput = {};
+
+    if (scope.categoryId) {
+      where.categoryId = scope.categoryId;
+    }
+
+    if (scope.status) {
+      where.status = scope.status;
+    }
+
+    if (scope.brandContains) {
+      where.brand = {
+        contains: scope.brandContains,
+        mode: "insensitive",
+      };
+    }
+
+    if (scope.productIds && scope.productIds.length > 0) {
+      where.id = {
+        in: scope.productIds,
+      };
+    }
+
+    return where;
+  }
+
+  private toSnapshot(product: {
+    id: string;
+    title: string;
+    description: string;
+    brand: string;
+    status: RecordStatus;
+    hsnCode: string | null;
+    gstRate: number | null;
+    categoryId: string;
+  }): ProductSnapshot {
+    return {
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      brand: product.brand,
+      status: product.status,
+      hsnCode: product.hsnCode,
+      gstRate: product.gstRate,
+      categoryId: product.categoryId,
+    };
+  }
+
+  private extractErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Unknown bulk edit error";
+  }
+}

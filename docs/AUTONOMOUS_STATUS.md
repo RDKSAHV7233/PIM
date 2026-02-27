@@ -9,7 +9,7 @@ Use this as the live control sheet. Update weekly.
 - `DN`: done
 
 ## Program Status
-- Current phase: `Phase 4 (ready to start)`
+- Current phase: `Phase 4 (in progress)`
 - Program status: `IP`
 - MVP target gate: `End of Phase 4`
 
@@ -48,11 +48,11 @@ Status: `DN`
 - [x] Rejection simulator live
 
 ### Phase 4 - Bulk Operations
-Status: `NS`
-- [ ] Excel/CSV import stable (1,000 SKU jobs)
-- [ ] Smart field mapping live
-- [ ] Bulk edit workflows live
-- [ ] Error repair UI live
+Status: `IP`
+- [x] Excel/CSV import job pipeline live (chunk + retry + DLQ)
+- [x] Smart field mapping live
+- [x] Bulk edit workflows live (preview + apply + history)
+- [x] Error repair UI live
 - [ ] MVP release gate passed
 
 ### Phase 5 - DAM and Media Validation
@@ -82,12 +82,8 @@ Status: `NS`
 
 ## Weekly Control Block
 - Week: 2026-02-23 to 2026-03-01
-- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, and Phase 3 marketplace intelligence completed.
-- Risks: None currently at phase-gate level.
-- Decisions needed: Phase 4 bulk import sequencing (parser vs repair UI first).
-- Scope changes: None.
-- Next week focus: Begin Phase 4 bulk operations (Excel/CSV pipeline, chunking, retry, error repair).
-
-
-
-
+- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, and Phase 4 bulk-edit workflows shipped.
+- Risks: MVP gate still depends on `.xlsx/.xls` upload UX and error report export in Phase 4.
+- Decisions needed: none for current slice.
+- Scope changes: none.
+- Next week focus: close remaining Phase 4 MVP gate items.

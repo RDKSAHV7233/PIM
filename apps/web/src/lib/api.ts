@@ -162,6 +162,115 @@ export interface MarketplaceExportJob {
   updatedAt: string;
 }
 
+export type BulkImportJobStatus =
+  | "queued"
+  | "processing"
+  | "retrying"
+  | "completed"
+  | "failed"
+  | "dead_letter";
+
+export type BulkImportRowStatus =
+  | "queued"
+  | "processing"
+  | "success"
+  | "retrying"
+  | "failed"
+  | "dead_letter";
+
+export interface BulkImportRow {
+  id: string;
+  jobId: string;
+  rowNumber: number;
+  payload: Record<string, unknown>;
+  status: BulkImportRowStatus;
+  retryCount: number;
+  errorMessage: string | null;
+  productId: string | null;
+  lastAttemptAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkImportJob {
+  id: string;
+  categoryId: string;
+  sourceFormat: "csv" | "json";
+  sourceName: string | null;
+  mapping: Record<string, string>;
+  chunkSize: number;
+  maxRetries: number;
+  status: BulkImportJobStatus;
+  totalRows: number;
+  processedRows: number;
+  successRows: number;
+  failedRows: number;
+  deadLetterRows: number;
+  category?: {
+    id: string;
+    path: string;
+  };
+  rows?: BulkImportRow[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkImportMappingSuggestion {
+  mapping: Record<string, string>;
+  confidence: Record<string, number>;
+  unmappedFields: string[];
+  unusedHeaders: string[];
+}
+
+export interface BulkEditScope {
+  categoryId?: string;
+  status?: CatalogStatus;
+  brandContains?: string;
+  productIds?: string[];
+}
+
+export interface BulkEditUpdates {
+  title?: string;
+  description?: string;
+  brand?: string;
+  status?: CatalogStatus;
+  hsnCode?: string | null;
+  gstRate?: number | null;
+}
+
+export interface BulkEditPreview {
+  scope: BulkEditScope;
+  updates: BulkEditUpdates;
+  requestedCount: number;
+  sampleCount: number;
+  sample: Product[];
+}
+
+export interface BulkEditOperationItem {
+  id: string;
+  operationId: string;
+  productId: string | null;
+  status: "success" | "failed";
+  before: Record<string, unknown>;
+  after: Record<string, unknown> | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkEditOperation {
+  id: string;
+  status: "processing" | "completed" | "failed";
+  scope: BulkEditScope;
+  updates: BulkEditUpdates;
+  requestedCount: number;
+  appliedCount: number;
+  failedCount: number;
+  items?: BulkEditOperationItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -262,6 +371,49 @@ export async function getMarketplaceExportJobs(productId: string) {
   );
 }
 
+export async function getBulkImportJobs() {
+  return fetchJson<BulkImportJob[]>("/bulk-import/jobs");
+}
+
+export async function getBulkImportJobRows(jobId: string, status?: BulkImportRowStatus, limit = 100) {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set("status", status);
+  }
+  params.set("limit", String(limit));
+  return fetchJson<BulkImportRow[]>(
+    `/bulk-import/jobs/${encodeURIComponent(jobId)}/rows?${params.toString()}`,
+  );
+}
+
+export async function getBulkImportMappingSuggestion(headers: string[]) {
+  return postJson<BulkImportMappingSuggestion>("/bulk-import/mapping-suggestions", {
+    headers,
+  });
+}
+
+export async function getBulkEditPreview(scope: BulkEditScope, updates: BulkEditUpdates) {
+  return postJson<BulkEditPreview>("/bulk-edit/preview", {
+    scope,
+    updates,
+  });
+}
+
+export async function applyBulkEdit(scope: BulkEditScope, updates: BulkEditUpdates) {
+  return postJson<BulkEditOperation>("/bulk-edit/apply", {
+    scope,
+    updates,
+  });
+}
+
+export async function getBulkEditOperations(limit = 20) {
+  return fetchJson<BulkEditOperation[]>(`/bulk-edit/operations?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getBulkEditOperation(operationId: string) {
+  return fetchJson<BulkEditOperation>(`/bulk-edit/operations/${encodeURIComponent(operationId)}`);
+}
+
 export async function postJson<T>(path: string, body: unknown) {
   return fetchJson<T>(path, {
     method: "POST",
@@ -279,3 +431,5 @@ export async function patchJson<T>(path: string, body: unknown) {
 export async function deleteJson(path: string) {
   return fetchJson<void>(path, { method: "DELETE" });
 }
+
+

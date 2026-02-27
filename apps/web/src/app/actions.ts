@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { postJson } from "@/lib/api";
+import { applyBulkEdit as applyBulkEditRequest, postJson } from "@/lib/api";
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -47,6 +47,21 @@ function parseJsonArray(value: FormDataEntryValue | null, label: string): string
   } catch {
     throw new Error(`${label} must be valid JSON array.`);
   }
+}
+
+function parseStringList(value: FormDataEntryValue | null): string[] {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      text
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
 }
 
 export async function createCategoryAction(formData: FormData) {
@@ -208,4 +223,125 @@ export async function requeueExportJobAction(formData: FormData) {
   }
   await postJson(`/marketplace/export-jobs/${jobId}/requeue`, {});
   revalidatePath(`/products/${productId}`);
+}
+
+export async function createBulkImportJobAction(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
+  const sourceName = String(formData.get("sourceName") ?? "").trim();
+  const csvContent = String(formData.get("csvContent") ?? "");
+  const rowsJson = String(formData.get("rowsJson") ?? "").trim();
+  const mapping = parseJsonObject(formData.get("mapping"), "Mapping");
+  const chunkSize = parseNumber(formData.get("chunkSize"));
+  const maxRetries = parseNumber(formData.get("maxRetries"));
+
+  if (!categoryId) {
+    throw new Error("Category is required for bulk import.");
+  }
+  if (sourceFormat !== "csv" && sourceFormat !== "json") {
+    throw new Error("Source format must be csv or json.");
+  }
+
+  let rows: Record<string, unknown>[] | undefined;
+  if (sourceFormat === "json") {
+    if (!rowsJson) {
+      throw new Error("rowsJson is required when source format is json.");
+    }
+    try {
+      const parsed = JSON.parse(rowsJson);
+      if (!Array.isArray(parsed)) {
+        throw new Error("rowsJson must be a JSON array.");
+      }
+      rows = parsed as Record<string, unknown>[];
+    } catch {
+      throw new Error("rowsJson must be valid JSON array.");
+    }
+  }
+
+  await postJson("/bulk-import/jobs", {
+    categoryId,
+    sourceFormat,
+    sourceName: sourceName || undefined,
+    csvContent: sourceFormat === "csv" ? csvContent : undefined,
+    rows: sourceFormat === "json" ? rows : undefined,
+    mapping,
+    chunkSize,
+    maxRetries,
+  });
+  revalidatePath("/");
+}
+
+export async function processBulkImportJobAction(formData: FormData) {
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  const chunkSize = parseNumber(formData.get("chunkSize"));
+  if (!jobId) {
+    throw new Error("Bulk import job id is required.");
+  }
+  await postJson(`/bulk-import/jobs/${jobId}/process`, {
+    chunkSize,
+  });
+  revalidatePath("/");
+}
+
+export async function requeueBulkImportDlqAction(formData: FormData) {
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  const limit = parseNumber(formData.get("limit"));
+  if (!jobId) {
+    throw new Error("Bulk import job id is required.");
+  }
+  await postJson(`/bulk-import/jobs/${jobId}/requeue-dlq`, {
+    limit,
+  });
+  revalidatePath("/");
+}
+
+export async function processBulkImportRowAction(formData: FormData) {
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  const rowId = String(formData.get("rowId") ?? "").trim();
+  if (!jobId || !rowId) {
+    throw new Error("Bulk import job id and row id are required.");
+  }
+  await postJson(`/bulk-import/jobs/${jobId}/rows/${rowId}/process`, {});
+  revalidatePath("/");
+}
+
+export async function repairBulkImportRowAction(formData: FormData) {
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  const rowId = String(formData.get("rowId") ?? "").trim();
+  const payloadRaw = String(formData.get("payload") ?? "").trim();
+  const requeue = String(formData.get("requeue") ?? "true") === "true";
+  if (!jobId || !rowId) {
+    throw new Error("Bulk import job id and row id are required.");
+  }
+  const payload = payloadRaw ? parseJsonObject(payloadRaw, "Repair payload") : {};
+  await postJson(`/bulk-import/jobs/${jobId}/rows/${rowId}/repair`, {
+    payload,
+    requeue,
+  });
+  revalidatePath("/");
+}
+
+export async function applyBulkEditAction(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  const brandContains = String(formData.get("brandContains") ?? "").trim();
+  const productIds = parseStringList(formData.get("productIds"));
+  const updates = parseJsonObject(formData.get("updates"), "Bulk edit updates");
+
+  const scope: Record<string, unknown> = {};
+  if (categoryId) {
+    scope.categoryId = categoryId;
+  }
+  if (status) {
+    scope.status = status;
+  }
+  if (brandContains) {
+    scope.brandContains = brandContains;
+  }
+  if (productIds.length > 0) {
+    scope.productIds = productIds;
+  }
+
+  await applyBulkEditRequest(scope, updates);
+  revalidatePath("/");
 }
