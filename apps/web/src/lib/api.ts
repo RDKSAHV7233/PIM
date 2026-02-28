@@ -206,6 +206,13 @@ export interface BulkImportJob {
   successRows: number;
   failedRows: number;
   deadLetterRows: number;
+  metrics?: {
+    checkpointRow: number;
+    retryingRows: number;
+    totalRetryAttempts: number;
+    estimatedChunks: number;
+    completedChunks: number;
+  };
   category?: {
     id: string;
     path: string;

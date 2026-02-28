@@ -3,10 +3,14 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AppModule } from "./app.module";
 
+const FASTIFY_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
+
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({
+      bodyLimit: FASTIFY_BODY_LIMIT_BYTES,
+    }),
   );
 
   app.setGlobalPrefix("api");

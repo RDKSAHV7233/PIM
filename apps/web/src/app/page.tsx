@@ -420,6 +420,8 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                 <th className="py-2">Success</th>
                 <th className="py-2">DLQ</th>
                 <th className="py-2">Chunk</th>
+                <th className="py-2">Checkpoint</th>
+                <th className="py-2">Retries</th>
                 <th className="py-2">Actions</th>
               </tr>
             </thead>
@@ -436,6 +438,16 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                   <td className="py-2">{job.successRows}</td>
                   <td className="py-2">{job.deadLetterRows}</td>
                   <td className="py-2">{job.chunkSize}</td>
+                  <td className="py-2 text-xs">
+                    {job.metrics
+                      ? `row ${job.metrics.checkpointRow} (${job.metrics.completedChunks}/${job.metrics.estimatedChunks} chunks)`
+                      : "-"}
+                  </td>
+                  <td className="py-2 text-xs">
+                    {job.metrics
+                      ? `${job.metrics.totalRetryAttempts} attempts (${job.metrics.retryingRows} retrying)`
+                      : "-"}
+                  </td>
                   <td className="py-2">
                     <div className="flex gap-2">
                       <Link href={`/?bulkJobId=${job.id}`} className="inline-flex items-center rounded-md border border-border px-3 py-2">

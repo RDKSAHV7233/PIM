@@ -53,6 +53,28 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
   attributes: ["attributes", "attribute_json", "specs", "specifications"],
 };
 
+const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+const TERMINAL_ROW_STATUSES = [
+  BulkImportRowStatus.success,
+  BulkImportRowStatus.failed,
+  BulkImportRowStatus.dead_letter,
+] as const;
+
+type BulkImportJobLike = {
+  id: string;
+  totalRows: number;
+  processedRows: number;
+  chunkSize: number;
+};
+
+type BulkImportJobMetrics = {
+  checkpointRow: number;
+  retryingRows: number;
+  totalRetryAttempts: number;
+  estimatedChunks: number;
+  completedChunks: number;
+};
+
 @Injectable()
 export class BulkImportService {
   constructor(
@@ -89,6 +111,8 @@ export class BulkImportService {
     const normalizedRows = sourceRows.rows.map((row) =>
       this.normalizeCanonicalPayload(row, suggestion.mapping),
     );
+    const sourceBytes = this.estimateSourceBytes(dto, normalizedRows);
+    this.assertSourceSize(sourceBytes);
 
     if (normalizedRows.length === 0) {
       throw new BadRequestException("No import rows detected.");
@@ -131,7 +155,7 @@ export class BulkImportService {
           status: this.parseJobStatus(status),
         }
       : undefined;
-    return this.prisma.bulkImportJob.findMany({
+    const jobs = await this.prisma.bulkImportJob.findMany({
       where,
       include: {
         category: { select: { id: true, path: true } },
@@ -139,6 +163,7 @@ export class BulkImportService {
       orderBy: [{ updatedAt: "desc" }],
       take: 50,
     });
+    return this.attachMetrics(jobs);
   }
 
   async getJob(jobId: string) {
@@ -155,7 +180,7 @@ export class BulkImportService {
     if (!job) {
       throw new NotFoundException("Bulk import job not found");
     }
-    return job;
+    return (await this.attachMetrics([job]))[0];
   }
 
   async listJobRows(jobId: string, status?: string, limit = 100) {
@@ -507,19 +532,28 @@ export class BulkImportService {
   }
 
   private parseDelimitedBase64(contentBase64: string, format: "csv") {
-    let raw: string;
+    let buffer: Buffer;
     try {
-      raw = Buffer.from(contentBase64, "base64").toString("utf8");
+      buffer = Buffer.from(contentBase64, "base64");
     } catch {
       throw new BadRequestException(`Invalid ${format} fileContentBase64 payload.`);
     }
+    this.assertSourceSize(buffer.length);
+    const raw = buffer.toString("utf8");
     return this.parseCsv(raw);
   }
 
   private parseSpreadsheetBase64(contentBase64: string) {
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(contentBase64, "base64");
+    } catch {
+      throw new BadRequestException("Invalid spreadsheet payload.");
+    }
+    this.assertSourceSize(buffer.length);
+
     let workbook: XLSX.WorkBook;
     try {
-      const buffer = Buffer.from(contentBase64, "base64");
       workbook = XLSX.read(buffer, { type: "buffer" });
     } catch {
       throw new BadRequestException("Invalid spreadsheet payload.");
@@ -757,6 +791,110 @@ export class BulkImportService {
     const normalized = candidate.trim().toLowerCase();
     const found = headers.find((header) => header.toLowerCase() === normalized);
     return found ?? null;
+  }
+
+  private assertSourceSize(bytes: number) {
+    if (bytes > MAX_SOURCE_BYTES) {
+      throw new BadRequestException(
+        `Source payload exceeds ${Math.floor(MAX_SOURCE_BYTES / (1024 * 1024))}MB limit.`,
+      );
+    }
+  }
+
+  private estimateSourceBytes(dto: CreateBulkImportJobDto, rows: CanonicalRowPayload[]) {
+    if (dto.fileContentBase64) {
+      return this.estimateBase64Bytes(dto.fileContentBase64);
+    }
+    if (dto.sourceFormat === "csv") {
+      return Buffer.byteLength(dto.csvContent ?? "", "utf8");
+    }
+    return Buffer.byteLength(JSON.stringify(rows), "utf8");
+  }
+
+  private estimateBase64Bytes(contentBase64: string) {
+    const normalized = contentBase64.replace(/\s+/g, "");
+    const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+  }
+
+  private async attachMetrics<T extends BulkImportJobLike>(jobs: T[]) {
+    if (jobs.length === 0) {
+      return jobs as Array<T & { metrics: BulkImportJobMetrics }>;
+    }
+    const jobIds = jobs.map((job) => job.id);
+    const [statusGroups, retryGroups, checkpointGroups] = await Promise.all([
+      this.prisma.bulkImportRow.groupBy({
+        by: ["jobId", "status"],
+        where: {
+          jobId: {
+            in: jobIds,
+          },
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+      this.prisma.bulkImportRow.groupBy({
+        by: ["jobId"],
+        where: {
+          jobId: {
+            in: jobIds,
+          },
+        },
+        _sum: {
+          retryCount: true,
+        },
+      }),
+      this.prisma.bulkImportRow.groupBy({
+        by: ["jobId"],
+        where: {
+          jobId: {
+            in: jobIds,
+          },
+          status: {
+            in: [...TERMINAL_ROW_STATUSES],
+          },
+        },
+        _max: {
+          rowNumber: true,
+        },
+      }),
+    ]);
+
+    const retryingRowsByJob = new Map<string, number>();
+    for (const group of statusGroups) {
+      if (group.status === BulkImportRowStatus.retrying) {
+        retryingRowsByJob.set(group.jobId, group._count._all);
+      }
+    }
+
+    const retryAttemptsByJob = new Map<string, number>();
+    for (const group of retryGroups) {
+      retryAttemptsByJob.set(group.jobId, group._sum.retryCount ?? 0);
+    }
+
+    const checkpointByJob = new Map<string, number>();
+    for (const group of checkpointGroups) {
+      checkpointByJob.set(group.jobId, group._max.rowNumber ?? 0);
+    }
+
+    return jobs.map((job) => {
+      const estimatedChunks = job.totalRows > 0 ? Math.ceil(job.totalRows / job.chunkSize) : 0;
+      const completedChunks =
+        estimatedChunks > 0
+          ? Math.min(estimatedChunks, Math.ceil(job.processedRows / job.chunkSize))
+          : 0;
+      return {
+        ...job,
+        metrics: {
+          checkpointRow: checkpointByJob.get(job.id) ?? 0,
+          retryingRows: retryingRowsByJob.get(job.id) ?? 0,
+          totalRetryAttempts: retryAttemptsByJob.get(job.id) ?? 0,
+          estimatedChunks,
+          completedChunks,
+        } satisfies BulkImportJobMetrics,
+      };
+    });
   }
 
   private async requireJob(jobId: string) {
