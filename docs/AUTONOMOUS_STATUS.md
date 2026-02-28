@@ -9,7 +9,7 @@ Use this as the live control sheet. Update weekly.
 - `DN`: done
 
 ## Program Status
-- Current phase: `Phase 4 (in progress)`
+- Current phase: `Phase 4 (completed)`
 - Program status: `IP`
 - MVP target gate: `End of Phase 4`
 
@@ -48,13 +48,13 @@ Status: `DN`
 - [x] Rejection simulator live
 
 ### Phase 4 - Bulk Operations
-Status: `IP`
+Status: `DN`
 - [x] Excel/CSV import job pipeline live (chunk + retry + DLQ)
 - [x] Smart field mapping live
 - [x] Bulk edit workflows live (preview + apply + history)
 - [x] Error repair UI live
 - [x] Pilot workflow validation + gate memo published
-- [ ] MVP release gate passed
+- [x] MVP release gate passed
 
 ### Phase 5 - DAM and Media Validation
 Status: `NS`
@@ -83,9 +83,9 @@ Status: `NS`
 
 ## Weekly Control Block
 - Week: 2026-02-23 to 2026-03-01
-- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, Phase 4 1,000-SKU benchmark evidence published, Phase 4 pilot workflow validation evidence published, Phase 4 gate memo published, RBAC baseline (admin/editor/viewer) shipped across API/UI with evidence, audit-log baseline for CRUD + bulk operations shipped with evidence, and execution backlog governance artifacts published.
-- Risks: MVP gate depends on unresolved `P0` baseline items from execution board (concurrency controls).
-- Decisions needed: release go/no-go confirmation after remaining `P0` execution board items close.
+- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, Phase 4 1,000-SKU benchmark evidence published, Phase 4 pilot workflow validation evidence published, Phase 4 gate memo published, RBAC baseline (admin/editor/viewer) shipped across API/UI with evidence, audit-log baseline for CRUD + bulk operations shipped with evidence, concurrent edit conflict protection shipped with deterministic UI conflict handling, and Phase 4 gate updated to Approved.
+- Risks: No unresolved `P0` MVP gate blockers in execution board.
+- Decisions needed: confirm Phase 5 kickoff scope and owners.
 - Scope changes: execution board, sprint closeout plan, bug backlog, and backlog hygiene standard added to operating model.
-- Next week focus: complete `S4-CLOSEOUT-2` remaining `P0` backlog item (`EXE-P1-005`) and rerun MVP gate review.
+- Next week focus: start Phase 5 planning and convert DAM/media validation scope into execution backlog with owner/estimate/dependency coverage.
 

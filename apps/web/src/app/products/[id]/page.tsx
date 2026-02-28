@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   createExportJobAction,
   createMappingTemplateAction,
+  updateProductAction,
   createVariantAction,
   processExportJobAction,
   requeueExportJobAction,
@@ -28,7 +29,13 @@ import {
 
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ channel?: string; templateId?: string; role?: string }>;
+  searchParams: Promise<{
+    channel?: string;
+    templateId?: string;
+    role?: string;
+    updateStatus?: string;
+    currentVersion?: string;
+  }>;
 }
 
 export const dynamic = "force-dynamic";
@@ -56,6 +63,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const canWrite = actorRole !== "viewer";
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
+  const updateStatus = String(query.updateStatus ?? "").trim();
+  const conflictVersion = String(query.currentVersion ?? "").trim();
   let product;
   try {
     product = await getProduct(id, { role: actorRole });
@@ -91,6 +100,70 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </p>
         <p className="text-xs text-slate-500">Current role: {actorRole}</p>
       </header>
+
+      {updateStatus === "updated" && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Product updated successfully.
+        </div>
+      )}
+      {updateStatus === "conflict" && (
+        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+          Version conflict detected. Another update was applied first.
+          {conflictVersion ? ` Latest version is ${conflictVersion}.` : ""}
+        </div>
+      )}
+      {updateStatus === "error" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Product update failed. Retry after reloading current data.
+        </div>
+      )}
+
+      <Card>
+        <CardTitle>Edit Product (Versioned)</CardTitle>
+        {canWrite ? (
+          <form action={updateProductAction} className="grid gap-3 md:grid-cols-2">
+            <RoleHiddenInput role={actorRole} />
+            <input type="hidden" name="productId" value={id} />
+            <input type="hidden" name="categoryId" value={product.categoryId} />
+            <input type="hidden" name="expectedVersion" value={product.version} />
+            <Input name="title" defaultValue={product.title} required />
+            <Input name="brand" defaultValue={product.brand} />
+            <Textarea
+              name="description"
+              rows={3}
+              className="md:col-span-2"
+              defaultValue={product.description}
+            />
+            <Input name="hsnCode" defaultValue={product.hsnCode ?? ""} placeholder="HSN code (optional)" />
+            <Input
+              name="gstRate"
+              type="number"
+              min={0}
+              step="0.01"
+              defaultValue={product.gstRate ?? ""}
+              placeholder="GST rate"
+            />
+            <Select name="status" defaultValue={product.status}>
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="archived">archived</option>
+            </Select>
+            <p className="text-xs text-slate-500">Submitting with expected version: {product.version}</p>
+            <Textarea
+              name="attributes"
+              rows={4}
+              className="md:col-span-2"
+              defaultValue={JSON.stringify(product.attributes ?? {}, null, 2)}
+              placeholder='Product attributes JSON'
+            />
+            <Button type="submit" className="w-fit">
+              Save product changes
+            </Button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">Viewer role cannot update products.</p>
+        )}
+      </Card>
 
       <Card>
         <CardTitle>Marketplace Rejection Simulator</CardTitle>

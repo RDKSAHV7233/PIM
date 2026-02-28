@@ -72,6 +72,7 @@ export interface Product {
   title: string;
   description: string;
   brand: string;
+  version: number;
   categoryId: string;
   hsnCode: string | null;
   gstRate: number | null;

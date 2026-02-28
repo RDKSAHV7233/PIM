@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RecordStatus } from "@prisma/client";
 import { ComplianceService } from "../compliance/compliance.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -69,10 +69,16 @@ export class CatalogService {
   }
 
   async updateProduct(productId: string, dto: UpdateProductDto) {
-    await this.requireProduct(productId);
+    const current = await this.requireProduct(productId);
+    if (dto.expectedVersion !== current.version) {
+      this.throwVersionConflict(dto.expectedVersion, current.version);
+    }
     await this.requireCategory(dto.categoryId);
-    const product = await this.prisma.product.update({
-      where: { id: productId },
+    const updateResult = await this.prisma.product.updateMany({
+      where: {
+        id: productId,
+        version: dto.expectedVersion,
+      },
       data: {
         title: dto.title.trim(),
         description: dto.description.trim(),
@@ -82,7 +88,15 @@ export class CatalogService {
         gstRate: dto.gstRate ?? null,
         attributes: (dto.attributes ?? {}) as Prisma.JsonObject,
         status: dto.status as RecordStatus,
+        version: { increment: 1 },
       },
+    });
+    if (updateResult.count === 0) {
+      const latest = await this.requireProduct(productId);
+      this.throwVersionConflict(dto.expectedVersion, latest.version);
+    }
+    const product = await this.prisma.product.findUniqueOrThrow({
+      where: { id: productId },
       include: { category: true, variants: true },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
@@ -181,5 +195,14 @@ export class CatalogService {
     if (mrp !== undefined && sellingPrice !== undefined && sellingPrice > mrp) {
       throw new BadRequestException("Selling price cannot exceed MRP");
     }
+  }
+
+  private throwVersionConflict(expectedVersion: number, currentVersion: number): never {
+    throw new ConflictException({
+      code: "VERSION_CONFLICT",
+      message: "Product has been updated by another operation. Reload and retry.",
+      expectedVersion,
+      currentVersion,
+    });
   }
 }

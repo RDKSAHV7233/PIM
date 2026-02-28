@@ -2,7 +2,8 @@
 
 import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
-import { applyBulkEdit as applyBulkEditRequest, normalizeAppRole, postJson } from "@/lib/api";
+import { redirect } from "next/navigation";
+import { applyBulkEdit as applyBulkEditRequest, normalizeAppRole, patchJson, postJson } from "@/lib/api";
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -88,6 +89,12 @@ function postJsonForAction<T>(formData: FormData, path: string, body: unknown) {
   });
 }
 
+function patchJsonForAction<T>(formData: FormData, path: string, body: unknown) {
+  return patchJson<T>(path, body, {
+    role: normalizeAppRole(formData.get("actorRole")),
+  });
+}
+
 export async function createCategoryAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const parentId = String(formData.get("parentId") ?? "").trim();
@@ -119,6 +126,60 @@ export async function createProductAction(formData: FormData) {
     status: String(formData.get("status") ?? "draft"),
   });
   revalidatePath("/");
+}
+
+function extractCurrentVersionFromError(message: string): number | null {
+  const match = message.match(/"currentVersion"\s*:\s*(\d+)/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function updateProductAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  if (!productId) {
+    throw new Error("Product id is required.");
+  }
+
+  const title = String(formData.get("title") ?? "").trim();
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const expectedVersion = parseNumber(formData.get("expectedVersion"));
+  if (!title || !categoryId || !expectedVersion) {
+    throw new Error("Product title, category, and expected version are required.");
+  }
+
+  const attributes = parseJsonObject(formData.get("attributes"), "Product attributes");
+  const basePath = `/products/${encodeURIComponent(productId)}?role=${encodeURIComponent(actorRole)}`;
+
+  try {
+    await patchJsonForAction(formData, `/catalog/products/${productId}`, {
+      expectedVersion,
+      title,
+      description: String(formData.get("description") ?? "").trim(),
+      brand: String(formData.get("brand") ?? "").trim(),
+      categoryId,
+      hsnCode: String(formData.get("hsnCode") ?? "").trim() || undefined,
+      gstRate: parseNumber(formData.get("gstRate")),
+      attributes,
+      status: String(formData.get("status") ?? "draft"),
+    });
+    revalidatePath(`/products/${productId}`);
+    redirect(`${basePath}&updateStatus=updated`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("VERSION_CONFLICT")) {
+      const currentVersion = extractCurrentVersionFromError(message);
+      const conflictPath =
+        currentVersion !== null
+          ? `${basePath}&updateStatus=conflict&currentVersion=${currentVersion}`
+          : `${basePath}&updateStatus=conflict`;
+      redirect(conflictPath);
+    }
+    redirect(`${basePath}&updateStatus=error`);
+  }
 }
 
 export async function createAttributeDefinitionAction(formData: FormData) {

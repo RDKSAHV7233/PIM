@@ -1,9 +1,25 @@
 import { Transform } from "class-transformer";
-import { IsIn, IsNumber, IsObject, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
+import {
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+  MinLength,
+} from "class-validator";
 
 const PRODUCT_STATUSES = ["draft", "active", "archived"] as const;
 
 export class UpdateProductDto {
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
   @IsString()
   @MinLength(2)
   @MaxLength(220)
