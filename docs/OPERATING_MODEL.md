@@ -15,6 +15,12 @@ Provide a lightweight operating system to execute phases with speed and control.
 - Today plan
 - Blockers
 
+1. Backlog Hygiene Review (weekly, before governance)
+- Validate mandatory fields for active items
+- Re-rank `P0` items against release goals
+- Resolve duplicates, stale items, and ownership gaps
+- Sync execution board and bug backlog
+
 2. Weekly Governance
 - KPI review against phase targets
 - Risk register updates
@@ -35,6 +41,10 @@ Provide a lightweight operating system to execute phases with speed and control.
 - `AUTONOMOUS_STATUS.md`
 - `KPI_DASHBOARD_TEMPLATE.md`
 - `RACI.md`
+- `EXECUTION_BACKLOG_BOARD.md`
+- `SPRINT_PLAN_PHASE4_CLOSEOUT.md`
+- `BUG_BACKLOG.md`
+- `BACKLOG_HYGIENE.md`
 - Phase-specific deliverables and release notes
 
 ## Escalation Rules

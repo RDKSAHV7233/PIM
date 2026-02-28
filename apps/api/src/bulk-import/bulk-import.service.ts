@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
+import * as XLSX from "xlsx";
 import { ComplianceService } from "../compliance/compliance.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
@@ -66,10 +67,23 @@ export class BulkImportService {
   async createJob(dto: CreateBulkImportJobDto) {
     await this.requireCategory(dto.categoryId);
 
-    const sourceRows =
-      dto.sourceFormat === "csv"
-        ? this.parseCsv(dto.csvContent ?? "")
-        : { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+    const sourceRows = (() => {
+      if (dto.sourceFormat === "csv") {
+        if (dto.fileContentBase64) {
+          return this.parseDelimitedBase64(dto.fileContentBase64, "csv");
+        }
+        return this.parseCsv(dto.csvContent ?? "");
+      }
+      if (dto.sourceFormat === "xlsx" || dto.sourceFormat === "xls") {
+        if (!dto.fileContentBase64) {
+          throw new BadRequestException(
+            "fileContentBase64 is required for xlsx/xls source format.",
+          );
+        }
+        return this.parseSpreadsheetBase64(dto.fileContentBase64);
+      }
+      return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+    })();
 
     const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
     const normalizedRows = sourceRows.rows.map((row) =>
@@ -254,6 +268,47 @@ export class BulkImportService {
 
     await this.refreshJobCounters(jobId);
     return this.getJob(jobId);
+  }
+
+  async buildErrorReportCsv(jobId: string) {
+    await this.requireJob(jobId);
+    const rows = await this.prisma.bulkImportRow.findMany({
+      where: {
+        jobId,
+        status: {
+          in: [
+            BulkImportRowStatus.retrying,
+            BulkImportRowStatus.failed,
+            BulkImportRowStatus.dead_letter,
+          ],
+        },
+      },
+      orderBy: [{ rowNumber: "asc" }],
+      select: {
+        rowNumber: true,
+        status: true,
+        retryCount: true,
+        errorMessage: true,
+        payload: true,
+      },
+    });
+
+    const header = ["row_number", "status", "retry_count", "error_message", "payload_json"];
+    const lines = [header.map((value) => this.toCsvCell(value)).join(",")];
+    for (const row of rows) {
+      lines.push(
+        [
+          String(row.rowNumber),
+          row.status,
+          String(row.retryCount),
+          row.errorMessage ?? "",
+          JSON.stringify(this.asRowPayload(row.payload)),
+        ]
+          .map((value) => this.toCsvCell(value))
+          .join(","),
+      );
+    }
+    return lines.join("\n");
   }
 
   private async processRow(
@@ -451,6 +506,58 @@ export class BulkImportService {
     };
   }
 
+  private parseDelimitedBase64(contentBase64: string, format: "csv") {
+    let raw: string;
+    try {
+      raw = Buffer.from(contentBase64, "base64").toString("utf8");
+    } catch {
+      throw new BadRequestException(`Invalid ${format} fileContentBase64 payload.`);
+    }
+    return this.parseCsv(raw);
+  }
+
+  private parseSpreadsheetBase64(contentBase64: string) {
+    let workbook: XLSX.WorkBook;
+    try {
+      const buffer = Buffer.from(contentBase64, "base64");
+      workbook = XLSX.read(buffer, { type: "buffer" });
+    } catch {
+      throw new BadRequestException("Invalid spreadsheet payload.");
+    }
+
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      throw new BadRequestException("Spreadsheet contains no sheets.");
+    }
+    const sheet = workbook.Sheets[firstSheetName];
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      blankrows: false,
+    });
+    if (matrix.length < 2) {
+      throw new BadRequestException(
+        "Spreadsheet must include header and at least one data row.",
+      );
+    }
+
+    const headers = matrix[0].map((value) => String(value ?? "").trim());
+    if (headers.some((header) => header.length === 0)) {
+      throw new BadRequestException("Spreadsheet header contains empty column names.");
+    }
+
+    const rows: Record<string, unknown>[] = [];
+    for (let i = 1; i < matrix.length; i += 1) {
+      const rowArray = matrix[i];
+      const row: Record<string, unknown> = {};
+      headers.forEach((header, index) => {
+        row[header] = rowArray[index] ?? "";
+      });
+      rows.push(row);
+    }
+    return { headers, rows };
+  }
+
   private inferHeadersFromRows(rows: Record<string, unknown>[]) {
     const headerSet = new Set<string>();
     for (const row of rows) {
@@ -598,6 +705,11 @@ export class BulkImportService {
       return error.message;
     }
     return "Bulk import row processing failed.";
+  }
+
+  private toCsvCell(value: string) {
+    const escaped = String(value ?? "").replace(/"/g, '""');
+    return `"${escaped}"`;
   }
 
   private scoreHeader(field: (typeof CANONICAL_FIELDS)[number], header: string) {

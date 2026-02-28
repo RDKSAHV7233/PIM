@@ -51,6 +51,7 @@ function parseList(value: string) {
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
+  const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
   const query = await searchParams;
   const [stats, categories, products, bulkImportJobs, bulkEditOperations] = await Promise.all([
     getStats(),
@@ -365,11 +366,21 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
           <Select name="sourceFormat" defaultValue="csv">
             <option value="csv">csv</option>
             <option value="json">json</option>
+            <option value="xlsx">xlsx</option>
+            <option value="xls">xls</option>
           </Select>
           <Input name="sourceName" placeholder="Source file name (optional)" />
           <Input name="chunkSize" type="number" min={1} max={500} defaultValue={100} placeholder="Chunk size" />
           <Input name="maxRetries" type="number" min={1} max={10} defaultValue={3} placeholder="Max retries" />
-          <div />
+          <Input
+            name="sourceFile"
+            type="file"
+            accept=".csv,.xlsx,.xls,.json"
+            className="md:col-span-2"
+          />
+          <p className="text-xs text-slate-500">
+            Upload file supports csv/xlsx/xls/json. Uploaded file takes precedence over text inputs.
+          </p>
           <Textarea
             name="mapping"
             rows={6}
@@ -441,6 +452,16 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                           <input type="hidden" name="limit" value={100} />
                           <Button type="submit">Requeue DLQ</Button>
                         </form>
+                      )}
+                      {(job.deadLetterRows > 0 || job.failedRows > 0 || job.status === "retrying") && (
+                        <a
+                          href={`${apiBaseUrl}/bulk-import/jobs/${job.id}/error-report`}
+                          className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Export errors
+                        </a>
                       )}
                     </div>
                   </td>

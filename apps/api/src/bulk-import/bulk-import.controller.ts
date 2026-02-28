@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Header, Param, Post, Query, Res } from "@nestjs/common";
+import { FastifyReply } from "fastify";
 import { BulkImportService } from "./bulk-import.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
@@ -37,6 +38,16 @@ export class BulkImportController {
     @Query("limit") limit?: string,
   ) {
     return this.bulkImportService.listJobRows(jobId, status, limit ? Number(limit) : undefined);
+  }
+
+  @Get("jobs/:id/error-report")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async getErrorReport(@Param("id") jobId: string, @Res({ passthrough: true }) response: FastifyReply) {
+    response.header(
+      "Content-Disposition",
+      `attachment; filename="bulk-import-${jobId}-errors.csv"`,
+    );
+    return this.bulkImportService.buildErrorReportCsv(jobId);
   }
 
   @Post("jobs/:id/process")

@@ -9,6 +9,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 export function Button({ className, variant = "primary", children, ...props }: Props) {
   return (
     <button
+      suppressHydrationWarning
       className={cn(
         "rounded-md px-3 py-2 text-sm font-medium transition",
         variant === "primary"

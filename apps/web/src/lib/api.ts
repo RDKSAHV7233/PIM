@@ -195,7 +195,7 @@ export interface BulkImportRow {
 export interface BulkImportJob {
   id: string;
   categoryId: string;
-  sourceFormat: "csv" | "json";
+  sourceFormat: "csv" | "json" | "xlsx" | "xls";
   sourceName: string | null;
   mapping: Record<string, string>;
   chunkSize: number;

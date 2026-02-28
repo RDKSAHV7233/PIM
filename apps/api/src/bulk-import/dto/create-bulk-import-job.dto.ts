@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBase64,
   IsIn,
   IsInt,
   IsObject,
@@ -11,7 +12,7 @@ import {
   Min,
 } from "class-validator";
 
-const SOURCE_FORMATS = ["csv", "json"] as const;
+const SOURCE_FORMATS = ["csv", "json", "xlsx", "xls"] as const;
 
 export class CreateBulkImportJobDto {
   @IsString()
@@ -27,6 +28,10 @@ export class CreateBulkImportJobDto {
   @IsOptional()
   @IsString()
   csvContent?: string;
+
+  @IsOptional()
+  @IsBase64()
+  fileContentBase64?: string;
 
   @IsOptional()
   @IsArray()

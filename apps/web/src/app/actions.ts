@@ -1,5 +1,6 @@
 "use server";
 
+import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
 import { applyBulkEdit as applyBulkEditRequest, postJson } from "@/lib/api";
 
@@ -62,6 +63,23 @@ function parseStringList(value: FormDataEntryValue | null): string[] {
         .filter((item) => item.length > 0),
     ),
   );
+}
+
+function detectSourceFormatFromFileName(fileName: string) {
+  const normalized = fileName.trim().toLowerCase();
+  if (normalized.endsWith(".xlsx")) {
+    return "xlsx" as const;
+  }
+  if (normalized.endsWith(".xls")) {
+    return "xls" as const;
+  }
+  if (normalized.endsWith(".csv")) {
+    return "csv" as const;
+  }
+  if (normalized.endsWith(".json")) {
+    return "json" as const;
+  }
+  return null;
 }
 
 export async function createCategoryAction(formData: FormData) {
@@ -227,10 +245,11 @@ export async function requeueExportJobAction(formData: FormData) {
 
 export async function createBulkImportJobAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
-  const sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
-  const sourceName = String(formData.get("sourceName") ?? "").trim();
+  let sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
+  let sourceName = String(formData.get("sourceName") ?? "").trim();
   const csvContent = String(formData.get("csvContent") ?? "");
   const rowsJson = String(formData.get("rowsJson") ?? "").trim();
+  const sourceFileEntry = formData.get("sourceFile");
   const mapping = parseJsonObject(formData.get("mapping"), "Mapping");
   const chunkSize = parseNumber(formData.get("chunkSize"));
   const maxRetries = parseNumber(formData.get("maxRetries"));
@@ -238,14 +257,40 @@ export async function createBulkImportJobAction(formData: FormData) {
   if (!categoryId) {
     throw new Error("Category is required for bulk import.");
   }
-  if (sourceFormat !== "csv" && sourceFormat !== "json") {
-    throw new Error("Source format must be csv or json.");
-  }
+
+  const sourceFile =
+    sourceFileEntry instanceof File && sourceFileEntry.size > 0 ? sourceFileEntry : null;
+  let fileContentBase64: string | undefined;
 
   let rows: Record<string, unknown>[] | undefined;
-  if (sourceFormat === "json") {
+  if (sourceFile) {
+    const detectedFormat = detectSourceFormatFromFileName(sourceFile.name);
+    if (!detectedFormat) {
+      throw new Error("Uploaded file must be .csv, .xlsx, .xls, or .json.");
+    }
+    if (sourceFormat && sourceFormat !== detectedFormat) {
+      throw new Error(`Selected source format does not match uploaded file (${detectedFormat}).`);
+    }
+    sourceFormat = detectedFormat;
+    sourceName = sourceName || sourceFile.name;
+
+    if (sourceFormat === "json") {
+      const text = await sourceFile.text();
+      try {
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+          throw new Error("JSON file must contain an array of rows.");
+        }
+        rows = parsed as Record<string, unknown>[];
+      } catch {
+        throw new Error("Uploaded JSON file must contain a valid JSON array.");
+      }
+    } else {
+      fileContentBase64 = Buffer.from(await sourceFile.arrayBuffer()).toString("base64");
+    }
+  } else if (sourceFormat === "json") {
     if (!rowsJson) {
-      throw new Error("rowsJson is required when source format is json.");
+      throw new Error("rowsJson is required when source format is json and no file is uploaded.");
     }
     try {
       const parsed = JSON.parse(rowsJson);
@@ -256,6 +301,14 @@ export async function createBulkImportJobAction(formData: FormData) {
     } catch {
       throw new Error("rowsJson must be valid JSON array.");
     }
+  } else if (sourceFormat === "csv") {
+    if (!csvContent.trim()) {
+      throw new Error("csvContent is required when source format is csv and no file is uploaded.");
+    }
+  } else if (sourceFormat === "xlsx" || sourceFormat === "xls") {
+    throw new Error("Upload a spreadsheet file for xlsx/xls source format.");
+  } else {
+    throw new Error("Source format must be csv, json, xlsx, or xls.");
   }
 
   await postJson("/bulk-import/jobs", {
@@ -263,6 +316,7 @@ export async function createBulkImportJobAction(formData: FormData) {
     sourceFormat,
     sourceName: sourceName || undefined,
     csvContent: sourceFormat === "csv" ? csvContent : undefined,
+    fileContentBase64,
     rows: sourceFormat === "json" ? rows : undefined,
     mapping,
     chunkSize,
