@@ -100,11 +100,29 @@ model Category {
   mappingTemplates     ChannelMappingTemplate[]
   exportJobs           MarketplaceExportJob[]
   bulkImportJobs       BulkImportJob[]
+  bulkImportTemplates  BulkImportTemplate[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
   @@index([parentId])
   @@index([path])
+}
+
+model BulkImportTemplate {
+  id          String   @id @default(cuid())
+  tenantKey   String
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  sourceFormat String
+  mapping     Json
+  chunkSize   Int      @default(100)
+  maxRetries  Int      @default(3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantKey, categoryId, name])
+  @@index([tenantKey, categoryId, updatedAt])
 }
 
 model Product {

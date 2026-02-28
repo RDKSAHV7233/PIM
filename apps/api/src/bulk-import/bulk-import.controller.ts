@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, Param, Post, Query, Res } from "@nestjs/
 import { FastifyReply } from "fastify";
 import { BulkImportService } from "./bulk-import.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
+import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 import { RequeueDlqDto } from "./dto/requeue-dlq.dto";
@@ -14,6 +15,27 @@ export class BulkImportController {
   @Post("jobs")
   createJob(@Body() dto: CreateBulkImportJobDto) {
     return this.bulkImportService.createJob(dto);
+  }
+
+  @Post("templates")
+  createTemplate(@Body() dto: CreateBulkImportTemplateDto) {
+    return this.bulkImportService.createTemplate(dto);
+  }
+
+  @Get("templates")
+  listTemplates(
+    @Query("tenantKey") tenantKey?: string,
+    @Query("categoryId") categoryId?: string,
+  ) {
+    return this.bulkImportService.listTemplates(tenantKey, categoryId);
+  }
+
+  @Get("templates/:id")
+  getTemplate(
+    @Param("id") templateId: string,
+    @Query("tenantKey") tenantKey?: string,
+  ) {
+    return this.bulkImportService.getTemplate(templateId, tenantKey);
   }
 
   @Post("mapping-suggestions")

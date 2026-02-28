@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { ComplianceService } from "../compliance/compliance.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
+import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 
 type CanonicalRowPayload = {
@@ -54,6 +55,8 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
 };
 
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_TENANT_KEY = "default";
+const TEMPLATE_SOURCE_FORMATS = new Set(["csv", "json", "xlsx", "xls"]);
 const TERMINAL_ROW_STATUSES = [
   BulkImportRowStatus.success,
   BulkImportRowStatus.failed,
@@ -84,6 +87,89 @@ export class BulkImportService {
 
   suggestMapping(headers: string[]) {
     return this.suggestMappingFromHeaders(headers);
+  }
+
+  async createTemplate(dto: CreateBulkImportTemplateDto) {
+    await this.requireCategory(dto.categoryId);
+    const tenantKey = this.normalizeTenantKey(dto.tenantKey);
+    const sourceFormat = this.parseTemplateSourceFormat(dto.sourceFormat);
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException("Template name is required.");
+    }
+
+    const mapping = this.normalizeTemplateMapping(dto.mapping);
+    try {
+      return await this.prisma.bulkImportTemplate.create({
+        data: {
+          tenantKey,
+          categoryId: dto.categoryId,
+          name,
+          sourceFormat,
+          mapping: mapping as unknown as Prisma.JsonObject,
+          chunkSize: dto.chunkSize ?? 100,
+          maxRetries: dto.maxRetries ?? 3,
+        },
+        include: {
+          category: {
+            select: {
+              id: true,
+              path: true,
+            },
+          },
+        },
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException("Template name already exists for tenant and category.");
+      }
+      throw error;
+    }
+  }
+
+  async listTemplates(tenantKey?: string, categoryId?: string) {
+    const normalizedTenant = this.normalizeTenantKey(tenantKey);
+    return this.prisma.bulkImportTemplate.findMany({
+      where: {
+        tenantKey: normalizedTenant,
+        categoryId: categoryId?.trim() || undefined,
+      },
+      include: {
+        category: {
+          select: {
+            id: true,
+            path: true,
+          },
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 200,
+    });
+  }
+
+  async getTemplate(templateId: string, tenantKey?: string) {
+    const normalizedTenant = this.normalizeTenantKey(tenantKey);
+    const template = await this.prisma.bulkImportTemplate.findFirst({
+      where: {
+        id: templateId,
+        tenantKey: normalizedTenant,
+      },
+      include: {
+        category: {
+          select: {
+            id: true,
+            path: true,
+          },
+        },
+      },
+    });
+    if (!template) {
+      throw new NotFoundException("Bulk import template not found");
+    }
+    return template;
   }
 
   async createJob(dto: CreateBulkImportJobDto) {
@@ -791,6 +877,36 @@ export class BulkImportService {
     const normalized = candidate.trim().toLowerCase();
     const found = headers.find((header) => header.toLowerCase() === normalized);
     return found ?? null;
+  }
+
+  private normalizeTenantKey(value?: string) {
+    const tenantKey = (value ?? DEFAULT_TENANT_KEY).trim();
+    return tenantKey.length > 0 ? tenantKey : DEFAULT_TENANT_KEY;
+  }
+
+  private parseTemplateSourceFormat(value: string) {
+    const normalized = value.trim().toLowerCase();
+    if (TEMPLATE_SOURCE_FORMATS.has(normalized)) {
+      return normalized;
+    }
+    throw new BadRequestException("Invalid template source format.");
+  }
+
+  private normalizeTemplateMapping(value?: Record<string, string>) {
+    const mapping: Record<string, string> = {};
+    for (const [key, mapped] of Object.entries(value ?? {})) {
+      const normalizedKey = String(key ?? "").trim();
+      const normalizedValue = String(mapped ?? "").trim();
+      if (!normalizedKey || !normalizedValue) {
+        continue;
+      }
+      mapping[normalizedKey] = normalizedValue;
+    }
+
+    if (Object.keys(mapping).length === 0) {
+      return { ...DEFAULT_MAPPING };
+    }
+    return mapping;
   }
 
   private assertSourceSize(bytes: number) {

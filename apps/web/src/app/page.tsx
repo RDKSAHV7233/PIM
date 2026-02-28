@@ -3,6 +3,7 @@ import {
   applyBulkEditAction,
   createAttributeDefinitionAction,
   createBulkImportJobAction,
+  createBulkImportTemplateAction,
   createCategoryAction,
   createProductAction,
   processBulkImportRowAction,
@@ -20,6 +21,7 @@ import {
   getBulkEditPreview,
   getBulkImportJobRows,
   getBulkImportJobs,
+  getBulkImportTemplates,
   getCategories,
   getProducts,
   getStats,
@@ -36,6 +38,9 @@ interface HomePageProps {
     bulkEditBrandContains?: string;
     bulkEditProductIds?: string;
     bulkEditUpdates?: string;
+    tenantKey?: string;
+    bulkTemplateId?: string;
+    bulkTemplateCategoryId?: string;
   }>;
 }
 
@@ -53,13 +58,27 @@ function parseList(value: string) {
 export default async function HomePage({ searchParams }: HomePageProps) {
   const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
   const query = await searchParams;
-  const [stats, categories, products, bulkImportJobs, bulkEditOperations] = await Promise.all([
+  const tenantKey = String(query.tenantKey ?? "").trim() || "default";
+  const bulkTemplateCategoryId = String(query.bulkTemplateCategoryId ?? "").trim();
+  const [stats, categories, products, bulkImportJobs, bulkEditOperations, bulkImportTemplates] = await Promise.all([
     getStats(),
     getCategories(),
     getProducts(),
     getBulkImportJobs(),
     getBulkEditOperations(),
+    getBulkImportTemplates(tenantKey, bulkTemplateCategoryId || undefined),
   ]);
+
+  const selectedBulkTemplateId = String(query.bulkTemplateId ?? "").trim();
+  const selectedBulkTemplate =
+    bulkImportTemplates.find((template) => template.id === selectedBulkTemplateId) ?? null;
+  const defaultBulkCategoryId = selectedBulkTemplate?.categoryId ?? "";
+  const defaultBulkSourceFormat = selectedBulkTemplate?.sourceFormat ?? "csv";
+  const defaultBulkChunkSize = selectedBulkTemplate?.chunkSize ?? 100;
+  const defaultBulkMaxRetries = selectedBulkTemplate?.maxRetries ?? 3;
+  const defaultTemplateMapping = selectedBulkTemplate
+    ? JSON.stringify(selectedBulkTemplate.mapping, null, 2)
+    : "";
 
   const selectedBulkJobId =
     String(query.bulkJobId ?? "").trim() ||
@@ -351,9 +370,30 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       </Card>
 
       <Card>
-        <CardTitle>Bulk Import Job (Phase 4)</CardTitle>
-        <form action={createBulkImportJobAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <Select name="categoryId" required defaultValue="">
+        <CardTitle>Bulk Import Templates (Phase 4)</CardTitle>
+        <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
+          <Input
+            name="tenantKey"
+            defaultValue={tenantKey}
+            placeholder="Tenant key (default)"
+          />
+          <Select name="bulkTemplateCategoryId" defaultValue={bulkTemplateCategoryId}>
+            <option value="">All categories</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.path}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" className="w-fit">
+            Filter templates
+          </Button>
+        </form>
+
+        <form action={createBulkImportTemplateAction} className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <Input name="tenantKey" defaultValue={tenantKey} placeholder="Tenant key" required />
+          <Select name="categoryId" required defaultValue={defaultBulkCategoryId || bulkTemplateCategoryId || ""}>
             <option value="" disabled>
               Select category
             </option>
@@ -363,15 +403,125 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               </option>
             ))}
           </Select>
-          <Select name="sourceFormat" defaultValue="csv">
+          <Input name="name" placeholder="Template name" required />
+          <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
             <option value="csv">csv</option>
             <option value="json">json</option>
             <option value="xlsx">xlsx</option>
             <option value="xls">xls</option>
           </Select>
-          <Input name="sourceName" placeholder="Source file name (optional)" />
-          <Input name="chunkSize" type="number" min={1} max={500} defaultValue={100} placeholder="Chunk size" />
-          <Input name="maxRetries" type="number" min={1} max={10} defaultValue={3} placeholder="Max retries" />
+          <Input
+            name="chunkSize"
+            type="number"
+            min={1}
+            max={500}
+            defaultValue={defaultBulkChunkSize}
+            placeholder="Chunk size"
+          />
+          <Input
+            name="maxRetries"
+            type="number"
+            min={1}
+            max={10}
+            defaultValue={defaultBulkMaxRetries}
+            placeholder="Max retries"
+          />
+          <Textarea
+            name="mapping"
+            rows={4}
+            className="md:col-span-2 lg:col-span-3"
+            defaultValue={defaultTemplateMapping}
+            placeholder='Template mapping JSON, e.g. {"title":"product_name","brand":"brand_name"}'
+          />
+          <Button type="submit" className="w-fit">
+            Save template
+          </Button>
+        </form>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="text-xs uppercase text-slate-500">
+              <tr>
+                <th className="py-2">Template</th>
+                <th className="py-2">Tenant</th>
+                <th className="py-2">Category</th>
+                <th className="py-2">Format</th>
+                <th className="py-2">Chunk</th>
+                <th className="py-2">Retries</th>
+                <th className="py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bulkImportTemplates.map((template) => (
+                <tr key={template.id} className="border-t border-border">
+                  <td className="py-2">{template.name}</td>
+                  <td className="py-2">{template.tenantKey}</td>
+                  <td className="py-2">{template.category?.path ?? template.categoryId}</td>
+                  <td className="py-2">{template.sourceFormat}</td>
+                  <td className="py-2">{template.chunkSize}</td>
+                  <td className="py-2">{template.maxRetries}</td>
+                  <td className="py-2">
+                    <Link
+                      href={`/?tenantKey=${encodeURIComponent(tenantKey)}&bulkTemplateCategoryId=${encodeURIComponent(
+                        bulkTemplateCategoryId || "",
+                      )}&bulkTemplateId=${encodeURIComponent(template.id)}`}
+                      className="inline-flex items-center rounded-md border border-border px-3 py-2"
+                    >
+                      Load in import form
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card>
+        <CardTitle>Bulk Import Job (Phase 4)</CardTitle>
+        {selectedBulkTemplate && (
+          <p className="mb-3 text-sm text-slate-600">
+            Loaded template: <strong>{selectedBulkTemplate.name}</strong> ({selectedBulkTemplate.tenantKey})
+          </p>
+        )}
+        <form action={createBulkImportJobAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <Select name="categoryId" required defaultValue={defaultBulkCategoryId || ""}>
+            <option value="" disabled>
+              Select category
+            </option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.path}
+              </option>
+            ))}
+          </Select>
+          <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
+            <option value="csv">csv</option>
+            <option value="json">json</option>
+            <option value="xlsx">xlsx</option>
+            <option value="xls">xls</option>
+          </Select>
+          <Input
+            name="sourceName"
+            defaultValue={selectedBulkTemplate?.name ?? ""}
+            placeholder="Source file name (optional)"
+          />
+          <Input
+            name="chunkSize"
+            type="number"
+            min={1}
+            max={500}
+            defaultValue={defaultBulkChunkSize}
+            placeholder="Chunk size"
+          />
+          <Input
+            name="maxRetries"
+            type="number"
+            min={1}
+            max={10}
+            defaultValue={defaultBulkMaxRetries}
+            placeholder="Max retries"
+          />
           <Input
             name="sourceFile"
             type="file"
@@ -385,6 +535,7 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
             name="mapping"
             rows={6}
             className="md:col-span-2 lg:col-span-3"
+            defaultValue={defaultTemplateMapping}
             placeholder="Optional JSON mapping. Leave empty for smart auto-suggest by headers."
           />
           <Textarea

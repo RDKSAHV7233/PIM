@@ -229,6 +229,23 @@ export interface BulkImportMappingSuggestion {
   unusedHeaders: string[];
 }
 
+export interface BulkImportTemplate {
+  id: string;
+  tenantKey: string;
+  categoryId: string;
+  name: string;
+  sourceFormat: "csv" | "json" | "xlsx" | "xls";
+  mapping: Record<string, string>;
+  chunkSize: number;
+  maxRetries: number;
+  category?: {
+    id: string;
+    path: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BulkEditScope {
   categoryId?: string;
   status?: CatalogStatus;
@@ -380,6 +397,15 @@ export async function getMarketplaceExportJobs(productId: string) {
 
 export async function getBulkImportJobs() {
   return fetchJson<BulkImportJob[]>("/bulk-import/jobs");
+}
+
+export async function getBulkImportTemplates(tenantKey: string, categoryId?: string) {
+  const params = new URLSearchParams();
+  params.set("tenantKey", tenantKey);
+  if (categoryId) {
+    params.set("categoryId", categoryId);
+  }
+  return fetchJson<BulkImportTemplate[]>(`/bulk-import/templates?${params.toString()}`);
 }
 
 export async function getBulkImportJobRows(jobId: string, status?: BulkImportRowStatus, limit = 100) {

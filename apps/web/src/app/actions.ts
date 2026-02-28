@@ -325,6 +325,43 @@ export async function createBulkImportJobAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function createBulkImportTemplateAction(formData: FormData) {
+  const tenantKey = String(formData.get("tenantKey") ?? "").trim() || "default";
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
+  const chunkSize = parseNumber(formData.get("chunkSize"));
+  const maxRetries = parseNumber(formData.get("maxRetries"));
+  const mappingRaw = parseJsonObject(formData.get("mapping"), "Template mapping");
+
+  if (!categoryId || !name) {
+    throw new Error("Template tenant, category, and name are required.");
+  }
+  if (!["csv", "json", "xlsx", "xls"].includes(sourceFormat)) {
+    throw new Error("Template source format must be csv, json, xlsx, or xls.");
+  }
+
+  const mapping: Record<string, string> = {};
+  for (const [key, value] of Object.entries(mappingRaw)) {
+    const field = String(key ?? "").trim();
+    const mapped = String(value ?? "").trim();
+    if (field && mapped) {
+      mapping[field] = mapped;
+    }
+  }
+
+  await postJson("/bulk-import/templates", {
+    tenantKey,
+    categoryId,
+    name,
+    sourceFormat,
+    chunkSize,
+    maxRetries,
+    mapping,
+  });
+  revalidatePath("/");
+}
+
 export async function processBulkImportJobAction(formData: FormData) {
   const jobId = String(formData.get("jobId") ?? "").trim();
   const chunkSize = parseNumber(formData.get("chunkSize"));
