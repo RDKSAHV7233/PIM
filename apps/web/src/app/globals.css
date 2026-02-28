@@ -9,3 +9,22 @@ body {
 a {
   @apply text-accent hover:underline;
 }
+
+@keyframes field-highlight {
+  0% {
+    box-shadow: 0 0 0 2px #e8450a;
+    background-color: #fff1ec;
+  }
+  80% {
+    box-shadow: 0 0 0 2px #e8450a;
+    background-color: #fff1ec;
+  }
+  100% {
+    box-shadow: none;
+    background-color: transparent;
+  }
+}
+
+.field-highlight {
+  animation: field-highlight 2s ease-out forwards;
+}

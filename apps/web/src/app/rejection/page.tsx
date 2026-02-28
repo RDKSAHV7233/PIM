@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 import { getProducts, getRejectionIntelligenceScore, MarketplaceChannel, normalizeAppRole } from "@/lib/api";
 
@@ -72,6 +73,15 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
           </Button>
         </form>
       </Card>
+
+      {!productId && (
+        <EmptyState
+          icon="RADAR"
+          title="Select a product to check channel readiness"
+          description="Open any product and use the Channel Readiness section to check if it is ready for Amazon, Flipkart, or Meesho."
+          action={{ label: "Go to product list", href: `/?role=${encodeURIComponent(actorRole)}` }}
+        />
+      )}
 
       {score && (
         <Card>

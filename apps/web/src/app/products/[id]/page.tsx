@@ -11,9 +11,13 @@ import {
 } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { ProductReadinessSummaryBar } from "@/components/channel/product-readiness-summary-bar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ValidationIssuePanel } from "@/components/ui/validation-issue-panel";
+import { ViewerEditTooltip } from "@/components/ui/viewer-edit-tooltip";
 import {
   AppRole,
   getMarketplaceChannelMapping,
@@ -26,6 +30,8 @@ import {
   MarketplaceChannel,
   normalizeAppRole,
 } from "@/lib/api";
+import { translateError, translateExportStatus } from "@/lib/errors";
+import { formatINR } from "@/lib/format";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -108,7 +114,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       )}
       {updateStatus === "conflict" && (
         <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
-          Version conflict detected. Another update was applied first.
+          {translateError("VERSION_CONFLICT").title}. {translateError("VERSION_CONFLICT").description}
           {conflictVersion ? ` Latest version is ${conflictVersion}.` : ""}
         </div>
       )}
@@ -118,6 +124,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </div>
       )}
 
+      <ProductReadinessSummaryBar productId={id} role={actorRole} />
+
       <Card>
         <CardTitle>Edit Product (Versioned)</CardTitle>
         {canWrite ? (
@@ -126,24 +134,31 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <input type="hidden" name="productId" value={id} />
             <input type="hidden" name="categoryId" value={product.categoryId} />
             <input type="hidden" name="expectedVersion" value={product.version} />
-            <Input name="title" defaultValue={product.title} required />
-            <Input name="brand" defaultValue={product.brand} />
+            <Input name="title" data-field="title" defaultValue={product.title} required />
+            <Input name="brand" data-field="brand" defaultValue={product.brand} />
             <Textarea
               name="description"
+              data-field="description"
               rows={3}
               className="md:col-span-2"
               defaultValue={product.description}
             />
-            <Input name="hsnCode" defaultValue={product.hsnCode ?? ""} placeholder="HSN code (optional)" />
+            <Input
+              name="hsnCode"
+              data-field="hsnCode"
+              defaultValue={product.hsnCode ?? ""}
+              placeholder="HSN code (optional)"
+            />
             <Input
               name="gstRate"
+              data-field="gstRate"
               type="number"
               min={0}
               step="0.01"
               defaultValue={product.gstRate ?? ""}
               placeholder="GST rate"
             />
-            <Select name="status" defaultValue={product.status}>
+            <Select name="status" data-field="status" defaultValue={product.status}>
               <option value="draft">draft</option>
               <option value="active">active</option>
               <option value="archived">archived</option>
@@ -151,6 +166,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <p className="text-xs text-slate-500">Submitting with expected version: {product.version}</p>
             <Textarea
               name="attributes"
+              data-field="attributes"
               rows={4}
               className="md:col-span-2"
               defaultValue={JSON.stringify(product.attributes ?? {}, null, 2)}
@@ -161,10 +177,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-slate-600">Viewer role cannot update products.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">You can review product data in read-only mode.</p>
+            <div className="rounded-md border border-dashed border-slate-300 p-3">
+              <ViewerEditTooltip>
+                <div className="h-10 w-40 rounded-md border border-slate-200 bg-slate-50" />
+              </ViewerEditTooltip>
+            </div>
+          </div>
         )}
       </Card>
 
+      <section id="channel-simulator-section">
       <Card>
         <CardTitle>Marketplace Rejection Simulator</CardTitle>
         <div className="space-y-3">
@@ -244,6 +268,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           </div>
         </div>
       </Card>
+      </section>
 
       <Card>
         <CardTitle>Channel Mapping Templates</CardTitle>
@@ -314,7 +339,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       </Card>
 
       <Card>
-        <CardTitle>Pre-Export Jobs (Retry + DLQ)</CardTitle>
+        <CardTitle>Pre-Export Jobs</CardTitle>
         <div className="space-y-3">
           {canWrite ? (
             <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
@@ -362,7 +387,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                     <td className="py-2 font-mono text-xs">{job.id}</td>
                     <td className="py-2 capitalize">{job.channel}</td>
                     <td className="py-2">{job.template?.name ?? "-"}</td>
-                    <td className="py-2 capitalize">{job.status}</td>
+                    <td className="py-2">{translateExportStatus(job.status)}</td>
                     <td className="py-2">
                       {job.retryCount}/{job.maxRetries}
                     </td>
@@ -411,30 +436,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <p className="text-sm text-slate-600">Viewer role cannot trigger validation.</p>
           )}
           {product.validationIssues && product.validationIssues.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Severity</th>
-                    <th className="py-2">Rule</th>
-                    <th className="py-2">Field</th>
-                    <th className="py-2">Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {product.validationIssues.map((issue) => (
-                    <tr key={issue.id} className="border-t border-border">
-                      <td className="py-2 capitalize">{issue.severity}</td>
-                      <td className="py-2">{issue.ruleCode}</td>
-                      <td className="py-2">{issue.fieldPath ?? "-"}</td>
-                      <td className="py-2">{issue.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ValidationIssuePanel issues={product.validationIssues} />
           ) : (
-            <p className="text-sm text-slate-600">No open validation issues.</p>
+            <EmptyState
+              icon="OK"
+              title="No issues found"
+              description="This product passes all compliance and channel checks."
+            />
           )}
         </div>
       </Card>
@@ -493,8 +501,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                       {JSON.stringify(variant.attributes, null, 2)}
                     </pre>
                   </td>
-                  <td className="py-2">{variant.mrp ?? "-"}</td>
-                  <td className="py-2">{variant.sellingPrice ?? "-"}</td>
+                  <td className="py-2">{formatINR(variant.mrp)}</td>
+                  <td className="py-2">{formatINR(variant.sellingPrice)}</td>
                   <td className="py-2">{variant.inventoryQty}</td>
                   <td className="py-2">{variant.status}</td>
                 </tr>

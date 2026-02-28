@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { colors } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -7,16 +8,22 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function Button({ className, variant = "primary", children, ...props }: Props) {
+  const primaryStyle = {
+    backgroundColor: colors.accent,
+    color: "#ffffff",
+  };
+
   return (
     <button
       suppressHydrationWarning
       className={cn(
         "rounded-md px-3 py-2 text-sm font-medium transition",
         variant === "primary"
-          ? "bg-accent text-white hover:bg-teal-700"
+          ? "hover:opacity-90"
           : "border border-border bg-white text-ink hover:bg-gray-50",
         className,
       )}
+      style={variant === "primary" ? primaryStyle : undefined}
       {...props}
     >
       {children}

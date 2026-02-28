@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import {
   applyBulkEditAction,
   createAttributeDefinitionAction,
@@ -6,16 +6,20 @@ import {
   createBulkImportTemplateAction,
   createCategoryAction,
   createProductAction,
-  processBulkImportRowAction,
   processBulkImportJobAction,
-  repairBulkImportRowAction,
   requeueBulkImportDlqAction,
 } from "./actions";
 import { Button } from "@/components/ui/button";
+import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
 import { Card, CardTitle } from "@/components/ui/card";
+import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { ImportProgress } from "@/components/ui/import-progress";
+import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import {
   AppRole,
   getBulkEditOperations,
@@ -44,6 +48,9 @@ interface HomePageProps {
     tenantKey?: string;
     bulkTemplateId?: string;
     bulkTemplateCategoryId?: string;
+    productFilter?: string;
+    bulkJobStatus?: string;
+    debug?: string;
   }>;
 }
 
@@ -66,8 +73,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
   const query = await searchParams;
   const actorRole = normalizeAppRole(query.role);
+  const debugMode = String(query.debug ?? "").trim() === "true";
   const canWrite = actorRole !== "viewer";
   const canAdmin = actorRole === "admin";
+  const productFilter = String(query.productFilter ?? "").trim();
+  const bulkJobStatus = String(query.bulkJobStatus ?? "").trim();
   const tenantKey = String(query.tenantKey ?? "").trim() || "default";
   const bulkTemplateCategoryId = String(query.bulkTemplateCategoryId ?? "").trim();
   const [stats, categories, products, bulkImportJobs, bulkEditOperations, bulkImportTemplates] = await Promise.all([
@@ -98,6 +108,47 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     ? await getBulkImportJobRows(selectedBulkJobId, undefined, 200)
     : [];
 
+  const selectedBulkJob = selectedBulkJobId
+    ? bulkImportJobs.find((job) => job.id === selectedBulkJobId) ?? null
+    : null;
+
+  const visibleBulkImportJobs =
+    bulkJobStatus.length > 0
+      ? bulkImportJobs.filter((job) => job.status === bulkJobStatus)
+      : bulkImportJobs;
+
+  const productsWithErrorCount = products.map((product) => ({
+    ...product,
+    errorCount: (product.validationIssues ?? []).filter((issue) => issue.severity === "error").length,
+    warningCount: (product.validationIssues ?? []).filter((issue) => issue.severity === "warning").length,
+  }));
+
+  const triageCounts = {
+    errors: productsWithErrorCount.filter((product) => product.errorCount > 0).length,
+    warnings: productsWithErrorCount.filter((product) => product.errorCount === 0 && product.warningCount > 0).length,
+    ready: productsWithErrorCount.filter((product) => product.errorCount === 0 && product.warningCount === 0).length,
+  };
+
+  const triageSortedProducts = productsWithErrorCount.slice().sort((left, right) => {
+    const leftBucket = left.errorCount > 0 ? 0 : left.warningCount > 0 ? 1 : left.status === "active" ? 2 : 3;
+    const rightBucket = right.errorCount > 0 ? 0 : right.warningCount > 0 ? 1 : right.status === "active" ? 2 : 3;
+    if (leftBucket !== rightBucket) {
+      return leftBucket - rightBucket;
+    }
+    if (left.errorCount !== right.errorCount) {
+      return right.errorCount - left.errorCount;
+    }
+    if (left.warningCount !== right.warningCount) {
+      return right.warningCount - left.warningCount;
+    }
+    return left.title.localeCompare(right.title);
+  });
+
+  const visibleProducts =
+    productFilter === "errors"
+      ? triageSortedProducts.filter((product) => product.errorCount > 0)
+      : triageSortedProducts;
+
   const bulkEditCategoryId = String(query.bulkEditCategoryId ?? "").trim();
   const bulkEditStatus = String(query.bulkEditStatus ?? "").trim();
   const bulkEditBrandContains = String(query.bulkEditBrandContains ?? "").trim();
@@ -107,7 +158,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const shouldPreviewBulkEdit = String(query.bulkEditPreview ?? "") === "1";
 
   let bulkEditPreview: Awaited<ReturnType<typeof getBulkEditPreview>> | null = null;
-  let bulkEditPreviewError: string | null = null;
+  let bulkEditPreviewErrorCode: string | null = null;
+  let parsedBulkEditUpdates: Record<string, unknown> = {};
 
   if (shouldPreviewBulkEdit) {
     try {
@@ -115,6 +167,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       if (!parsedUpdates || typeof parsedUpdates !== "object" || Array.isArray(parsedUpdates)) {
         throw new Error("Bulk edit updates must be a JSON object.");
       }
+      parsedBulkEditUpdates = parsedUpdates as Record<string, unknown>;
 
       const scope: Record<string, unknown> = {};
       if (bulkEditCategoryId) {
@@ -131,13 +184,45 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         scope.productIds = productIds;
       }
 
-      bulkEditPreview = await getBulkEditPreview(scope, parsedUpdates as Record<string, unknown>, {
+      bulkEditPreview = await getBulkEditPreview(scope, parsedBulkEditUpdates, {
         role: actorRole,
       });
     } catch (error: unknown) {
-      bulkEditPreviewError = error instanceof Error ? error.message : "Bulk edit preview failed.";
+      bulkEditPreviewErrorCode = extractErrorCode(error instanceof Error ? error.message : String(error ?? ""));
     }
   }
+
+  const scopedBulkEditProductIds = parseList(bulkEditProductIds);
+
+  const filteredBulkEditProducts = triageSortedProducts.filter((product) => {
+    if (bulkEditCategoryId && product.categoryId !== bulkEditCategoryId) {
+      return false;
+    }
+    if (bulkEditStatus && product.status !== bulkEditStatus) {
+      return false;
+    }
+    if (bulkEditBrandContains) {
+      const brand = String(product.brand ?? "").toLowerCase();
+      if (!brand.includes(bulkEditBrandContains.toLowerCase())) {
+        return false;
+      }
+    }
+    if (scopedBulkEditProductIds.length > 0 && !scopedBulkEditProductIds.includes(product.id)) {
+      return false;
+    }
+    return true;
+  });
+
+  const bulkEditDiffProducts = filteredBulkEditProducts.map((product) => ({
+    id: product.id,
+    title: product.title,
+    description: product.description,
+    brand: product.brand,
+    status: product.status,
+    hsnCode: product.hsnCode,
+    gstRate: product.gstRate,
+    firstSku: product.variants?.[0]?.skuCode ?? product.id.slice(0, 8),
+  }));
 
   const defaultCsvContent = `Title,Brand,Description,HSN,GSTRate,Attributes
 Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`;
@@ -188,20 +273,33 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
         </div>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <Card>
-          <p className="text-xs uppercase text-slate-500">Categories</p>
-          <p className="text-2xl font-semibold">{stats.categories}</p>
-        </Card>
-        <Card>
-          <p className="text-xs uppercase text-slate-500">Products</p>
-          <p className="text-2xl font-semibold">{stats.products}</p>
-        </Card>
-        <Card>
-          <p className="text-xs uppercase text-slate-500">Variants</p>
-          <p className="text-2xl font-semibold">{stats.variants}</p>
-        </Card>
+      <section className="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm text-slate-700">
+          Needs Attention: <strong>{triageCounts.errors}</strong> | At Risk:{" "}<strong>{triageCounts.warnings}</strong> | Ready: <strong>{triageCounts.ready}</strong>
+        </p>
+        <p className="text-xs text-slate-500">
+          Categories: {stats.categories} | Products: {stats.products} | Variants: {stats.variants}
+        </p>
       </section>
+
+      {triageCounts.errors > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <span className="text-sm font-semibold text-red-700">
+            {triageCounts.errors} products need fixing before they can be published
+          </span>
+          <Link
+            href={`/?role=${encodeURIComponent(actorRole)}&productFilter=errors`}
+            className="text-sm font-medium text-red-700 underline"
+          >
+            Show only these
+          </Link>
+          {productFilter === "errors" && (
+            <Link href={`/?role=${encodeURIComponent(actorRole)}`} className="text-sm text-red-700 underline">
+              Clear filter
+            </Link>
+          )}
+        </div>
+      )}
 
       <section className="grid gap-5 lg:grid-cols-2">
         <Card>
@@ -360,50 +458,35 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
         {shouldPreviewBulkEdit && (
           <div className="mt-4 space-y-3">
-            {bulkEditPreviewError && <p className="text-sm text-red-600">{bulkEditPreviewError}</p>}
+            {bulkEditPreviewErrorCode && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-medium">{translateError(bulkEditPreviewErrorCode).title}</p>
+                <p>{translateError(bulkEditPreviewErrorCode).description}</p>
+                {translateError(bulkEditPreviewErrorCode).action && (
+                  <p>{translateError(bulkEditPreviewErrorCode).action}</p>
+                )}
+              </div>
+            )}
             {bulkEditPreview && (
               <>
                 <p className="text-sm text-slate-600">
                   Preview matched <strong>{bulkEditPreview.requestedCount}</strong> products.
                 </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-left text-sm">
-                    <thead className="text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="py-2">Product</th>
-                        <th className="py-2">Brand</th>
-                        <th className="py-2">Status</th>
-                        <th className="py-2">HSN</th>
-                        <th className="py-2">GST</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bulkEditPreview.sample.map((product) => (
-                        <tr key={product.id} className="border-t border-border">
-                          <td className="py-2">
-                            <Link href={`/products/${product.id}?role=${encodeURIComponent(actorRole)}`}>
-                              {product.title}
-                            </Link>
-                          </td>
-                          <td className="py-2">{product.brand || "-"}</td>
-                          <td className="py-2">{product.status}</td>
-                          <td className="py-2">{product.hsnCode || "-"}</td>
-                          <td className="py-2">{product.gstRate ?? "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
                 {canWrite && bulkEditPreview.requestedCount > 0 && (
-                  <form action={applyBulkEditAction} className="space-y-2">
-                    <RoleHiddenInput role={actorRole} />
-                    <input type="hidden" name="categoryId" value={bulkEditCategoryId} />
-                    <input type="hidden" name="status" value={bulkEditStatus} />
-                    <input type="hidden" name="brandContains" value={bulkEditBrandContains} />
-                    <input type="hidden" name="productIds" value={bulkEditProductIds} />
-                    <input type="hidden" name="updates" value={bulkEditUpdatesText} />
-                    <Button type="submit">Apply bulk edit</Button>
-                  </form>
+                  <BulkEditDiffPreview
+                    actorRole={actorRole}
+                    requestedCount={bulkEditPreview.requestedCount}
+                    products={bulkEditDiffProducts}
+                    updates={parsedBulkEditUpdates}
+                    scope={{
+                      categoryId: bulkEditCategoryId,
+                      status: bulkEditStatus,
+                      brandContains: bulkEditBrandContains,
+                      productIds: bulkEditProductIds,
+                    }}
+                    updatesRaw={bulkEditUpdatesText}
+                    applyAction={applyBulkEditAction}
+                  />
                 )}
               </>
             )}
@@ -429,7 +512,7 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               {bulkEditOperations.map((operation) => (
                 <tr key={operation.id} className="border-t border-border align-top">
                   <td className="py-2 font-mono text-xs">{operation.id}</td>
-                  <td className="py-2 capitalize">{operation.status}</td>
+                  <td className="py-2">{translateJobStatus(operation.status)}</td>
                   <td className="py-2">{operation.requestedCount}</td>
                   <td className="py-2">{operation.appliedCount}</td>
                   <td className="py-2">{operation.failedCount}</td>
@@ -669,145 +752,174 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
       <Card>
         <CardTitle>Bulk Import Jobs</CardTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2">Job</th>
-                <th className="py-2">Format</th>
-                <th className="py-2">Category</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Rows</th>
-                <th className="py-2">Success</th>
-                <th className="py-2">DLQ</th>
-                <th className="py-2">Chunk</th>
-                <th className="py-2">Checkpoint</th>
-                <th className="py-2">Retries</th>
-                <th className="py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bulkImportJobs.map((job) => (
-                <tr key={job.id} className="border-t border-border">
-                  <td className="py-2 font-mono text-xs">{job.id}</td>
-                  <td className="py-2">{job.sourceFormat}</td>
-                  <td className="py-2">{job.category?.path ?? job.categoryId}</td>
-                  <td className="py-2 capitalize">{job.status}</td>
-                  <td className="py-2">
-                    {job.processedRows}/{job.totalRows}
-                  </td>
-                  <td className="py-2">{job.successRows}</td>
-                  <td className="py-2">{job.deadLetterRows}</td>
-                  <td className="py-2">{job.chunkSize}</td>
-                  <td className="py-2 text-xs">
-                    {job.metrics
-                      ? `row ${job.metrics.checkpointRow} (${job.metrics.completedChunks}/${job.metrics.estimatedChunks} chunks)`
-                      : "-"}
-                  </td>
-                  <td className="py-2 text-xs">
-                    {job.metrics
-                      ? `${job.metrics.totalRetryAttempts} attempts (${job.metrics.retryingRows} retrying)`
-                      : "-"}
-                  </td>
-                  <td className="py-2">
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/?role=${encodeURIComponent(actorRole)}&bulkJobId=${encodeURIComponent(job.id)}`}
-                        className="inline-flex items-center rounded-md border border-border px-3 py-2"
-                      >
-                        View rows
-                      </Link>
-                      {canWrite && (
-                        <form action={processBulkImportJobAction}>
-                          <RoleHiddenInput role={actorRole} />
-                          <input type="hidden" name="jobId" value={job.id} />
-                          <input type="hidden" name="chunkSize" value={job.chunkSize} />
-                          <Button type="submit">Process chunk</Button>
-                        </form>
-                      )}
-                      {canWrite && job.status === "dead_letter" && (
-                        <form action={requeueBulkImportDlqAction}>
-                          <RoleHiddenInput role={actorRole} />
-                          <input type="hidden" name="jobId" value={job.id} />
-                          <input type="hidden" name="limit" value={100} />
-                          <Button type="submit">Requeue DLQ</Button>
-                        </form>
-                      )}
-                      {(job.deadLetterRows > 0 || job.failedRows > 0 || job.status === "retrying") && (
-                        <a
-                          href={`${apiBaseUrl}/bulk-import/jobs/${job.id}/error-report`}
-                          className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Export errors
-                        </a>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+        <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="role" value={actorRole} />
+          <Select name="bulkJobStatus" defaultValue={bulkJobStatus}>
+            <option value="">All import statuses</option>
+            <option value="queued">Waiting to start</option>
+            <option value="processing">Importing</option>
+            <option value="retrying">Retrying failed rows</option>
+            <option value="completed">Import complete</option>
+            <option value="dead_letter">Needs attention</option>
+            <option value="failed">Import failed</option>
+          </Select>
+          <Button type="submit" variant="secondary">
+            Apply filter
+          </Button>
+          <Link
+            href={`/?role=${encodeURIComponent(actorRole)}`}
+            className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+          >
+            Show all imports
+          </Link>
+        </form>
 
-      {selectedBulkJobId && (
-        <Card>
-          <CardTitle>Bulk Import Row Repair Console ({selectedBulkJobId})</CardTitle>
+        {selectedBulkJob &&
+          (selectedBulkJob.status === "queued" ||
+            selectedBulkJob.status === "processing" ||
+            selectedBulkJob.status === "retrying") && (
+            <div className="mb-4">
+              <ImportProgress initialJob={selectedBulkJob} role={actorRole} />
+            </div>
+          )}
+
+        {bulkImportJobs.length === 0 ? (
+          <EmptyState
+            icon="FILE"
+            title="No imports yet"
+            description="Upload an Excel or CSV file to import up to 1,000 products at once."
+            action={{ label: "Upload your first file", href: `/?role=${encodeURIComponent(actorRole)}` }}
+          />
+        ) : visibleBulkImportJobs.length === 0 ? (
+          <EmptyState
+            icon="OK"
+            title="No imports match this filter"
+            description=""
+            action={{ label: "Show all imports", href: `/?role=${encodeURIComponent(actorRole)}` }}
+          />
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="py-2">Row</th>
+                  <th className="py-2">Job</th>
+                  <th className="py-2">Format</th>
+                  <th className="py-2">Category</th>
                   <th className="py-2">Status</th>
-                  <th className="py-2">Retry</th>
-                  <th className="py-2">Error</th>
-                  <th className="py-2">Payload Repair</th>
+                  <th className="py-2">Rows</th>
+                  <th className="py-2">Success</th>
+                  <th className="py-2">Needs Attention</th>
+                  <th className="py-2">Chunk</th>
+                  <th className="py-2">Checkpoint</th>
+                  <th className="py-2">Retries</th>
                   <th className="py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedBulkRows.map((row) => (
-                  <tr key={row.id} className="border-t border-border align-top">
-                    <td className="py-2">{row.rowNumber}</td>
-                    <td className="py-2 capitalize">{row.status}</td>
-                    <td className="py-2">{row.retryCount}</td>
-                    <td className="py-2">{row.errorMessage ?? "-"}</td>
+                {visibleBulkImportJobs.map((job) => (
+                  <tr key={job.id} className="border-t border-border">
+                    <td className="py-2 font-mono text-xs">{job.id}</td>
+                    <td className="py-2">{job.sourceFormat}</td>
+                    <td className="py-2">{job.category?.path ?? job.categoryId}</td>
+                    <td className="py-2">{translateJobStatus(job.status)}</td>
                     <td className="py-2">
-                      {canWrite ? (
-                        <form action={repairBulkImportRowAction} className="space-y-2">
-                          <RoleHiddenInput role={actorRole} />
-                          <input type="hidden" name="jobId" value={selectedBulkJobId} />
-                          <input type="hidden" name="rowId" value={row.id} />
-                          <Textarea name="payload" rows={4} defaultValue={JSON.stringify(row.payload, null, 2)} />
-                          <Select name="requeue" defaultValue="true">
-                            <option value="true">repair + requeue</option>
-                            <option value="false">repair only</option>
-                          </Select>
-                          <Button type="submit">Save repair</Button>
-                        </form>
-                      ) : (
-                        <p className="text-xs text-slate-500">Read-only in viewer role.</p>
-                      )}
+                      {job.processedRows}/{job.totalRows}
+                    </td>
+                    <td className="py-2">{job.successRows}</td>
+                    <td className="py-2">{job.deadLetterRows}</td>
+                    <td className="py-2">{job.chunkSize}</td>
+                    <td className="py-2 text-xs">
+                      {job.metrics
+                        ? `row ${job.metrics.checkpointRow} (${job.metrics.completedChunks}/${job.metrics.estimatedChunks} chunks)`
+                        : "-"}
+                    </td>
+                    <td className="py-2 text-xs">
+                      {job.metrics
+                        ? `${job.metrics.totalRetryAttempts} attempts (${job.metrics.retryingRows} in retry)`
+                        : "-"}
                     </td>
                     <td className="py-2">
-                      {canWrite ? (
-                        <form action={processBulkImportRowAction}>
-                          <RoleHiddenInput role={actorRole} />
-                          <input type="hidden" name="jobId" value={selectedBulkJobId} />
-                          <input type="hidden" name="rowId" value={row.id} />
-                          <Button type="submit">Process row now</Button>
-                        </form>
-                      ) : (
-                        <span className="text-xs text-slate-500">Read-only</span>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/?role=${encodeURIComponent(actorRole)}&bulkJobId=${encodeURIComponent(job.id)}`}
+                          className="inline-flex items-center rounded-md border border-border px-3 py-2"
+                        >
+                          View rows
+                        </Link>
+                        {debugMode && canWrite && (
+                          <form action={processBulkImportJobAction}>
+                            <RoleHiddenInput role={actorRole} />
+                            <input type="hidden" name="jobId" value={job.id} />
+                            <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                            <Button type="submit" variant="secondary">
+                              Process next chunk (debug)
+                            </Button>
+                          </form>
+                        )}
+                        {canWrite && job.status === "dead_letter" && (
+                          <form action={requeueBulkImportDlqAction}>
+                            <RoleHiddenInput role={actorRole} />
+                            <input type="hidden" name="jobId" value={job.id} />
+                            <input type="hidden" name="limit" value={100} />
+                            <Button type="submit">Retry failed rows</Button>
+                          </form>
+                        )}
+                        {(job.deadLetterRows > 0 || job.failedRows > 0 || job.status === "retrying") && (
+                          <a
+                            href={`${apiBaseUrl}/bulk-import/jobs/${job.id}/error-report`}
+                            className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Export errors
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+      </Card>
+
+      {selectedBulkJobId && (
+        <Card>
+          <CardTitle>Bulk Import Row Repair Console ({selectedBulkJobId})</CardTitle>
+          {selectedBulkRows.filter((row) => row.status !== "success").length === 0 ? (
+            <EmptyState
+              icon="OK"
+              title="No imports match this filter"
+              description=""
+              action={{ label: "Show all imports", href: `/?role=${encodeURIComponent(actorRole)}` }}
+            />
+          ) : (
+            <div className="space-y-3">
+              {selectedBulkRows
+                .filter((row) => row.status !== "success")
+                .map((row) => {
+                  const translatedError = translateError(extractErrorCode(row.errorMessage));
+                  return (
+                    <div key={row.id} className="rounded-lg border border-slate-200 p-3">
+                      <p className="text-sm font-medium text-slate-900">
+                        Row {row.rowNumber} | {translateJobStatus(row.status)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {translatedError.title} - {translatedError.description}
+                      </p>
+                      {canWrite ? (
+                        <div className="mt-3">
+                          <RowRepairForm row={row} jobId={selectedBulkJobId} role={actorRole} />
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">Read-only in viewer role.</p>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </Card>
       )}
 
@@ -837,41 +949,72 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
       <Card>
         <CardTitle>Products</CardTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2">Title</th>
-                <th className="py-2">Brand</th>
-                <th className="py-2">HSN</th>
-                <th className="py-2">GST %</th>
-                <th className="py-2">Category</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Variants</th>
-                <th className="py-2">Validation Issues</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.id} className="border-t border-border">
-                  <td className="py-2">
-                    <Link href={`/products/${product.id}?role=${encodeURIComponent(actorRole)}`}>
-                      {product.title}
-                    </Link>
-                  </td>
-                  <td className="py-2">{product.brand || "-"}</td>
-                  <td className="py-2">{product.hsnCode || "-"}</td>
-                  <td className="py-2">{product.gstRate ?? "-"}</td>
-                  <td className="py-2">{product.category?.path ?? product.categoryId}</td>
-                  <td className="py-2">{product.status}</td>
-                  <td className="py-2">{product.variants?.length ?? 0}</td>
-                  <td className="py-2">{product.validationIssues?.length ?? 0}</td>
+        {products.length === 0 ? (
+          <EmptyState
+            icon="BOX"
+            title="Your catalog is empty"
+            description="Import your existing catalog from Excel, or create your first product manually."
+            action={{ label: "Import from Excel", href: `/?role=${encodeURIComponent(actorRole)}` }}
+            secondaryAction={{
+              label: "Create product manually",
+              href: `/?role=${encodeURIComponent(actorRole)}`,
+            }}
+          />
+        ) : visibleProducts.length === 0 ? (
+          <EmptyState
+            icon="SEARCH"
+            title="No products match your search"
+            description="Try clearing some filters, or check if the SKU code is correct."
+            action={{ label: "Clear all filters", href: `/?role=${encodeURIComponent(actorRole)}` }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-2">Title</th>
+                  <th className="py-2">Brand</th>
+                  <th className="py-2">HSN</th>
+                  <th className="py-2">GST %</th>
+                  <th className="py-2">Category</th>
+                  <th className="py-2">Status</th>
+                  <th className="py-2">Variants</th>
+                  <th className="py-2">Validation Issues</th>
+                  <th className="py-2">Channel Readiness</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibleProducts.map((product) => (
+                  <tr key={product.id} className="border-t border-border">
+                    <td className="py-2">
+                      <Link href={`/products/${product.id}?role=${encodeURIComponent(actorRole)}`}>
+                        {product.title}
+                      </Link>
+                    </td>
+                    <td className="py-2">{product.brand || "-"}</td>
+                    <td className="py-2">{product.hsnCode || "-"}</td>
+                    <td className="py-2">{product.gstRate ?? "-"}</td>
+                    <td className="py-2">{product.category?.path ?? product.categoryId}</td>
+                    <td className="py-2">{product.status}</td>
+                    <td className="py-2">{product.variants?.length ?? 0}</td>
+                    <td className="py-2">
+                      {product.errorCount > 0
+                        ? `${product.errorCount} error(s)`
+                        : product.warningCount > 0
+                          ? `${product.warningCount} warning(s)`
+                          : "No issues"}
+                    </td>
+                    <td className="py-2">
+                      <ProductChannelReadinessCell productId={product.id} role={actorRole} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );
 }
+
