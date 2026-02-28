@@ -17,6 +17,7 @@ Files:
 - `PHASE7_EVIDENCE_2026-02-28.md`: Phase 7 ONDC evidence
 - `PHASE8_EVIDENCE_2026-02-28.md`: Phase 8 AI optimization evidence
 - `BACKLOG_REVIEW_2026-02-28.md`: backlog alignment and readiness review
+- `SYSTEM_PROMPT_PIM1_v1.0_2026-02-28.md`: canonical autonomous agent system prompt for PIM1
 - `OPERATING_MODEL.md`: delivery cadence, rituals, and governance
 - `RACI.md`: ownership model
 - `KPI_DASHBOARD_TEMPLATE.md`: metrics template for weekly and phase reviews
