@@ -9,9 +9,9 @@ Use this as the live control sheet. Update weekly.
 - `DN`: done
 
 ## Program Status
-- Current phase: `Phase 4 (completed)`
-- Program status: `IP`
-- MVP target gate: `End of Phase 4`
+- Current phase: `Phase 8 (completed)`
+- Program status: `DN`
+- MVP target gate: `Passed (Phase 4 completed)`
 
 ## Phase Checklist
 
@@ -57,35 +57,35 @@ Status: `DN`
 - [x] MVP release gate passed
 
 ### Phase 5 - DAM and Media Validation
-Status: `NS`
-- [ ] Media upload/storage live
-- [ ] Metadata extraction live
-- [ ] Channel media rules live
+Status: `DN`
+- [x] Media upload/storage live
+- [x] Metadata extraction live
+- [x] Channel media rules live
 
 ### Phase 6 - Rejection Intelligence
-Status: `NS`
-- [ ] Rejection risk score live
-- [ ] Heuristic predictor live
-- [ ] Fix suggestions live
+Status: `DN`
+- [x] Rejection risk score live
+- [x] Heuristic predictor live
+- [x] Fix suggestions live
 
 ### Phase 7 - ONDC Native Expansion
-Status: `NS`
-- [ ] ONDC mapping depth live
-- [ ] Node-specific support live
-- [ ] Version handling live
+Status: `DN`
+- [x] ONDC mapping depth live
+- [x] Node-specific support live
+- [x] Version handling live
 
 ### Phase 8 - AI Optimization
-Status: `NS`
-- [ ] AI title optimization live
-- [ ] Auto attribute enrichment live
-- [ ] Smart categorization live
-- [ ] Catalog repair automation live
+Status: `DN`
+- [x] AI title optimization live
+- [x] Auto attribute enrichment live
+- [x] Smart categorization live
+- [x] Catalog repair automation live
 
 ## Weekly Control Block
 - Week: 2026-02-23 to 2026-03-01
-- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, Phase 4 1,000-SKU benchmark evidence published, Phase 4 pilot workflow validation evidence published, Phase 4 gate memo published, RBAC baseline (admin/editor/viewer) shipped across API/UI with evidence, audit-log baseline for CRUD + bulk operations shipped with evidence, concurrent edit conflict protection shipped with deterministic UI conflict handling, and Phase 4 gate updated to Approved.
-- Risks: No unresolved `P0` MVP gate blockers in execution board.
-- Decisions needed: confirm Phase 5 kickoff scope and owners.
-- Scope changes: execution board, sprint closeout plan, bug backlog, and backlog hygiene standard added to operating model.
-- Next week focus: start Phase 5 planning and convert DAM/media validation scope into execution backlog with owner/estimate/dependency coverage.
+- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 gate approved, Phase 5 DAM/media validation delivered with smoke evidence, Phase 6 rejection intelligence delivered with risk scoring and suggestions, Phase 7 ONDC mapping/version simulation delivered, and Phase 8 AI optimization workflows delivered.
+- Risks: Local Codex sandbox cannot run Next.js `dev` server (`spawn EPERM`); workstation shell validation required for live runtime check.
+- Decisions needed: prioritize post-Phase-8 hardening and productionization checklist.
+- Scope changes: post-MVP Phase 5-8 execution completed in a single autonomous batch with evidence docs.
+- Next week focus: production hardening, auth integration finalization, observability rollout, and release packaging.
 

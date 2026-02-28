@@ -93,7 +93,7 @@ Exit:
   - No Phase 5+ work before MVP gate approval.
 
 ## Immediate Work Queue (Next 10 Business Days)
-1. Run Phase 0 interviews and compile evidence.
-2. Finalize canonical model and architecture ADRs.
-3. Freeze MVP scope and publish acceptance criteria.
-4. Create Sprint 1 board from Phase 1 stories.
+1. Convert post-Phase-8 production hardening into execution backlog tickets (auth, observability, DR, release gates).
+2. Run workstation validation for runtime recovery runbook (`tools/dev/validate-web-runtime.ps1`) and attach evidence.
+3. Package release candidate with deployment checklist and rollback notes.
+4. Freeze post-MVP stabilization scope for the next release train.

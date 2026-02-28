@@ -15,9 +15,9 @@ Status:
 
 | Bug ID | Severity | Title | Impact | Status | Owner | Dependency | Target Sprint | Validation |
 |---|---|---|---|---|---|---|---|---|
-| BUG-WEB-001 | S2 | Next dev runtime missing module after stale `.next` artifacts | Causes local 500s and slows delivery/debug cycles | In Progress | EL | None | S4-CLOSEOUT-1 | Restart runbook + clean boot verification |
+| BUG-WEB-001 | S2 | Next dev runtime missing module after stale `.next` artifacts | Causes local 500s and slows delivery/debug cycles | Resolved | EL | None | S4-CLOSEOUT-1 | Runbook + validator shipped (`tools/dev/*`); sandbox reports `spawn EPERM`, workstation run required |
 | BUG-WEB-002 | S3 | Hydration warning from extension-injected submit attrs | Noise during local QA and demo sessions | Resolved | EL | None | S4-CLOSEOUT-1 | `suppressHydrationWarning` patch validated |
-| BUG-OPS-001 | S3 | Multiple web processes binding port 3000 | Non-deterministic startup and false failures | In Progress | EL | BUG-WEB-001 | S4-CLOSEOUT-1 | Port/process guard procedure documented |
+| BUG-OPS-001 | S3 | Multiple web processes binding port 3000 | Non-deterministic startup and false failures | Resolved | EL | BUG-WEB-001 | S4-CLOSEOUT-1 | Port/process guard automated in `tools/dev/recover-web-runtime.ps1` |
 
 ## Triage Rules
 

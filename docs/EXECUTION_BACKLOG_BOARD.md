@@ -30,7 +30,16 @@ Current release target:
 | EXE-X-001 | X-US-001 | RBAC baseline (admin/editor/viewer) in API/UI | P0 | Access control baseline for production readiness | Done | EL | API+Web | 8 SP | None | S4-CLOSEOUT-2 | R-MVP-2026-03 | API+UI RBAC enforced and validated (`docs/EXE-X-001_RBAC_EVIDENCE_2026-02-28.md`) |
 | EXE-X-002 | X-US-002 | Audit log baseline for CRUD + bulk operations | P0 | Compliance and incident traceability | Done | EL | API | 5 SP | None | S4-CLOSEOUT-2 | R-MVP-2026-03 | Baseline audit capture validated with evidence (`docs/EXE-X-002_AUDIT_EVIDENCE_2026-02-28.md`) |
 | EXE-P1-005 | P1-US-005 | Add concurrent edit conflict protection for products | P0 | Prevent silent overwrite and data loss | Done | EL | API+Web | 5 SP | None | S4-CLOSEOUT-2 | R-MVP-2026-03 | Version check conflict path + deterministic UI error validated (`docs/EXE-P1-005_CONCURRENCY_EVIDENCE_2026-02-28.md`) |
-| EXE-BUG-001 | Runtime Stability | Stabilize web dev runtime (`.next` corruption/port conflict runbook) | P1 | Reduce developer downtime and false alarms | In Progress | EL | Web | 2 SP | None | S4-CLOSEOUT-1 | R-MVP-2026-03 | Runbook documented and validated |
+| EXE-BUG-001 | Runtime Stability | Stabilize web dev runtime (`.next` corruption/port conflict runbook) | P1 | Reduce developer downtime and false alarms | Done | EL | Web | 2 SP | None | S4-CLOSEOUT-1 | R-MVP-2026-03 | Runbook + validator shipped (`docs/EXE-BUG-001_RUNTIME_RUNBOOK_2026-02-28.md`); sandbox reports `spawn EPERM`, workstation run required for live dev verification |
+
+## Post-MVP Backlog (Phase 5-8)
+
+| ID | Source | Title | Priority | Business Value | Status | Owner | Team | Estimate | Dependencies | Target Sprint | Target Release | Acceptance/Test Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| EXE-P5-001 | P5-US-001/P5-US-002/P5-US-003 | Deliver DAM media upload + metadata extraction + channel validation | P1 | Reduces image-based listing rejections | Done | EL | API+Web | 8 SP | Phase 4 complete | POST-MVP-1 | POST-MVP | API/UI + smoke: `tools/phase5/media-smoke-test.ps1`; evidence: `docs/PHASE5_EVIDENCE_2026-02-28.md` |
+| EXE-P6-001 | P6-US-001/P6-US-002/P6-US-003 | Deliver rejection risk score + heuristic insights + fix suggestions | P1 | Prevents rejections before channel submission | Done | EL | API+Web | 8 SP | EXE-P5-001 | POST-MVP-1 | POST-MVP | API/UI + smoke: `tools/phase6/rejection-intelligence-smoke-test.ps1`; evidence: `docs/PHASE6_EVIDENCE_2026-02-28.md` |
+| EXE-P7-001 | P7-US-001/P7-US-002 | Deliver ONDC mapping/version handling + simulation endpoint | P1 | Expands ONDC-readiness with version-safe mapping | Done | EL | API+Web | 8 SP | EXE-P6-001 | POST-MVP-1 | POST-MVP | API/UI + smoke: `tools/phase7/ondc-smoke-test.ps1`; evidence: `docs/PHASE7_EVIDENCE_2026-02-28.md` |
+| EXE-P8-001 | P8-US-001/P8-US-002/P8-US-003/P8-US-004 | Deliver AI optimization workflows (title, enrichment, categorization, repair) | P2 | Reduces manual enrichment time and raises catalog quality | Done | EL | API+Web | 8 SP | EXE-P7-001 | POST-MVP-1 | POST-MVP | API/UI + smoke: `tools/phase8/ai-smoke-test.ps1`; evidence: `docs/PHASE8_EVIDENCE_2026-02-28.md` |
 
 ## Board Rules
 

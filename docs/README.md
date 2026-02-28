@@ -12,6 +12,11 @@ Files:
 - `BACKLOG_HYGIENE.md`: definition of ready/done and weekly backlog quality checks
 - `phase-0/PHASE0_KIT.md`: complete Phase 0 validation and sign-off kit
 - `phase-1/PHASE1_IMPLEMENTATION.md`: implemented Phase 1 catalog core summary
+- `PHASE5_EVIDENCE_2026-02-28.md`: Phase 5 DAM/media validation evidence
+- `PHASE6_EVIDENCE_2026-02-28.md`: Phase 6 rejection intelligence evidence
+- `PHASE7_EVIDENCE_2026-02-28.md`: Phase 7 ONDC evidence
+- `PHASE8_EVIDENCE_2026-02-28.md`: Phase 8 AI optimization evidence
+- `BACKLOG_REVIEW_2026-02-28.md`: backlog alignment and readiness review
 - `OPERATING_MODEL.md`: delivery cadence, rituals, and governance
 - `RACI.md`: ownership model
 - `KPI_DASHBOARD_TEMPLATE.md`: metrics template for weekly and phase reviews

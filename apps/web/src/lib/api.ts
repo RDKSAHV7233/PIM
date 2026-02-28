@@ -325,6 +325,115 @@ export interface BulkEditOperation {
   updatedAt: string;
 }
 
+export interface MediaAsset {
+  id: string;
+  productId: string | null;
+  fileName: string;
+  mimeType: string;
+  storagePath: string;
+  width: number | null;
+  height: number | null;
+  sizeBytes: number;
+  checksum: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaValidation {
+  channel: MarketplaceChannel;
+  valid: boolean;
+  issues: string[];
+  checks: {
+    minWidth: number;
+    minHeight: number;
+    aspectMin: number;
+    aspectMax: number;
+    fileSizeBytes: number;
+  };
+}
+
+export interface RejectionIntelligenceScore {
+  productId: string;
+  channel: MarketplaceChannel;
+  riskScore: number;
+  riskBand: "low" | "medium" | "high";
+  summary: {
+    missingCoreFields: string[];
+    complianceErrors: number;
+    complianceWarnings: number;
+    mediaIssueCount: number;
+  };
+  mediaIssues: string[];
+  suggestions: Array<{ field: string; suggestion: string }>;
+  topPatterns: string[];
+}
+
+export interface OndcVersionInfo {
+  version: string;
+  status: "stable" | "preview";
+}
+
+export interface OndcMapping {
+  id: string;
+  name: string;
+  categoryId: string;
+  nodeType: "buyer_app" | "seller_app" | "gateway" | "logistics";
+  version: string;
+  requiredFields: string[];
+  fieldMap: Record<string, string>;
+  discoveryMetadata: Record<string, unknown>;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OndcSimulation {
+  productId: string;
+  categoryId: string;
+  nodeType: string;
+  version: string;
+  mappingId: string;
+  discoveryMetadata: Record<string, unknown>;
+  publishReady: boolean;
+  missingFields: string[];
+  payload: Record<string, unknown>;
+}
+
+export interface AiTitleSuggestion {
+  productId: string;
+  originalTitle: string;
+  optimizedTitle: string;
+  confidence: number;
+}
+
+export interface AiAttributeEnrichment {
+  productId: string;
+  existingAttributes: Record<string, unknown>;
+  suggestedAttributes: Record<string, unknown>;
+  confidence: number;
+}
+
+export interface AiCategorySuggestion {
+  productId: string;
+  currentCategoryId: string;
+  suggestedCategoryId: string;
+  suggestedCategoryPath: string | null;
+  confidence: number;
+}
+
+export interface AiRepairResult {
+  productId: string;
+  apply: boolean;
+  patch: {
+    title: string;
+    categoryId: string;
+    attributes: Record<string, unknown>;
+  };
+  note?: string;
+  updated?: Product;
+}
+
 const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
 
 interface ApiRequestOptions {
@@ -529,6 +638,101 @@ export async function getBulkEditOperations(limit = 20, options?: ApiRequestOpti
 export async function getBulkEditOperation(operationId: string, options?: ApiRequestOptions) {
   return fetchJson<BulkEditOperation>(
     `/bulk-edit/operations/${encodeURIComponent(operationId)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getMediaAssets(productId?: string, options?: ApiRequestOptions) {
+  const query = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+  return fetchJson<MediaAsset[]>(`/media/assets${query}`, undefined, options);
+}
+
+export async function getMediaAssetValidation(
+  assetId: string,
+  channel: MarketplaceChannel,
+  options?: ApiRequestOptions,
+) {
+  return fetchJson<MediaValidation>(
+    `/media/assets/${encodeURIComponent(assetId)}/validation?channel=${encodeURIComponent(channel)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getRejectionIntelligenceScore(
+  productId: string,
+  channel: MarketplaceChannel,
+  options?: ApiRequestOptions,
+) {
+  return fetchJson<RejectionIntelligenceScore>(
+    `/rejection-intelligence/products/${encodeURIComponent(productId)}/score?channel=${encodeURIComponent(channel)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getOndcVersions(options?: ApiRequestOptions) {
+  return fetchJson<OndcVersionInfo[]>("/ondc/versions", undefined, options);
+}
+
+export async function getOndcMappings(
+  filters: { nodeType?: string; version?: string; categoryId?: string },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (filters.nodeType) {
+    params.set("nodeType", filters.nodeType);
+  }
+  if (filters.version) {
+    params.set("version", filters.version);
+  }
+  if (filters.categoryId) {
+    params.set("categoryId", filters.categoryId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<OndcMapping[]>(`/ondc/mappings${query}`, undefined, options);
+}
+
+export async function getOndcSimulation(
+  productId: string,
+  nodeType: string,
+  version: string,
+  mappingId?: string,
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  params.set("nodeType", nodeType);
+  params.set("version", version);
+  if (mappingId) {
+    params.set("mappingId", mappingId);
+  }
+  return fetchJson<OndcSimulation>(
+    `/ondc/products/${encodeURIComponent(productId)}/simulate?${params.toString()}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getAiTitleSuggestion(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<AiTitleSuggestion>(
+    `/ai-optimization/products/${encodeURIComponent(productId)}/title-suggestion`,
+    undefined,
+    options,
+  );
+}
+
+export async function getAiAttributeEnrichment(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<AiAttributeEnrichment>(
+    `/ai-optimization/products/${encodeURIComponent(productId)}/attribute-enrichment`,
+    undefined,
+    options,
+  );
+}
+
+export async function getAiCategorySuggestion(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<AiCategorySuggestion>(
+    `/ai-optimization/products/${encodeURIComponent(productId)}/category-suggestion`,
     undefined,
     options,
   );

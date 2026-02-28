@@ -10,3 +10,5 @@ dist/
 .env.local
 coverage/
 *.log
+storage/
+.runlogs/

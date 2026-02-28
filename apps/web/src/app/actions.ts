@@ -505,3 +505,110 @@ export async function applyBulkEditAction(formData: FormData) {
   });
   revalidatePath("/");
 }
+
+export async function uploadMediaAssetAction(formData: FormData) {
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  const productId = String(formData.get("productId") ?? "").trim();
+  const fileEntry = formData.get("sourceFile");
+  const width = parseNumber(formData.get("width"));
+  const height = parseNumber(formData.get("height"));
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    throw new Error("Select an image file to upload.");
+  }
+
+  const fileName = fileEntry.name || "media.bin";
+  const mimeType = fileEntry.type || "application/octet-stream";
+  const contentBase64 = Buffer.from(await fileEntry.arrayBuffer()).toString("base64");
+
+  await postJsonForAction(formData, "/media/assets", {
+    productId: productId || undefined,
+    fileName,
+    mimeType,
+    contentBase64,
+    width,
+    height,
+  });
+
+  revalidatePath("/media");
+  redirect(`/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}`);
+}
+
+export async function createOndcMappingAction(formData: FormData) {
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const nodeType = String(formData.get("nodeType") ?? "").trim();
+  const version = String(formData.get("version") ?? "").trim();
+  if (!categoryId || !name || !nodeType || !version) {
+    throw new Error("Category, name, node type, and version are required.");
+  }
+
+  const requiredFields = parseJsonArray(formData.get("requiredFields"), "Required fields");
+  const fieldMapRaw = parseJsonObject(formData.get("fieldMap"), "Field map");
+  const discoveryMetadata = parseJsonObject(formData.get("discoveryMetadata"), "Discovery metadata");
+  const isDefault = String(formData.get("isDefault") ?? "false") === "true";
+
+  const fieldMap: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fieldMapRaw)) {
+    const source = String(key ?? "").trim();
+    const target = String(value ?? "").trim();
+    if (source && target) {
+      fieldMap[source] = target;
+    }
+  }
+
+  await postJsonForAction(formData, "/ondc/mappings", {
+    name,
+    categoryId,
+    nodeType,
+    version,
+    requiredFields,
+    fieldMap,
+    discoveryMetadata,
+    isDefault,
+  });
+
+  revalidatePath("/ondc");
+  redirect(`/ondc?role=${encodeURIComponent(actorRole)}&categoryId=${encodeURIComponent(categoryId)}&version=${encodeURIComponent(version)}&nodeType=${encodeURIComponent(nodeType)}`);
+}
+
+export async function runOndcSimulationAction(formData: FormData) {
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  const productId = String(formData.get("productId") ?? "").trim();
+  const version = String(formData.get("version") ?? "").trim();
+  const nodeType = String(formData.get("nodeType") ?? "").trim();
+  const mappingId = String(formData.get("mappingId") ?? "").trim();
+  if (!productId || !version || !nodeType) {
+    throw new Error("Product, version, and node type are required.");
+  }
+
+  const simulation = await postJsonForAction<{ mappingId: string }>(
+    formData,
+    `/ondc/products/${productId}/simulate`,
+    {
+      version,
+      nodeType,
+      mappingId: mappingId || undefined,
+    },
+  );
+
+  revalidatePath("/ondc");
+  redirect(
+    `/ondc?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&version=${encodeURIComponent(version)}&nodeType=${encodeURIComponent(nodeType)}&mappingId=${encodeURIComponent(simulation.mappingId)}`,
+  );
+}
+
+export async function applyAiRepairAction(formData: FormData) {
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  const productId = String(formData.get("productId") ?? "").trim();
+  if (!productId) {
+    throw new Error("Product id is required.");
+  }
+
+  await postJsonForAction(formData, `/ai-optimization/products/${productId}/repair`, {
+    apply: true,
+  });
+  revalidatePath("/ai");
+  revalidatePath(`/products/${productId}`);
+  redirect(`/ai?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&repairStatus=applied`);
+}

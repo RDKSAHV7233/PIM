@@ -170,6 +170,24 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
         </p>
       </Card>
 
+      <Card>
+        <CardTitle>Phase Consoles</CardTitle>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Link className="rounded-md border border-border px-3 py-2" href={`/media?role=${encodeURIComponent(actorRole)}`}>
+            Phase 5 DAM
+          </Link>
+          <Link className="rounded-md border border-border px-3 py-2" href={`/rejection?role=${encodeURIComponent(actorRole)}`}>
+            Phase 6 Intelligence
+          </Link>
+          <Link className="rounded-md border border-border px-3 py-2" href={`/ondc?role=${encodeURIComponent(actorRole)}`}>
+            Phase 7 ONDC
+          </Link>
+          <Link className="rounded-md border border-border px-3 py-2" href={`/ai?role=${encodeURIComponent(actorRole)}`}>
+            Phase 8 AI
+          </Link>
+        </div>
+      </Card>
+
       <section className="grid gap-3 md:grid-cols-3">
         <Card>
           <p className="text-xs uppercase text-slate-500">Categories</p>
