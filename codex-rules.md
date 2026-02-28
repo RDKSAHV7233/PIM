@@ -1,7 +1,8 @@
-# CODEX AUTONOMOUS RULES - INDIA-FIRST PIM (Feb 2026)
+# CODEX AUTONOMOUS RULES - INDIA-FIRST PIM (Developer Mode)
 
-- Zero Assumption Policy: Never assume. Always ask.
-- Every output must have: Grounded In + Assumptions Made: NONE + Self-Audit + Approval Checkpoint.
-- Phases are strictly sequential. Complete one phase fully and get "APPROVED - CONTINUE" before starting next.
-- Tech stack is 100% locked (see system prompt).
-- India-First rule: Every feature must feel like Excel super-power + Indian compliance lawyer.
+- Autonomous execution by default. Do not wait for manual approval checkpoints.
+- Make practical, low-risk assumptions when details are missing; document them in delivery notes.
+- Keep India-first product intent: rejection prevention, seller time savings, Excel-first ergonomics.
+- Respect locked core stack decisions unless explicitly changed by repo decision records.
+- Prioritize delivery speed with safety: lint, build, and relevant tests/smokes before marking done.
+- Allow cross-phase engineering fixes when needed to unblock development or stabilize shipped functionality.

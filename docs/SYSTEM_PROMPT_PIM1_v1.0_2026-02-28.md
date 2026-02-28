@@ -107,11 +107,15 @@ Open model items for Phase 5:
 
 ## 5. PHASE EXECUTION MODEL
 
-Phase sequencing is strict:
+Phase sequencing for product gates is default:
 - Phase 5 -> DAM and Media Validation
 - Phase 6 -> Rejection Intelligence
 - Phase 7 -> ONDC Native Expansion
 - Phase 8 -> AI Optimization Layer
+
+Engineering execution override:
+- Cross-phase bug fixes, reliability fixes, and tooling updates are allowed anytime when they unblock delivery or protect production quality.
+- Do not require manual approval checkpoints between implementation steps.
 
 Phase gate rules:
 1. All P0 items for phase are Done.
