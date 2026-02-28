@@ -53,6 +53,7 @@ Status: `IP`
 - [x] Smart field mapping live
 - [x] Bulk edit workflows live (preview + apply + history)
 - [x] Error repair UI live
+- [x] Pilot workflow validation + gate memo published
 - [ ] MVP release gate passed
 
 ### Phase 5 - DAM and Media Validation
@@ -82,9 +83,9 @@ Status: `NS`
 
 ## Weekly Control Block
 - Week: 2026-02-23 to 2026-03-01
-- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, Phase 4 1,000-SKU benchmark evidence published, and execution backlog governance artifacts published.
-- Risks: MVP gate depends on unresolved `P0` baseline items from execution board (templates, RBAC, audit baseline, concurrency controls, and benchmark evidence).
-- Decisions needed: confirm whether import templates (`P4-US-004`) remain required for MVP gate in `R-MVP-2026-03`.
+- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, Phase 4 1,000-SKU benchmark evidence published, Phase 4 pilot workflow validation evidence published, Phase 4 gate memo published, and execution backlog governance artifacts published.
+- Risks: MVP gate depends on unresolved `P0` baseline items from execution board (RBAC baseline, audit baseline, and concurrency controls).
+- Decisions needed: release go/no-go confirmation after remaining `P0` execution board items close.
 - Scope changes: execution board, sprint closeout plan, bug backlog, and backlog hygiene standard added to operating model.
-- Next week focus: complete `S4-CLOSEOUT-1` residual commitments and publish benchmark evidence, then start `S4-CLOSEOUT-2` `P0` backlog items.
+- Next week focus: complete `S4-CLOSEOUT-2` remaining `P0` backlog items (`EXE-X-001`, `EXE-X-002`, `EXE-P1-005`) and rerun MVP gate review.
 
