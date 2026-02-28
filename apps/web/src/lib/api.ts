@@ -1,6 +1,21 @@
 export type CatalogStatus = "draft" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
 export type MarketplaceChannel = "amazon" | "flipkart" | "meesho";
+export type AppRole = "admin" | "editor" | "viewer";
+
+const APP_ROLES: readonly AppRole[] = ["admin", "editor", "viewer"];
+
+export function normalizeAppRole(value: FormDataEntryValue | string | null | undefined): AppRole {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (APP_ROLES.includes(normalized as AppRole)) {
+    return normalized as AppRole;
+  }
+  const envDefault = String(process.env.PIM_DEFAULT_ROLE ?? "").trim().toLowerCase();
+  if (APP_ROLES.includes(envDefault as AppRole)) {
+    return envDefault as AppRole;
+  }
+  return "admin";
+}
 
 export interface ValidationIssue {
   id: string;
@@ -311,11 +326,16 @@ export interface BulkEditOperation {
 
 const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+interface ApiRequestOptions {
+  role?: AppRole;
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      "x-pim-role": normalizeAppRole(options?.role),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -331,42 +351,47 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function getCategories() {
-  return fetchJson<Category[]>("/taxonomy/categories");
+export async function getCategories(options?: ApiRequestOptions) {
+  return fetchJson<Category[]>("/taxonomy/categories", undefined, options);
 }
 
-export async function getProducts() {
-  return fetchJson<Product[]>("/catalog/products");
+export async function getProducts(options?: ApiRequestOptions) {
+  return fetchJson<Product[]>("/catalog/products", undefined, options);
 }
 
-export async function getProduct(productId: string) {
-  return fetchJson<Product>(`/catalog/products/${productId}`);
+export async function getProduct(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<Product>(`/catalog/products/${productId}`, undefined, options);
 }
 
-export async function getProductVariants(productId: string) {
-  return fetchJson<Variant[]>(`/catalog/products/${productId}/variants`);
+export async function getProductVariants(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<Variant[]>(`/catalog/products/${productId}/variants`, undefined, options);
 }
 
-export async function getStats() {
-  return fetchJson<CatalogStats>("/catalog/stats");
+export async function getStats(options?: ApiRequestOptions) {
+  return fetchJson<CatalogStats>("/catalog/stats", undefined, options);
 }
 
-export async function getCategoryAttributes(categoryId: string) {
-  return fetchJson<AttributeDefinition[]>(`/taxonomy/categories/${categoryId}/attributes`);
+export async function getCategoryAttributes(categoryId: string, options?: ApiRequestOptions) {
+  return fetchJson<AttributeDefinition[]>(
+    `/taxonomy/categories/${categoryId}/attributes`,
+    undefined,
+    options,
+  );
 }
 
-export async function getProductIssues(productId: string) {
-  return fetchJson<ValidationIssue[]>(`/compliance/products/${productId}/issues`);
+export async function getProductIssues(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<ValidationIssue[]>(`/compliance/products/${productId}/issues`, undefined, options);
 }
 
-export async function getMarketplaceChannels() {
-  return fetchJson<MarketplaceChannelConfig[]>("/marketplace/channels");
+export async function getMarketplaceChannels(options?: ApiRequestOptions) {
+  return fetchJson<MarketplaceChannelConfig[]>("/marketplace/channels", undefined, options);
 }
 
 export async function getMarketplaceChannelMapping(
   channel: MarketplaceChannel,
   categoryId?: string,
   templateId?: string,
+  options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
   if (categoryId) {
@@ -378,13 +403,21 @@ export async function getMarketplaceChannelMapping(
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<MarketplaceChannelMapping>(
     `/marketplace/channels/${encodeURIComponent(channel)}/mapping${query}`,
+    undefined,
+    options,
   );
 }
 
-export async function getMarketplaceTemplates(categoryId: string, channel?: MarketplaceChannel) {
+export async function getMarketplaceTemplates(
+  categoryId: string,
+  channel?: MarketplaceChannel,
+  options?: ApiRequestOptions,
+) {
   const query = channel ? `?channel=${encodeURIComponent(channel)}` : "";
   return fetchJson<ChannelMappingTemplate[]>(
     `/marketplace/categories/${categoryId}/templates${query}`,
+    undefined,
+    options,
   );
 }
 
@@ -392,6 +425,7 @@ export async function getMarketplaceSimulation(
   productId: string,
   channel: MarketplaceChannel,
   templateId?: string,
+  options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
   params.set("channel", channel);
@@ -400,29 +434,46 @@ export async function getMarketplaceSimulation(
   }
   return fetchJson<MarketplaceSimulation>(
     `/marketplace/products/${productId}/simulate?${params.toString()}`,
+    undefined,
+    options,
   );
 }
 
-export async function getMarketplaceExportJobs(productId: string) {
+export async function getMarketplaceExportJobs(productId: string, options?: ApiRequestOptions) {
   return fetchJson<MarketplaceExportJob[]>(
     `/marketplace/export-jobs?productId=${encodeURIComponent(productId)}`,
+    undefined,
+    options,
   );
 }
 
-export async function getBulkImportJobs() {
-  return fetchJson<BulkImportJob[]>("/bulk-import/jobs");
+export async function getBulkImportJobs(options?: ApiRequestOptions) {
+  return fetchJson<BulkImportJob[]>("/bulk-import/jobs", undefined, options);
 }
 
-export async function getBulkImportTemplates(tenantKey: string, categoryId?: string) {
+export async function getBulkImportTemplates(
+  tenantKey: string,
+  categoryId?: string,
+  options?: ApiRequestOptions,
+) {
   const params = new URLSearchParams();
   params.set("tenantKey", tenantKey);
   if (categoryId) {
     params.set("categoryId", categoryId);
   }
-  return fetchJson<BulkImportTemplate[]>(`/bulk-import/templates?${params.toString()}`);
+  return fetchJson<BulkImportTemplate[]>(
+    `/bulk-import/templates?${params.toString()}`,
+    undefined,
+    options,
+  );
 }
 
-export async function getBulkImportJobRows(jobId: string, status?: BulkImportRowStatus, limit = 100) {
+export async function getBulkImportJobRows(
+  jobId: string,
+  status?: BulkImportRowStatus,
+  limit = 100,
+  options?: ApiRequestOptions,
+) {
   const params = new URLSearchParams();
   if (status) {
     params.set("status", status);
@@ -430,53 +481,74 @@ export async function getBulkImportJobRows(jobId: string, status?: BulkImportRow
   params.set("limit", String(limit));
   return fetchJson<BulkImportRow[]>(
     `/bulk-import/jobs/${encodeURIComponent(jobId)}/rows?${params.toString()}`,
+    undefined,
+    options,
   );
 }
 
-export async function getBulkImportMappingSuggestion(headers: string[]) {
+export async function getBulkImportMappingSuggestion(
+  headers: string[],
+  options?: ApiRequestOptions,
+) {
   return postJson<BulkImportMappingSuggestion>("/bulk-import/mapping-suggestions", {
     headers,
-  });
+  }, options);
 }
 
-export async function getBulkEditPreview(scope: BulkEditScope, updates: BulkEditUpdates) {
+export async function getBulkEditPreview(
+  scope: BulkEditScope,
+  updates: BulkEditUpdates,
+  options?: ApiRequestOptions,
+) {
   return postJson<BulkEditPreview>("/bulk-edit/preview", {
     scope,
     updates,
-  });
+  }, options);
 }
 
-export async function applyBulkEdit(scope: BulkEditScope, updates: BulkEditUpdates) {
+export async function applyBulkEdit(
+  scope: BulkEditScope,
+  updates: BulkEditUpdates,
+  options?: ApiRequestOptions,
+) {
   return postJson<BulkEditOperation>("/bulk-edit/apply", {
     scope,
     updates,
-  });
+  }, options);
 }
 
-export async function getBulkEditOperations(limit = 20) {
-  return fetchJson<BulkEditOperation[]>(`/bulk-edit/operations?limit=${encodeURIComponent(String(limit))}`);
+export async function getBulkEditOperations(limit = 20, options?: ApiRequestOptions) {
+  return fetchJson<BulkEditOperation[]>(
+    `/bulk-edit/operations?limit=${encodeURIComponent(String(limit))}`,
+    undefined,
+    options,
+  );
 }
 
-export async function getBulkEditOperation(operationId: string) {
-  return fetchJson<BulkEditOperation>(`/bulk-edit/operations/${encodeURIComponent(operationId)}`);
+export async function getBulkEditOperation(operationId: string, options?: ApiRequestOptions) {
+  return fetchJson<BulkEditOperation>(
+    `/bulk-edit/operations/${encodeURIComponent(operationId)}`,
+    undefined,
+    options,
+  );
 }
 
-export async function postJson<T>(path: string, body: unknown) {
+export async function postJson<T>(path: string, body: unknown, options?: ApiRequestOptions) {
   return fetchJson<T>(path, {
     method: "POST",
     body: JSON.stringify(body),
-  });
+  }, options);
 }
 
-export async function patchJson<T>(path: string, body: unknown) {
+export async function patchJson<T>(path: string, body: unknown, options?: ApiRequestOptions) {
   return fetchJson<T>(path, {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
+  }, options);
 }
 
-export async function deleteJson(path: string) {
-  return fetchJson<void>(path, { method: "DELETE" });
+export async function deleteJson(path: string, options?: ApiRequestOptions) {
+  return fetchJson<void>(path, { method: "DELETE" }, options);
 }
 
 

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AppRole,
   getBulkEditOperations,
   getBulkEditPreview,
   getBulkImportJobRows,
@@ -25,12 +26,14 @@ import {
   getCategories,
   getProducts,
   getStats,
+  normalizeAppRole,
 } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 interface HomePageProps {
   searchParams: Promise<{
+    role?: string;
     bulkJobId?: string;
     bulkEditPreview?: string;
     bulkEditCategoryId?: string;
@@ -55,18 +58,25 @@ function parseList(value: string) {
   );
 }
 
+function RoleHiddenInput({ role }: { role: AppRole }) {
+  return <input type="hidden" name="actorRole" value={role} />;
+}
+
 export default async function HomePage({ searchParams }: HomePageProps) {
   const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
   const query = await searchParams;
+  const actorRole = normalizeAppRole(query.role);
+  const canWrite = actorRole !== "viewer";
+  const canAdmin = actorRole === "admin";
   const tenantKey = String(query.tenantKey ?? "").trim() || "default";
   const bulkTemplateCategoryId = String(query.bulkTemplateCategoryId ?? "").trim();
   const [stats, categories, products, bulkImportJobs, bulkEditOperations, bulkImportTemplates] = await Promise.all([
-    getStats(),
-    getCategories(),
-    getProducts(),
-    getBulkImportJobs(),
-    getBulkEditOperations(),
-    getBulkImportTemplates(tenantKey, bulkTemplateCategoryId || undefined),
+    getStats({ role: actorRole }),
+    getCategories({ role: actorRole }),
+    getProducts({ role: actorRole }),
+    getBulkImportJobs({ role: actorRole }),
+    getBulkEditOperations(20, { role: actorRole }),
+    getBulkImportTemplates(tenantKey, bulkTemplateCategoryId || undefined, { role: actorRole }),
   ]);
 
   const selectedBulkTemplateId = String(query.bulkTemplateId ?? "").trim();
@@ -121,7 +131,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         scope.productIds = productIds;
       }
 
-      bulkEditPreview = await getBulkEditPreview(scope, parsedUpdates as Record<string, unknown>);
+      bulkEditPreview = await getBulkEditPreview(scope, parsedUpdates as Record<string, unknown>, {
+        role: actorRole,
+      });
     } catch (error: unknown) {
       bulkEditPreviewError = error instanceof Error ? error.message : "Bulk edit preview failed.";
     }
@@ -138,6 +150,25 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
           Catalog source of truth with compliance, marketplace intelligence, and bulk import operations.
         </p>
       </header>
+
+      <Card>
+        <CardTitle>Access Role</CardTitle>
+        <form method="get" className="flex max-w-md items-end gap-3">
+          <div className="flex-1 space-y-1">
+            <p className="text-xs uppercase text-slate-500">Active role</p>
+            <Select name="role" defaultValue={actorRole}>
+              <option value="admin">admin</option>
+              <option value="editor">editor</option>
+              <option value="viewer">viewer</option>
+            </Select>
+          </div>
+          <Button type="submit">Switch role</Button>
+        </form>
+        <p className="mt-2 text-xs text-slate-500">
+          Current role: <strong>{actorRole}</strong>. Viewer is read-only. Editor can operate catalog workflows.
+          Admin can manage taxonomy and compliance rules.
+        </p>
+      </Card>
 
       <section className="grid gap-3 md:grid-cols-3">
         <Card>
@@ -157,33 +188,68 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       <section className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardTitle>Create Category</CardTitle>
-          <form action={createCategoryAction} className="space-y-3">
-            <Input name="name" placeholder="Category name" required />
-            <Select name="parentId" defaultValue="">
-              <option value="">No parent</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.path}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit">Create category</Button>
-          </form>
+          {canAdmin ? (
+            <form action={createCategoryAction} className="space-y-3">
+              <RoleHiddenInput role={actorRole} />
+              <Input name="name" placeholder="Category name" required />
+              <Select name="parentId" defaultValue="">
+                <option value="">No parent</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.path}
+                  </option>
+                ))}
+              </Select>
+              <Button type="submit">Create category</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Admin role required for taxonomy changes.</p>
+          )}
         </Card>
 
         <Card>
           <CardTitle>Create Product</CardTitle>
-          <form action={createProductAction} className="space-y-3">
-            <Input name="title" placeholder="Product title" required />
-            <Input name="brand" placeholder="Brand" />
-            <Textarea name="description" rows={3} placeholder="Description" />
-            <Input name="hsnCode" placeholder="HSN code (4/6/8 digits)" />
-            <Input name="gstRate" type="number" min={0} step="0.01" placeholder="GST rate (e.g. 18)" />
-            <Textarea
-              name="attributes"
-              rows={3}
-              placeholder='Product attributes JSON, e.g. {"material":"cotton","fit":"regular"}'
-            />
+          {canWrite ? (
+            <form action={createProductAction} className="space-y-3">
+              <RoleHiddenInput role={actorRole} />
+              <Input name="title" placeholder="Product title" required />
+              <Input name="brand" placeholder="Brand" />
+              <Textarea name="description" rows={3} placeholder="Description" />
+              <Input name="hsnCode" placeholder="HSN code (4/6/8 digits)" />
+              <Input name="gstRate" type="number" min={0} step="0.01" placeholder="GST rate (e.g. 18)" />
+              <Textarea
+                name="attributes"
+                rows={3}
+                placeholder='Product attributes JSON, e.g. {"material":"cotton","fit":"regular"}'
+              />
+              <Select name="categoryId" required defaultValue="">
+                <option value="" disabled>
+                  Select category
+                </option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.path}
+                  </option>
+                ))}
+              </Select>
+              <Select name="status" defaultValue="draft">
+                <option value="draft">draft</option>
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+              </Select>
+              <Button type="submit">Create product</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Viewer role is read-only.</p>
+          )}
+        </Card>
+      </section>
+
+      <Card>
+        <CardTitle>Create Category Attribute Definition</CardTitle>
+        {canAdmin ? (
+          <form action={createAttributeDefinitionAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <RoleHiddenInput role={actorRole} />
             <Select name="categoryId" required defaultValue="">
               <option value="" disabled>
                 Select category
@@ -194,100 +260,85 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                 </option>
               ))}
             </Select>
-            <Select name="status" defaultValue="draft">
-              <option value="draft">draft</option>
-              <option value="active">active</option>
-              <option value="archived">archived</option>
+            <Input name="name" placeholder="Display name (e.g. Fabric Type)" required />
+            <Input name="key" placeholder="Key (e.g. fabric_type)" required />
+            <Select name="dataType" defaultValue="text">
+              <option value="text">text</option>
+              <option value="number">number</option>
+              <option value="boolean">boolean</option>
+              <option value="select">select</option>
+              <option value="json">json</option>
             </Select>
-            <Button type="submit">Create product</Button>
+            <Select name="required" defaultValue="true">
+              <option value="true">required</option>
+              <option value="false">optional</option>
+            </Select>
+            <Select name="appliesTo" defaultValue="product">
+              <option value="product">product</option>
+              <option value="variant">variant</option>
+            </Select>
+            <Textarea
+              name="allowedValues"
+              rows={2}
+              className="md:col-span-2 lg:col-span-3"
+              placeholder='Allowed values JSON array, e.g. ["cotton","silk"]'
+            />
+            <Button type="submit" className="w-fit">
+              Add attribute definition
+            </Button>
           </form>
-        </Card>
-      </section>
-
-      <Card>
-        <CardTitle>Create Category Attribute Definition</CardTitle>
-        <form action={createAttributeDefinitionAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <Select name="categoryId" required defaultValue="">
-            <option value="" disabled>
-              Select category
-            </option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.path}
-              </option>
-            ))}
-          </Select>
-          <Input name="name" placeholder="Display name (e.g. Fabric Type)" required />
-          <Input name="key" placeholder="Key (e.g. fabric_type)" required />
-          <Select name="dataType" defaultValue="text">
-            <option value="text">text</option>
-            <option value="number">number</option>
-            <option value="boolean">boolean</option>
-            <option value="select">select</option>
-            <option value="json">json</option>
-          </Select>
-          <Select name="required" defaultValue="true">
-            <option value="true">required</option>
-            <option value="false">optional</option>
-          </Select>
-          <Select name="appliesTo" defaultValue="product">
-            <option value="product">product</option>
-            <option value="variant">variant</option>
-          </Select>
-          <Textarea
-            name="allowedValues"
-            rows={2}
-            className="md:col-span-2 lg:col-span-3"
-            placeholder='Allowed values JSON array, e.g. ["cotton","silk"]'
-          />
-          <Button type="submit" className="w-fit">
-            Add attribute definition
-          </Button>
-        </form>
+        ) : (
+          <p className="text-sm text-slate-600">Admin role required for attribute governance.</p>
+        )}
       </Card>
 
       <Card>
         <CardTitle>Bulk Edit Products (Phase 4)</CardTitle>
-        <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <input type="hidden" name="bulkEditPreview" value="1" />
-          {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
-          <Select name="bulkEditCategoryId" defaultValue={bulkEditCategoryId}>
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.path}
-              </option>
-            ))}
-          </Select>
-          <Select name="bulkEditStatus" defaultValue={bulkEditStatus}>
-            <option value="">All statuses</option>
-            <option value="draft">draft</option>
-            <option value="active">active</option>
-            <option value="archived">archived</option>
-          </Select>
-          <Input
-            name="bulkEditBrandContains"
-            defaultValue={bulkEditBrandContains}
-            placeholder="Brand contains (optional)"
-          />
-          <Textarea
-            name="bulkEditProductIds"
-            rows={2}
-            className="md:col-span-2 lg:col-span-3"
-            defaultValue={bulkEditProductIds}
-            placeholder="Optional product ids (comma or newline separated)"
-          />
-          <Textarea
-            name="bulkEditUpdates"
-            rows={4}
-            className="md:col-span-2 lg:col-span-3"
-            defaultValue={bulkEditUpdatesText}
-            placeholder='Updates JSON, e.g. {"status":"active","gstRate":18}'
-          />
-          <Button type="submit" className="w-fit">
-            Preview affected products
-          </Button>
-        </form>
+        {canWrite ? (
+          <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <input type="hidden" name="role" value={actorRole} />
+            <input type="hidden" name="bulkEditPreview" value="1" />
+            {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
+            <Select name="bulkEditCategoryId" defaultValue={bulkEditCategoryId}>
+              <option value="">All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.path}
+                </option>
+              ))}
+            </Select>
+            <Select name="bulkEditStatus" defaultValue={bulkEditStatus}>
+              <option value="">All statuses</option>
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="archived">archived</option>
+            </Select>
+            <Input
+              name="bulkEditBrandContains"
+              defaultValue={bulkEditBrandContains}
+              placeholder="Brand contains (optional)"
+            />
+            <Textarea
+              name="bulkEditProductIds"
+              rows={2}
+              className="md:col-span-2 lg:col-span-3"
+              defaultValue={bulkEditProductIds}
+              placeholder="Optional product ids (comma or newline separated)"
+            />
+            <Textarea
+              name="bulkEditUpdates"
+              rows={4}
+              className="md:col-span-2 lg:col-span-3"
+              defaultValue={bulkEditUpdatesText}
+              placeholder='Updates JSON, e.g. {"status":"active","gstRate":18}'
+            />
+            <Button type="submit" className="w-fit">
+              Preview affected products
+            </Button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">Viewer role cannot run bulk edit preview/apply.</p>
+        )}
 
         {shouldPreviewBulkEdit && (
           <div className="mt-4 space-y-3">
@@ -312,7 +363,9 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                       {bulkEditPreview.sample.map((product) => (
                         <tr key={product.id} className="border-t border-border">
                           <td className="py-2">
-                            <Link href={`/products/${product.id}`}>{product.title}</Link>
+                            <Link href={`/products/${product.id}?role=${encodeURIComponent(actorRole)}`}>
+                              {product.title}
+                            </Link>
                           </td>
                           <td className="py-2">{product.brand || "-"}</td>
                           <td className="py-2">{product.status}</td>
@@ -323,8 +376,9 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                     </tbody>
                   </table>
                 </div>
-                {bulkEditPreview.requestedCount > 0 && (
+                {canWrite && bulkEditPreview.requestedCount > 0 && (
                   <form action={applyBulkEditAction} className="space-y-2">
+                    <RoleHiddenInput role={actorRole} />
                     <input type="hidden" name="categoryId" value={bulkEditCategoryId} />
                     <input type="hidden" name="status" value={bulkEditStatus} />
                     <input type="hidden" name="brandContains" value={bulkEditBrandContains} />
@@ -372,6 +426,7 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       <Card>
         <CardTitle>Bulk Import Templates (Phase 4)</CardTitle>
         <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <input type="hidden" name="role" value={actorRole} />
           {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
           <Input
             name="tenantKey"
@@ -391,57 +446,62 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
           </Button>
         </form>
 
-        <form action={createBulkImportTemplateAction} className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <Input name="tenantKey" defaultValue={tenantKey} placeholder="Tenant key" required />
-          <Select name="categoryId" required defaultValue={defaultBulkCategoryId || bulkTemplateCategoryId || ""}>
-            <option value="" disabled>
-              Select category
-            </option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.path}
+        {canWrite ? (
+          <form action={createBulkImportTemplateAction} className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <RoleHiddenInput role={actorRole} />
+            <Input name="tenantKey" defaultValue={tenantKey} placeholder="Tenant key" required />
+            <Select name="categoryId" required defaultValue={defaultBulkCategoryId || bulkTemplateCategoryId || ""}>
+              <option value="" disabled>
+                Select category
               </option>
-            ))}
-          </Select>
-          <Input
-            name="name"
-            defaultValue={selectedBulkTemplate?.name ?? ""}
-            placeholder="Template name"
-            required
-          />
-          <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
-            <option value="csv">csv</option>
-            <option value="json">json</option>
-            <option value="xlsx">xlsx</option>
-            <option value="xls">xls</option>
-          </Select>
-          <Input
-            name="chunkSize"
-            type="number"
-            min={1}
-            max={500}
-            defaultValue={defaultBulkChunkSize}
-            placeholder="Chunk size"
-          />
-          <Input
-            name="maxRetries"
-            type="number"
-            min={1}
-            max={10}
-            defaultValue={defaultBulkMaxRetries}
-            placeholder="Max retries"
-          />
-          <Textarea
-            name="mapping"
-            rows={4}
-            className="md:col-span-2 lg:col-span-3"
-            defaultValue={defaultTemplateMapping}
-            placeholder='Template mapping JSON, e.g. {"title":"product_name","brand":"brand_name"}'
-          />
-          <Button type="submit" className="w-fit">
-            Save template
-          </Button>
-        </form>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.path}
+                </option>
+              ))}
+            </Select>
+            <Input
+              name="name"
+              defaultValue={selectedBulkTemplate?.name ?? ""}
+              placeholder="Template name"
+              required
+            />
+            <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
+              <option value="csv">csv</option>
+              <option value="json">json</option>
+              <option value="xlsx">xlsx</option>
+              <option value="xls">xls</option>
+            </Select>
+            <Input
+              name="chunkSize"
+              type="number"
+              min={1}
+              max={500}
+              defaultValue={defaultBulkChunkSize}
+              placeholder="Chunk size"
+            />
+            <Input
+              name="maxRetries"
+              type="number"
+              min={1}
+              max={10}
+              defaultValue={defaultBulkMaxRetries}
+              placeholder="Max retries"
+            />
+            <Textarea
+              name="mapping"
+              rows={4}
+              className="md:col-span-2 lg:col-span-3"
+              defaultValue={defaultTemplateMapping}
+              placeholder='Template mapping JSON, e.g. {"title":"product_name","brand":"brand_name"}'
+            />
+            <Button type="submit" className="w-fit">
+              Save template
+            </Button>
+          </form>
+        ) : (
+          <p className="mt-4 text-sm text-slate-600">Viewer role cannot create templates.</p>
+        )}
 
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
@@ -475,7 +535,9 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                   <td className="py-2">{template.maxRetries}</td>
                   <td className="py-2">
                     <Link
-                      href={`/?tenantKey=${encodeURIComponent(tenantKey)}&bulkTemplateCategoryId=${encodeURIComponent(
+                      href={`/?role=${encodeURIComponent(actorRole)}&tenantKey=${encodeURIComponent(
+                        tenantKey,
+                      )}&bulkTemplateCategoryId=${encodeURIComponent(
                         bulkTemplateCategoryId || "",
                       )}&bulkTemplateId=${encodeURIComponent(template.id)}`}
                       className="inline-flex items-center rounded-md border border-border px-3 py-2"
@@ -509,77 +571,82 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               )}
           </div>
         )}
-        <form action={createBulkImportJobAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <Select name="categoryId" required defaultValue={defaultBulkCategoryId || ""}>
-            <option value="" disabled>
-              Select category
-            </option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.path}
+        {canWrite ? (
+          <form action={createBulkImportJobAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <RoleHiddenInput role={actorRole} />
+            <Select name="categoryId" required defaultValue={defaultBulkCategoryId || ""}>
+              <option value="" disabled>
+                Select category
               </option>
-            ))}
-          </Select>
-          <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
-            <option value="csv">csv</option>
-            <option value="json">json</option>
-            <option value="xlsx">xlsx</option>
-            <option value="xls">xls</option>
-          </Select>
-          <Input
-            name="sourceName"
-            defaultValue={selectedBulkTemplate?.name ?? ""}
-            placeholder="Source file name (optional)"
-          />
-          <Input
-            name="chunkSize"
-            type="number"
-            min={1}
-            max={500}
-            defaultValue={defaultBulkChunkSize}
-            placeholder="Chunk size"
-          />
-          <Input
-            name="maxRetries"
-            type="number"
-            min={1}
-            max={10}
-            defaultValue={defaultBulkMaxRetries}
-            placeholder="Max retries"
-          />
-          <Input
-            name="sourceFile"
-            type="file"
-            accept=".csv,.xlsx,.xls,.json"
-            className="md:col-span-2"
-          />
-          <p className="text-xs text-slate-500">
-            Upload file supports csv/xlsx/xls/json. Uploaded file takes precedence over text inputs.
-          </p>
-          <Textarea
-            name="mapping"
-            rows={6}
-            className="md:col-span-2 lg:col-span-3"
-            defaultValue={defaultTemplateMapping}
-            placeholder="Optional JSON mapping. Leave empty for smart auto-suggest by headers."
-          />
-          <Textarea
-            name="csvContent"
-            rows={6}
-            className="md:col-span-2 lg:col-span-3"
-            defaultValue={defaultCsvContent}
-            placeholder="CSV content for sourceFormat=csv"
-          />
-          <Textarea
-            name="rowsJson"
-            rows={4}
-            className="md:col-span-2 lg:col-span-3"
-            placeholder='JSON rows for sourceFormat=json, e.g. [{"title":"Item 1","brand":"PIM1"}]'
-          />
-          <Button type="submit" className="w-fit">
-            Create bulk import job
-          </Button>
-        </form>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.path}
+                </option>
+              ))}
+            </Select>
+            <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
+              <option value="csv">csv</option>
+              <option value="json">json</option>
+              <option value="xlsx">xlsx</option>
+              <option value="xls">xls</option>
+            </Select>
+            <Input
+              name="sourceName"
+              defaultValue={selectedBulkTemplate?.name ?? ""}
+              placeholder="Source file name (optional)"
+            />
+            <Input
+              name="chunkSize"
+              type="number"
+              min={1}
+              max={500}
+              defaultValue={defaultBulkChunkSize}
+              placeholder="Chunk size"
+            />
+            <Input
+              name="maxRetries"
+              type="number"
+              min={1}
+              max={10}
+              defaultValue={defaultBulkMaxRetries}
+              placeholder="Max retries"
+            />
+            <Input
+              name="sourceFile"
+              type="file"
+              accept=".csv,.xlsx,.xls,.json"
+              className="md:col-span-2"
+            />
+            <p className="text-xs text-slate-500">
+              Upload file supports csv/xlsx/xls/json. Uploaded file takes precedence over text inputs.
+            </p>
+            <Textarea
+              name="mapping"
+              rows={6}
+              className="md:col-span-2 lg:col-span-3"
+              defaultValue={defaultTemplateMapping}
+              placeholder="Optional JSON mapping. Leave empty for smart auto-suggest by headers."
+            />
+            <Textarea
+              name="csvContent"
+              rows={6}
+              className="md:col-span-2 lg:col-span-3"
+              defaultValue={defaultCsvContent}
+              placeholder="CSV content for sourceFormat=csv"
+            />
+            <Textarea
+              name="rowsJson"
+              rows={4}
+              className="md:col-span-2 lg:col-span-3"
+              placeholder='JSON rows for sourceFormat=json, e.g. [{"title":"Item 1","brand":"PIM1"}]'
+            />
+            <Button type="submit" className="w-fit">
+              Create bulk import job
+            </Button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">Viewer role cannot create or process bulk import jobs.</p>
+        )}
       </Card>
 
       <Card>
@@ -626,16 +693,23 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2">
-                      <Link href={`/?bulkJobId=${job.id}`} className="inline-flex items-center rounded-md border border-border px-3 py-2">
+                      <Link
+                        href={`/?role=${encodeURIComponent(actorRole)}&bulkJobId=${encodeURIComponent(job.id)}`}
+                        className="inline-flex items-center rounded-md border border-border px-3 py-2"
+                      >
                         View rows
                       </Link>
-                      <form action={processBulkImportJobAction}>
-                        <input type="hidden" name="jobId" value={job.id} />
-                        <input type="hidden" name="chunkSize" value={job.chunkSize} />
-                        <Button type="submit">Process chunk</Button>
-                      </form>
-                      {job.status === "dead_letter" && (
+                      {canWrite && (
+                        <form action={processBulkImportJobAction}>
+                          <RoleHiddenInput role={actorRole} />
+                          <input type="hidden" name="jobId" value={job.id} />
+                          <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                          <Button type="submit">Process chunk</Button>
+                        </form>
+                      )}
+                      {canWrite && job.status === "dead_letter" && (
                         <form action={requeueBulkImportDlqAction}>
+                          <RoleHiddenInput role={actorRole} />
                           <input type="hidden" name="jobId" value={job.id} />
                           <input type="hidden" name="limit" value={100} />
                           <Button type="submit">Requeue DLQ</Button>
@@ -683,23 +757,33 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                     <td className="py-2">{row.retryCount}</td>
                     <td className="py-2">{row.errorMessage ?? "-"}</td>
                     <td className="py-2">
-                      <form action={repairBulkImportRowAction} className="space-y-2">
-                        <input type="hidden" name="jobId" value={selectedBulkJobId} />
-                        <input type="hidden" name="rowId" value={row.id} />
-                        <Textarea name="payload" rows={4} defaultValue={JSON.stringify(row.payload, null, 2)} />
-                        <Select name="requeue" defaultValue="true">
-                          <option value="true">repair + requeue</option>
-                          <option value="false">repair only</option>
-                        </Select>
-                        <Button type="submit">Save repair</Button>
-                      </form>
+                      {canWrite ? (
+                        <form action={repairBulkImportRowAction} className="space-y-2">
+                          <RoleHiddenInput role={actorRole} />
+                          <input type="hidden" name="jobId" value={selectedBulkJobId} />
+                          <input type="hidden" name="rowId" value={row.id} />
+                          <Textarea name="payload" rows={4} defaultValue={JSON.stringify(row.payload, null, 2)} />
+                          <Select name="requeue" defaultValue="true">
+                            <option value="true">repair + requeue</option>
+                            <option value="false">repair only</option>
+                          </Select>
+                          <Button type="submit">Save repair</Button>
+                        </form>
+                      ) : (
+                        <p className="text-xs text-slate-500">Read-only in viewer role.</p>
+                      )}
                     </td>
                     <td className="py-2">
-                      <form action={processBulkImportRowAction}>
-                        <input type="hidden" name="jobId" value={selectedBulkJobId} />
-                        <input type="hidden" name="rowId" value={row.id} />
-                        <Button type="submit">Process row now</Button>
-                      </form>
+                      {canWrite ? (
+                        <form action={processBulkImportRowAction}>
+                          <RoleHiddenInput role={actorRole} />
+                          <input type="hidden" name="jobId" value={selectedBulkJobId} />
+                          <input type="hidden" name="rowId" value={row.id} />
+                          <Button type="submit">Process row now</Button>
+                        </form>
+                      ) : (
+                        <span className="text-xs text-slate-500">Read-only</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -753,7 +837,9 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               {products.map((product) => (
                 <tr key={product.id} className="border-t border-border">
                   <td className="py-2">
-                    <Link href={`/products/${product.id}`}>{product.title}</Link>
+                    <Link href={`/products/${product.id}?role=${encodeURIComponent(actorRole)}`}>
+                      {product.title}
+                    </Link>
                   </td>
                   <td className="py-2">{product.brand || "-"}</td>
                   <td className="py-2">{product.hsnCode || "-"}</td>

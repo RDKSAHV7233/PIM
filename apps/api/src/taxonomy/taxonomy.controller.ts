@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { Roles } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateAttributeDefinitionDto } from "./dto/update-attribute-definition.dto";
@@ -20,16 +21,19 @@ export class TaxonomyController {
   }
 
   @Post()
+  @Roles("admin")
   createCategory(@Body() dto: CreateCategoryDto) {
     return this.taxonomyService.createCategory(dto);
   }
 
   @Patch(":id")
+  @Roles("admin")
   updateCategory(@Param("id") id: string, @Body() dto: UpdateCategoryDto) {
     return this.taxonomyService.updateCategory(id, dto);
   }
 
   @Delete(":id")
+  @Roles("admin")
   deleteCategory(@Param("id") id: string) {
     return this.taxonomyService.deleteCategory(id);
   }
@@ -40,6 +44,7 @@ export class TaxonomyController {
   }
 
   @Post(":id/attributes")
+  @Roles("admin")
   createAttributeDefinition(
     @Param("id") categoryId: string,
     @Body() dto: CreateAttributeDefinitionDto,
@@ -48,6 +53,7 @@ export class TaxonomyController {
   }
 
   @Patch("attributes/:attributeId")
+  @Roles("admin")
   updateAttributeDefinition(
     @Param("attributeId") attributeId: string,
     @Body() dto: UpdateAttributeDefinitionDto,
@@ -56,6 +62,7 @@ export class TaxonomyController {
   }
 
   @Delete("attributes/:attributeId")
+  @Roles("admin")
   deleteAttributeDefinition(@Param("attributeId") attributeId: string) {
     return this.taxonomyService.deleteAttributeDefinition(attributeId);
   }

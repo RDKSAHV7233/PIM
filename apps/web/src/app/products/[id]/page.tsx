@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AppRole,
   getMarketplaceChannelMapping,
   getMarketplaceChannels,
   getMarketplaceExportJobs,
@@ -22,11 +23,12 @@ import {
   getProduct,
   getProductVariants,
   MarketplaceChannel,
+  normalizeAppRole,
 } from "@/lib/api";
 
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ channel?: string; templateId?: string }>;
+  searchParams: Promise<{ channel?: string; templateId?: string; role?: string }>;
 }
 
 export const dynamic = "force-dynamic";
@@ -43,31 +45,39 @@ function normalizeTemplateId(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
+function RoleHiddenInput({ role }: { role: AppRole }) {
+  return <input type="hidden" name="actorRole" value={role} />;
+}
+
 export default async function ProductPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = await searchParams;
+  const actorRole = normalizeAppRole(query.role);
+  const canWrite = actorRole !== "viewer";
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
   let product;
   try {
-    product = await getProduct(id);
+    product = await getProduct(id, { role: actorRole });
   } catch {
     notFound();
   }
   const [variants, channels, templates, mapping, simulation, exportJobs] = await Promise.all([
-    getProductVariants(id),
-    getMarketplaceChannels(),
-    getMarketplaceTemplates(product.categoryId, selectedChannel),
-    getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId),
-    getMarketplaceSimulation(id, selectedChannel, selectedTemplateId),
-    getMarketplaceExportJobs(id),
+    getProductVariants(id, { role: actorRole }),
+    getMarketplaceChannels({ role: actorRole }),
+    getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole }),
+    getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
+      role: actorRole,
+    }),
+    getMarketplaceSimulation(id, selectedChannel, selectedTemplateId, { role: actorRole }),
+    getMarketplaceExportJobs(id, { role: actorRole }),
   ]);
   const requiredFieldsDefault = JSON.stringify(mapping.requiredFields, null, 2);
   const fieldMapDefault = JSON.stringify(mapping.fieldMap, null, 2);
 
   return (
     <div className="space-y-5">
-      <Link href="/" className="text-sm">
+      <Link href={`/?role=${encodeURIComponent(actorRole)}`} className="text-sm">
         Back to dashboard
       </Link>
 
@@ -79,12 +89,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         <p className="text-sm text-slate-600">
           HSN: {product.hsnCode || "-"} | GST: {product.gstRate ?? "-"} | Open Issues: {product.validationIssues?.length ?? 0}
         </p>
+        <p className="text-xs text-slate-500">Current role: {actorRole}</p>
       </header>
 
       <Card>
         <CardTitle>Marketplace Rejection Simulator</CardTitle>
         <div className="space-y-3">
           <form method="get" className="flex max-w-xl items-end gap-3">
+            <input type="hidden" name="role" value={actorRole} />
             <div className="flex-1">
               <p className="mb-1 text-xs uppercase text-slate-500">Channel</p>
               <Select name="channel" defaultValue={selectedChannel}>
@@ -163,38 +175,43 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <Card>
         <CardTitle>Channel Mapping Templates</CardTitle>
         <div className="space-y-3">
-          <form action={createMappingTemplateAction} className="grid gap-3 md:grid-cols-2">
-            <input type="hidden" name="productId" value={id} />
-            <input type="hidden" name="categoryId" value={product.categoryId} />
-            <Input name="name" placeholder="Template name" required />
-            <Select name="channel" defaultValue={selectedChannel}>
-              {channels.map((channel) => (
-                <option key={channel.channel} value={channel.channel}>
-                  {channel.displayName}
-                </option>
-              ))}
-            </Select>
-            <Textarea
-              name="requiredFields"
-              rows={4}
-              placeholder='["title","brand","hsnCode"]'
-              defaultValue={requiredFieldsDefault}
-            />
-            <Textarea
-              name="fieldMap"
-              rows={4}
-              placeholder='{"title":"item_name","brand":"brand_name"}'
-              defaultValue={fieldMapDefault}
-            />
-            <Select name="isDefault" defaultValue="false">
-              <option value="false">save as non-default</option>
-              <option value="true">save as default</option>
-            </Select>
-            <div />
-            <Button type="submit" className="w-fit">
-              Save template
-            </Button>
-          </form>
+          {canWrite ? (
+            <form action={createMappingTemplateAction} className="grid gap-3 md:grid-cols-2">
+              <RoleHiddenInput role={actorRole} />
+              <input type="hidden" name="productId" value={id} />
+              <input type="hidden" name="categoryId" value={product.categoryId} />
+              <Input name="name" placeholder="Template name" required />
+              <Select name="channel" defaultValue={selectedChannel}>
+                {channels.map((channel) => (
+                  <option key={channel.channel} value={channel.channel}>
+                    {channel.displayName}
+                  </option>
+                ))}
+              </Select>
+              <Textarea
+                name="requiredFields"
+                rows={4}
+                placeholder='["title","brand","hsnCode"]'
+                defaultValue={requiredFieldsDefault}
+              />
+              <Textarea
+                name="fieldMap"
+                rows={4}
+                placeholder='{"title":"item_name","brand":"brand_name"}'
+                defaultValue={fieldMapDefault}
+              />
+              <Select name="isDefault" defaultValue="false">
+                <option value="false">save as non-default</option>
+                <option value="true">save as default</option>
+              </Select>
+              <div />
+              <Button type="submit" className="w-fit">
+                Save template
+              </Button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Viewer role cannot save mapping templates.</p>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -226,27 +243,32 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <Card>
         <CardTitle>Pre-Export Jobs (Retry + DLQ)</CardTitle>
         <div className="space-y-3">
-          <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
-            <input type="hidden" name="productId" value={id} />
-            <Select name="channel" defaultValue={selectedChannel}>
-              {channels.map((channel) => (
-                <option key={channel.channel} value={channel.channel}>
-                  {channel.displayName}
-                </option>
-              ))}
-            </Select>
-            <Select name="templateId" defaultValue={selectedTemplateId ?? ""}>
-              <option value="">System mapping</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                  {template.isDefault ? " (default)" : ""}
-                </option>
-              ))}
-            </Select>
-            <Input name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
-            <Button type="submit">Queue export job</Button>
-          </form>
+          {canWrite ? (
+            <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
+              <RoleHiddenInput role={actorRole} />
+              <input type="hidden" name="productId" value={id} />
+              <Select name="channel" defaultValue={selectedChannel}>
+                {channels.map((channel) => (
+                  <option key={channel.channel} value={channel.channel}>
+                    {channel.displayName}
+                  </option>
+                ))}
+              </Select>
+              <Select name="templateId" defaultValue={selectedTemplateId ?? ""}>
+                <option value="">System mapping</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                    {template.isDefault ? " (default)" : ""}
+                  </option>
+                ))}
+              </Select>
+              <Input name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
+              <Button type="submit">Queue export job</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Viewer role cannot queue or process export jobs.</p>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
@@ -274,18 +296,25 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                     <td className="py-2">{job.failureReason ?? "-"}</td>
                     <td className="py-2">
                       <div className="flex gap-2">
-                        <form action={processExportJobAction}>
-                          <input type="hidden" name="jobId" value={job.id} />
-                          <input type="hidden" name="productId" value={id} />
-                          <Button type="submit">Process</Button>
-                        </form>
-                        {(job.status === "dead_letter" || job.status === "retrying" || job.status === "failed") && (
-                          <form action={requeueExportJobAction}>
+                        {canWrite && (
+                          <form action={processExportJobAction}>
+                            <RoleHiddenInput role={actorRole} />
                             <input type="hidden" name="jobId" value={job.id} />
                             <input type="hidden" name="productId" value={id} />
-                            <Button type="submit">Requeue</Button>
+                            <Button type="submit">Process</Button>
                           </form>
                         )}
+                        {canWrite &&
+                          (job.status === "dead_letter" ||
+                            job.status === "retrying" ||
+                            job.status === "failed") && (
+                            <form action={requeueExportJobAction}>
+                              <RoleHiddenInput role={actorRole} />
+                              <input type="hidden" name="jobId" value={job.id} />
+                              <input type="hidden" name="productId" value={id} />
+                              <Button type="submit">Requeue</Button>
+                            </form>
+                          )}
                       </div>
                     </td>
                   </tr>
@@ -299,10 +328,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <Card>
         <CardTitle>Compliance Validation</CardTitle>
         <div className="space-y-3">
-          <form action={validateProductAction}>
-            <input type="hidden" name="productId" value={id} />
-            <Button type="submit">Run validation</Button>
-          </form>
+          {canWrite ? (
+            <form action={validateProductAction}>
+              <RoleHiddenInput role={actorRole} />
+              <input type="hidden" name="productId" value={id} />
+              <Button type="submit">Run validation</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Viewer role cannot trigger validation.</p>
+          )}
           {product.validationIssues && product.validationIssues.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
@@ -334,28 +368,33 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
       <Card>
         <CardTitle>Add Variant</CardTitle>
-        <form action={createVariantAction} className="grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="productId" value={id} />
-          <Input name="skuCode" placeholder="SKU code" required />
-          <Input name="inventoryQty" type="number" min={0} defaultValue={0} required />
-          <Input name="mrp" type="number" min={0} step="0.01" placeholder="MRP" />
-          <Input name="sellingPrice" type="number" min={0} step="0.01" placeholder="Selling price" />
-          <Select name="status" defaultValue="draft">
-            <option value="draft">draft</option>
-            <option value="active">active</option>
-            <option value="archived">archived</option>
-          </Select>
-          <div />
-          <Textarea
-            name="attributes"
-            rows={4}
-            className="md:col-span-2"
-            placeholder='JSON attributes, e.g. {"size":"M","color":"Black"}'
-          />
-          <Button type="submit" className="w-fit">
-            Create variant
-          </Button>
-        </form>
+        {canWrite ? (
+          <form action={createVariantAction} className="grid gap-3 md:grid-cols-2">
+            <RoleHiddenInput role={actorRole} />
+            <input type="hidden" name="productId" value={id} />
+            <Input name="skuCode" placeholder="SKU code" required />
+            <Input name="inventoryQty" type="number" min={0} defaultValue={0} required />
+            <Input name="mrp" type="number" min={0} step="0.01" placeholder="MRP" />
+            <Input name="sellingPrice" type="number" min={0} step="0.01" placeholder="Selling price" />
+            <Select name="status" defaultValue="draft">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="archived">archived</option>
+            </Select>
+            <div />
+            <Textarea
+              name="attributes"
+              rows={4}
+              className="md:col-span-2"
+              placeholder='JSON attributes, e.g. {"size":"M","color":"Black"}'
+            />
+            <Button type="submit" className="w-fit">
+              Create variant
+            </Button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">Viewer role cannot create variants.</p>
+        )}
       </Card>
 
       <Card>

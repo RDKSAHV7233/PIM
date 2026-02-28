@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
-import { applyBulkEdit as applyBulkEditRequest, postJson } from "@/lib/api";
+import { applyBulkEdit as applyBulkEditRequest, normalizeAppRole, postJson } from "@/lib/api";
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -82,13 +82,19 @@ function detectSourceFormatFromFileName(fileName: string) {
   return null;
 }
 
+function postJsonForAction<T>(formData: FormData, path: string, body: unknown) {
+  return postJson<T>(path, body, {
+    role: normalizeAppRole(formData.get("actorRole")),
+  });
+}
+
 export async function createCategoryAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const parentId = String(formData.get("parentId") ?? "").trim();
   if (!name) {
     throw new Error("Category name is required.");
   }
-  await postJson("/taxonomy/categories", {
+  await postJsonForAction(formData, "/taxonomy/categories", {
     name,
     parentId: parentId || undefined,
   });
@@ -102,7 +108,7 @@ export async function createProductAction(formData: FormData) {
     throw new Error("Product title and category are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Product attributes");
-  await postJson("/catalog/products", {
+  await postJsonForAction(formData, "/catalog/products", {
     title,
     description: String(formData.get("description") ?? "").trim(),
     brand: String(formData.get("brand") ?? "").trim(),
@@ -140,7 +146,7 @@ export async function createAttributeDefinitionAction(formData: FormData) {
     }
   }
 
-  await postJson(`/taxonomy/categories/${categoryId}/attributes`, {
+  await postJsonForAction(formData, `/taxonomy/categories/${categoryId}/attributes`, {
     name,
     key,
     dataType: String(formData.get("dataType") ?? "text"),
@@ -156,7 +162,7 @@ export async function validateProductAction(formData: FormData) {
   if (!productId) {
     throw new Error("Product id is required.");
   }
-  await postJson(`/compliance/products/${productId}/validate`, {});
+  await postJsonForAction(formData, `/compliance/products/${productId}/validate`, {});
   revalidatePath(`/products/${productId}`);
 }
 
@@ -168,7 +174,7 @@ export async function createVariantAction(formData: FormData) {
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
 
-  await postJson(`/catalog/products/${productId}/variants`, {
+  await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
     skuCode,
     attributes,
     mrp: parseNumber(formData.get("mrp")),
@@ -193,7 +199,7 @@ export async function createMappingTemplateAction(formData: FormData) {
   const isDefault = String(formData.get("isDefault") ?? "false") === "true";
   const productId = String(formData.get("productId") ?? "").trim();
 
-  await postJson(`/marketplace/categories/${categoryId}/templates`, {
+  await postJsonForAction(formData, `/marketplace/categories/${categoryId}/templates`, {
     name,
     channel,
     requiredFields,
@@ -215,7 +221,7 @@ export async function createExportJobAction(formData: FormData) {
   if (!productId || !channel) {
     throw new Error("Product and channel are required for export.");
   }
-  await postJson(`/marketplace/products/${productId}/export-jobs`, {
+  await postJsonForAction(formData, `/marketplace/products/${productId}/export-jobs`, {
     channel,
     templateId: templateId || undefined,
     maxRetries,
@@ -229,7 +235,7 @@ export async function processExportJobAction(formData: FormData) {
   if (!jobId || !productId) {
     throw new Error("Job id and product id are required.");
   }
-  await postJson(`/marketplace/export-jobs/${jobId}/process`, {});
+  await postJsonForAction(formData, `/marketplace/export-jobs/${jobId}/process`, {});
   revalidatePath(`/products/${productId}`);
 }
 
@@ -239,7 +245,7 @@ export async function requeueExportJobAction(formData: FormData) {
   if (!jobId || !productId) {
     throw new Error("Job id and product id are required.");
   }
-  await postJson(`/marketplace/export-jobs/${jobId}/requeue`, {});
+  await postJsonForAction(formData, `/marketplace/export-jobs/${jobId}/requeue`, {});
   revalidatePath(`/products/${productId}`);
 }
 
@@ -311,7 +317,7 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv, json, xlsx, or xls.");
   }
 
-  await postJson("/bulk-import/jobs", {
+  await postJsonForAction(formData, "/bulk-import/jobs", {
     categoryId,
     sourceFormat,
     sourceName: sourceName || undefined,
@@ -350,7 +356,7 @@ export async function createBulkImportTemplateAction(formData: FormData) {
     }
   }
 
-  await postJson("/bulk-import/templates", {
+  await postJsonForAction(formData, "/bulk-import/templates", {
     tenantKey,
     categoryId,
     name,
@@ -368,7 +374,7 @@ export async function processBulkImportJobAction(formData: FormData) {
   if (!jobId) {
     throw new Error("Bulk import job id is required.");
   }
-  await postJson(`/bulk-import/jobs/${jobId}/process`, {
+  await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
     chunkSize,
   });
   revalidatePath("/");
@@ -380,7 +386,7 @@ export async function requeueBulkImportDlqAction(formData: FormData) {
   if (!jobId) {
     throw new Error("Bulk import job id is required.");
   }
-  await postJson(`/bulk-import/jobs/${jobId}/requeue-dlq`, {
+  await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/requeue-dlq`, {
     limit,
   });
   revalidatePath("/");
@@ -392,7 +398,7 @@ export async function processBulkImportRowAction(formData: FormData) {
   if (!jobId || !rowId) {
     throw new Error("Bulk import job id and row id are required.");
   }
-  await postJson(`/bulk-import/jobs/${jobId}/rows/${rowId}/process`, {});
+  await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/rows/${rowId}/process`, {});
   revalidatePath("/");
 }
 
@@ -405,7 +411,7 @@ export async function repairBulkImportRowAction(formData: FormData) {
     throw new Error("Bulk import job id and row id are required.");
   }
   const payload = payloadRaw ? parseJsonObject(payloadRaw, "Repair payload") : {};
-  await postJson(`/bulk-import/jobs/${jobId}/rows/${rowId}/repair`, {
+  await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/rows/${rowId}/repair`, {
     payload,
     requeue,
   });
@@ -433,6 +439,8 @@ export async function applyBulkEditAction(formData: FormData) {
     scope.productIds = productIds;
   }
 
-  await applyBulkEditRequest(scope, updates);
+  await applyBulkEditRequest(scope, updates, {
+    role: normalizeAppRole(formData.get("actorRole")),
+  });
   revalidatePath("/");
 }

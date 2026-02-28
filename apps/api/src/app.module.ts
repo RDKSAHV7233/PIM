@@ -1,10 +1,12 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { APP_GUARD } from "@nestjs/core";
 import { BulkEditModule } from "./bulk-edit/bulk-edit.module";
 import { BulkImportModule } from "./bulk-import/bulk-import.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ComplianceModule } from "./compliance/compliance.module";
 import { AppController } from "./common/app.controller";
+import { RbacGuard } from "./common/rbac/rbac.guard";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
@@ -20,6 +22,12 @@ import { TaxonomyModule } from "./taxonomy/taxonomy.module";
     BulkEditModule,
     CatalogModule,
     MarketplaceModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: RbacGuard,
+    },
   ],
 })
 export class AppModule {}
