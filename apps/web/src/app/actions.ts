@@ -509,6 +509,7 @@ export async function applyBulkEditAction(formData: FormData) {
 export async function uploadMediaAssetAction(formData: FormData) {
   const actorRole = normalizeAppRole(formData.get("actorRole"));
   const productId = String(formData.get("productId") ?? "").trim();
+  const variantId = String(formData.get("variantId") ?? "").trim();
   const fileEntry = formData.get("sourceFile");
   const width = parseNumber(formData.get("width"));
   const height = parseNumber(formData.get("height"));
@@ -522,6 +523,7 @@ export async function uploadMediaAssetAction(formData: FormData) {
 
   await postJsonForAction(formData, "/media/assets", {
     productId: productId || undefined,
+    variantId: variantId || undefined,
     fileName,
     mimeType,
     contentBase64,
@@ -530,7 +532,24 @@ export async function uploadMediaAssetAction(formData: FormData) {
   });
 
   revalidatePath("/media");
-  redirect(`/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}`);
+  redirect(
+    `/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}`,
+  );
+}
+
+export async function bulkAssociateMediaCsvAction(formData: FormData) {
+  const actorRole = normalizeAppRole(formData.get("actorRole"));
+  const csvContent = String(formData.get("csvContent") ?? "").trim();
+  if (!csvContent) {
+    throw new Error("CSV content is required.");
+  }
+
+  await postJsonForAction(formData, "/media/bulk-associations", {
+    csvContent,
+  });
+
+  revalidatePath("/media");
+  redirect(`/media?role=${encodeURIComponent(actorRole)}&bulkAssociationStatus=done`);
 }
 
 export async function createOndcMappingAction(formData: FormData) {

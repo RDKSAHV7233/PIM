@@ -7,6 +7,11 @@ export class CreateMediaAssetDto {
   @MaxLength(64)
   productId?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  variantId?: string;
+
   @IsString()
   @MaxLength(260)
   fileName!: string;

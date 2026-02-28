@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
 
@@ -12,8 +13,8 @@ export class MediaController {
   }
 
   @Get("assets")
-  listAssets(@Query("productId") productId?: string) {
-    return this.mediaService.listAssets(productId);
+  listAssets(@Query("productId") productId?: string, @Query("variantId") variantId?: string) {
+    return this.mediaService.listAssets(productId, variantId);
   }
 
   @Get("assets/:id")
@@ -24,5 +25,10 @@ export class MediaController {
   @Get("assets/:id/validation")
   validateAsset(@Param("id") id: string, @Query("channel") channel = "amazon") {
     return this.mediaService.validateAsset(id, channel);
+  }
+
+  @Post("bulk-associations")
+  bulkAssociate(@Body() dto: BulkMediaAssociationDto) {
+    return this.mediaService.bulkAssociate(dto);
   }
 }

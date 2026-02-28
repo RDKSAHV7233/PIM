@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { uploadMediaAssetAction } from "@/app/actions";
+import { bulkAssociateMediaCsvAction, uploadMediaAssetAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AppRole,
   getMediaAssets,
@@ -23,7 +24,9 @@ interface MediaPageProps {
   searchParams: Promise<{
     role?: string;
     productId?: string;
+    variantId?: string;
     assetId?: string;
+    bulkAssociationStatus?: string;
     channel?: MarketplaceChannel;
   }>;
 }
@@ -33,12 +36,14 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
   const actorRole = normalizeAppRole(query.role);
   const canWrite = actorRole !== "viewer";
   const productId = String(query.productId ?? "").trim();
+  const variantId = String(query.variantId ?? "").trim();
   const channel = (query.channel ?? "amazon") as MarketplaceChannel;
   const assetId = String(query.assetId ?? "").trim();
+  const bulkAssociationStatus = String(query.bulkAssociationStatus ?? "").trim();
 
   const [products, assets] = await Promise.all([
     getProducts({ role: actorRole }),
-    getMediaAssets(productId || undefined, { role: actorRole }),
+    getMediaAssets(productId || undefined, variantId || undefined, { role: actorRole }),
   ]);
   const validation = assetId ? await getMediaAssetValidation(assetId, channel, { role: actorRole }) : null;
 
@@ -68,7 +73,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
 
       <Card>
         <CardTitle>Filter</CardTitle>
-        <form method="get" className="grid gap-3 md:grid-cols-3">
+        <form method="get" className="grid gap-3 md:grid-cols-4">
           <input type="hidden" name="role" value={actorRole} />
           <Select name="productId" defaultValue={productId}>
             <option value="">All products</option>
@@ -78,6 +83,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
               </option>
             ))}
           </Select>
+          <Input name="variantId" defaultValue={variantId} placeholder="Variant id (optional)" />
           <Button type="submit" className="w-fit">
             Apply filter
           </Button>
@@ -97,6 +103,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
                 </option>
               ))}
             </Select>
+            <Input name="variantId" defaultValue={variantId} placeholder="Variant id (optional)" />
             <Input name="sourceFile" type="file" accept="image/*" required />
             <Input name="width" type="number" min={1} placeholder="Width (optional if png)" />
             <Input name="height" type="number" min={1} placeholder="Height (optional if png)" />
@@ -110,13 +117,42 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
       </Card>
 
       <Card>
+        <CardTitle>Bulk Media Association (CSV)</CardTitle>
+        {canWrite ? (
+          <form action={bulkAssociateMediaCsvAction} className="space-y-3">
+            <RoleHiddenInput role={actorRole} />
+            <p className="text-xs text-slate-500">
+              Headers: <code>skuCode,imageUrl,contentBase64,fileName,mimeType,width,height</code>. Use{" "}
+              <code>contentBase64</code> or <code>imageUrl</code>.
+            </p>
+            <Textarea
+              name="csvContent"
+              rows={6}
+              defaultValue={`skuCode,contentBase64,fileName,mimeType,width,height
+SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgQfXl7wAAAAASUVORK5CYII=,demo.png,image/png,1200,1200`}
+              placeholder="Paste CSV rows"
+            />
+            <Button type="submit" className="w-fit">
+              Run bulk association
+            </Button>
+            {bulkAssociationStatus === "done" && (
+              <p className="text-sm text-green-700">Bulk media association request completed.</p>
+            )}
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">Viewer role is read-only.</p>
+        )}
+      </Card>
+
+      <Card>
         <CardTitle>Media Assets</CardTitle>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>
                 <th className="py-2">Asset</th>
                 <th className="py-2">Product</th>
+                <th className="py-2">Variant</th>
                 <th className="py-2">Type</th>
                 <th className="py-2">Dimensions</th>
                 <th className="py-2">Size (KB)</th>
@@ -128,13 +164,14 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
                 <tr key={asset.id} className="border-t border-border">
                   <td className="py-2 font-mono text-xs">{asset.id}</td>
                   <td className="py-2">{asset.productId ?? "-"}</td>
+                  <td className="py-2">{asset.variantId ?? "-"}</td>
                   <td className="py-2">{asset.mimeType}</td>
                   <td className="py-2">{asset.width && asset.height ? `${asset.width}x${asset.height}` : "-"}</td>
                   <td className="py-2">{Math.round(asset.sizeBytes / 1024)}</td>
                   <td className="py-2">
                     <Link
                       className="inline-flex items-center rounded-md border border-border px-3 py-2"
-                      href={`/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
+                      href={`/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
                     >
                       Validate
                     </Link>
@@ -152,6 +189,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           <form method="get" className="flex items-end gap-3">
             <input type="hidden" name="role" value={actorRole} />
             <input type="hidden" name="productId" value={productId} />
+            <input type="hidden" name="variantId" value={variantId} />
             <input type="hidden" name="assetId" value={assetId} />
             <Select name="channel" defaultValue={channel}>
               <option value="amazon">amazon</option>
@@ -177,6 +215,13 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
                 </ul>
               ) : (
                 <p>No validation issues.</p>
+              )}
+              {validation.warnings.length > 0 && (
+                <ul className="list-disc pl-5 text-amber-700">
+                  {validation.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
               )}
             </div>
           )}

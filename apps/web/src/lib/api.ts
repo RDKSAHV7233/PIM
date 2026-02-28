@@ -328,6 +328,8 @@ export interface BulkEditOperation {
 export interface MediaAsset {
   id: string;
   productId: string | null;
+  variantId: string | null;
+  entityType: "product" | "variant";
   fileName: string;
   mimeType: string;
   storagePath: string;
@@ -344,6 +346,7 @@ export interface MediaValidation {
   channel: MarketplaceChannel;
   valid: boolean;
   issues: string[];
+  warnings: string[];
   checks: {
     minWidth: number;
     minHeight: number;
@@ -351,6 +354,20 @@ export interface MediaValidation {
     aspectMax: number;
     fileSizeBytes: number;
   };
+}
+
+export interface BulkMediaAssociationResult {
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  rows: Array<{
+    rowNumber: number;
+    skuCode: string;
+    status: "success" | "failed";
+    assetId?: string;
+    deduplicated?: boolean;
+    error?: string;
+  }>;
 }
 
 export interface RejectionIntelligenceScore {
@@ -643,8 +660,19 @@ export async function getBulkEditOperation(operationId: string, options?: ApiReq
   );
 }
 
-export async function getMediaAssets(productId?: string, options?: ApiRequestOptions) {
-  const query = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+export async function getMediaAssets(
+  productId?: string,
+  variantId?: string,
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (productId) {
+    params.set("productId", productId);
+  }
+  if (variantId) {
+    params.set("variantId", variantId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<MediaAsset[]>(`/media/assets${query}`, undefined, options);
 }
 
@@ -658,6 +686,27 @@ export async function getMediaAssetValidation(
     undefined,
     options,
   );
+}
+
+export async function runBulkMediaAssociation(
+  payload:
+    | {
+        csvContent: string;
+      }
+    | {
+        rows: Array<{
+          skuCode: string;
+          imageUrl?: string;
+          contentBase64?: string;
+          fileName?: string;
+          mimeType?: string;
+          width?: number;
+          height?: number;
+        }>;
+      },
+  options?: ApiRequestOptions,
+) {
+  return postJson<BulkMediaAssociationResult>("/media/bulk-associations", payload, options);
 }
 
 export async function getRejectionIntelligenceScore(

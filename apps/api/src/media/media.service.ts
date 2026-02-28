@@ -3,9 +3,25 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { PrismaService } from "../prisma/prisma.service";
+import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 
 type Channel = "amazon" | "flipkart" | "meesho";
+
+type EntityLink = {
+  productId: string | null;
+  variantId: string | null;
+  entityType: "product" | "variant";
+};
+
+type ResolvedMediaInput = {
+  fileName: string;
+  mimeType: string;
+  contentBuffer: Buffer;
+  width?: number;
+  height?: number;
+  sourceRef?: string | null;
+};
 
 type ChannelRule = {
   minWidth: number;
@@ -19,6 +35,9 @@ const CHANNEL_RULES: Record<Channel, ChannelRule> = {
   flipkart: { minWidth: 800, minHeight: 800, aspectMin: 0.75, aspectMax: 1.5 },
   meesho: { minWidth: 700, minHeight: 700, aspectMin: 0.75, aspectMax: 1.6 },
 };
+
+const MAX_MEDIA_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_BULK_ASSOCIATION_ROWS = 5000;
 
 function parsePngDimensions(buffer: Buffer): { width: number; height: number } | null {
   if (buffer.length < 24) {
@@ -49,6 +68,8 @@ export class MediaService implements OnModuleInit {
       CREATE TABLE IF NOT EXISTS media_assets (
         id TEXT PRIMARY KEY,
         product_id TEXT NULL REFERENCES "Product"(id) ON DELETE SET NULL,
+        variant_id TEXT NULL REFERENCES "Variant"(id) ON DELETE SET NULL,
+        entity_type TEXT NOT NULL DEFAULT 'product',
         file_name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
         storage_path TEXT NOT NULL,
@@ -65,67 +86,152 @@ export class MediaService implements OnModuleInit {
       CREATE INDEX IF NOT EXISTS idx_media_assets_product_created_at
       ON media_assets (product_id, created_at DESC);
     `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE media_assets
+      ADD COLUMN IF NOT EXISTS variant_id TEXT NULL REFERENCES "Variant"(id) ON DELETE SET NULL;
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE media_assets
+      ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'product';
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_media_assets_variant_created_at
+      ON media_assets (variant_id, created_at DESC);
+    `);
   }
 
   async createAsset(dto: CreateMediaAssetDto) {
-    const fileBuffer = Buffer.from(dto.contentBase64, "base64");
-    if (fileBuffer.length === 0) {
-      throw new BadRequestException("Uploaded media content is empty.");
+    const entity = await this.resolveEntityLink(dto.productId, dto.variantId);
+    return this.createAssetFromBuffer({
+      entity,
+      fileName: dto.fileName.trim(),
+      mimeType: dto.mimeType.trim().toLowerCase(),
+      contentBuffer: Buffer.from(dto.contentBase64, "base64"),
+      width: dto.width,
+      height: dto.height,
+      source: "direct_upload",
+      sourceRef: null,
+    });
+  }
+
+  async bulkAssociate(dto: BulkMediaAssociationDto) {
+    const rows = await this.resolveBulkRows(dto);
+    if (rows.length === 0) {
+      throw new BadRequestException("Bulk media association requires at least one row.");
     }
-    if (fileBuffer.length > 10 * 1024 * 1024) {
-      throw new BadRequestException("Media file exceeds 10MB limit.");
+    if (rows.length > MAX_BULK_ASSOCIATION_ROWS) {
+      throw new BadRequestException(`Bulk media association supports up to ${MAX_BULK_ASSOCIATION_ROWS} rows per request.`);
     }
 
-    if (dto.productId) {
-      const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-      if (!product) {
-        throw new NotFoundException("Product not found");
+    const results: Array<{
+      rowNumber: number;
+      skuCode: string;
+      status: "success" | "failed";
+      assetId?: string;
+      deduplicated?: boolean;
+      error?: string;
+    }> = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const rowNumber = index + 1;
+      const row = rows[index];
+      const skuCode = row.skuCode.trim();
+      try {
+        if (!skuCode) {
+          throw new BadRequestException("skuCode is required.");
+        }
+        const variant = await this.prisma.variant.findUnique({
+          where: { skuCode },
+          select: {
+            id: true,
+            productId: true,
+          },
+        });
+        if (!variant) {
+          throw new NotFoundException(`Variant not found for skuCode '${skuCode}'.`);
+        }
+
+        const resolved = await this.resolveBulkRowMediaInput(row);
+        const asset = (await this.createAssetFromBuffer({
+          entity: {
+            productId: variant.productId,
+            variantId: variant.id,
+            entityType: "variant",
+          },
+          fileName: resolved.fileName,
+          mimeType: resolved.mimeType,
+          contentBuffer: resolved.contentBuffer,
+          width: resolved.width,
+          height: resolved.height,
+          source: "bulk_association",
+          sourceRef: resolved.sourceRef ?? row.imageUrl ?? null,
+        })) as { id: string; deduplicated?: boolean };
+
+        results.push({
+          rowNumber,
+          skuCode,
+          status: "success",
+          assetId: asset.id,
+          deduplicated: Boolean(asset.deduplicated),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Bulk association failed for row.";
+        results.push({
+          rowNumber,
+          skuCode,
+          status: "failed",
+          error: message,
+        });
       }
     }
 
-    const detectedDimensions = parsePngDimensions(fileBuffer);
-    const width = dto.width ?? detectedDimensions?.width ?? null;
-    const height = dto.height ?? detectedDimensions?.height ?? null;
-    const checksum = createHash("sha256").update(fileBuffer).digest("hex");
-    const assetId = randomUUID();
-    const safeFileName = dto.fileName.replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const extension = path.extname(safeFileName) || ".bin";
-    const storageDir = path.join(process.cwd(), "storage", "media");
-    await fs.mkdir(storageDir, { recursive: true });
-    const storagePath = path.join(storageDir, `${assetId}${extension}`);
-    await fs.writeFile(storagePath, fileBuffer);
-
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO media_assets (
-        id, product_id, file_name, mime_type, storage_path, width, height, size_bytes, checksum, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-      `,
-      assetId,
-      dto.productId ?? null,
-      dto.fileName.trim(),
-      dto.mimeType.trim().toLowerCase(),
-      storagePath,
-      width,
-      height,
-      fileBuffer.length,
-      checksum,
-      JSON.stringify({
-        extension,
-        extractedFrom: detectedDimensions ? "png_header" : dto.width && dto.height ? "provided" : "none",
-      }),
-    );
-
-    return this.getAsset(assetId);
+    const successRows = results.filter((result) => result.status === "success").length;
+    const failedRows = results.length - successRows;
+    return {
+      totalRows: results.length,
+      successRows,
+      failedRows,
+      rows: results,
+    };
   }
 
-  async listAssets(productId?: string) {
+  async listAssets(productId?: string, variantId?: string) {
+    if (variantId) {
+      return this.prisma.$queryRawUnsafe(
+        `
+        SELECT
+          id,
+          product_id AS "productId",
+          variant_id AS "variantId",
+          entity_type AS "entityType",
+          file_name AS "fileName",
+          mime_type AS "mimeType",
+          storage_path AS "storagePath",
+          width,
+          height,
+          size_bytes AS "sizeBytes",
+          checksum,
+          metadata,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM media_assets
+        WHERE variant_id = $1
+        ORDER BY created_at DESC
+        `,
+        variantId,
+      );
+    }
     if (productId) {
       return this.prisma.$queryRawUnsafe(
         `
         SELECT
           id,
           product_id AS "productId",
+          variant_id AS "variantId",
+          entity_type AS "entityType",
           file_name AS "fileName",
           mime_type AS "mimeType",
           storage_path AS "storagePath",
@@ -147,6 +253,8 @@ export class MediaService implements OnModuleInit {
       SELECT
         id,
         product_id AS "productId",
+        variant_id AS "variantId",
+        entity_type AS "entityType",
         file_name AS "fileName",
         mime_type AS "mimeType",
         storage_path AS "storagePath",
@@ -169,6 +277,8 @@ export class MediaService implements OnModuleInit {
       SELECT
         id,
         product_id AS "productId",
+        variant_id AS "variantId",
+        entity_type AS "entityType",
         file_name AS "fileName",
         mime_type AS "mimeType",
         storage_path AS "storagePath",
@@ -202,6 +312,7 @@ export class MediaService implements OnModuleInit {
     };
     const rule = CHANNEL_RULES[channel];
     const issues: string[] = [];
+    const warnings: string[] = [];
 
     if (!asset.mimeType.startsWith("image/")) {
       issues.push("File is not an image MIME type.");
@@ -217,11 +328,15 @@ export class MediaService implements OnModuleInit {
         issues.push(`Aspect ratio ${aspect.toFixed(2)} outside ${rule.aspectMin}-${rule.aspectMax}.`);
       }
     }
+    if (asset.mimeType === "image/jpeg" && asset.sizeBytes < 150 * 1024) {
+      warnings.push("Image looks heavily compressed (possible WhatsApp share). Consider re-uploading original quality.");
+    }
 
     return {
       channel,
       valid: issues.length === 0,
       issues,
+      warnings,
       checks: {
         minWidth: rule.minWidth,
         minHeight: rule.minHeight,
@@ -230,6 +345,319 @@ export class MediaService implements OnModuleInit {
         fileSizeBytes: asset.sizeBytes,
       },
     };
+  }
+
+  private async createAssetFromBuffer(input: {
+    entity: EntityLink;
+    fileName: string;
+    mimeType: string;
+    contentBuffer: Buffer;
+    width?: number;
+    height?: number;
+    source: "direct_upload" | "bulk_association";
+    sourceRef: string | null;
+  }) {
+    const fileBuffer = input.contentBuffer;
+    if (fileBuffer.length === 0) {
+      throw new BadRequestException("Uploaded media content is empty.");
+    }
+    if (fileBuffer.length > MAX_MEDIA_FILE_BYTES) {
+      throw new BadRequestException("Media file exceeds 10MB limit.");
+    }
+
+    const detectedDimensions = parsePngDimensions(fileBuffer);
+    const width = input.width ?? detectedDimensions?.width ?? null;
+    const height = input.height ?? detectedDimensions?.height ?? null;
+    const checksum = createHash("sha256").update(fileBuffer).digest("hex");
+
+    const existing = (await this.prisma.$queryRawUnsafe(
+      `
+      SELECT id
+      FROM media_assets
+      WHERE checksum = $1
+        AND product_id IS NOT DISTINCT FROM $2
+        AND variant_id IS NOT DISTINCT FROM $3
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      checksum,
+      input.entity.productId,
+      input.entity.variantId,
+    )) as Array<{ id: string }>;
+    if (existing.length > 0) {
+      const asset = (await this.getAsset(existing[0].id)) as Record<string, unknown>;
+      return {
+        ...asset,
+        deduplicated: true,
+      };
+    }
+
+    const assetId = randomUUID();
+    const safeFileName = input.fileName.replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const extension = path.extname(safeFileName) || this.extensionFromMime(input.mimeType) || ".bin";
+    const storageDir = path.join(process.cwd(), "storage", "media");
+    await fs.mkdir(storageDir, { recursive: true });
+    const storagePath = path.join(storageDir, `${assetId}${extension}`);
+    await fs.writeFile(storagePath, fileBuffer);
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO media_assets (
+        id, product_id, variant_id, entity_type, file_name, mime_type, storage_path, width, height, size_bytes, checksum, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+      `,
+      assetId,
+      input.entity.productId,
+      input.entity.variantId,
+      input.entity.entityType,
+      input.fileName.trim(),
+      input.mimeType.trim().toLowerCase(),
+      storagePath,
+      width,
+      height,
+      fileBuffer.length,
+      checksum,
+      JSON.stringify({
+        extension,
+        extractedFrom: detectedDimensions ? "png_header" : input.width && input.height ? "provided" : "none",
+        source: input.source,
+        sourceRef: input.sourceRef,
+      }),
+    );
+
+    return this.getAsset(assetId);
+  }
+
+  private async resolveEntityLink(productId?: string, variantId?: string): Promise<EntityLink> {
+    const normalizedProductId = productId?.trim() || null;
+    const normalizedVariantId = variantId?.trim() || null;
+    if (normalizedVariantId) {
+      const variant = await this.prisma.variant.findUnique({
+        where: { id: normalizedVariantId },
+        select: { id: true, productId: true },
+      });
+      if (!variant) {
+        throw new NotFoundException("Variant not found");
+      }
+      if (normalizedProductId && normalizedProductId !== variant.productId) {
+        throw new BadRequestException("Provided productId does not match variant product.");
+      }
+      return {
+        productId: variant.productId,
+        variantId: variant.id,
+        entityType: "variant",
+      };
+    }
+    if (normalizedProductId) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: normalizedProductId },
+        select: { id: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      return {
+        productId: normalizedProductId,
+        variantId: null,
+        entityType: "product",
+      };
+    }
+    return {
+      productId: null,
+      variantId: null,
+      entityType: "product",
+    };
+  }
+
+  private async resolveBulkRows(dto: BulkMediaAssociationDto): Promise<BulkMediaAssociationRowDto[]> {
+    if (Array.isArray(dto.rows) && dto.rows.length > 0) {
+      return dto.rows;
+    }
+    const csv = dto.csvContent?.trim() ?? "";
+    if (!csv) {
+      return [];
+    }
+
+    const parsed = this.parseCsv(csv);
+    return parsed.map((row) => ({
+      skuCode: this.pickCsvValue(row, ["skuCode", "sku_code", "sku"]).trim(),
+      imageUrl: this.pickCsvValue(row, ["imageUrl", "image_url", "url"]) || undefined,
+      contentBase64: this.pickCsvValue(row, ["contentBase64", "content_base64", "base64"]) || undefined,
+      fileName: this.pickCsvValue(row, ["fileName", "file_name"]) || undefined,
+      mimeType: this.pickCsvValue(row, ["mimeType", "mime_type"]) || undefined,
+      width: this.parseOptionalInt(this.pickCsvValue(row, ["width"])),
+      height: this.parseOptionalInt(this.pickCsvValue(row, ["height"])),
+    }));
+  }
+
+  private async resolveBulkRowMediaInput(row: BulkMediaAssociationRowDto): Promise<ResolvedMediaInput> {
+    if (row.contentBase64 && row.contentBase64.trim().length > 0) {
+      return {
+        fileName: row.fileName?.trim() || `${row.skuCode}.bin`,
+        mimeType: row.mimeType?.trim().toLowerCase() || "application/octet-stream",
+        contentBuffer: Buffer.from(row.contentBase64, "base64"),
+        width: row.width,
+        height: row.height,
+        sourceRef: row.imageUrl?.trim() || null,
+      };
+    }
+
+    const imageUrl = row.imageUrl?.trim() || "";
+    if (!imageUrl) {
+      throw new BadRequestException("Either contentBase64 or imageUrl must be provided.");
+    }
+    if (imageUrl.startsWith("data:")) {
+      return this.parseDataUrl(imageUrl, row);
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const response = await fetch(imageUrl, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new BadRequestException(`Unable to download imageUrl (${response.status}).`);
+      }
+      const contentBuffer = Buffer.from(await response.arrayBuffer());
+      const mimeType =
+        row.mimeType?.trim().toLowerCase() ||
+        response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ||
+        "application/octet-stream";
+      return {
+        fileName: row.fileName?.trim() || this.fileNameFromUrl(imageUrl, row.skuCode),
+        mimeType,
+        contentBuffer,
+        width: row.width,
+        height: row.height,
+        sourceRef: imageUrl,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private parseDataUrl(imageUrl: string, row: BulkMediaAssociationRowDto): ResolvedMediaInput {
+    const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/i);
+    if (!match) {
+      throw new BadRequestException("Unsupported data URL format. Expected base64 data URL.");
+    }
+    const mimeType = row.mimeType?.trim().toLowerCase() || match[1].trim().toLowerCase();
+    const contentBuffer = Buffer.from(match[2], "base64");
+    return {
+      fileName: row.fileName?.trim() || `${row.skuCode}${this.extensionFromMime(mimeType)}`,
+      mimeType,
+      contentBuffer,
+      width: row.width,
+      height: row.height,
+      sourceRef: "data-url",
+    };
+  }
+
+  private parseCsv(csvContent: string): Array<Record<string, string>> {
+    const lines = csvContent
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (lines.length < 2) {
+      return [];
+    }
+
+    const headers = this.splitCsvLine(lines[0]).map((header) => header.trim());
+    const rows: Array<Record<string, string>> = [];
+    for (let i = 1; i < lines.length; i += 1) {
+      const values = this.splitCsvLine(lines[i]);
+      const row: Record<string, string> = {};
+      for (let j = 0; j < headers.length; j += 1) {
+        const key = headers[j];
+        if (!key) {
+          continue;
+        }
+        row[key] = (values[j] ?? "").trim();
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  private splitCsvLine(line: string): string[] {
+    const values: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      const next = line[i + 1];
+      if (char === '"' && inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === "," && !inQuotes) {
+        values.push(current);
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    values.push(current);
+    return values;
+  }
+
+  private pickCsvValue(row: Record<string, string>, keys: string[]): string {
+    const normalized = new Map<string, string>();
+    for (const [key, value] of Object.entries(row)) {
+      normalized.set(key.trim().toLowerCase(), value);
+    }
+    for (const key of keys) {
+      const value = normalized.get(key.toLowerCase());
+      if (value !== undefined) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  private parseOptionalInt(value: string): number | undefined {
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return undefined;
+    }
+    return Math.floor(parsed);
+  }
+
+  private extensionFromMime(mimeType: string): string {
+    switch (mimeType) {
+      case "image/png":
+        return ".png";
+      case "image/jpeg":
+        return ".jpg";
+      case "image/webp":
+        return ".webp";
+      default:
+        return ".bin";
+    }
+  }
+
+  private fileNameFromUrl(imageUrl: string, fallbackKey: string): string {
+    try {
+      const parsed = new URL(imageUrl);
+      const leaf = path.basename(parsed.pathname);
+      if (leaf && leaf !== "/") {
+        return leaf;
+      }
+    } catch {
+      // ignore invalid URL parsing and fallback
+    }
+    return `${fallbackKey}.bin`;
   }
 
   private parseChannel(value: string): Channel {
