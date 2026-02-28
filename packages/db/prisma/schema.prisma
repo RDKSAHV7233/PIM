@@ -343,3 +343,19 @@ model BulkEditOperationItem {
   @@index([operationId, status])
   @@index([productId])
 }
+
+model AuditLog {
+  id        String   @id
+  actorId   String   @map("actor_id")
+  actorRole String   @map("actor_role")
+  action    String
+  resource  String
+  resourceId String? @map("resource_id")
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt], map: "idx_audit_logs_created_at")
+  @@index([actorId, createdAt], map: "idx_audit_logs_actor_created_at")
+  @@index([resource, createdAt], map: "idx_audit_logs_resource_created_at")
+  @@map("audit_logs")
+}
