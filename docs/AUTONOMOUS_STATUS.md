@@ -82,7 +82,7 @@ Status: `NS`
 
 ## Weekly Control Block
 - Week: 2026-02-23 to 2026-03-01
-- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, and execution backlog governance artifacts published.
+- Wins: Phase 0 workspace operational, Phase 1 catalog core delivered, Phase 2 compliance delivered, Phase 3 marketplace intelligence completed, Phase 4 bulk-edit workflows shipped, Phase 4 large-file safeguards/metrics shipped, Phase 4 tenant import template save/load shipped, Phase 4 template versioning/compatibility warnings shipped, and execution backlog governance artifacts published.
 - Risks: MVP gate depends on unresolved `P0` baseline items from execution board (templates, RBAC, audit baseline, concurrency controls, and benchmark evidence).
 - Decisions needed: confirm whether import templates (`P4-US-004`) remain required for MVP gate in `R-MVP-2026-03`.
 - Scope changes: execution board, sprint closeout plan, bug backlog, and backlog hygiene standard added to operating model.

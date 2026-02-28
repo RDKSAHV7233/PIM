@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { ComplianceService } from "../compliance/compliance.service";
@@ -78,6 +79,42 @@ type BulkImportJobMetrics = {
   completedChunks: number;
 };
 
+type CategoryAttributeSnapshot = {
+  key: string;
+  dataType: string;
+  required: boolean;
+  appliesTo: string;
+};
+
+type TemplateSchemaSnapshot = {
+  capturedAt: string;
+  attributes: CategoryAttributeSnapshot[];
+};
+
+type TemplateCompatibility = {
+  compatible: boolean;
+  warnings: string[];
+};
+
+type BulkImportTemplateLike = {
+  id: string;
+  categoryId: string;
+  schemaSnapshot: Prisma.JsonValue | null;
+};
+
+type BulkImportTemplateRow = BulkImportTemplateLike & {
+  tenantKey: string;
+  name: string;
+  version: number;
+  sourceFormat: string;
+  mapping: Prisma.JsonValue;
+  chunkSize: number;
+  maxRetries: number;
+  createdAt: Date;
+  updatedAt: Date;
+  categoryPath: string;
+};
+
 @Injectable()
 export class BulkImportService {
   constructor(
@@ -90,7 +127,7 @@ export class BulkImportService {
   }
 
   async createTemplate(dto: CreateBulkImportTemplateDto) {
-    await this.requireCategory(dto.categoryId);
+    const category = await this.requireCategory(dto.categoryId);
     const tenantKey = this.normalizeTenantKey(dto.tenantKey);
     const sourceFormat = this.parseTemplateSourceFormat(dto.sourceFormat);
     const name = dto.name.trim();
@@ -99,77 +136,110 @@ export class BulkImportService {
     }
 
     const mapping = this.normalizeTemplateMapping(dto.mapping);
-    try {
-      return await this.prisma.bulkImportTemplate.create({
-        data: {
-          tenantKey,
-          categoryId: dto.categoryId,
-          name,
-          sourceFormat,
-          mapping: mapping as unknown as Prisma.JsonObject,
-          chunkSize: dto.chunkSize ?? 100,
-          maxRetries: dto.maxRetries ?? 3,
-        },
-        include: {
-          category: {
-            select: {
-              id: true,
-              path: true,
-            },
-          },
-        },
-      });
-    } catch (error: unknown) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      ) {
-        throw new BadRequestException("Template name already exists for tenant and category.");
-      }
-      throw error;
-    }
+    const snapshot = await this.buildTemplateSchemaSnapshot(dto.categoryId);
+    const now = new Date();
+
+    const [versionRow] = await this.prisma.$queryRaw<Array<{ nextVersion: number }>>(
+      Prisma.sql`
+        SELECT COALESCE(MAX("version"), 0) + 1 AS "nextVersion"
+        FROM "BulkImportTemplate"
+        WHERE "tenantKey" = ${tenantKey}
+          AND "categoryId" = ${dto.categoryId}
+          AND "name" = ${name}
+      `,
+    );
+    const nextVersion = Number(versionRow?.nextVersion ?? 1);
+
+    const templateId = randomUUID();
+    await this.prisma.$executeRaw(
+      Prisma.sql`
+        INSERT INTO "BulkImportTemplate"
+          ("id", "tenantKey", "categoryId", "name", "version", "sourceFormat", "mapping", "schemaSnapshot", "chunkSize", "maxRetries", "createdAt", "updatedAt")
+        VALUES
+          (${templateId}, ${tenantKey}, ${dto.categoryId}, ${name}, ${nextVersion}, ${sourceFormat}, ${mapping as unknown as Prisma.JsonObject}, ${snapshot as unknown as Prisma.JsonObject}, ${dto.chunkSize ?? 100}, ${dto.maxRetries ?? 3}, ${now}, ${now})
+      `,
+    );
+
+    const created: BulkImportTemplateRow = {
+      id: templateId,
+      tenantKey,
+      categoryId: dto.categoryId,
+      name,
+      version: nextVersion,
+      sourceFormat,
+      mapping: mapping as unknown as Prisma.JsonObject,
+      schemaSnapshot: snapshot as unknown as Prisma.JsonObject,
+      chunkSize: dto.chunkSize ?? 100,
+      maxRetries: dto.maxRetries ?? 3,
+      createdAt: now,
+      updatedAt: now,
+      categoryPath: category.path,
+    };
+
+    return this.mapTemplateResponse((await this.attachTemplateCompatibility([created]))[0]);
   }
 
   async listTemplates(tenantKey?: string, categoryId?: string) {
     const normalizedTenant = this.normalizeTenantKey(tenantKey);
-    return this.prisma.bulkImportTemplate.findMany({
-      where: {
-        tenantKey: normalizedTenant,
-        categoryId: categoryId?.trim() || undefined,
-      },
-      include: {
-        category: {
-          select: {
-            id: true,
-            path: true,
-          },
-        },
-      },
-      orderBy: [{ updatedAt: "desc" }],
-      take: 200,
-    });
+    const categoryFilter = categoryId?.trim() || null;
+    const templates = await this.prisma.$queryRaw<BulkImportTemplateRow[]>(
+      Prisma.sql`
+        SELECT
+          t."id",
+          t."tenantKey",
+          t."categoryId",
+          t."name",
+          COALESCE(t."version", 1) AS "version",
+          t."sourceFormat",
+          t."mapping",
+          t."schemaSnapshot",
+          t."chunkSize",
+          t."maxRetries",
+          t."createdAt",
+          t."updatedAt",
+          c."path" AS "categoryPath"
+        FROM "BulkImportTemplate" t
+        INNER JOIN "Category" c ON c."id" = t."categoryId"
+        WHERE t."tenantKey" = ${normalizedTenant}
+          AND (${categoryFilter}::text IS NULL OR t."categoryId" = ${categoryFilter}::text)
+        ORDER BY t."name" ASC, COALESCE(t."version", 1) DESC, t."updatedAt" DESC
+        LIMIT 200
+      `,
+    );
+    const enriched = await this.attachTemplateCompatibility(templates);
+    return enriched.map((template) => this.mapTemplateResponse(template));
   }
 
   async getTemplate(templateId: string, tenantKey?: string) {
     const normalizedTenant = this.normalizeTenantKey(tenantKey);
-    const template = await this.prisma.bulkImportTemplate.findFirst({
-      where: {
-        id: templateId,
-        tenantKey: normalizedTenant,
-      },
-      include: {
-        category: {
-          select: {
-            id: true,
-            path: true,
-          },
-        },
-      },
-    });
-    if (!template) {
+    const templates = await this.prisma.$queryRaw<BulkImportTemplateRow[]>(
+      Prisma.sql`
+        SELECT
+          t."id",
+          t."tenantKey",
+          t."categoryId",
+          t."name",
+          COALESCE(t."version", 1) AS "version",
+          t."sourceFormat",
+          t."mapping",
+          t."schemaSnapshot",
+          t."chunkSize",
+          t."maxRetries",
+          t."createdAt",
+          t."updatedAt",
+          c."path" AS "categoryPath"
+        FROM "BulkImportTemplate" t
+        INNER JOIN "Category" c ON c."id" = t."categoryId"
+        WHERE t."id" = ${templateId}
+          AND t."tenantKey" = ${normalizedTenant}
+        LIMIT 1
+      `,
+    );
+    if (templates.length === 0) {
       throw new NotFoundException("Bulk import template not found");
     }
-    return template;
+    const enriched = (await this.attachTemplateCompatibility(templates))[0];
+    return this.mapTemplateResponse(enriched);
   }
 
   async createJob(dto: CreateBulkImportJobDto) {
@@ -879,6 +949,30 @@ export class BulkImportService {
     return found ?? null;
   }
 
+  private mapTemplateResponse(
+    template: BulkImportTemplateRow & { compatibility: TemplateCompatibility },
+  ) {
+    return {
+      id: template.id,
+      tenantKey: template.tenantKey,
+      categoryId: template.categoryId,
+      name: template.name,
+      version: template.version,
+      sourceFormat: template.sourceFormat,
+      mapping: template.mapping,
+      schemaSnapshot: template.schemaSnapshot,
+      chunkSize: template.chunkSize,
+      maxRetries: template.maxRetries,
+      compatibility: template.compatibility,
+      createdAt: template.createdAt,
+      updatedAt: template.updatedAt,
+      category: {
+        id: template.categoryId,
+        path: template.categoryPath,
+      },
+    };
+  }
+
   private normalizeTenantKey(value?: string) {
     const tenantKey = (value ?? DEFAULT_TENANT_KEY).trim();
     return tenantKey.length > 0 ? tenantKey : DEFAULT_TENANT_KEY;
@@ -1011,6 +1105,160 @@ export class BulkImportService {
         } satisfies BulkImportJobMetrics,
       };
     });
+  }
+
+  private async attachTemplateCompatibility<T extends BulkImportTemplateLike>(
+    templates: T[],
+  ) {
+    if (templates.length === 0) {
+      return templates as Array<T & { compatibility: TemplateCompatibility }>;
+    }
+
+    const categoryIds = [...new Set(templates.map((template) => template.categoryId))];
+    const currentAttributes = await this.prisma.attributeDefinition.findMany({
+      where: {
+        categoryId: {
+          in: categoryIds,
+        },
+      },
+      select: {
+        categoryId: true,
+        key: true,
+        dataType: true,
+        required: true,
+        appliesTo: true,
+      },
+    });
+
+    const attributesByCategory = new Map<string, CategoryAttributeSnapshot[]>();
+    for (const attribute of currentAttributes) {
+      const list = attributesByCategory.get(attribute.categoryId) ?? [];
+      list.push({
+        key: attribute.key,
+        dataType: attribute.dataType,
+        required: attribute.required,
+        appliesTo: attribute.appliesTo,
+      });
+      attributesByCategory.set(attribute.categoryId, list);
+    }
+
+    return templates.map((template) => ({
+      ...template,
+      compatibility: this.evaluateTemplateCompatibility(
+        this.parseTemplateSchemaSnapshot(template.schemaSnapshot),
+        attributesByCategory.get(template.categoryId) ?? [],
+      ),
+    }));
+  }
+
+  private async buildTemplateSchemaSnapshot(categoryId: string): Promise<TemplateSchemaSnapshot> {
+    const attributes = await this.prisma.attributeDefinition.findMany({
+      where: { categoryId },
+      select: {
+        key: true,
+        dataType: true,
+        required: true,
+        appliesTo: true,
+      },
+      orderBy: [{ key: "asc" }],
+    });
+    return {
+      capturedAt: new Date().toISOString(),
+      attributes: attributes.map((attribute) => ({
+        key: attribute.key,
+        dataType: attribute.dataType,
+        required: attribute.required,
+        appliesTo: attribute.appliesTo,
+      })),
+    };
+  }
+
+  private parseTemplateSchemaSnapshot(snapshot: Prisma.JsonValue | null) {
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return null;
+    }
+    const value = snapshot as {
+      capturedAt?: unknown;
+      attributes?: unknown;
+    };
+    if (!Array.isArray(value.attributes)) {
+      return null;
+    }
+
+    const attributes: CategoryAttributeSnapshot[] = [];
+    for (const item of value.attributes) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        continue;
+      }
+      const candidate = item as Record<string, unknown>;
+      const key = String(candidate.key ?? "").trim();
+      const dataType = String(candidate.dataType ?? "").trim();
+      const appliesTo = String(candidate.appliesTo ?? "").trim();
+      if (!key || !dataType || !appliesTo) {
+        continue;
+      }
+      attributes.push({
+        key,
+        dataType,
+        required: Boolean(candidate.required),
+        appliesTo,
+      });
+    }
+
+    return {
+      capturedAt: String(value.capturedAt ?? ""),
+      attributes,
+    } satisfies TemplateSchemaSnapshot;
+  }
+
+  private evaluateTemplateCompatibility(
+    snapshot: TemplateSchemaSnapshot | null,
+    currentAttributes: CategoryAttributeSnapshot[],
+  ): TemplateCompatibility {
+    if (!snapshot) {
+      return {
+        compatible: false,
+        warnings: ["Template has no schema snapshot. Re-save template to capture latest schema."],
+      };
+    }
+
+    const warnings: string[] = [];
+    const snapshotMap = new Map(snapshot.attributes.map((attribute) => [attribute.key, attribute]));
+    const currentMap = new Map(currentAttributes.map((attribute) => [attribute.key, attribute]));
+
+    for (const [key, previous] of snapshotMap.entries()) {
+      const current = currentMap.get(key);
+      if (!current) {
+        warnings.push(`Attribute '${key}' no longer exists in category schema.`);
+        continue;
+      }
+      if (previous.dataType !== current.dataType) {
+        warnings.push(
+          `Attribute '${key}' type changed (${previous.dataType} -> ${current.dataType}).`,
+        );
+      }
+      if (previous.appliesTo !== current.appliesTo) {
+        warnings.push(
+          `Attribute '${key}' scope changed (${previous.appliesTo} -> ${current.appliesTo}).`,
+        );
+      }
+      if (previous.required !== current.required && current.required) {
+        warnings.push(`Attribute '${key}' is now required.`);
+      }
+    }
+
+    for (const current of currentAttributes) {
+      if (current.required && !snapshotMap.has(current.key)) {
+        warnings.push(
+          `New required attribute '${current.key}' was added after template version ${snapshot.capturedAt || "snapshot"}.`,
+        );
+      }
+    }
+
+    return {
+      compatible: warnings.length === 0,
+      warnings,
+    };
   }
 
   private async requireJob(jobId: string) {

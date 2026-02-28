@@ -234,8 +234,22 @@ export interface BulkImportTemplate {
   tenantKey: string;
   categoryId: string;
   name: string;
+  version: number;
   sourceFormat: "csv" | "json" | "xlsx" | "xls";
   mapping: Record<string, string>;
+  schemaSnapshot?: {
+    capturedAt: string;
+    attributes: Array<{
+      key: string;
+      dataType: string;
+      required: boolean;
+      appliesTo: string;
+    }>;
+  } | null;
+  compatibility?: {
+    compatible: boolean;
+    warnings: string[];
+  };
   chunkSize: number;
   maxRetries: number;
   category?: {

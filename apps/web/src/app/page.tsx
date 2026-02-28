@@ -403,7 +403,12 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               </option>
             ))}
           </Select>
-          <Input name="name" placeholder="Template name" required />
+          <Input
+            name="name"
+            defaultValue={selectedBulkTemplate?.name ?? ""}
+            placeholder="Template name"
+            required
+          />
           <Select name="sourceFormat" defaultValue={defaultBulkSourceFormat}>
             <option value="csv">csv</option>
             <option value="json">json</option>
@@ -446,6 +451,8 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                 <th className="py-2">Tenant</th>
                 <th className="py-2">Category</th>
                 <th className="py-2">Format</th>
+                <th className="py-2">Version</th>
+                <th className="py-2">Compatibility</th>
                 <th className="py-2">Chunk</th>
                 <th className="py-2">Retries</th>
                 <th className="py-2">Actions</th>
@@ -458,6 +465,12 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
                   <td className="py-2">{template.tenantKey}</td>
                   <td className="py-2">{template.category?.path ?? template.categoryId}</td>
                   <td className="py-2">{template.sourceFormat}</td>
+                  <td className="py-2">v{template.version}</td>
+                  <td className="py-2 text-xs">
+                    {template.compatibility?.compatible
+                      ? "Compatible"
+                      : `${template.compatibility?.warnings.length ?? 0} warning(s)`}
+                  </td>
                   <td className="py-2">{template.chunkSize}</td>
                   <td className="py-2">{template.maxRetries}</td>
                   <td className="py-2">
@@ -480,9 +493,21 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       <Card>
         <CardTitle>Bulk Import Job (Phase 4)</CardTitle>
         {selectedBulkTemplate && (
-          <p className="mb-3 text-sm text-slate-600">
-            Loaded template: <strong>{selectedBulkTemplate.name}</strong> ({selectedBulkTemplate.tenantKey})
-          </p>
+          <div className="mb-3 space-y-2">
+            <p className="text-sm text-slate-600">
+              Loaded template: <strong>{selectedBulkTemplate.name}</strong> v{selectedBulkTemplate.version} (
+              {selectedBulkTemplate.tenantKey})
+            </p>
+            {selectedBulkTemplate.compatibility &&
+              !selectedBulkTemplate.compatibility.compatible && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-medium">Compatibility warnings:</p>
+                  {selectedBulkTemplate.compatibility.warnings.map((warning, index) => (
+                    <p key={`${selectedBulkTemplate.id}-warning-${index}`}>{warning}</p>
+                  ))}
+                </div>
+              )}
+          </div>
         )}
         <form action={createBulkImportJobAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Select name="categoryId" required defaultValue={defaultBulkCategoryId || ""}>
