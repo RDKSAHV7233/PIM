@@ -95,6 +95,7 @@ try {
   }
 
   $null = Invoke-RestMethod -Uri "$baseApiUrl/catalog/products/$($product.id)" -Method Patch -ContentType "application/json" -Body (@{
+      expectedVersion = if ($null -ne $product.version -and [int]$product.version -ge 1) { [int]$product.version } else { 1 }
       title       = $product.title
       description = $product.description
       brand       = $product.brand

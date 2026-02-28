@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
 
-powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "recover-web-runtime.ps1")
+& (Join-Path $PSScriptRoot "recover-web-runtime.ps1")
 
 $runlogDir = Join-Path $repoRoot ".runlogs"
 if (-not (Test-Path $runlogDir)) {
@@ -58,7 +58,7 @@ try {
   }
 
   $webProc = Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev:web" -WorkingDirectory $repoRoot -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
-  $deadline = (Get-Date).AddSeconds(150)
+  $deadline = (Get-Date).AddSeconds(210)
   $ok = $false
   $sandboxBlocked = $false
   while ((Get-Date) -lt $deadline) {
@@ -74,13 +74,13 @@ try {
       throw "Web dev process exited early. See $webErr"
     }
     try {
-      $response = Invoke-WebRequest -Uri "http://127.0.0.1:3000" -UseBasicParsing -TimeoutSec 3
+      $response = Invoke-WebRequest -Uri "http://127.0.0.1:3000" -UseBasicParsing -TimeoutSec 45
       if ($response.StatusCode -eq 200) {
         $ok = $true
         break
       }
     } catch {
-      Start-Sleep -Milliseconds 700
+      Start-Sleep -Milliseconds 1200
     }
   }
   if (-not $ok) {
@@ -97,5 +97,16 @@ try {
   }
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
+  }
+  $portsToClean = @(3000, 4000)
+  foreach ($port in $portsToClean) {
+    $listenerPids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($listenerPid in $listenerPids) {
+      try {
+        Stop-Process -Id $listenerPid -Force -ErrorAction Stop
+      } catch {
+      }
+    }
   }
 }

@@ -6,12 +6,12 @@ Set-Location $repoRoot
 Write-Output "[1/4] Stop listeners on port 3000..."
 $listeners = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue |
   Select-Object -ExpandProperty OwningProcess -Unique
-foreach ($pid in $listeners) {
+foreach ($listenerPid in $listeners) {
   try {
-    Stop-Process -Id $pid -Force -ErrorAction Stop
-    Write-Output "  - stopped PID $pid"
+    Stop-Process -Id $listenerPid -Force -ErrorAction Stop
+    Write-Output "  - stopped PID $listenerPid"
   } catch {
-    Write-Output "  - PID $pid already stopped"
+    Write-Output "  - PID $listenerPid already stopped"
   }
 }
 
