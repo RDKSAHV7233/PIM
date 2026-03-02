@@ -1060,19 +1060,19 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       {activeTab === "developer" && (
         <Card>
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Internal Tools</p>
-          <CardTitle>Internal phase navigation</CardTitle>
+          <CardTitle>Internal navigation</CardTitle>
           <div className="flex flex-wrap gap-2 text-sm">
             <Link className="rounded-md border border-border px-3 py-2" href={`/media?role=${encodeURIComponent(actorRole)}`}>
-              Phase 5 DAM
+              DAM
             </Link>
             <Link className="rounded-md border border-border px-3 py-2" href={`/rejection?role=${encodeURIComponent(actorRole)}`}>
-              Phase 6 Intelligence
+              Intelligence
             </Link>
             <Link className="rounded-md border border-border px-3 py-2" href={`/ondc?role=${encodeURIComponent(actorRole)}`}>
-              Phase 7 ONDC
+              ONDC
             </Link>
             <Link className="rounded-md border border-border px-3 py-2" href={`/ai?role=${encodeURIComponent(actorRole)}`}>
-              Phase 8 AI
+              AI
             </Link>
           </div>
         </Card>

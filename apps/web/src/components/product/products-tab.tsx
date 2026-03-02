@@ -225,7 +225,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Products</h2>
         {filteredProducts.length === 0 ? (
           <EmptyState
-            icon="??"
+            icon="📦"
             title="Your catalog is empty"
             description="Import your existing catalog from Excel, or create your first product manually."
             action={{ label: "Import from Excel", href: "?tab=import" }}
@@ -236,7 +236,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
           />
         ) : visibleProducts.length === 0 ? (
           <EmptyState
-            icon="??"
+            icon="🔎"
             title="No products match your search"
             description="Try clearing some filters, or check if the SKU code is correct."
             action={{ label: "Clear all filters", onClick: () => setSelectedFilter("all") }}
@@ -258,7 +258,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
                     className="py-2"
                     title="Checks for GST/HSN format and required compliance fields. Does not include channel-specific requirements - see Channel Readiness."
                   >
-                    Compliance Issues <span aria-hidden="true">?</span>
+                    Compliance Issues <span aria-hidden="true">ⓘ</span>
                   </th>
                   <th className="py-2">Channel Readiness</th>
                 </tr>
