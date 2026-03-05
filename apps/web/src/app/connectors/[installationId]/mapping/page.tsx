@@ -106,7 +106,7 @@ export default async function MappingManagerPage({ params, searchParams }: Mappi
     if (!connectorChannel) {
       return (
         <div className="space-y-4">
-          <Link href="/" className="text-sm text-slate-600 underline">Back to dashboard</Link>
+          <Link href="/dashboard" className="text-sm text-slate-600 underline">Back to dashboard</Link>
           <Card>
             <EmptyState
               icon="WARN"
@@ -160,7 +160,7 @@ export default async function MappingManagerPage({ params, searchParams }: Mappi
     return (
       <div className="space-y-5">
         <header className="space-y-1">
-          <Link href="/" className="text-sm text-slate-600 underline">Back to dashboard</Link>
+          <Link href="/dashboard" className="text-sm text-slate-600 underline">Back to dashboard</Link>
           <h1 className="text-2xl font-semibold text-slate-900">Connector Mapping Manager</h1>
           <p className="text-sm text-slate-600">
             {installation.displayName} ({installation.accountAlias}) - installation <span className="font-mono text-xs">{installation.id}</span>

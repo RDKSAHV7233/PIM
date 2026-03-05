@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
   createExportJobAction,
@@ -14,8 +14,11 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { ProductReadinessSummaryBar } from "@/components/channel/product-readiness-summary-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
 import { Select } from "@/components/ui/select";
+import { SideRailCard } from "@/components/ui/side-rail-card";
+import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { ValidationIssuePanel } from "@/components/ui/validation-issue-panel";
 import { ViewerEditTooltip } from "@/components/ui/viewer-edit-tooltip";
@@ -39,11 +42,34 @@ import { formatINR } from "@/lib/format";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
+type DetailTab =
+  | "overview"
+  | "content"
+  | "attributes"
+  | "variants"
+  | "media"
+  | "channels"
+  | "quality"
+  | "activity";
+
+const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
+  { key: "overview", label: "Overview" },
+  { key: "content", label: "Content" },
+  { key: "attributes", label: "Attributes" },
+  { key: "variants", label: "Variants" },
+  { key: "media", label: "Media" },
+  { key: "channels", label: "Channels" },
+  { key: "quality", label: "Quality" },
+  { key: "activity", label: "Activity" },
+];
+
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
     channel?: string;
-    templateId?: string;    updateStatus?: string;
+    templateId?: string;
+    tab?: string;
+    updateStatus?: string;
     currentVersion?: string;
     planLimit?: string;
     planResource?: string;
@@ -55,6 +81,12 @@ interface PageProps {
 
 export const dynamic = "force-dynamic";
 
+function normalizeDetailTab(value: string | undefined): DetailTab {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  const matched = DETAIL_TABS.find((tab) => tab.key === normalized);
+  return matched?.key ?? "overview";
+}
+
 function normalizeChannel(value: string | undefined): MarketplaceChannel {
   if (value === "flipkart" || value === "meesho") {
     return value;
@@ -65,6 +97,23 @@ function normalizeChannel(value: string | undefined): MarketplaceChannel {
 function normalizeTemplateId(value: string | undefined): string | undefined {
   const trimmed = String(value ?? "").trim();
   return trimmed || undefined;
+}
+
+function lifecycleStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  const normalized = status.toLowerCase();
+  if (normalized === "active" || normalized === "ready" || normalized === "accepted") {
+    return "success";
+  }
+  if (normalized === "failed" || normalized === "dead_letter" || normalized === "rejected") {
+    return "danger";
+  }
+  if (normalized === "retrying" || normalized === "queued" || normalized === "in_review") {
+    return "warning";
+  }
+  if (normalized === "draft") {
+    return "info";
+  }
+  return "neutral";
 }
 
 function mapMarketplaceChannelToConnectorSlug(channel: MarketplaceChannel): string {
@@ -103,6 +152,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const canWrite = actorRole !== "viewer";
+  const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
   const updateStatus = String(query.updateStatus ?? "").trim();
@@ -187,6 +237,22 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const productAttributeDefinitions = categoryAttributes.filter((definition) => definition.appliesTo !== "variant");
   const requiredFieldsDefault = JSON.stringify(mapping.requiredFields, null, 2);
   const fieldMapDefault = JSON.stringify(mapping.fieldMap, null, 2);
+  const blockingIssueCount =
+    product.validationIssues?.filter((issue) => issue.severity === "error").length ?? 0;
+  const warningIssueCount =
+    product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0;
+  const recentJobs = exportJobs.slice(0, 5);
+  const tabHref = (tab: DetailTab): string => {
+    const params = new URLSearchParams();
+    params.set("tab", tab);
+    if (selectedChannel) {
+      params.set("channel", selectedChannel);
+    }
+    if (selectedTemplateId) {
+      params.set("templateId", selectedTemplateId);
+    }
+    return `/products/${encodeURIComponent(id)}?${params.toString()}`;
+  };
 
   return (
     <div className="space-y-5">
@@ -198,20 +264,75 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         upgradeUrl={planUpgrade}
         dismissHref={dismissPlanLimitHref}
       />
-      <Link href={`/`} className="text-sm">
-        Back to dashboard
-      </Link>
+      <PageHeader
+        className="sticky top-[4.5rem] z-20"
+        title={product.title}
+        description={`SKU ${product.id.slice(0, 8)} | ${product.category?.path ?? product.categoryId}`}
+        breadcrumb={
+          <>
+            <Link href="/dashboard" className="hover:underline">
+              Dashboard
+            </Link>{" "}
+            /{" "}
+            <Link href="/catalog/products" className="hover:underline">
+              Catalog
+            </Link>{" "}
+            / <span className="font-semibold text-slate-700">Product Detail</span>
+          </>
+        }
+        actions={
+          <>
+            <StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} />
+            <StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />
+            {canWrite ? (
+              <button
+                type="submit"
+                form="product-edit-form"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Save
+              </button>
+            ) : null}
+            {canWrite ? (
+              <button
+                type="submit"
+                form="product-validate-form"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Validate
+              </button>
+            ) : null}
+            {canWrite ? (
+              <Link
+                href={tabHref("channels")}
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Submit
+              </Link>
+            ) : null}
+          </>
+        }
+      />
 
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{product.title}</h1>
-        <p className="text-sm text-slate-600">
-          Brand: {product.brand || "-"} | Status: {product.status} | Category: {product.category?.path ?? product.categoryId}
-        </p>
-        <p className="text-sm text-slate-600">
-          HSN: {product.hsnCode || "-"} | GST: {product.gstRate ?? "-"} | Open Issues: {product.validationIssues?.length ?? 0}
-        </p>
-        <p className="text-xs text-slate-500">Current role: {actorRole}</p>
-      </header>
+      <nav className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <ul className="flex min-w-max gap-2">
+          {DETAIL_TABS.map((tab) => (
+            <li key={tab.key}>
+              <Link
+                href={tabHref(tab.key)}
+                className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${
+                  activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_290px]">
+        <div className="space-y-5">
 
       {updateStatus === "updated" && (
         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -230,12 +351,37 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </div>
       )}
 
-      <ProductReadinessSummaryBar productId={id} role={actorRole} />
+      {activeTab === "overview" ? (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardTitle>Completeness</CardTitle>
+            <p className="text-2xl font-semibold text-slate-900">{product.completenessScore ?? 0}%</p>
+          </Card>
+          <Card>
+            <CardTitle>Quality</CardTitle>
+            <p className="text-sm text-slate-700">
+              {blockingIssueCount} blocking | {warningIssueCount} warnings
+            </p>
+          </Card>
+          <Card>
+            <CardTitle>Variants</CardTitle>
+            <p className="text-2xl font-semibold text-slate-900">{variants.length}</p>
+          </Card>
+          <Card>
+            <CardTitle>Submission Jobs</CardTitle>
+            <p className="text-2xl font-semibold text-slate-900">{exportJobs.length}</p>
+          </Card>
+        </section>
+      ) : null}
 
-      <Card>
+      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? (
+        <ProductReadinessSummaryBar productId={id} role={actorRole} />
+      ) : null}
+
+      <Card hidden={!(activeTab === "content" || activeTab === "attributes")}>
         <CardTitle>Edit Product (Versioned)</CardTitle>
         {canWrite ? (
-          <form action={updateProductAction} className="grid gap-3 md:grid-cols-2">
+          <form id="product-edit-form" action={updateProductAction} className="grid gap-3 md:grid-cols-2">
             <RoleHiddenInput role={actorRole} />
             <input type="hidden" name="productId" value={id} />
             <input type="hidden" name="categoryId" value={product.categoryId} />
@@ -408,8 +554,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         )}
       </Card>
 
-      <section id="channel-simulator-section">
-      <Card>
+      <section id="channel-simulator-section" hidden={activeTab !== "channels"}>
+      <Card hidden={activeTab !== "channels"}>
         <CardTitle>Marketplace Rejection Simulator</CardTitle>
         <div className="space-y-3">
           <form method="get" className="flex max-w-xl items-end gap-3">
@@ -493,7 +639,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       </Card>
       </section>
 
-      <Card>
+      <Card hidden={!(activeTab === "channels" || activeTab === "activity")}>
         <CardTitle>Channel Mapping Templates</CardTitle>
         <div className="space-y-3">
           {mappingManagerInstallation ? (
@@ -560,34 +706,47 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <p className="text-sm text-slate-600">Viewer role cannot save mapping templates.</p>
           )}
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="py-2">Template</th>
-                  <th className="py-2">Channel</th>
-                  <th className="py-2">Default</th>
-                  <th className="py-2">Required Fields</th>
-                  <th className="py-2">Updated</th>
+                  <th className="px-3 py-2">Template</th>
+                  <th className="px-3 py-2">Channel</th>
+                  <th className="px-3 py-2">Default</th>
+                  <th className="px-3 py-2">Required Fields</th>
+                  <th className="px-3 py-2">Updated</th>
                 </tr>
               </thead>
               <tbody>
-                {templates.map((template) => (
-                  <tr key={template.id} className="border-t border-border">
-                    <td className="py-2">{template.name}</td>
-                    <td className="py-2 capitalize">{template.channel}</td>
-                    <td className="py-2">{template.isDefault ? "Yes" : "No"}</td>
-                    <td className="py-2">{template.requiredFields.length}</td>
-                    <td className="py-2">{new Date(template.updatedAt).toLocaleString()}</td>
+                {templates.length > 0 ? (
+                  templates.map((template) => (
+                    <tr key={template.id} className="border-t border-slate-200 hover:bg-slate-50/50">
+                      <td className="px-3 py-2.5">{template.name}</td>
+                      <td className="px-3 py-2.5 capitalize">{template.channel}</td>
+                      <td className="px-3 py-2.5">
+                        <StatusChip
+                          label={template.isDefault ? "Default" : "Custom"}
+                          tone={template.isDefault ? "success" : "neutral"}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">{template.requiredFields.length}</td>
+                      <td className="px-3 py-2.5 text-slate-600">{new Date(template.updatedAt).toLocaleString()}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-t border-slate-200">
+                    <td className="px-3 py-6 text-sm text-slate-500" colSpan={5}>
+                      No mapping templates found for this category and channel.
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </Card>
 
-      <Card>
+      <Card hidden={!(activeTab === "channels" || activeTab === "activity")}>
         <CardTitle>Pre-Export Jobs</CardTitle>
         <div className="space-y-3">
           {canWrite && publishableChannels.length > 0 ? (
@@ -636,66 +795,80 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <p className="text-sm text-slate-600">Viewer role cannot queue or process export jobs.</p>
           )}
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="py-2">Job</th>
-                  <th className="py-2">Channel</th>
-                  <th className="py-2">Template</th>
-                  <th className="py-2">Status</th>
-                  <th className="py-2">Retry</th>
-                  <th className="py-2">Failure</th>
-                  <th className="py-2">Actions</th>
+                  <th className="px-3 py-2">Job</th>
+                  <th className="px-3 py-2">Channel</th>
+                  <th className="px-3 py-2">Template</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Retry</th>
+                  <th className="px-3 py-2">Failure</th>
+                  <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {exportJobs.map((job) => (
-                  <tr key={job.id} className="border-t border-border">
-                    <td className="py-2 font-mono text-xs">{job.id}</td>
-                    <td className="py-2 capitalize">{job.channel}</td>
-                    <td className="py-2">{job.template?.name ?? "-"}</td>
-                    <td className="py-2">{translateExportStatus(job.status)}</td>
-                    <td className="py-2">
-                      {job.retryCount}/{job.maxRetries}
-                    </td>
-                    <td className="py-2">{job.failureReason ?? "-"}</td>
-                    <td className="py-2">
-                      <div className="flex gap-2">
-                        {canWrite && (
-                          <form action={processExportJobAction}>
-                            <RoleHiddenInput role={actorRole} />
-                            <input type="hidden" name="jobId" value={job.id} />
-                            <input type="hidden" name="productId" value={id} />
-                            <Button type="submit">Process</Button>
-                          </form>
-                        )}
-                        {canWrite &&
-                          (job.status === "dead_letter" ||
-                            job.status === "retrying" ||
-                            job.status === "failed") && (
-                            <form action={requeueExportJobAction}>
+                {exportJobs.length > 0 ? (
+                  exportJobs.map((job) => (
+                    <tr key={job.id} className="border-t border-slate-200 hover:bg-slate-50/50">
+                      <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{job.id}</td>
+                      <td className="px-3 py-2.5 capitalize">{job.channel}</td>
+                      <td className="px-3 py-2.5">{job.template?.name ?? "-"}</td>
+                      <td className="px-3 py-2.5">
+                        <StatusChip label={translateExportStatus(job.status)} tone={lifecycleStatusTone(job.status)} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {job.retryCount}/{job.maxRetries}
+                      </td>
+                      <td className="max-w-[260px] px-3 py-2.5 text-slate-600">{job.failureReason ?? "-"}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap gap-2">
+                          {canWrite && (
+                            <form action={processExportJobAction}>
                               <RoleHiddenInput role={actorRole} />
                               <input type="hidden" name="jobId" value={job.id} />
                               <input type="hidden" name="productId" value={id} />
-                              <Button type="submit">Requeue</Button>
+                              <Button type="submit" className="px-2.5 py-1.5 text-xs">
+                                Process
+                              </Button>
                             </form>
                           )}
-                      </div>
+                          {canWrite &&
+                            (job.status === "dead_letter" ||
+                              job.status === "retrying" ||
+                              job.status === "failed") && (
+                              <form action={requeueExportJobAction}>
+                                <RoleHiddenInput role={actorRole} />
+                                <input type="hidden" name="jobId" value={job.id} />
+                                <input type="hidden" name="productId" value={id} />
+                                <Button type="submit" variant="secondary" className="px-2.5 py-1.5 text-xs">
+                                  Requeue
+                                </Button>
+                              </form>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-t border-slate-200">
+                    <td className="px-3 py-6 text-sm text-slate-500" colSpan={7}>
+                      No submission jobs created yet. Queue an export job to start channel processing.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </Card>
 
-      <Card>
+      <Card hidden={activeTab !== "quality"}>
         <CardTitle>Compliance Validation</CardTitle>
         <div className="space-y-3">
           {canWrite ? (
-            <form action={validateProductAction}>
+            <form id="product-validate-form" action={validateProductAction}>
               <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="productId" value={id} />
               <Button type="submit">Run validation</Button>
@@ -707,7 +880,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <ValidationIssuePanel issues={product.validationIssues} />
           ) : (
             <EmptyState
-              icon="✅"
+              icon="CHECK"
               title="No issues found"
               description="This product passes all compliance and channel checks."
             />
@@ -715,7 +888,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </div>
       </Card>
 
-      <Card>
+      <Card hidden={activeTab !== "variants"}>
         <CardTitle>Add Variant</CardTitle>
         {canWrite ? (
           <form action={createVariantAction} className="grid gap-3 md:grid-cols-2">
@@ -772,39 +945,113 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         )}
       </Card>
 
-      <Card>
+      <Card hidden={activeTab !== "variants"}>
         <CardTitle>Variants</CardTitle>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <th className="py-2">SKU</th>
-                <th className="py-2">Attributes</th>
-                <th className="py-2">MRP</th>
-                <th className="py-2">Selling Price</th>
-                <th className="py-2">Inventory</th>
-                <th className="py-2">Status</th>
+                <th className="px-3 py-2">SKU</th>
+                <th className="px-3 py-2">Attributes</th>
+                <th className="px-3 py-2">MRP</th>
+                <th className="px-3 py-2">Selling Price</th>
+                <th className="px-3 py-2">Inventory</th>
+                <th className="px-3 py-2">Status</th>
               </tr>
             </thead>
             <tbody>
-              {variants.map((variant) => (
-                <tr key={variant.id} className="border-t border-border">
-                  <td className="py-2">{variant.skuCode}</td>
-                  <td className="py-2">
-                    <pre className="max-w-[360px] overflow-auto whitespace-pre-wrap text-xs">
-                      {JSON.stringify(variant.attributes, null, 2)}
-                    </pre>
+              {variants.length > 0 ? (
+                variants.map((variant) => (
+                  <tr key={variant.id} className="border-t border-slate-200 hover:bg-slate-50/50">
+                    <td className="px-3 py-2.5">{variant.skuCode}</td>
+                    <td className="px-3 py-2.5">
+                      <pre className="max-w-[360px] overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                        {JSON.stringify(variant.attributes, null, 2)}
+                      </pre>
+                    </td>
+                    <td className="px-3 py-2.5">{formatINR(variant.mrp)}</td>
+                    <td className="px-3 py-2.5">{formatINR(variant.sellingPrice)}</td>
+                    <td className="px-3 py-2.5">{variant.inventoryQty}</td>
+                    <td className="px-3 py-2.5">
+                      <StatusChip label={variant.status} tone={lifecycleStatusTone(variant.status)} />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-t border-slate-200">
+                  <td className="px-3 py-6 text-sm text-slate-500" colSpan={6}>
+                    No variants yet. Add the first variant to enable inventory and price differentiation.
                   </td>
-                  <td className="py-2">{formatINR(variant.mrp)}</td>
-                  <td className="py-2">{formatINR(variant.sellingPrice)}</td>
-                  <td className="py-2">{variant.inventoryQty}</td>
-                  <td className="py-2">{variant.status}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </Card>
+
+      <Card hidden={activeTab !== "media"}>
+        <CardTitle>Media</CardTitle>
+        <p className="text-sm text-slate-600">
+          Use the Media library for uploads, validation checks, and asset linkage.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={`/catalog/media?productId=${encodeURIComponent(id)}`}
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open Media Library
+          </Link>
+          <Link
+            href="/channels/health"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Channel Media Health
+          </Link>
+        </div>
+      </Card>
+
+      <Card hidden={activeTab !== "activity"}>
+        <CardTitle>Activity</CardTitle>
+        {recentJobs.length === 0 ? (
+          <p className="text-sm text-slate-600">No submission activity yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {recentJobs.map((job) => (
+              <li key={job.id} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+                <p className="font-mono text-xs text-slate-700">{job.id}</p>
+                <p className="text-slate-600">
+                  {job.channel} | {translateExportStatus(job.status)} | {new Date(job.updatedAt).toLocaleString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+        </div>
+
+        <aside className="space-y-3 xl:sticky xl:top-24 xl:h-fit">
+          <SideRailCard title="Completeness">
+            <p className="text-2xl font-semibold text-slate-900">{product.completenessScore ?? 0}%</p>
+            <p className="text-xs text-slate-500">Status: {product.status}</p>
+          </SideRailCard>
+          <SideRailCard title="Blocking Issues">
+            <p>{blockingIssueCount} blocking</p>
+            <p>{warningIssueCount} warnings</p>
+            <Link href={tabHref("quality")} className="text-sm font-medium text-blue-700 hover:underline">
+              Open quality tab
+            </Link>
+          </SideRailCard>
+          <SideRailCard title="Channel Readiness">
+            <StatusChip label={simulation.exportReady ? "Ready" : "Blocked"} tone={simulation.exportReady ? "success" : "danger"} />
+            <p className="text-xs text-slate-500">{simulation.missingFields.length} required fields missing</p>
+          </SideRailCard>
+          <SideRailCard title="Workflow">
+            <p className="text-xs text-slate-600">Role: {actorRole}</p>
+            <p className="text-xs text-slate-600">Version: {product.version}</p>
+          </SideRailCard>
+        </aside>
+      </div>
     </div>
   );
 }
+

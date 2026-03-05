@@ -53,7 +53,7 @@ export class PlanGuard implements CanActivate {
           resource: check.resource,
           limit: check.limit,
           current: check.current,
-          upgrade_url: "/settings/plan",
+          upgrade_url: "/admin/plan",
         },
         HttpStatus.PAYMENT_REQUIRED,
       );

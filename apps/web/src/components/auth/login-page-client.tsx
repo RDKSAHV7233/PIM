@@ -124,7 +124,10 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6">
+    <div
+      className="mx-auto max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6"
+      suppressHydrationWarning
+    >
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.loginTitle}</h1>
         <p className="text-sm text-slate-600">{authCopy.loginSubtitle}</p>
@@ -146,7 +149,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
           )}
         </div>
       ) : (
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
           <div className="space-y-1">
             <label htmlFor="user-id" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
               {authCopy.emailLabel}
@@ -158,6 +161,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
               onChange={(event) => setUserId(event.target.value)}
               autoComplete="username"
               required
+              suppressHydrationWarning
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -172,6 +176,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
+              suppressHydrationWarning
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
@@ -179,6 +184,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
           <button
             type="submit"
             disabled={submitting}
+            suppressHydrationWarning
             className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
             {submitting ? authCopy.signingIn : authCopy.signIn}

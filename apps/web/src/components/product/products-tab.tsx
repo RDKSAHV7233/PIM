@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
 import { CreateProductForm } from "@/components/product/CreateProductForm";
 import { EmptyState } from "@/components/ui/empty-state";
+import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, Product } from "@/lib/api";
 import type { ReadinessStatus } from "@/lib/channel-readiness";
 import { filterTestData } from "@/lib/test-data-filter";
 
-type ProductFilter = "all" | "errors";
+type ProductFilter = "all" | "needs_attention" | "ready";
 type TriageBucket = "needs_attention" | "at_risk" | "ready";
 
 interface ProductWithCompliance extends Product {
@@ -29,6 +30,7 @@ interface ProductsTabProps {
   installedConnectorCount: number;
   mappingManagerHref: string | null;
   connectorManagementHref: string;
+  initialView?: ProductFilter;
 }
 
 function classifyProduct(product: ProductWithCompliance, channelStatus: ReadinessStatus): TriageBucket {
@@ -76,6 +78,40 @@ function sortProducts(
   return left.title.localeCompare(right.title);
 }
 
+function productStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "active") {
+    return "success";
+  }
+  if (normalized === "draft") {
+    return "warning";
+  }
+  if (normalized === "archived") {
+    return "neutral";
+  }
+  return "info";
+}
+
+function complianceLabel(product: ProductWithCompliance): string {
+  if (product.complianceErrorCount > 0) {
+    return `${product.complianceErrorCount} error(s)`;
+  }
+  if (product.complianceWarningCount > 0) {
+    return `${product.complianceWarningCount} warning(s)`;
+  }
+  return "No issues";
+}
+
+function complianceTone(product: ProductWithCompliance): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (product.complianceErrorCount > 0) {
+    return "danger";
+  }
+  if (product.complianceWarningCount > 0) {
+    return "warning";
+  }
+  return "success";
+}
+
 export function ProductsTab({
   role,
   products,
@@ -85,15 +121,20 @@ export function ProductsTab({
   installedConnectorCount,
   mappingManagerHref,
   connectorManagementHref,
+  initialView = "all",
 }: ProductsTabProps) {
   const canWrite = role !== "viewer";
   const { skuUsagePercent } = usePlanUsage(role);
-  const [selectedFilter, setSelectedFilter] = useState<ProductFilter>("all");
+  const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessMap, setReadinessMap] = useState<Record<string, ReadinessStatus>>({});
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    setSelectedFilter(initialView);
+  }, [initialView]);
 
   const filteredCategories = useMemo(() => filterTestData(categories, hideTestData), [categories, hideTestData]);
 
@@ -140,11 +181,16 @@ export function ProductsTab({
   }, [filteredProducts, readinessMap]);
 
   const visibleProducts = useMemo(() => {
-    if (selectedFilter !== "errors") {
+    if (selectedFilter === "all") {
       return sortedProducts;
     }
+    if (selectedFilter === "needs_attention") {
+      return sortedProducts.filter(
+        (product) => classifyProduct(product, readinessMap[product.id] ?? "loading") === "needs_attention",
+      );
+    }
     return sortedProducts.filter(
-      (product) => classifyProduct(product, readinessMap[product.id] ?? "loading") === "needs_attention",
+      (product) => classifyProduct(product, readinessMap[product.id] ?? "loading") === "ready",
     );
   }, [readinessMap, selectedFilter, sortedProducts]);
 
@@ -173,9 +219,65 @@ export function ProductsTab({
     router.push(query ? `${pathname}?${query}` : pathname);
   }
 
+  function setSavedView(view: ProductFilter) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "all") {
+      params.delete("view");
+    } else {
+      params.set("view", view);
+    }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  const emptyCatalogDescription =
+    role === "viewer"
+      ? "No products are available yet. Ask an editor or admin to import or create catalog data."
+      : "Import your existing catalog from Excel, or create your first product manually.";
+
   return (
     <div className="space-y-4">
       <section className="sticky top-16 z-20 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">
+            Dashboard / Catalog / <span className="font-semibold text-slate-700">Products</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSavedView("all")}
+              className={`rounded-full px-2 py-1 text-xs ${
+                selectedFilter === "all"
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setSavedView("needs_attention")}
+              className={`rounded-full px-2 py-1 text-xs ${
+                selectedFilter === "needs_attention"
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              Needs Attention
+            </button>
+            <button
+              type="button"
+              onClick={() => setSavedView("ready")}
+              className={`rounded-full px-2 py-1 text-xs ${
+                selectedFilter === "ready"
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              Ready
+            </button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-slate-700">
             {statusesLoaded ? (
@@ -252,11 +354,11 @@ export function ProductsTab({
           <span className="text-sm font-semibold text-red-700">
             {triageCounts.needsAttention} products need fixing before they can be published
           </span>
-          {selectedFilter === "errors" ? (
+          {selectedFilter === "needs_attention" ? (
             <button
               type="button"
               className="text-sm font-medium text-red-700 underline"
-              onClick={() => setSelectedFilter("all")}
+              onClick={() => setSavedView("all")}
             >
               Show all products
             </button>
@@ -264,7 +366,7 @@ export function ProductsTab({
             <button
               type="button"
               className="text-sm font-medium text-red-700 underline"
-              onClick={() => setSelectedFilter("errors")}
+              onClick={() => setSavedView("needs_attention")}
             >
               Show only these
             </button>
@@ -280,7 +382,7 @@ export function ProductsTab({
             </Button>
             {skuUsagePercent !== null && skuUsagePercent >= 80 && (
               <a
-                href="/settings/plan"
+                href="/admin/plan"
                 className={`rounded-full px-2 py-1 text-xs font-semibold ${
                   skuUsagePercent >= 100
                     ? "border border-red-200 bg-red-50 text-red-700"
@@ -310,8 +412,8 @@ export function ProductsTab({
           <EmptyState
             icon="BOX"
             title="Your catalog is empty"
-            description="Import your existing catalog from Excel, or create your first product manually."
-            action={{ label: "Import from Excel", href: "?tab=import" }}
+            description={emptyCatalogDescription}
+            action={{ label: "Import from Excel", href: "/operations/imports" }}
             secondaryAction={{
               label: "Create product manually",
               onClick: () => setShowCreateProduct(true),
@@ -325,48 +427,46 @@ export function ProductsTab({
             action={{ label: "Clear all filters", onClick: () => setSelectedFilter("all") }}
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[940px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="py-2">Title</th>
-                  <th className="py-2">Brand</th>
-                  <th className="py-2">HSN</th>
-                  <th className="py-2">GST %</th>
-                  <th className="py-2">Category</th>
-                  <th className="py-2">Status</th>
-                  <th className="py-2">Complete %</th>
-                  <th className="py-2">Variants</th>
+                  <th className="px-3 py-2">Title</th>
+                  <th className="px-3 py-2">Brand</th>
+                  <th className="px-3 py-2">HSN</th>
+                  <th className="px-3 py-2">GST %</th>
+                  <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Complete %</th>
+                  <th className="px-3 py-2">Variants</th>
                   <th
-                    className="py-2"
+                    className="px-3 py-2"
                     title="Checks for GST/HSN format and required compliance fields. Does not include channel-specific requirements - see Channel Readiness."
                   >
                     Compliance Issues <span aria-hidden="true">ⓘ</span>
                   </th>
-                  <th className="py-2">Channel Readiness</th>
+                  <th className="px-3 py-2">Channel Readiness</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleProducts.map((product) => (
-                  <tr key={product.id} className="border-t border-border">
-                    <td className="py-2">
+                  <tr key={product.id} className="border-t border-border hover:bg-slate-50/50">
+                    <td className="px-3 py-2.5">
                       <Link href={`/products/${product.id}`}>{product.title}</Link>
                     </td>
-                    <td className="py-2">{product.brand || "-"}</td>
-                    <td className="py-2">{product.hsnCode || "-"}</td>
-                    <td className="py-2">{product.gstRate ?? "-"}</td>
-                    <td className="py-2">{product.category?.path ?? product.categoryId}</td>
-                    <td className="py-2">{product.status}</td>
-                    <td className="py-2">{product.completenessScore ?? 0}%</td>
-                    <td className="py-2">{product.variants?.length ?? 0}</td>
-                    <td className="py-2">
-                      {product.complianceErrorCount > 0
-                        ? `${product.complianceErrorCount} error(s)`
-                        : product.complianceWarningCount > 0
-                          ? `${product.complianceWarningCount} warning(s)`
-                          : "No issues"}
+                    <td className="px-3 py-2.5">{product.brand || "-"}</td>
+                    <td className="px-3 py-2.5">{product.hsnCode || "-"}</td>
+                    <td className="px-3 py-2.5">{product.gstRate ?? "-"}</td>
+                    <td className="px-3 py-2.5">{product.category?.path ?? product.categoryId}</td>
+                    <td className="px-3 py-2.5">
+                      <StatusChip label={product.status} tone={productStatusTone(product.status)} />
                     </td>
-                    <td className="py-2">
+                    <td className="px-3 py-2.5">{product.completenessScore ?? 0}%</td>
+                    <td className="px-3 py-2.5">{product.variants?.length ?? 0}</td>
+                    <td className="px-3 py-2.5">
+                      <StatusChip label={complianceLabel(product)} tone={complianceTone(product)} />
+                    </td>
+                    <td className="px-3 py-2.5">
                       <ProductChannelReadinessCell
                         productId={product.id}
                         role={role}

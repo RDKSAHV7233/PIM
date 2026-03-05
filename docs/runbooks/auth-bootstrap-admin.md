@@ -16,4 +16,4 @@ npm run auth:bootstrap-admin -- --userId admin --tenantKey default --role admin 
 ## Verify
 1. Login with `userId=admin` and configured password.
 2. Decode JWT and verify `role=admin`, `tenantId=default`.
-3. Open `/settings/connectors` and verify admin actions are visible.
+3. Open `/admin/connectors` and verify admin actions are visible.

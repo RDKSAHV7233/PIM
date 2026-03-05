@@ -1,7 +1,7 @@
-import { DataPrivacyPageClient } from "@/components/settings/data-privacy-page-client";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default function DataPrivacyPage() {
-  return <DataPrivacyPageClient />;
+export default function LegacyPrivacySettingsPage() {
+  redirect("/admin/privacy");
 }

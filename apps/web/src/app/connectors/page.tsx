@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   type MarketplaceChannel,
@@ -21,6 +22,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +92,20 @@ function formatActionBlockedReason(reason: string | null | undefined): string {
   return `Action blocked: ${reason}`;
 }
 
+function installationStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (normalized === "ACTIVE") {
+    return "success";
+  }
+  if (normalized === "DISABLED" || normalized === "INACTIVE") {
+    return "warning";
+  }
+  if (normalized === "ERROR" || normalized === "FAILED") {
+    return "danger";
+  }
+  return "neutral";
+}
+
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -108,21 +124,20 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
     return (
       <div className="space-y-5">
-        <header className="space-y-1">
-          <Link href="/" className="text-sm text-slate-600 underline">
-            Back to dashboard
-          </Link>
-          <h1 className="text-2xl font-semibold text-slate-900">Connector Management</h1>
-          <p className="text-sm text-slate-600">
-            Install, reconnect, and review connector configuration details for this tenant.
-          </p>
-          <p className="text-xs text-slate-500">
-            Actions are enforced by server role, connector permissions, and current plan entitlements.
-          </p>
-          <Link href="/settings/connectors" className="text-xs text-slate-600 underline">
-            Manage connector permissions
-          </Link>
-        </header>
+        <PageHeader
+          title="Channel Connectors"
+          description="Install, reconnect, and govern channel accounts for this tenant."
+          breadcrumb={
+            <>
+              Dashboard / Channels / <span className="font-semibold text-slate-700">Connectors</span>
+            </>
+          }
+          actions={
+            <Link href="/admin/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+              Connector Access
+            </Link>
+          }
+        />
 
         {actionStatusMessage ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -158,7 +173,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       Auth: {definition.authType} | Version: {definition.connectorVersion}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Capabilities: {definition.capabilities.join(", ")}
+                      Capabilities: {definition.capabilities.length > 0 ? definition.capabilities.join(", ") : "-"}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
                       Installed accounts: {installedForDefinition.length}
@@ -201,7 +216,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           ? (
                             <>
                               {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
-                              <Link href="/settings/plan" className="underline">
+                              <Link href="/admin/plan" className="underline">
                                 Upgrade your plan
                               </Link>{" "}
                               to install more accounts.
@@ -226,19 +241,19 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               description="Install at least one connector to enable mapping previews and export flows."
             />
           ) : (
-            <div className="mt-3 overflow-x-auto">
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[1120px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="py-2">Connector</th>
-                    <th className="py-2">Account Alias</th>
-                    <th className="py-2">External Ref</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Capabilities</th>
-                    <th className="py-2">Installed</th>
-                    <th className="py-2">Last Sync</th>
-                    <th className="py-2">Metadata</th>
-                    <th className="py-2">Actions</th>
+                    <th className="px-3 py-2">Connector</th>
+                    <th className="px-3 py-2">Account Alias</th>
+                    <th className="px-3 py-2">External Ref</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Capabilities</th>
+                    <th className="px-3 py-2">Installed</th>
+                    <th className="px-3 py-2">Last Sync</th>
+                    <th className="px-3 py-2">Metadata</th>
+                    <th className="px-3 py-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,29 +265,37 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
 
                     return (
-                      <tr key={installation.id} className="border-t border-border align-top">
-                        <td className="py-2">
+                      <tr key={installation.id} className="border-t border-slate-200 align-top hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-900">{installation.displayName}</div>
                           <div className="font-mono text-xs text-slate-500">{installation.slug}</div>
                         </td>
-                        <td className="py-2">{installation.accountAlias}</td>
-                        <td className="py-2">{installation.externalAccountRef || "-"}</td>
-                        <td className="py-2">{installation.status}</td>
-                        <td className="py-2 text-xs">{installation.capabilities.join(", ")}</td>
-                        <td className="py-2 text-xs">{new Date(installation.installedAt).toLocaleString()}</td>
-                        <td className="py-2 text-xs">
+                        <td className="px-3 py-2.5">{installation.accountAlias}</td>
+                        <td className="px-3 py-2.5">{installation.externalAccountRef || "-"}</td>
+                        <td className="px-3 py-2.5">
+                          <StatusChip label={installation.status} tone={installationStatusTone(installation.status)} />
+                        </td>
+                        <td className="px-3 py-2.5 text-xs">{installation.capabilities.join(", ") || "-"}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(installation.installedAt).toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-600">
                           {installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString() : "-"}
                         </td>
-                        <td className="py-2">
+                        <td className="px-3 py-2.5">
                           <pre className="max-h-28 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] leading-4 text-slate-600">
                             {JSON.stringify(installation.metadata ?? {}, null, 2)}
                           </pre>
                         </td>
-                        <td className="py-2">
+                        <td className="px-3 py-2.5">
                           <div className="flex flex-wrap gap-2">
                             <Link
+                              href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
+                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm hover:bg-slate-50"
+                            >
+                              Details
+                            </Link>
+                            <Link
                               href={mappingHref}
-                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm hover:bg-slate-50"
                             >
                               Mapping
                             </Link>
@@ -280,7 +303,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                               <>
                                 <form action={reconnectConnectorAction}>
                                   <input type="hidden" name="installationId" value={installation.id} />
-                                  <Button type="submit" variant="secondary">
+                                  <Button type="submit" variant="secondary" className="text-xs">
                                     Reconnect
                                   </Button>
                                 </form>
@@ -290,7 +313,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                               <>
                                 <form action={uninstallConnectorAction}>
                                   <input type="hidden" name="installationId" value={installation.id} />
-                                  <Button type="submit">Disable</Button>
+                                  <Button type="submit" variant="secondary" className="text-xs">
+                                    Disable
+                                  </Button>
                                 </form>
                               </>
                             ) : null}
@@ -308,7 +333,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                                   />
                                   Confirm permanent delete
                                 </label>
-                                <Button type="submit" variant="secondary">
+                                <Button type="submit" className="text-xs">
                                   Delete Record
                                 </Button>
                               </form>
@@ -326,7 +351,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                             {(isPlanBlockedReason(installation.actions?.reconnect.reason) ||
                               isPlanBlockedReason(installation.actions?.uninstall.reason)) ? (
                               <p className="w-full text-xs text-slate-500">
-                                <Link href="/settings/plan" className="underline">
+                                <Link href="/admin/plan" className="underline">
                                   Upgrade your plan
                                 </Link>{" "}
                                 to unblock connector actions.
@@ -346,7 +371,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/connectors", error.status));
+      redirect(buildLoginRedirect("/channels/connectors", error.status));
     }
     throw error;
   }

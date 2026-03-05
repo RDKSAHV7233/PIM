@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 const fs = require("node:fs");
 const path = require("node:path");
+const net = require("node:net");
 const { randomUUID } = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
 const { PrismaClient } = require("@prisma/client");
@@ -61,6 +62,29 @@ function prepareEnv() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to acquire free TCP port")));
+        return;
+      }
+      const selectedPort = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(selectedPort);
+      });
+    });
+  });
 }
 
 async function waitForHealth(baseUrl, timeoutMs) {
@@ -123,7 +147,7 @@ async function run() {
   }
 
   const runId = Date.now().toString();
-  const apiPort = 5000 + Math.floor(Math.random() * 120);
+  const apiPort = await getFreePort();
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `idempotency-tenant-${runId}`;
   const userId = `idempotency-user-${runId}`;

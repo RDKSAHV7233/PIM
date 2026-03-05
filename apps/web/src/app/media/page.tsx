@@ -4,6 +4,7 @@ import { bulkAssociateMediaCsvAction, uploadMediaAssetAction } from "@/app/actio
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -109,27 +110,25 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         upgradeUrl={planUpgrade}
         dismissHref={dismissPlanLimitHref}
       />
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Media Validation</h1>
-        <p className="text-sm text-slate-600">
-          Image upload/storage, metadata extraction, and marketplace media-rule validation.
-        </p>
-      </header>
-
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Link className="rounded-md border border-border px-3 py-2" href={`/`}>
-          Dashboard
-        </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection`}>
-          Rejection Intelligence
-        </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc`}>
-          ONDC Expansion
-        </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ai`}>
-          AI Optimization
-        </Link>
-      </div>
+      <PageHeader
+        title="Media"
+        description="Upload assets, validate channel requirements, and manage product-level media associations."
+        breadcrumb={
+          <>
+            Dashboard / Catalog / <span className="font-semibold text-slate-700">Media</span>
+          </>
+        }
+        actions={
+          <>
+            <Link className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-slate-50" href="/catalog/products">
+              Open Products
+            </Link>
+            <Link className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-slate-50" href="/channels/health">
+              Channel Health
+            </Link>
+          </>
+        }
+      />
 
       <Card>
         <CardTitle>Filter</CardTitle>

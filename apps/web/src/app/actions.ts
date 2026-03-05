@@ -293,7 +293,7 @@ export async function createProductAction(formData: FormData) {
       status: String(formData.get("status") ?? "draft"),
     });
   } catch (error: unknown) {
-    const redirectPath = withPlanLimitQuery("/?tab=products", error);
+    const redirectPath = withPlanLimitQuery("/catalog/products", error);
     if (redirectPath) {
       redirect(redirectPath);
     }
@@ -550,9 +550,10 @@ export async function installConnectorAction(formData: FormData) {
     externalAccountRef: externalAccountRef || undefined,
   });
 
-  revalidatePath("/connectors");
+  revalidatePath("/channels/connectors");
+  revalidatePath("/channels");
   revalidatePath("/");
-  redirect("/connectors?status=installed");
+  redirect("/channels/connectors?status=installed");
 }
 
 export async function reconnectConnectorAction(formData: FormData) {
@@ -562,8 +563,9 @@ export async function reconnectConnectorAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/reconnect`, {});
-  revalidatePath("/connectors");
-  redirect("/connectors?status=reconnected");
+  revalidatePath("/channels/connectors");
+  revalidatePath("/channels");
+  redirect("/channels/connectors?status=reconnected");
 }
 
 export async function uninstallConnectorAction(formData: FormData) {
@@ -573,9 +575,10 @@ export async function uninstallConnectorAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/uninstall`, {});
-  revalidatePath("/connectors");
+  revalidatePath("/channels/connectors");
+  revalidatePath("/channels");
   revalidatePath("/");
-  redirect("/connectors?status=disabled");
+  redirect("/channels/connectors?status=disabled");
 }
 
 export async function deleteConnectorInstallationAction(formData: FormData) {
@@ -596,9 +599,10 @@ export async function deleteConnectorInstallationAction(formData: FormData) {
     formData,
     `/connectors/${encodeURIComponent(connectorSlug)}/install/${encodeURIComponent(installationId)}`,
   );
-  revalidatePath("/connectors");
+  revalidatePath("/channels/connectors");
+  revalidatePath("/channels");
   revalidatePath("/");
-  redirect("/connectors?status=deleted");
+  redirect("/channels/connectors?status=deleted");
 }
 
 export async function setPlanTierAction(formData: FormData) {
@@ -610,9 +614,9 @@ export async function setPlanTierAction(formData: FormData) {
   await postJsonForAction(formData, "/billing/plan-tier", {
     planTier,
   });
-  revalidatePath("/settings/plan");
-  revalidatePath("/connectors");
-  redirect("/settings/plan?status=plan-updated");
+  revalidatePath("/admin/plan");
+  revalidatePath("/channels/connectors");
+  redirect("/admin/plan?status=plan-updated");
 }
 
 export async function grantConnectorPermissionAction(formData: FormData) {
@@ -642,9 +646,9 @@ export async function grantConnectorPermissionAction(formData: FormData) {
     action,
     accountAlias: accountAlias || undefined,
   });
-  revalidatePath("/settings/connectors");
-  revalidatePath("/connectors");
-  redirect("/settings/connectors?status=permission-granted");
+  revalidatePath("/admin/connectors");
+  revalidatePath("/channels/connectors");
+  redirect("/admin/connectors?status=permission-granted");
 }
 
 export async function revokeConnectorPermissionAction(formData: FormData) {
@@ -653,9 +657,9 @@ export async function revokeConnectorPermissionAction(formData: FormData) {
     throw new Error("Permission id is required.");
   }
   await deleteJsonForAction(formData, `/connectors/permissions/${permissionId}`);
-  revalidatePath("/settings/connectors");
-  revalidatePath("/connectors");
-  redirect("/settings/connectors?status=permission-revoked");
+  revalidatePath("/admin/connectors");
+  revalidatePath("/channels/connectors");
+  redirect("/admin/connectors?status=permission-revoked");
 }
 
 export async function createExportJobAction(formData: FormData) {
@@ -711,22 +715,17 @@ export async function retrySubmissionAction(formData: FormData) {
   await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
   revalidatePath("/");
 
-  const params = new URLSearchParams();
-  params.set("tab", "products");
-  params.set("submissionId", submissionId);
-
-  const keep = (targetKey: string, formKey: string) => {
+  const jobsParams = new URLSearchParams();
+  jobsParams.set("submissionId", submissionId);
+  const keepToJobs = (targetKey: string, formKey: string) => {
     const value = String(formData.get(formKey) ?? "").trim();
     if (value) {
-      params.set(targetKey, value);
+      jobsParams.set(targetKey, value);
     }
   };
-  keep("submissionConnector", "submissionConnector");
-  keep("submissionStatus", "submissionStatus");
-  keep("submissionDeadLetter", "submissionDeadLetter");
-  keep("submissionLimit", "submissionLimit");
-
-  redirect(`/?${params.toString()}`);
+  keepToJobs("connectorSlug", "submissionConnector");
+  keepToJobs("status", "submissionStatus");
+  redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 
 export async function createBulkImportJobAction(formData: FormData) {
@@ -808,7 +807,7 @@ export async function createBulkImportJobAction(formData: FormData) {
     chunkSize,
     maxRetries,
   });
-  redirect(`/?tab=import&bulkJobId=${encodeURIComponent(createdJob.id)}`);
+  redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
 }
 
 export async function createBulkImportTemplateAction(formData: FormData) {

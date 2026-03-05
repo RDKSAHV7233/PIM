@@ -4,8 +4,12 @@ import { resolveIssueInboxWarningsAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar } from "@/components/ui/filter-bar";
+import { KpiCard } from "@/components/ui/kpi-card";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
+import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   type AppRole,
@@ -150,12 +154,25 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
 
     return (
       <div className="space-y-5">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold text-slate-900">Issue Inbox</h1>
-          <p className="text-sm text-slate-600">
-            Review blocking and warning compliance issues across your catalog, then jump directly to the product fix.
-          </p>
-        </header>
+        <PageHeader
+          title="Issue Inbox"
+          description="Find issues, assign ownership, and fix products quickly."
+          breadcrumb={
+            <>
+              Dashboard / Quality / <span className="font-semibold text-slate-700">Issue Inbox</span>
+            </>
+          }
+        />
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <KpiCard label="Open Issues" value={inbox.items.length} tone={inbox.items.length > 0 ? "warning" : "success"} />
+          <KpiCard label="Resolved Today" value={inbox.resolvedToday} tone="success" helper={trend.label} />
+          <KpiCard
+            label="Blocking Items"
+            value={inbox.items.filter((item) => item.severity === "BLOCKING").length}
+            tone={inbox.items.some((item) => item.severity === "BLOCKING") ? "danger" : "default"}
+          />
+        </section>
 
         <Card>
           <CardTitle>Today&apos;s Progress</CardTitle>
@@ -168,8 +185,11 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
           </div>
         </Card>
 
-        <Card>
-          <CardTitle>Filters</CardTitle>
+        <FilterBar>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Filters</h2>
+            <span className="text-xs text-slate-500">Use filters to narrow assignment and severity scope.</span>
+          </div>
           <form method="get" className="grid gap-3 md:grid-cols-5">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="issue-severity">
@@ -227,12 +247,15 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             <input type="hidden" name="hideTestData" value={hideTestData ? "true" : "false"} />
             <div className="md:col-span-5 flex items-center gap-2">
               <Button type="submit">Apply filters</Button>
-              <Link className="text-sm text-slate-600 underline" href="/quality/issues">
+              <Link
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                href="/quality/issues"
+              >
                 Clear filters
               </Link>
             </div>
           </form>
-        </Card>
+        </FilterBar>
 
         {inbox.items.length === 0 ? (
           <Card>
@@ -252,22 +275,22 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
 
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                  <thead className="text-left text-slate-600">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
                     <tr className="border-b border-slate-200">
-                      {canResolveWarnings ? <th className="py-2 pr-3">Select</th> : null}
-                      <th className="py-2 pr-3">Product</th>
-                      <th className="py-2 pr-3">Field</th>
-                      <th className="py-2 pr-3">Severity</th>
-                      <th className="py-2 pr-3">Age</th>
-                      <th className="py-2 pr-3">Message</th>
-                      <th className="py-2 pr-3">Action</th>
+                      {canResolveWarnings ? <th className="px-3 py-2">Select</th> : null}
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Field</th>
+                      <th className="px-3 py-2">Severity</th>
+                      <th className="px-3 py-2">Age</th>
+                      <th className="px-3 py-2">Message</th>
+                      <th className="px-3 py-2">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {inbox.items.map((issue) => (
-                      <tr key={issue.issueId} className="border-b border-slate-100 align-top">
+                      <tr key={issue.issueId} className="border-b border-slate-100 align-top hover:bg-slate-50/50">
                         {canResolveWarnings ? (
-                          <td className="py-2 pr-3">
+                          <td className="px-3 py-2.5">
                             {issue.severity === "WARNING" ? (
                               <input
                                 type="checkbox"
@@ -280,33 +303,25 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
                             )}
                           </td>
                         ) : null}
-                        <td className="py-2 pr-3">
+                        <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-900">{issue.productName}</div>
                           <div className="text-xs text-slate-500">
                             SKU: {issue.sku} | {issue.categoryName} | {issue.productStatus}
                           </div>
                         </td>
-                        <td className="py-2 pr-3 font-mono text-xs text-slate-600">{issue.fieldPath ?? "-"}</td>
-                        <td className="py-2 pr-3">
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                              issue.severity === "BLOCKING"
-                                ? "bg-red-50 text-red-700"
-                                : "bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {issue.severity}
-                          </span>
+                        <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{issue.fieldPath ?? "-"}</td>
+                        <td className="px-3 py-2.5">
+                          <StatusChip label={issue.severity} tone={issue.severity === "BLOCKING" ? "danger" : "warning"} />
                         </td>
-                        <td className="py-2 pr-3 text-slate-600">{formatAge(issue.detectedAt)}</td>
-                        <td className="py-2 pr-3">
+                        <td className="px-3 py-2.5 text-slate-600">{formatAge(issue.detectedAt)}</td>
+                        <td className="px-3 py-2.5">
                           <p className="text-slate-800">{issue.sellerMessage}</p>
                           <p className="mt-1 text-xs text-slate-500">{issue.suggestedFix}</p>
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="px-3 py-2.5">
                           <Link
                             href={`/products/${encodeURIComponent(issue.productId)}`}
-                            className="text-sm font-medium text-blue-700 underline"
+                            className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                           >
                             Fix Now
                           </Link>
