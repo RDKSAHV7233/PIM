@@ -29,10 +29,9 @@ export function RoleBadge({ role }: RoleBadgeProps) {
         borderColor: current.border,
         color: current.text,
       }}
-      title={`Active role from JWT claims. Available roles: ${alternateRoles}`}
+      title={`Role from signed JWT claims. Access is server-enforced by role, permissions, and plan. Available roles: ${alternateRoles}`}
     >
-      {current.label}
+      Role: {current.label}
     </div>
   );
 }
-

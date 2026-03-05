@@ -66,9 +66,17 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
 
   return (
     <div className="space-y-5">
-      <Link href="/" className="text-sm">
-        Back to dashboard
-      </Link>
+      <div className="flex items-center gap-2 text-sm text-slate-600">
+        <Link href="/" className="underline">
+          Dashboard
+        </Link>
+        <span>/</span>
+        <Link href="/settings" className="underline">
+          Settings
+        </Link>
+        <span>/</span>
+        <span>Plan</span>
+      </div>
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Plan and Usage</h1>
         <p className="text-sm text-slate-600">

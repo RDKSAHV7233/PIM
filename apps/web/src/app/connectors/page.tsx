@@ -61,6 +61,35 @@ function formatStatusMessage(raw: string): string | null {
   return null;
 }
 
+function isPlanBlockedReason(reason: string | null | undefined): boolean {
+  return (
+    reason === "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED" ||
+    reason === "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED"
+  );
+}
+
+function formatActionBlockedReason(reason: string | null | undefined): string {
+  if (!reason) {
+    return "Action blocked by server policy.";
+  }
+  if (reason === "CONNECTOR_PERMISSION_REQUIRED") {
+    return "Action requires connector permission for your user or role.";
+  }
+  if (reason === "ALREADY_INSTALLED") {
+    return "Connector is already installed for this account alias.";
+  }
+  if (reason === "INSTALLATION_REQUIRED") {
+    return "Install this connector before using this action.";
+  }
+  if (reason === "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED") {
+    return "Plan limit reached for connector installations.";
+  }
+  if (reason === "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED") {
+    return "Plan limit reached for accounts per connector.";
+  }
+  return `Action blocked: ${reason}`;
+}
+
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -86,6 +115,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           <h1 className="text-2xl font-semibold text-slate-900">Connector Management</h1>
           <p className="text-sm text-slate-600">
             Install, reconnect, and review connector configuration details for this tenant.
+          </p>
+          <p className="text-xs text-slate-500">
+            Actions are enforced by server role, connector permissions, and current plan entitlements.
           </p>
           <Link href="/settings/connectors" className="text-xs text-slate-600 underline">
             Manage connector permissions
@@ -165,18 +197,17 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </form>
                     ) : (
                       <p className="mt-3 text-xs text-slate-500">
-                        {definition.actions?.install.reason === "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED" ||
-                        definition.actions?.install.reason === "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED"
+                        {isPlanBlockedReason(definition.actions?.install.reason)
                           ? (
                             <>
-                              Connector plan limit reached.{" "}
+                              {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
                               <Link href="/settings/plan" className="underline">
                                 Upgrade your plan
                               </Link>{" "}
                               to install more accounts.
                             </>
                           )
-                          : "You do not have install permission for this connector."}
+                          : formatActionBlockedReason(definition.actions?.install.reason)}
                       </p>
                     )}
                   </section>
@@ -282,16 +313,24 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                                 </Button>
                               </form>
                             ) : null}
-                            {!installation.actions?.reconnect.allowed &&
-                            !installation.actions?.uninstall.allowed ? (
-                              <span className="text-xs text-slate-500">
-                                {installation.actions?.reconnect.reason ===
-                                  "CONNECTOR_PERMISSION_REQUIRED" ||
-                                installation.actions?.uninstall.reason ===
-                                  "CONNECTOR_PERMISSION_REQUIRED"
-                                  ? "No manage permission"
-                                  : "Read-only"}
-                              </span>
+                            {!installation.actions?.reconnect.allowed ? (
+                              <p className="w-full text-xs text-slate-500">
+                                Reconnect blocked: {formatActionBlockedReason(installation.actions?.reconnect.reason)}
+                              </p>
+                            ) : null}
+                            {!installation.actions?.uninstall.allowed ? (
+                              <p className="w-full text-xs text-slate-500">
+                                Disable blocked: {formatActionBlockedReason(installation.actions?.uninstall.reason)}
+                              </p>
+                            ) : null}
+                            {(isPlanBlockedReason(installation.actions?.reconnect.reason) ||
+                              isPlanBlockedReason(installation.actions?.uninstall.reason)) ? (
+                              <p className="w-full text-xs text-slate-500">
+                                <Link href="/settings/plan" className="underline">
+                                  Upgrade your plan
+                                </Link>{" "}
+                                to unblock connector actions.
+                              </p>
                             ) : null}
                           </div>
                         </td>
