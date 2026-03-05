@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { Roles } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -11,8 +12,8 @@ export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
 
   @Get()
-  listCategories() {
-    return this.taxonomyService.listCategories();
+  listCategories(@Query() pagination: CursorPaginationDto) {
+    return this.taxonomyService.listCategories(pagination);
   }
 
   @Get(":id")

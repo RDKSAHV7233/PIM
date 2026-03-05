@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { PlanGuard } from "../billing/plan-guard.guard";
+import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
@@ -8,13 +11,19 @@ export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
   @Post("assets")
+  @UseGuards(PlanGuard)
+  @RequirePlanLimit("storage_gb")
   createAsset(@Body() dto: CreateMediaAssetDto) {
     return this.mediaService.createAsset(dto);
   }
 
   @Get("assets")
-  listAssets(@Query("productId") productId?: string, @Query("variantId") variantId?: string) {
-    return this.mediaService.listAssets(productId, variantId);
+  listAssets(
+    @Query("productId") productId?: string,
+    @Query("variantId") variantId?: string,
+    @Query() pagination?: CursorPaginationDto,
+  ) {
+    return this.mediaService.listAssets(productId, variantId, pagination);
   }
 
   @Get("assets/:id")

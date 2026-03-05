@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Wait-ForApi {
   param(
@@ -43,18 +45,31 @@ function Load-EnvFile {
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $apiOutLog = Join-Path $repoRoot "api-out.log"
 $apiErrLog = Join-Path $repoRoot "api-err.log"
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru -RedirectStandardOutput $apiOutLog -RedirectStandardError $apiErrLog
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc -StdOutLog $apiOutLog -StdErrLog $apiErrLog
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
 
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $definitions = Invoke-RestMethod -Uri "$baseApiUrl/connectors/definitions" -Method Get
+  foreach ($definition in $definitions) {
+    try {
+      $null = Invoke-RestMethod -Uri "$baseApiUrl/connectors/$($definition.slug)/install" -Method Post -ContentType "application/json" -Body (@{
+          accountAlias = "phase3-$ts-$($definition.slug)"
+        } | ConvertTo-Json)
+    } catch {
+      # Ignore already-installed/duplicate alias errors; smoke run only requires at least one active installation per connector.
+    }
+  }
+
   $category = Invoke-RestMethod -Uri "$baseApiUrl/taxonomy/categories" -Method Post -ContentType "application/json" -Body (@{
       name = "Phase3 Category $ts"
     } | ConvertTo-Json)
@@ -188,6 +203,7 @@ try {
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
   }

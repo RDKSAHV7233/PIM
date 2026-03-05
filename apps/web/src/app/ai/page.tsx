@@ -1,16 +1,21 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { applyAiRepairAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import {
+  ApiHttpError,
   AppRole,
   getAiAttributeEnrichment,
   getAiCategorySuggestion,
   getAiTitleSuggestion,
   getProducts,
-  normalizeAppRole,
 } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
+import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -19,50 +24,58 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
 }
 
 interface AiPageProps {
-  searchParams: Promise<{
-    role?: string;
-    productId?: string;
+  searchParams: Promise<{    productId?: string;
     repairStatus?: string;
   }>;
 }
 
 export default async function AiPage({ searchParams }: AiPageProps) {
   const query = await searchParams;
-  const actorRole = normalizeAppRole(query.role);
+  const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   const canWrite = actorRole !== "viewer";
   const productId = String(query.productId ?? "").trim();
   const repairStatus = String(query.repairStatus ?? "").trim();
 
-  const products = await getProducts({ role: actorRole });
+  let products: Awaited<ReturnType<typeof getProducts>>;
+  try {
+    products = await getProducts({ role: actorRole, authHeader });
+  } catch (error: unknown) {
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+      redirect(buildLoginRedirect("/ai", error.status));
+    }
+    throw error;
+  }
+  const filteredProducts = filterTestData(products, true);
   const [titleSuggestion, attributeSuggestion, categorySuggestion] = productId
     ? await Promise.all([
-        getAiTitleSuggestion(productId, { role: actorRole }),
-        getAiAttributeEnrichment(productId, { role: actorRole }),
-        getAiCategorySuggestion(productId, { role: actorRole }),
+        getAiTitleSuggestion(productId, { role: actorRole, authHeader }),
+        getAiAttributeEnrichment(productId, { role: actorRole, authHeader }),
+        getAiCategorySuggestion(productId, { role: actorRole, authHeader }),
       ])
     : [null, null, null];
 
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Phase 8: AI Optimization Layer</h1>
+        <h1 className="text-2xl font-semibold">AI Optimization</h1>
         <p className="text-sm text-slate-600">
           Title optimization, attribute enrichment, smart category suggestion, and repair automation.
         </p>
       </header>
 
       <div className="flex flex-wrap gap-2 text-sm">
-        <Link className="rounded-md border border-border px-3 py-2" href={`/?role=${encodeURIComponent(actorRole)}`}>
+        <Link className="rounded-md border border-border px-3 py-2" href={`/`}>
           Dashboard
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/media?role=${encodeURIComponent(actorRole)}`}>
-          Phase 5
+        <Link className="rounded-md border border-border px-3 py-2" href={`/media`}>
+          Media Validation
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection?role=${encodeURIComponent(actorRole)}`}>
-          Phase 6
+        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection`}>
+          Rejection Intelligence
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc?role=${encodeURIComponent(actorRole)}`}>
-          Phase 7
+        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc`}>
+          ONDC Expansion
         </Link>
       </div>
 
@@ -75,13 +88,15 @@ export default async function AiPage({ searchParams }: AiPageProps) {
       <Card>
         <CardTitle>Select Product</CardTitle>
         <form method="get" className="flex max-w-xl items-end gap-3">
-          <input type="hidden" name="role" value={actorRole} />
-          <div className="flex-1">
-            <Select name="productId" required defaultValue={productId}>
+          <div className="flex-1 space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="ai-product-id">
+              Product
+            </label>
+            <Select id="ai-product-id" name="productId" required defaultValue={productId}>
               <option value="" disabled>
                 Select product
               </option>
-              {products.map((product) => (
+              {filteredProducts.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.title}
                 </option>
@@ -143,3 +158,4 @@ export default async function AiPage({ searchParams }: AiPageProps) {
     </div>
   );
 }
+

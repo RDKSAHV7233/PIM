@@ -3,6 +3,15 @@ import { randomUUID } from "crypto";
 import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { ComplianceService } from "../compliance/compliance.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import {
+  CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
@@ -56,7 +65,6 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
 };
 
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
-const DEFAULT_TENANT_KEY = "default";
 const TEMPLATE_SOURCE_FORMATS = new Set(["csv", "json", "xlsx", "xls"]);
 const TERMINAL_ROW_STATUSES = [
   BulkImportRowStatus.success,
@@ -128,7 +136,7 @@ export class BulkImportService {
 
   async createTemplate(dto: CreateBulkImportTemplateDto) {
     const category = await this.requireCategory(dto.categoryId);
-    const tenantKey = this.normalizeTenantKey(dto.tenantKey);
+    const tenantKey = this.resolveRequestTenantKey(dto.tenantKey);
     const sourceFormat = this.parseTemplateSourceFormat(dto.sourceFormat);
     const name = dto.name.trim();
     if (!name) {
@@ -139,7 +147,7 @@ export class BulkImportService {
     const snapshot = await this.buildTemplateSchemaSnapshot(dto.categoryId);
     const now = new Date();
 
-    const [versionRow] = await this.prisma.$queryRaw<Array<{ nextVersion: number }>>(
+    const [versionRow] = await this.prisma.tenant().$queryRaw<Array<{ nextVersion: number }>>(
       Prisma.sql`
         SELECT COALESCE(MAX("version"), 0) + 1 AS "nextVersion"
         FROM "BulkImportTemplate"
@@ -151,7 +159,7 @@ export class BulkImportService {
     const nextVersion = Number(versionRow?.nextVersion ?? 1);
 
     const templateId = randomUUID();
-    await this.prisma.$executeRaw(
+    await this.prisma.tenant().$executeRaw(
       Prisma.sql`
         INSERT INTO "BulkImportTemplate"
           ("id", "tenantKey", "categoryId", "name", "version", "sourceFormat", "mapping", "schemaSnapshot", "chunkSize", "maxRetries", "createdAt", "updatedAt")
@@ -179,10 +187,77 @@ export class BulkImportService {
     return this.mapTemplateResponse((await this.attachTemplateCompatibility([created]))[0]);
   }
 
-  async listTemplates(tenantKey?: string, categoryId?: string) {
-    const normalizedTenant = this.normalizeTenantKey(tenantKey);
+  async listTemplates(tenantKey?: string, categoryId?: string, pagination?: CursorPaginationQuery) {
+    const normalizedTenant = this.resolveRequestTenantKey(tenantKey);
     const categoryFilter = categoryId?.trim() || null;
-    const templates = await this.prisma.$queryRaw<BulkImportTemplateRow[]>(
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const templates = await this.prisma.tenant().bulkImportTemplate.findMany({
+        where: {
+          tenantKey: normalizedTenant,
+          ...(categoryFilter ? { categoryId: categoryFilter } : {}),
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  {
+                    updatedAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          category: {
+            select: {
+              path: true,
+            },
+          },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
+      const hasNext = templates.length > limit;
+      const page = hasNext ? templates.slice(0, limit) : templates;
+      const rows: BulkImportTemplateRow[] = page.map((template) => ({
+        id: template.id,
+        tenantKey: template.tenantKey,
+        categoryId: template.categoryId,
+        name: template.name,
+        version: template.version,
+        sourceFormat: template.sourceFormat,
+        mapping: template.mapping,
+        schemaSnapshot: template.schemaSnapshot,
+        chunkSize: template.chunkSize,
+        maxRetries: template.maxRetries,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
+        categoryPath: template.category.path,
+      }));
+      const enriched = await this.attachTemplateCompatibility(rows);
+      const items = enriched.map((template) => this.mapTemplateResponse(template));
+      const last = page[page.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.updatedAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+      };
+    }
+    const templates = await this.prisma.tenant().$queryRaw<BulkImportTemplateRow[]>(
       Prisma.sql`
         SELECT
           t."id",
@@ -211,8 +286,8 @@ export class BulkImportService {
   }
 
   async getTemplate(templateId: string, tenantKey?: string) {
-    const normalizedTenant = this.normalizeTenantKey(tenantKey);
-    const templates = await this.prisma.$queryRaw<BulkImportTemplateRow[]>(
+    const normalizedTenant = this.resolveRequestTenantKey(tenantKey);
+    const templates = await this.prisma.tenant().$queryRaw<BulkImportTemplateRow[]>(
       Prisma.sql`
         SELECT
           t."id",
@@ -277,7 +352,7 @@ export class BulkImportService {
       throw new BadRequestException("Maximum 10,000 rows per job.");
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.tenant().$transaction(async (tx) => {
       const job = await tx.bulkImportJob.create({
         data: {
           categoryId: dto.categoryId,
@@ -305,13 +380,59 @@ export class BulkImportService {
     return this.getJob(created.id);
   }
 
-  async listJobs(status?: string) {
+  async listJobs(status?: string, pagination?: CursorPaginationQuery) {
     const where = status
       ? {
           status: this.parseJobStatus(status),
         }
       : undefined;
-    const jobs = await this.prisma.bulkImportJob.findMany({
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const jobs = await this.prisma.tenant().bulkImportJob.findMany({
+        where: {
+          ...(where ?? {}),
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  {
+                    updatedAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          category: { select: { id: true, path: true } },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
+      const hasNext = jobs.length > limit;
+      const page = hasNext ? jobs.slice(0, limit) : jobs;
+      const items = await this.attachMetrics(page);
+      const last = page[page.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.updatedAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+      };
+    }
+    const jobs = await this.prisma.tenant().bulkImportJob.findMany({
       where,
       include: {
         category: { select: { id: true, path: true } },
@@ -323,7 +444,7 @@ export class BulkImportService {
   }
 
   async getJob(jobId: string) {
-    const job = await this.prisma.bulkImportJob.findUnique({
+    const job = await this.prisma.tenant().bulkImportJob.findUnique({
       where: { id: jobId },
       include: {
         category: { select: { id: true, path: true } },
@@ -339,10 +460,53 @@ export class BulkImportService {
     return (await this.attachMetrics([job]))[0];
   }
 
-  async listJobRows(jobId: string, status?: string, limit = 100) {
+  async listJobRows(jobId: string, status?: string, limit = 100, pagination?: CursorPaginationQuery) {
     await this.requireJob(jobId);
+    if (isCursorPagination(pagination)) {
+      const safeLimit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorRowNumber = token ? Number(token.sort) : Number.NaN;
+      if (token && (!Number.isFinite(cursorRowNumber) || cursorRowNumber < 0)) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const rows = await this.prisma.tenant().bulkImportRow.findMany({
+        where: {
+          jobId,
+          status: status ? this.parseRowStatus(status) : undefined,
+          ...(token
+            ? {
+                OR: [
+                  { rowNumber: { gt: cursorRowNumber } },
+                  {
+                    rowNumber: cursorRowNumber,
+                    id: { gt: token.id },
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ rowNumber: "asc" }, { id: "asc" }],
+        take: safeLimit + 1,
+      });
+      const hasNext = rows.length > safeLimit;
+      const items = hasNext ? rows.slice(0, safeLimit) : rows;
+      const last = items[items.length - 1];
+      return {
+        items,
+        limit: safeLimit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: String(last.rowNumber),
+              id: last.id,
+            })
+          : null,
+      };
+    }
     const boundedLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
-    return this.prisma.bulkImportRow.findMany({
+    return this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
         status: status ? this.parseRowStatus(status) : undefined,
@@ -359,14 +523,14 @@ export class BulkImportService {
     }
 
     const effectiveChunk = Math.max(1, Math.min(500, chunkSize ?? job.chunkSize));
-    await this.prisma.bulkImportJob.update({
+    await this.prisma.tenant().bulkImportJob.update({
       where: { id: job.id },
       data: {
         status: BulkImportJobStatus.processing,
       },
     });
 
-    const rows = await this.prisma.bulkImportRow.findMany({
+    const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId: job.id,
         status: {
@@ -404,7 +568,7 @@ export class BulkImportService {
     const payload = dto.payload ? { ...existingPayload, ...dto.payload } : existingPayload;
     const requeue = dto.requeue ?? true;
 
-    await this.prisma.bulkImportRow.update({
+    await this.prisma.tenant().bulkImportRow.update({
       where: { id: row.id },
       data: {
         payload: payload as Prisma.JsonObject,
@@ -422,7 +586,7 @@ export class BulkImportService {
   async requeueDlq(jobId: string, limit = 100) {
     await this.requireJob(jobId);
     const boundedLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
-    const rows = await this.prisma.bulkImportRow.findMany({
+    const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
         status: BulkImportRowStatus.dead_letter,
@@ -433,7 +597,7 @@ export class BulkImportService {
     });
 
     if (rows.length > 0) {
-      await this.prisma.bulkImportRow.updateMany({
+      await this.prisma.tenant().bulkImportRow.updateMany({
         where: {
           id: {
             in: rows.map((row) => row.id),
@@ -453,7 +617,7 @@ export class BulkImportService {
 
   async buildErrorReportCsv(jobId: string) {
     await this.requireJob(jobId);
-    const rows = await this.prisma.bulkImportRow.findMany({
+    const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
         status: {
@@ -505,7 +669,7 @@ export class BulkImportService {
       productId: string | null;
     },
   ) {
-    await this.prisma.bulkImportRow.update({
+    await this.prisma.tenant().bulkImportRow.update({
       where: { id: row.id },
       data: {
         status: BulkImportRowStatus.processing,
@@ -520,7 +684,7 @@ export class BulkImportService {
         throw new BadRequestException("title is required");
       }
 
-      const product = await this.prisma.product.create({
+      const product = await this.prisma.tenant().product.create({
         data: {
           title,
           description: (payload.description ?? "").trim(),
@@ -534,7 +698,7 @@ export class BulkImportService {
       });
       await this.complianceService.validateAndPersistProduct(product.id);
 
-      await this.prisma.bulkImportRow.update({
+      await this.prisma.tenant().bulkImportRow.update({
         where: { id: row.id },
         data: {
           status: BulkImportRowStatus.success,
@@ -547,7 +711,7 @@ export class BulkImportService {
       const nextRetry = row.retryCount + 1;
       const message = this.extractErrorMessage(error);
 
-      await this.prisma.bulkImportRow.update({
+      await this.prisma.tenant().bulkImportRow.update({
         where: { id: row.id },
         data: {
           retryCount: nextRetry,
@@ -560,7 +724,7 @@ export class BulkImportService {
   }
 
   private async refreshJobCounters(jobId: string) {
-    const rows = await this.prisma.bulkImportRow.findMany({
+    const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: { jobId },
       select: { status: true },
     });
@@ -592,7 +756,7 @@ export class BulkImportService {
       status = BulkImportJobStatus.completed;
     }
 
-    await this.prisma.bulkImportJob.update({
+    await this.prisma.tenant().bulkImportJob.update({
       where: { id: jobId },
       data: {
         status,
@@ -973,9 +1137,16 @@ export class BulkImportService {
     };
   }
 
-  private normalizeTenantKey(value?: string) {
-    const tenantKey = (value ?? DEFAULT_TENANT_KEY).trim();
-    return tenantKey.length > 0 ? tenantKey : DEFAULT_TENANT_KEY;
+  private resolveRequestTenantKey(requestedTenantKey?: string) {
+    const contextTenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    if (typeof requestedTenantKey !== "string" || requestedTenantKey.trim().length === 0) {
+      return contextTenantKey;
+    }
+    const normalizedRequested = normalizeTenantKey(requestedTenantKey);
+    if (normalizedRequested !== contextTenantKey) {
+      throw new BadRequestException("tenantKey mismatch with authenticated tenant context.");
+    }
+    return contextTenantKey;
   }
 
   private parseTemplateSourceFormat(value: string) {
@@ -1033,7 +1204,7 @@ export class BulkImportService {
     }
     const jobIds = jobs.map((job) => job.id);
     const [statusGroups, retryGroups, checkpointGroups] = await Promise.all([
-      this.prisma.bulkImportRow.groupBy({
+      this.prisma.tenant().bulkImportRow.groupBy({
         by: ["jobId", "status"],
         where: {
           jobId: {
@@ -1044,7 +1215,7 @@ export class BulkImportService {
           _all: true,
         },
       }),
-      this.prisma.bulkImportRow.groupBy({
+      this.prisma.tenant().bulkImportRow.groupBy({
         by: ["jobId"],
         where: {
           jobId: {
@@ -1055,7 +1226,7 @@ export class BulkImportService {
           retryCount: true,
         },
       }),
-      this.prisma.bulkImportRow.groupBy({
+      this.prisma.tenant().bulkImportRow.groupBy({
         by: ["jobId"],
         where: {
           jobId: {
@@ -1115,7 +1286,7 @@ export class BulkImportService {
     }
 
     const categoryIds = [...new Set(templates.map((template) => template.categoryId))];
-    const currentAttributes = await this.prisma.attributeDefinition.findMany({
+    const currentAttributes = await this.prisma.tenant().attributeDefinition.findMany({
       where: {
         categoryId: {
           in: categoryIds,
@@ -1152,7 +1323,7 @@ export class BulkImportService {
   }
 
   private async buildTemplateSchemaSnapshot(categoryId: string): Promise<TemplateSchemaSnapshot> {
-    const attributes = await this.prisma.attributeDefinition.findMany({
+    const attributes = await this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
       select: {
         key: true,
@@ -1262,7 +1433,7 @@ export class BulkImportService {
   }
 
   private async requireJob(jobId: string) {
-    const job = await this.prisma.bulkImportJob.findUnique({
+    const job = await this.prisma.tenant().bulkImportJob.findUnique({
       where: { id: jobId },
     });
     if (!job) {
@@ -1272,7 +1443,7 @@ export class BulkImportService {
   }
 
   private async requireRow(jobId: string, rowId: string) {
-    const row = await this.prisma.bulkImportRow.findFirst({
+    const row = await this.prisma.tenant().bulkImportRow.findFirst({
       where: {
         id: rowId,
         jobId,
@@ -1285,7 +1456,7 @@ export class BulkImportService {
   }
 
   private async requireCategory(categoryId: string) {
-    const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }

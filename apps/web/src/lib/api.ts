@@ -14,7 +14,7 @@ export function normalizeAppRole(value: FormDataEntryValue | string | null | und
   if (APP_ROLES.includes(envDefault as AppRole)) {
     return envDefault as AppRole;
   }
-  return "admin";
+  return "viewer";
 }
 
 export interface ValidationIssue {
@@ -29,6 +29,40 @@ export interface ValidationIssue {
   status: "open" | "resolved";
   createdAt: string;
   updatedAt: string;
+}
+
+export type IssueInboxSeverity = "BLOCKING" | "WARNING";
+
+export interface IssueInboxItem {
+  issueId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  productStatus: CatalogStatus;
+  categoryId: string;
+  categoryName: string;
+  fieldPath: string | null;
+  severity: IssueInboxSeverity;
+  sellerMessage: string;
+  suggestedFix: string;
+  detectedAt: string;
+}
+
+export interface IssueInboxResponse {
+  items: IssueInboxItem[];
+  nextCursor: string | null;
+  limit: number;
+  resolvedToday: number;
+  resolvedYesterday: number;
+  trend: "up" | "down" | "flat";
+}
+
+export interface IssueInboxResolveResult {
+  requested: number;
+  resolved: number;
+  skippedBlocked: number;
+  skippedAlreadyResolved: number;
+  skippedMissing: number;
 }
 
 export interface AttributeDefinition {
@@ -81,6 +115,7 @@ export interface Product {
   category?: Category;
   variants?: Variant[];
   validationIssues?: ValidationIssue[];
+  completenessScore?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +124,115 @@ export interface CatalogStats {
   categories: number;
   products: number;
   variants: number;
+}
+
+export interface ConnectorInstallation {
+  id: string;
+  tenantKey: string;
+  connectorId: string;
+  slug: string;
+  displayName: string;
+  accountAlias: string;
+  externalAccountRef: string | null;
+  status: "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED" | string;
+  capabilities: string[];
+  metadata: Record<string, unknown>;
+  installedAt: string;
+  installedBy: string;
+  lastSyncAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  actions?: ConnectorActionMatrix;
+}
+
+export interface ConnectorDefinition {
+  id: string;
+  slug: string;
+  displayName: string;
+  authType: string;
+  capabilities: string[];
+  marketplaceId: string | null;
+  connectorVersion: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  actions?: ConnectorActionMatrix;
+}
+
+export interface ConnectorActionRule {
+  allowed: boolean;
+  reason: string | null;
+}
+
+export interface ConnectorActionMatrix {
+  install: ConnectorActionRule;
+  reconnect: ConnectorActionRule;
+  uninstall: ConnectorActionRule;
+}
+
+export interface ConnectorPermission {
+  id: string;
+  tenantKey: string;
+  principalType: "user" | "role";
+  principalId: string;
+  connectorSlug: string;
+  accountAlias: string;
+  action: "install" | "reconnect" | "uninstall";
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PaginatedResponse<T> {
+  items: T[];
+  nextCursor: string | null;
+  limit: number;
+}
+
+export interface PlanUsageResponse {
+  planTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+  month: string;
+  billingCycleResetAt: string;
+  skus: { current: number; limit: number };
+  submissions: { current: number; limit: number };
+  storageGb: { current: number; limit: number };
+  users: { current: number; limit: number };
+  connectorsInstallations: { current: number; limit: number };
+  connectorAccounts: { current: number; limit: number };
+  profile: {
+    tenantKey: string;
+    planTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+    effectiveFrom: string | null;
+    updatedBy: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface DashboardHealthSnapshot {
+  capturedAt: string;
+  totalSkus: number;
+  completeSkus: number;
+  incompleteSkus: number;
+  publishReadyByConnector: Record<string, number>;
+  blockedByConnector: Record<string, number>;
+  rejectionRiskHigh: number;
+  openIssuesBlocking: number;
+  openIssuesWarning: number;
+}
+
+export interface DashboardHealthResponse {
+  snapshot: DashboardHealthSnapshot;
+  trend: DashboardHealthSnapshot[];
+  asOf: string;
+}
+
+export interface PlanLimitExceededPayload {
+  error: "PLAN_LIMIT_EXCEEDED";
+  resource: string;
+  limit: number;
+  current: number;
+  upgrade_url: string;
 }
 
 export interface MarketplaceChannelConfig {
@@ -101,7 +245,8 @@ export interface MarketplaceSimulationIssue {
   severity: RuleSeverity;
   code: string;
   fieldPath: string;
-  message: string;
+  sellerMessage: string;
+  message?: string;
 }
 
 export interface MarketplaceSuggestion {
@@ -123,6 +268,8 @@ export interface MarketplaceSimulation {
     errorCount: number;
     warningCount: number;
   };
+  validationSource?: "local_rules" | "amazon_sp_api";
+  validationWarnings?: string[];
   mappingSource: "system_pack" | "saved_template";
   templateId: string | null;
   templateName: string | null;
@@ -148,8 +295,26 @@ export interface ChannelMappingTemplate {
   requiredFields: string[];
   fieldMap: Record<string, string>;
   isDefault: boolean;
+  isSystemPack?: boolean;
+  createdBy?: string | null;
+  version?: number;
+  parentTemplateId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConnectorPayloadPreviewResponse {
+  installationId: string;
+  connectorSlug: string;
+  channel: MarketplaceChannel;
+  templateId: string | null;
+  templateName: string | null;
+  mappingSource: "system_pack" | "saved_template";
+  exportReady: boolean;
+  validationSource: "local_rules" | "amazon_sp_api";
+  missingFields: string[];
+  channelIssues: MarketplaceSimulationIssue[];
+  mappedPayload: Record<string, unknown>;
 }
 
 export type ExportJobStatus =
@@ -174,8 +339,39 @@ export interface MarketplaceExportJob {
   payload: Record<string, unknown> | null;
   exportPayload: Record<string, unknown> | null;
   template?: ChannelMappingTemplate | null;
+  product?: {
+    id: string;
+    title: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConnectorSubmissionIssue {
+  code: string;
+  fieldPath: string | null;
+  severity: "error" | "warning";
+  sellerMessage: string;
+}
+
+export interface ConnectorSubmission {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  installationId: string;
+  connectorSlug: string;
+  connectorDisplayName: string;
+  idempotencyKey: string;
+  submissionType: string;
+  source: "LIVE_API" | "LOCAL_RULES" | "NOT_VALIDATED" | string;
+  attemptNumber: number;
+  status: "PENDING" | "SUCCESS" | "REJECTED" | "SUPPRESSED" | "ERROR" | string;
+  externalRef: string | null;
+  payloadSnapshotUrl: string | null;
+  payloadSnapshot?: Record<string, unknown> | null;
+  channelErrors: ConnectorSubmissionIssue[];
+  submittedAt: string;
+  resolvedAt: string | null;
 }
 
 export type BulkImportJobStatus =
@@ -451,26 +647,91 @@ export interface AiRepairResult {
   updated?: Product;
 }
 
-const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
+const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api/v1";
 
 interface ApiRequestOptions {
   role?: AppRole;
+  tenantKey?: string;
+  authHeader?: string;
+}
+
+export class ApiHttpError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown, fallbackMessage: string) {
+    const message =
+      typeof body === "string"
+        ? body
+        : body && typeof body === "object"
+          ? JSON.stringify(body)
+          : fallbackMessage;
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function getPlanLimitExceededPayload(error: unknown): PlanLimitExceededPayload | null {
+  if (!(error instanceof ApiHttpError) || error.status !== 402) {
+    return null;
+  }
+  if (!error.body || typeof error.body !== "object") {
+    return null;
+  }
+  const payload = error.body as Record<string, unknown>;
+  if (payload.error !== "PLAN_LIMIT_EXCEEDED") {
+    return null;
+  }
+  const resource = String(payload.resource ?? "").trim();
+  const upgradeUrl = String(payload.upgrade_url ?? "").trim();
+  const limit = Number(payload.limit);
+  const current = Number(payload.current);
+  if (!resource || !upgradeUrl || !Number.isFinite(limit) || !Number.isFinite(current)) {
+    return null;
+  }
+  return {
+    error: "PLAN_LIMIT_EXCEEDED",
+    resource,
+    limit,
+    current,
+    upgrade_url: upgradeUrl,
+  };
+}
+
+async function parseErrorBody(response: Response): Promise<unknown> {
+  const contentType = String(response.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return await response.text();
+  } catch {
+    return null;
+  }
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T> {
+  const explicitAuthHeader = String(options?.authHeader ?? "").trim();
+  const authHeader = explicitAuthHeader;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "x-pim-role": normalizeAppRole(options?.role),
+      ...(authHeader ? { Authorization: authHeader } : {}),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}`);
+    const errorBody = await parseErrorBody(response);
+    throw new ApiHttpError(response.status, errorBody, `Request failed with status ${response.status}`);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -498,6 +759,25 @@ export async function getStats(options?: ApiRequestOptions) {
   return fetchJson<CatalogStats>("/catalog/stats", undefined, options);
 }
 
+export async function getBillingUsage(options?: ApiRequestOptions) {
+  return fetchJson<PlanUsageResponse>("/billing/usage", undefined, options);
+}
+
+export async function getBillingPlanProfile(options?: ApiRequestOptions) {
+  return fetchJson<PlanUsageResponse["profile"]>("/billing/plan-profile", undefined, options);
+}
+
+export async function setBillingPlanTier(
+  planTier: "STARTER" | "GROWTH" | "ENTERPRISE",
+  options?: ApiRequestOptions,
+) {
+  return postJson<PlanUsageResponse["profile"]>("/billing/plan-tier", { planTier }, options);
+}
+
+export async function getDashboardHealth(options?: ApiRequestOptions) {
+  return fetchJson<DashboardHealthResponse>("/dashboard/health", undefined, options);
+}
+
 export async function getCategoryAttributes(categoryId: string, options?: ApiRequestOptions) {
   return fetchJson<AttributeDefinition[]>(
     `/taxonomy/categories/${categoryId}/attributes`,
@@ -510,8 +790,89 @@ export async function getProductIssues(productId: string, options?: ApiRequestOp
   return fetchJson<ValidationIssue[]>(`/compliance/products/${productId}/issues`, undefined, options);
 }
 
+export async function getIssueInbox(
+  filters?: {
+    severity?: IssueInboxSeverity;
+    installationId?: string;
+    categoryId?: string;
+    productStatus?: CatalogStatus;
+    limit?: number;
+    cursor?: string;
+  },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  params.set("pagination", "cursor");
+  if (filters?.severity) {
+    params.set("severity", filters.severity);
+  }
+  if (filters?.installationId) {
+    params.set("installationId", filters.installationId);
+  }
+  if (filters?.categoryId) {
+    params.set("categoryId", filters.categoryId);
+  }
+  if (filters?.productStatus) {
+    params.set("productStatus", filters.productStatus);
+  }
+  if (typeof filters?.limit === "number" && Number.isFinite(filters.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(filters.limit))));
+  }
+  if (filters?.cursor) {
+    params.set("cursor", filters.cursor);
+  }
+  return fetchJson<IssueInboxResponse>(`/issues/inbox?${params.toString()}`, undefined, options);
+}
+
+export async function resolveIssueInboxWarnings(issueIds: string[], options?: ApiRequestOptions) {
+  return postJson<IssueInboxResolveResult>("/issues/inbox/resolve", { issueIds }, options);
+}
+
 export async function getMarketplaceChannels(options?: ApiRequestOptions) {
   return fetchJson<MarketplaceChannelConfig[]>("/marketplace/channels", undefined, options);
+}
+
+export async function getInstalledConnectors(options?: ApiRequestOptions) {
+  const response = await fetchJson<PaginatedResponse<ConnectorInstallation> | ConnectorInstallation[]>(
+    "/connectors/installed?limit=200",
+    undefined,
+    options,
+  );
+  if (Array.isArray(response)) {
+    return response;
+  }
+  return response.items ?? [];
+}
+
+export async function getConnectorDefinitions(options?: ApiRequestOptions) {
+  return fetchJson<ConnectorDefinition[]>("/connectors/definitions", undefined, options);
+}
+
+export async function getConnectorPermissions(
+  connectorSlug?: string,
+  options?: ApiRequestOptions,
+) {
+  const query = connectorSlug
+    ? `?connectorSlug=${encodeURIComponent(connectorSlug)}`
+    : "";
+  return fetchJson<ConnectorPermission[]>(`/connectors/permissions${query}`, undefined, options);
+}
+
+export async function grantConnectorPermission(
+  body: {
+    principalType: "user" | "role";
+    principalId: string;
+    connectorSlug: string;
+    accountAlias?: string;
+    action: "install" | "reconnect" | "uninstall";
+  },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorPermission>("/connectors/permissions", body, options);
+}
+
+export async function revokeConnectorPermission(permissionId: string, options?: ApiRequestOptions) {
+  return deleteJson(`/connectors/permissions/${encodeURIComponent(permissionId)}`, options);
 }
 
 export async function getMarketplaceChannelMapping(
@@ -548,6 +909,65 @@ export async function getMarketplaceTemplates(
   );
 }
 
+export async function getMarketplaceTemplate(templateId: string, options?: ApiRequestOptions) {
+  return fetchJson<ChannelMappingTemplate>(
+    `/marketplace/templates/${encodeURIComponent(templateId)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function updateMarketplaceTemplate(
+  templateId: string,
+  body: {
+    name?: string;
+    channel?: MarketplaceChannel;
+    requiredFields?: string[];
+    fieldMap?: Record<string, string>;
+    isDefault?: boolean;
+    version?: number;
+  },
+  options?: ApiRequestOptions,
+) {
+  return patchJson<ChannelMappingTemplate>(
+    `/marketplace/templates/${encodeURIComponent(templateId)}`,
+    body,
+    options,
+  );
+}
+
+export async function cloneMarketplaceTemplate(
+  templateId: string,
+  body?: { name?: string; isDefault?: boolean },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ChannelMappingTemplate>(
+    `/marketplace/templates/${encodeURIComponent(templateId)}/clone`,
+    body ?? {},
+    options,
+  );
+}
+
+export async function deleteMarketplaceTemplate(templateId: string, options?: ApiRequestOptions) {
+  return deleteJson(`/marketplace/templates/${encodeURIComponent(templateId)}`, options);
+}
+
+export async function getConnectorPayloadPreview(
+  installationId: string,
+  body: {
+    productId: string;
+    templateId?: string;
+    channel?: MarketplaceChannel;
+  },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorPayloadPreviewResponse>(
+    `/connectors/${encodeURIComponent(installationId)}/payload-preview`,
+    body,
+    options,
+  );
+}
+
 export async function getMarketplaceSimulation(
   productId: string,
   channel: MarketplaceChannel,
@@ -569,6 +989,79 @@ export async function getMarketplaceSimulation(
 export async function getMarketplaceExportJobs(productId: string, options?: ApiRequestOptions) {
   return fetchJson<MarketplaceExportJob[]>(
     `/marketplace/export-jobs?productId=${encodeURIComponent(productId)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getSubmissions(
+  filters?: {
+    productId?: string;
+    connectorSlug?: string;
+    status?: string;
+    minAttempt?: number;
+    cursor?: string;
+    limit?: number;
+  },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (filters?.productId) {
+    params.set("productId", filters.productId);
+  }
+  if (filters?.connectorSlug) {
+    params.set("connectorSlug", filters.connectorSlug);
+  }
+  if (filters?.status) {
+    params.set("status", filters.status);
+  }
+  if (typeof filters?.minAttempt === "number" && Number.isFinite(filters.minAttempt)) {
+    params.set("minAttempt", String(Math.max(1, Math.floor(filters.minAttempt))));
+  }
+  if (filters?.cursor) {
+    params.set("cursor", filters.cursor);
+  }
+  if (typeof filters?.limit === "number" && Number.isFinite(filters.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(filters.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<PaginatedResponse<ConnectorSubmission> | ConnectorSubmission[]>(
+    `/submissions${query}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getDeadLetterSubmissions(
+  filters?: { cursor?: string; limit?: number },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (filters?.cursor) {
+    params.set("cursor", filters.cursor);
+  }
+  if (typeof filters?.limit === "number" && Number.isFinite(filters.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(filters.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<PaginatedResponse<MarketplaceExportJob> | MarketplaceExportJob[]>(
+    `/submissions/dead-letter${query}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getSubmission(submissionId: string, options?: ApiRequestOptions) {
+  return fetchJson<ConnectorSubmission>(
+    `/submissions/${encodeURIComponent(submissionId)}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getSubmissionIssues(submissionId: string, options?: ApiRequestOptions) {
+  return fetchJson<ConnectorSubmissionIssue[]>(
+    `/submissions/${encodeURIComponent(submissionId)}/issues`,
     undefined,
     options,
   );
@@ -765,7 +1258,7 @@ export async function getOndcSimulation(
 
 export async function getAiTitleSuggestion(productId: string, options?: ApiRequestOptions) {
   return fetchJson<AiTitleSuggestion>(
-    `/ai-optimization/products/${encodeURIComponent(productId)}/title-suggestion`,
+    `/auto-suggestions/products/${encodeURIComponent(productId)}/title-suggestion`,
     undefined,
     options,
   );
@@ -773,7 +1266,7 @@ export async function getAiTitleSuggestion(productId: string, options?: ApiReque
 
 export async function getAiAttributeEnrichment(productId: string, options?: ApiRequestOptions) {
   return fetchJson<AiAttributeEnrichment>(
-    `/ai-optimization/products/${encodeURIComponent(productId)}/attribute-enrichment`,
+    `/auto-suggestions/products/${encodeURIComponent(productId)}/attribute-enrichment`,
     undefined,
     options,
   );
@@ -781,7 +1274,7 @@ export async function getAiAttributeEnrichment(productId: string, options?: ApiR
 
 export async function getAiCategorySuggestion(productId: string, options?: ApiRequestOptions) {
   return fetchJson<AiCategorySuggestion>(
-    `/ai-optimization/products/${encodeURIComponent(productId)}/category-suggestion`,
+    `/auto-suggestions/products/${encodeURIComponent(productId)}/category-suggestion`,
     undefined,
     options,
   );

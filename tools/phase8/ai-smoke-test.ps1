@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Load-EnvFile {
   param([string]$Path)
@@ -16,7 +18,7 @@ function Load-EnvFile {
 }
 
 function Wait-ForApi {
-  param([string]$Url, [System.Diagnostics.Process]$Process, [int]$TimeoutSeconds = 60)
+  param([string]$Url, [System.Diagnostics.Process]$Process, [int]$TimeoutSeconds = 90)
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     if ($null -ne $Process -and $Process.HasExited) { throw "API exited before health check." }
@@ -26,15 +28,17 @@ function Wait-ForApi {
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
 
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
   $category = Invoke-RestMethod -Uri "$baseApiUrl/taxonomy/categories" -Method Post -ContentType "application/json" -Body (@{ name = "AI Smoke Category $ts" } | ConvertTo-Json)
@@ -46,10 +50,10 @@ try {
       status = "draft"
     } | ConvertTo-Json)
 
-  $titleSuggestion = Invoke-RestMethod -Uri "$baseApiUrl/ai-optimization/products/$($product.id)/title-suggestion" -Method Get
-  $attrSuggestion = Invoke-RestMethod -Uri "$baseApiUrl/ai-optimization/products/$($product.id)/attribute-enrichment" -Method Get
-  $categorySuggestion = Invoke-RestMethod -Uri "$baseApiUrl/ai-optimization/products/$($product.id)/category-suggestion" -Method Get
-  $repair = Invoke-RestMethod -Uri "$baseApiUrl/ai-optimization/products/$($product.id)/repair" -Method Post -ContentType "application/json" -Body (@{
+  $titleSuggestion = Invoke-RestMethod -Uri "$baseApiUrl/auto-suggestions/products/$($product.id)/title-suggestion" -Method Get
+  $attrSuggestion = Invoke-RestMethod -Uri "$baseApiUrl/auto-suggestions/products/$($product.id)/attribute-enrichment" -Method Get
+  $categorySuggestion = Invoke-RestMethod -Uri "$baseApiUrl/auto-suggestions/products/$($product.id)/category-suggestion" -Method Get
+  $repair = Invoke-RestMethod -Uri "$baseApiUrl/auto-suggestions/products/$($product.id)/repair" -Method Post -ContentType "application/json" -Body (@{
       apply = $true
     } | ConvertTo-Json)
   $updated = Invoke-RestMethod -Uri "$baseApiUrl/catalog/products/$($product.id)" -Method Get
@@ -67,5 +71,6 @@ try {
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) { Stop-Process -Id $apiProc.Id -Force }
 }

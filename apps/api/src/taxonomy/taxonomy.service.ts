@@ -1,5 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import {
+  CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -10,14 +17,49 @@ import { UpdateCategoryDto } from "./dto/update-category.dto";
 export class TaxonomyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listCategories() {
-    return this.prisma.category.findMany({
+  async listCategories(pagination?: CursorPaginationQuery) {
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const categories = await this.prisma.tenant().category.findMany({
+        where: token
+          ? {
+              OR: [
+                { path: { gt: token.sort } },
+                {
+                  path: token.sort,
+                  id: { gt: token.id },
+                },
+              ],
+            }
+          : undefined,
+        orderBy: [{ path: "asc" }, { id: "asc" }],
+        take: limit + 1,
+      });
+      const hasNext = categories.length > limit;
+      const items = hasNext ? categories.slice(0, limit) : categories;
+      const last = items[items.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.path,
+              id: last.id,
+            })
+          : null,
+      };
+    }
+    return this.prisma.tenant().category.findMany({
       orderBy: [{ path: "asc" }],
     });
   }
 
   async getCategory(id: string) {
-    const category = await this.prisma.category.findUnique({ where: { id } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
@@ -26,7 +68,7 @@ export class TaxonomyService {
 
   async createCategory(dto: CreateCategoryDto) {
     const parent = dto.parentId
-      ? await this.prisma.category.findUnique({ where: { id: dto.parentId } })
+      ? await this.prisma.tenant().category.findUnique({ where: { id: dto.parentId } })
       : null;
 
     if (dto.parentId && !parent) {
@@ -37,7 +79,7 @@ export class TaxonomyService {
     const path = parent ? `${parent.path} > ${normalizedName}` : normalizedName;
     const slug = this.makeSlug(path);
 
-    return this.prisma.category.create({
+    return this.prisma.tenant().category.create({
       data: {
         name: normalizedName,
         parentId: dto.parentId ?? null,
@@ -48,7 +90,7 @@ export class TaxonomyService {
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
-    const current = await this.prisma.category.findUnique({
+    const current = await this.prisma.tenant().category.findUnique({
       where: { id },
       include: { parent: true },
     });
@@ -60,7 +102,7 @@ export class TaxonomyService {
     const newPath = current.parent ? `${current.parent.path} > ${normalizedName}` : normalizedName;
     const newSlug = await this.ensureUniqueSlug(this.makeSlug(newPath), id);
 
-    const updated = await this.prisma.category.update({
+    const updated = await this.prisma.tenant().category.update({
       where: { id },
       data: {
         name: normalizedName,
@@ -74,27 +116,27 @@ export class TaxonomyService {
   }
 
   async deleteCategory(id: string) {
-    const category = await this.prisma.category.findUnique({ where: { id } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
 
-    const childCount = await this.prisma.category.count({ where: { parentId: id } });
+    const childCount = await this.prisma.tenant().category.count({ where: { parentId: id } });
     if (childCount > 0) {
       throw new BadRequestException("Cannot delete category with child categories");
     }
 
-    const productCount = await this.prisma.product.count({ where: { categoryId: id } });
+    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id } });
     if (productCount > 0) {
       throw new BadRequestException("Cannot delete category with attached products");
     }
 
-    await this.prisma.category.delete({ where: { id } });
+    await this.prisma.tenant().category.delete({ where: { id } });
   }
 
   async listAttributeDefinitions(categoryId: string) {
     await this.getCategory(categoryId);
-    return this.prisma.attributeDefinition.findMany({
+    return this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
       orderBy: [{ appliesTo: "asc" }, { key: "asc" }],
     });
@@ -103,7 +145,7 @@ export class TaxonomyService {
   async createAttributeDefinition(categoryId: string, dto: CreateAttributeDefinitionDto) {
     await this.getCategory(categoryId);
     try {
-      return await this.prisma.attributeDefinition.create({
+      return await this.prisma.tenant().attributeDefinition.create({
         data: {
           categoryId,
           key: this.normalizeKey(dto.key),
@@ -125,7 +167,7 @@ export class TaxonomyService {
   async updateAttributeDefinition(attributeId: string, dto: UpdateAttributeDefinitionDto) {
     await this.requireAttributeDefinition(attributeId);
     try {
-      return await this.prisma.attributeDefinition.update({
+      return await this.prisma.tenant().attributeDefinition.update({
         where: { id: attributeId },
         data: {
           key: this.normalizeKey(dto.key),
@@ -146,16 +188,16 @@ export class TaxonomyService {
 
   async deleteAttributeDefinition(attributeId: string) {
     await this.requireAttributeDefinition(attributeId);
-    await this.prisma.attributeDefinition.delete({ where: { id: attributeId } });
+    await this.prisma.tenant().attributeDefinition.delete({ where: { id: attributeId } });
   }
 
   private async refreshDescendantPaths(parentId: string) {
-    const parent = await this.prisma.category.findUnique({ where: { id: parentId } });
+    const parent = await this.prisma.tenant().category.findUnique({ where: { id: parentId } });
     if (!parent) {
       return;
     }
 
-    const children = await this.prisma.category.findMany({
+    const children = await this.prisma.tenant().category.findMany({
       where: { parentId },
       orderBy: [{ name: "asc" }],
     });
@@ -163,7 +205,7 @@ export class TaxonomyService {
     for (const child of children) {
       const path = `${parent.path} > ${child.name}`;
       const slug = await this.ensureUniqueSlug(this.makeSlug(path), child.id);
-      await this.prisma.category.update({
+      await this.prisma.tenant().category.update({
         where: { id: child.id },
         data: { path, slug },
       });
@@ -188,7 +230,7 @@ export class TaxonomyService {
   }
 
   private async requireAttributeDefinition(attributeId: string) {
-    const attribute = await this.prisma.attributeDefinition.findUnique({ where: { id: attributeId } });
+    const attribute = await this.prisma.tenant().attributeDefinition.findUnique({ where: { id: attributeId } });
     if (!attribute) {
       throw new NotFoundException("Attribute definition not found");
     }
@@ -200,7 +242,7 @@ export class TaxonomyService {
     let index = 0;
     while (true) {
       const candidate = index === 0 ? root : `${root}-${index}`;
-      const existing = await this.prisma.category.findUnique({ where: { slug: candidate } });
+      const existing = await this.prisma.tenant().category.findUnique({ where: { slug: candidate } });
       if (!existing || existing.id === currentId) {
         return candidate;
       }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   applyBulkEditAction,
   createBulkImportJobAction,
@@ -6,6 +7,8 @@ import {
   createCategoryAction,
   processBulkImportJobAction,
   requeueBulkImportDlqAction,
+  requeueExportJobAction,
+  retrySubmissionAction,
 } from "./actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
 import type { HomeTab } from "@/components/nav/PageTabs";
@@ -16,10 +19,12 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ImportProgress } from "@/components/ui/import-progress";
 import { Input } from "@/components/ui/input";
+import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  ApiHttpError,
   AppRole,
   getBulkEditOperations,
   getBulkEditPreview,
@@ -27,18 +32,24 @@ import {
   getBulkImportJobs,
   getBulkImportTemplates,
   getCategories,
+  getDeadLetterSubmissions,
+  getInstalledConnectors,
   getProducts,
+  getSubmission,
+  getSubmissionIssues,
+  getSubmissions,
   getStats,
-  normalizeAppRole,
 } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
 interface HomePageProps {
   searchParams: Promise<{
-    role?: string;
     tab?: string;
     bulkJobId?: string;
     bulkEditPreview?: string;
@@ -55,6 +66,16 @@ interface HomePageProps {
     importLimit?: string;
     debug?: string;
     hideTestData?: string;
+    planLimit?: string;
+    planResource?: string;
+    planLimitValue?: string;
+    planCurrent?: string;
+    planUpgrade?: string;
+    submissionConnector?: string;
+    submissionStatus?: string;
+    submissionDeadLetter?: string;
+    submissionLimit?: string;
+    submissionId?: string;
   }>;
 }
 
@@ -98,34 +119,132 @@ function resolveHideTestData(value: string | undefined): boolean {
   return true;
 }
 
+function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return Array.isArray(value.items) ? value.items : [];
+}
+
+function mapConnectorSlugToChannel(slugInput: string): "amazon" | "flipkart" | "meesho" | null {
+  const slug = String(slugInput ?? "").trim().toLowerCase();
+  if (slug === "amazon-in") {
+    return "amazon";
+  }
+  if (slug === "flipkart") {
+    return "flipkart";
+  }
+  if (slug === "meesho") {
+    return "meesho";
+  }
+  return null;
+}
+
+function translateSubmissionStatus(status: string): string {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  const map: Record<string, string> = {
+    PENDING: "Pending channel confirmation",
+    SUCCESS: "Published successfully",
+    REJECTED: "Rejected by channel",
+    SUPPRESSED: "Suppressed by channel",
+    ERROR: "Blocked - fix required",
+  };
+  return (map[normalized] ?? normalized) || "Unknown";
+}
+
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api";
+  const apiBaseUrl = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api/v1";
   const query = await searchParams;
-  const actorRole = normalizeAppRole(query.role);
+  const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   const activeTab = resolveTab(query.tab);
   const hideTestData = resolveHideTestData(query.hideTestData);
   const debugMode = String(query.debug ?? "").trim() === "true";
   const canWrite = actorRole !== "viewer";
   const canAdmin = actorRole === "admin";
+  const showPlanLimitModal =
+    String(query.planLimit ?? "").trim() === "1" &&
+    String(query.planResource ?? "").trim().length > 0 &&
+    Number.isFinite(Number(query.planLimitValue)) &&
+    Number.isFinite(Number(query.planCurrent)) &&
+    String(query.planUpgrade ?? "").trim().length > 0;
+  const planLimitResource = String(query.planResource ?? "").trim();
+  const planLimitValue = Number(query.planLimitValue);
+  const planCurrent = Number(query.planCurrent);
+  const planUpgrade = String(query.planUpgrade ?? "").trim();
 
   const bulkJobStatus = String(query.bulkJobStatus ?? "").trim();
   const categoryLimit = parseLimit(query.categoryLimit, 100, 25, 1000);
   const importLimit = parseLimit(query.importLimit, 50, 10, 500);
+  const submissionLimit = parseLimit(query.submissionLimit, 25, 10, 200);
+  const submissionConnector = String(query.submissionConnector ?? "").trim().toLowerCase();
+  const submissionStatus = String(query.submissionStatus ?? "").trim().toUpperCase();
+  const submissionDeadLetterOnly = String(query.submissionDeadLetter ?? "").trim() === "1";
+  const selectedSubmissionId = String(query.submissionId ?? "").trim();
   const tenantKey = String(query.tenantKey ?? "").trim() || "default";
   const bulkTemplateCategoryId = String(query.bulkTemplateCategoryId ?? "").trim();
 
-  const [stats, categories, products, bulkImportJobs, bulkEditOperations, bulkImportTemplates] = await Promise.all([
-    getStats({ role: actorRole }),
-    getCategories({ role: actorRole }),
-    getProducts({ role: actorRole }),
-    getBulkImportJobs({ role: actorRole }),
-    getBulkEditOperations(20, { role: actorRole }),
-    getBulkImportTemplates(tenantKey, bulkTemplateCategoryId || undefined, { role: actorRole }),
-  ]);
+  let stats: Awaited<ReturnType<typeof getStats>>;
+  let categories: Awaited<ReturnType<typeof getCategories>>;
+  let products: Awaited<ReturnType<typeof getProducts>>;
+  let bulkImportJobs: Awaited<ReturnType<typeof getBulkImportJobs>>;
+  let bulkEditOperations: Awaited<ReturnType<typeof getBulkEditOperations>>;
+  let bulkImportTemplates: Awaited<ReturnType<typeof getBulkImportTemplates>>;
+  let submissionsResponse: Awaited<ReturnType<typeof getSubmissions>>;
+  let deadLetterSubmissionsResponse: Awaited<ReturnType<typeof getDeadLetterSubmissions>>;
+  let installedConnectorsResponse: Awaited<ReturnType<typeof getInstalledConnectors>>;
+  try {
+    [
+      stats,
+      categories,
+      products,
+      bulkImportJobs,
+      bulkEditOperations,
+      bulkImportTemplates,
+      submissionsResponse,
+      deadLetterSubmissionsResponse,
+      installedConnectorsResponse,
+    ] =
+      await Promise.all([
+        getStats({ role: actorRole, authHeader }),
+        getCategories({ role: actorRole, authHeader }),
+        getProducts({ role: actorRole, authHeader }),
+        getBulkImportJobs({ role: actorRole, authHeader }),
+        getBulkEditOperations(20, { role: actorRole, authHeader }),
+        getBulkImportTemplates(tenantKey, bulkTemplateCategoryId || undefined, {
+          role: actorRole,
+          authHeader,
+        }),
+        getSubmissions(
+          {
+            connectorSlug: submissionConnector || undefined,
+            status: submissionStatus || undefined,
+            minAttempt: 1,
+            limit: submissionLimit,
+          },
+          { role: actorRole, authHeader },
+        ),
+        getDeadLetterSubmissions(
+          {
+            limit: submissionLimit,
+          },
+          { role: actorRole, authHeader },
+        ),
+        getInstalledConnectors({ role: actorRole, authHeader }),
+      ]);
+  } catch (error: unknown) {
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+      redirect(buildLoginRedirect("/", error.status));
+    }
+    throw error;
+  }
 
   const filteredCategories = filterTestData(categories, hideTestData);
   const filteredProducts = filterTestData(products, hideTestData);
@@ -139,6 +258,36 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         variants: filteredProducts.reduce((sum, product) => sum + (product.variants?.length ?? 0), 0),
       }
     : stats;
+
+  const visibleSubmissionItems = toItems(submissionsResponse);
+  const deadLetterJobs = toItems(deadLetterSubmissionsResponse);
+  const installedConnectorItems = toItems(installedConnectorsResponse);
+  const installedConnectorCount = installedConnectorItems.length;
+  const mappingManagerHref = (() => {
+    const firstProduct = filteredProducts[0];
+    if (!firstProduct) {
+      return null;
+    }
+    const activeInstallation = installedConnectorItems.find((item) => item.status === "ACTIVE");
+    if (!activeInstallation) {
+      return null;
+    }
+    const channel = mapConnectorSlugToChannel(activeInstallation.slug);
+    if (!channel) {
+      return null;
+    }
+    return `/connectors/${encodeURIComponent(activeInstallation.id)}/mapping?productId=${encodeURIComponent(firstProduct.id)}&channel=${encodeURIComponent(channel)}`;
+  })();
+  const selectedSubmissionBase =
+    visibleSubmissionItems.find((item) => item.id === selectedSubmissionId) ??
+    visibleSubmissionItems[0] ??
+    null;
+  const selectedSubmission = selectedSubmissionBase
+    ? await getSubmission(selectedSubmissionBase.id, { role: actorRole, authHeader })
+    : null;
+  const selectedSubmissionIssues = selectedSubmission
+    ? await getSubmissionIssues(selectedSubmission.id, { role: actorRole, authHeader })
+    : [];
 
   const selectedBulkTemplateId = String(query.bulkTemplateId ?? "").trim();
   const selectedBulkTemplate =
@@ -156,7 +305,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     filteredBulkImportJobs.find((job) => job.status === "dead_letter" || job.status === "retrying")?.id ||
     "";
   const selectedBulkRows = selectedBulkJobId
-    ? await getBulkImportJobRows(selectedBulkJobId, undefined, 200)
+    ? await getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
     : [];
 
   const selectedBulkJob = selectedBulkJobId
@@ -207,6 +356,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       bulkEditPreview = await getBulkEditPreview(scope, parsedBulkEditUpdates, {
         role: actorRole,
+        authHeader,
       });
     } catch (error: unknown) {
       bulkEditPreviewErrorCode = extractErrorCode(error instanceof Error ? error.message : String(error ?? ""));
@@ -250,11 +400,10 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
   const buildHref = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
-    params.set("role", actorRole);
     params.set("tab", activeTab);
     Object.entries(query).forEach(([key, raw]) => {
       const value = String(raw ?? "").trim();
-      if (value.length > 0) {
+      if (key !== "role" && value.length > 0) {
         params.set(key, value);
       }
     });
@@ -270,6 +419,14 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
     return encoded ? `/?${encoded}` : "/";
   };
 
+  const dismissPlanLimitHref = buildHref({
+    planLimit: "",
+    planResource: "",
+    planLimitValue: "",
+    planCurrent: "",
+    planUpgrade: "",
+  });
+
   const tabItems = [
     { id: "products" as const, label: "Products", href: buildHref({ tab: "products" }) },
     { id: "import" as const, label: "Import", href: buildHref({ tab: "import" }) },
@@ -280,16 +437,292 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
   return (
     <div className="space-y-5">
+      <PlanLimitModal
+        isOpen={showPlanLimitModal}
+        resource={planLimitResource}
+        limit={planLimitValue}
+        current={planCurrent}
+        upgradeUrl={planUpgrade}
+        dismissHref={dismissPlanLimitHref}
+      />
       <PageTabs activeTab={activeTab} tabs={tabItems} />
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+        <span className="font-semibold uppercase tracking-wide text-slate-500">Quick links</span>
+        <Link className="rounded-md border border-border px-2 py-1 text-slate-700" href="/connectors">
+          Connectors
+        </Link>
+        <Link className="rounded-md border border-border px-2 py-1 text-slate-700" href="/settings/plan">
+          Plan Settings
+        </Link>
+        <Link className="rounded-md border border-border px-2 py-1 text-slate-700" href="/settings/connectors">
+          Connector Access
+        </Link>
+      </div>
 
       {activeTab === "products" && (
-        <ProductsTab
-          role={actorRole}
-          products={filteredProducts}
-          categories={filteredCategories}
-          stats={filteredStats}
-          hideTestData={hideTestData}
-        />
+        <div className="space-y-5">
+          <ProductsTab
+            role={actorRole}
+            products={filteredProducts}
+            categories={filteredCategories}
+            stats={filteredStats}
+            hideTestData={hideTestData}
+            installedConnectorCount={installedConnectorCount}
+            mappingManagerHref={mappingManagerHref}
+            connectorManagementHref="/connectors"
+          />
+
+          <Card>
+            <CardTitle>Submission History</CardTitle>
+            <form method="get" className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+              <input type="hidden" name="tab" value="products" />
+              {!hideTestData && <input type="hidden" name="hideTestData" value="false" />}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="submission-connector">
+                  Connector
+                </label>
+                <Select id="submission-connector" name="submissionConnector" defaultValue={submissionConnector}>
+                  <option value="">All connectors</option>
+                  <option value="amazon-in">Amazon.in</option>
+                  <option value="flipkart">Flipkart</option>
+                  <option value="meesho">Meesho</option>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="submission-status">
+                  Status
+                </label>
+                <Select id="submission-status" name="submissionStatus" defaultValue={submissionStatus}>
+                  <option value="">All statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="SUCCESS">Success</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="SUPPRESSED">Suppressed</option>
+                  <option value="ERROR">Error</option>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="submission-limit">
+                  Limit
+                </label>
+                <Input
+                  id="submission-limit"
+                  type="number"
+                  min={10}
+                  max={200}
+                  name="submissionLimit"
+                  defaultValue={String(submissionLimit)}
+                />
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-xs text-slate-600" htmlFor="submission-dead-letter">
+                  <input
+                    id="submission-dead-letter"
+                    type="checkbox"
+                    name="submissionDeadLetter"
+                    value="1"
+                    defaultChecked={submissionDeadLetterOnly}
+                    className="rounded border-slate-300"
+                  />
+                  Show dead-letter only
+                </label>
+              </div>
+              <div className="flex items-end gap-2">
+                <Button type="submit" variant="secondary">
+                  Apply filters
+                </Button>
+                <Link href={buildHref({
+                  tab: "products",
+                  submissionConnector: "",
+                  submissionStatus: "",
+                  submissionDeadLetter: "",
+                  submissionId: "",
+                  submissionLimit: String(25),
+                })} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                  Clear
+                </Link>
+              </div>
+            </form>
+
+            {submissionDeadLetterOnly ? (
+              deadLetterJobs.length === 0 ? (
+                <EmptyState
+                  icon="WARN"
+                  title="No dead-letter jobs"
+                  description="No export jobs are currently in dead-letter state."
+                />
+              ) : (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-left text-sm">
+                    <thead className="text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="py-2">Export Job</th>
+                        <th className="py-2">Channel</th>
+                        <th className="py-2">Status</th>
+                        <th className="py-2">Retry</th>
+                        <th className="py-2">Product</th>
+                        <th className="py-2">Reason</th>
+                        <th className="py-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deadLetterJobs.map((job) => (
+                        <tr key={job.id} className="border-t border-border">
+                          <td className="py-2 font-mono text-xs">{job.id}</td>
+                          <td className="py-2">{job.channel}</td>
+                          <td className="py-2">{translateJobStatus(job.status)}</td>
+                          <td className="py-2">
+                            {job.retryCount}/{job.maxRetries}
+                          </td>
+                          <td className="py-2">
+                            <Link href={`/products/${encodeURIComponent(job.productId)}`}>
+                              {job.product?.title ?? job.productId}
+                            </Link>
+                          </td>
+                          <td className="py-2 text-xs text-slate-600">{job.failureReason ?? job.dlqReason ?? "-"}</td>
+                          <td className="py-2">
+                            {canWrite ? (
+                              <form action={requeueExportJobAction}>
+                                <RoleHiddenInput role={actorRole} />
+                                <input type="hidden" name="jobId" value={job.id} />
+                                <input type="hidden" name="productId" value={job.productId} />
+                                <Button type="submit">Requeue</Button>
+                              </form>
+                            ) : (
+                              <span className="text-xs text-slate-500">Read-only</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : visibleSubmissionItems.length === 0 ? (
+              <EmptyState
+                icon="LOG"
+                title="No submissions yet"
+                description="Create an export job from a product to start tracking channel submission history."
+              />
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="py-2">Submission</th>
+                      <th className="py-2">Connector</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Attempt</th>
+                      <th className="py-2">Product</th>
+                      <th className="py-2">Submitted</th>
+                      <th className="py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleSubmissionItems.map((submission) => (
+                      <tr key={submission.id} className="border-t border-border align-top">
+                        <td className="py-2 font-mono text-xs">{submission.id}</td>
+                        <td className="py-2">{submission.connectorDisplayName || submission.connectorSlug}</td>
+                        <td className="py-2">{translateSubmissionStatus(submission.status)}</td>
+                        <td className="py-2">{submission.attemptNumber}</td>
+                        <td className="py-2">
+                          <Link href={`/products/${encodeURIComponent(submission.productId)}`}>
+                            {submission.productId}
+                          </Link>
+                        </td>
+                        <td className="py-2">{new Date(submission.submittedAt).toLocaleString()}</td>
+                        <td className="py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <Link
+                              href={buildHref({
+                                tab: "products",
+                                submissionId: submission.id,
+                              })}
+                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+                            >
+                              View details
+                            </Link>
+                            {canWrite && submission.status !== "SUCCESS" && (
+                              <form action={retrySubmissionAction}>
+                                <RoleHiddenInput role={actorRole} />
+                                <input type="hidden" name="submissionId" value={submission.id} />
+                                <input type="hidden" name="submissionConnector" value={submissionConnector} />
+                                <input type="hidden" name="submissionStatus" value={submissionStatus} />
+                                <input type="hidden" name="submissionDeadLetter" value={submissionDeadLetterOnly ? "1" : ""} />
+                                <input type="hidden" name="submissionLimit" value={String(submissionLimit)} />
+                                <Button type="submit">Retry</Button>
+                              </form>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {!submissionDeadLetterOnly && selectedSubmission && (
+            <Card>
+              <CardTitle>Submission Detail ({selectedSubmission.id})</CardTitle>
+              <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+                <p>
+                  <span className="font-semibold">Connector:</span>{" "}
+                  {selectedSubmission.connectorDisplayName || selectedSubmission.connectorSlug}
+                </p>
+                <p>
+                  <span className="font-semibold">Status:</span> {translateSubmissionStatus(selectedSubmission.status)}
+                </p>
+                <p>
+                  <span className="font-semibold">Attempt:</span> {selectedSubmission.attemptNumber}
+                </p>
+                <p>
+                  <span className="font-semibold">Source:</span> {selectedSubmission.source}
+                </p>
+                <p className="md:col-span-2">
+                  <span className="font-semibold">Idempotency Key:</span> {selectedSubmission.idempotencyKey}
+                </p>
+                {selectedSubmission.payloadSnapshotUrl && (
+                  <p className="md:col-span-2">
+                    <span className="font-semibold">Payload Snapshot URL:</span>{" "}
+                    <a
+                      href={selectedSubmission.payloadSnapshotUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sky-700 underline"
+                    >
+                      Open snapshot
+                    </a>
+                  </p>
+                )}
+              </div>
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-slate-900">Submission Issues</p>
+                {selectedSubmissionIssues.length === 0 ? (
+                  <p className="text-sm text-slate-600">No normalized issues recorded for this submission.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedSubmissionIssues.map((issue, index) => {
+                      const translated = translateError(extractErrorCode(issue.code || issue.sellerMessage));
+                      return (
+                        <div key={`${selectedSubmission.id}-issue-${index}`} className="rounded-md border border-slate-200 p-3 text-sm">
+                          <p className="font-medium text-slate-900">
+                            {translated.title} ({issue.severity})
+                          </p>
+                          <p className="text-slate-700">{issue.sellerMessage || translated.description}</p>
+                          {issue.fieldPath && (
+                            <p className="text-xs text-slate-500">Field: {issue.fieldPath}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {activeTab === "import" && (
@@ -297,7 +730,6 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
           <Card>
             <CardTitle>Bulk Import Templates</CardTitle>
             <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-              <input type="hidden" name="role" value={actorRole} />
               <input type="hidden" name="tab" value="import" />
               {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
               <div className="space-y-1">
@@ -623,7 +1055,6 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
           <Card>
             <CardTitle>Bulk Import Jobs</CardTitle>
             <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
-              <input type="hidden" name="role" value={actorRole} />
               <input type="hidden" name="tab" value="import" />
               <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="import-job-status-filter">
@@ -661,14 +1092,14 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
 
             {filteredBulkImportJobs.length === 0 ? (
               <EmptyState
-                icon="📁"
+                icon="FOLDER"
                 title="No imports yet"
                 description="Upload an Excel or CSV file to import up to 1,000 products at once."
                 action={{ label: "Upload your first file", href: buildHref({ tab: "import" }) }}
               />
             ) : visibleBulkImportJobs.length === 0 ? (
               <EmptyState
-                icon="✓"
+                icon="OK"
                 title="No imports match this filter"
                 description=""
                 action={{ label: "Show all imports", href: buildHref({ tab: "import", bulkJobStatus: "" }) }}
@@ -786,7 +1217,7 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
               <CardTitle>Bulk Import Row Repair ({selectedBulkJobId})</CardTitle>
               {selectedBulkRows.filter((row) => row.status !== "success").length === 0 ? (
                 <EmptyState
-                  icon="✓"
+                  icon="OK"
                   title="No imports match this filter"
                   description=""
                   action={{ label: "Show all imports", href: buildHref({ tab: "import", bulkJobId: "" }) }}
@@ -827,7 +1258,6 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
             <CardTitle>Bulk Edit Products</CardTitle>
             {canWrite ? (
               <form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                <input type="hidden" name="role" value={actorRole} />
                 <input type="hidden" name="tab" value="bulk-edit" />
                 <input type="hidden" name="bulkEditPreview" value="1" />
                 {selectedBulkJobId && <input type="hidden" name="bulkJobId" value={selectedBulkJobId} />}
@@ -1060,19 +1490,19 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
       {activeTab === "developer" && (
         <Card>
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Internal Tools</p>
-          <CardTitle>Internal navigation</CardTitle>
+          <CardTitle>Internal phase navigation</CardTitle>
           <div className="flex flex-wrap gap-2 text-sm">
-            <Link className="rounded-md border border-border px-3 py-2" href={`/media?role=${encodeURIComponent(actorRole)}`}>
-              DAM
+            <Link className="rounded-md border border-border px-3 py-2" href="/media">
+              Phase 5 DAM
             </Link>
-            <Link className="rounded-md border border-border px-3 py-2" href={`/rejection?role=${encodeURIComponent(actorRole)}`}>
-              Intelligence
+            <Link className="rounded-md border border-border px-3 py-2" href="/rejection">
+              Phase 6 Intelligence
             </Link>
-            <Link className="rounded-md border border-border px-3 py-2" href={`/ondc?role=${encodeURIComponent(actorRole)}`}>
-              ONDC
+            <Link className="rounded-md border border-border px-3 py-2" href="/ondc">
+              Phase 7 ONDC
             </Link>
-            <Link className="rounded-md border border-border px-3 py-2" href={`/ai?role=${encodeURIComponent(actorRole)}`}>
-              AI
+            <Link className="rounded-md border border-border px-3 py-2" href="/ai">
+              Phase 8 AI
             </Link>
           </div>
         </Card>
@@ -1080,3 +1510,6 @@ Cotton Shirt,PIM1,Sample row,62046200,18,"{""color"":""black"",""size"":""M""}"`
     </div>
   );
 }
+
+
+

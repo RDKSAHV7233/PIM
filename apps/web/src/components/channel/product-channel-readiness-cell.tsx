@@ -69,9 +69,27 @@ function buildUnknownState(channel: MarketplaceChannel): ChannelReadinessResult 
 interface ProductChannelReadinessCellProps {
   productId: string;
   role: AppRole;
+  onResolvedStatus?: (status: ReadinessStatus) => void;
 }
 
-export function ProductChannelReadinessCell({ productId, role }: ProductChannelReadinessCellProps) {
+function aggregateStatus(state: LocalReadinessState): ReadinessStatus {
+  const statuses = CHANNELS.map((channel) => state[channel]?.status ?? "loading");
+  if (statuses.some((status) => status === "loading")) {
+    return "loading";
+  }
+  if (statuses.some((status) => status === "errors")) {
+    return "errors";
+  }
+  if (statuses.some((status) => status === "warnings")) {
+    return "warnings";
+  }
+  if (statuses.some((status) => status === "unknown")) {
+    return "unknown";
+  }
+  return "ready";
+}
+
+export function ProductChannelReadinessCell({ productId, role, onResolvedStatus }: ProductChannelReadinessCellProps) {
   const [state, setState] = useState<LocalReadinessState>(() => ({
     amazon: buildLoadingState("amazon"),
     flipkart: buildLoadingState("flipkart"),
@@ -95,7 +113,7 @@ export function ProductChannelReadinessCell({ productId, role }: ProductChannelR
           const response = await fetch(
             `/api/marketplace/readiness?productId=${encodeURIComponent(productId)}&channel=${encodeURIComponent(
               channel,
-            )}&role=${encodeURIComponent(role)}`,
+            )}`,
             {
               method: "GET",
               cache: "no-store",
@@ -126,6 +144,15 @@ export function ProductChannelReadinessCell({ productId, role }: ProductChannelR
     };
   }, [productId, role]);
 
+  const overallStatus = useMemo(() => aggregateStatus(state), [state]);
+
+  useEffect(() => {
+    if (!onResolvedStatus || overallStatus === "loading") {
+      return;
+    }
+    onResolvedStatus(overallStatus);
+  }, [onResolvedStatus, overallStatus]);
+
   const badges = useMemo(
     () =>
       CHANNELS.map((channel) => {
@@ -146,3 +173,4 @@ export function ProductChannelReadinessCell({ productId, role }: ProductChannelR
 
   return <div className="flex flex-wrap gap-1">{badges}</div>;
 }
+

@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-03-04T03:01:59.054Z",
+  "environment": "development",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "apiBase": "http://localhost:4000/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": false,
+    "status": null,
+    "body": null,
+    "error": "fetch failed"
+  },
+  "gates": {
+    "artifactsInWindow": 0,
+    "allEvidenceArtifactsInWindow": 8,
+    "consecutiveE10SignoffRuns": 0,
+    "recentArtifacts": []
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": false,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true
+    },
+    "pending": [
+      "Need at least 2 consecutive E10 gate signoff artifacts."
+    ]
+  },
+  "broadRollout": {
+    "pending": [
+      "14-day controlled rollout observation window not complete.",
+      "Production SLO trend evidence window not complete."
+    ]
+  }
+}

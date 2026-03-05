@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Load-EnvFile {
   param([string]$Path)
@@ -42,37 +44,34 @@ function Invoke-ApiJson {
   param(
     [string]$Url,
     [ValidateSet("GET", "POST", "PATCH", "DELETE")] [string]$Method = "GET",
-    [hashtable]$Body = $null,
-    [string]$Role = "admin"
+    [hashtable]$Body = $null
   )
-  $headers = @{
-    "x-pim-role" = $Role
-    "x-pim-actor" = "concurrency-smoke"
-  }
 
   if ($null -ne $Body) {
-    return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
+    return Invoke-RestMethod -Uri $Url -Method $Method -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
   }
-  return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers
+  return Invoke-RestMethod -Uri $Url -Method $Method
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
 
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-  $category = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Role "admin" -Body @{
+  $category = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Body @{
     name = "Concurrency Category $ts"
   }
 
-  $created = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Role "editor" -Body @{
+  $created = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Body @{
     title = "Concurrency Product $ts"
     description = "Base product"
     brand = "PIM1"
@@ -80,7 +79,7 @@ try {
     status = "draft"
   }
 
-  $firstUpdate = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "PATCH" -Role "editor" -Body @{
+  $firstUpdate = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "PATCH" -Body @{
     expectedVersion = 1
     title = "Concurrency Product Updated"
     description = "Updated once"
@@ -93,7 +92,7 @@ try {
   $conflictCode = ""
   $conflictCurrentVersion = $null
   try {
-    $null = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "PATCH" -Role "editor" -Body @{
+    $null = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "PATCH" -Body @{
       expectedVersion = 1
       title = "Stale Update Attempt"
       description = "Should fail"
@@ -133,7 +132,7 @@ try {
     }
   }
 
-  $latest = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "GET" -Role "viewer"
+  $latest = Invoke-ApiJson -Url "$baseApiUrl/catalog/products/$($created.id)" -Method "GET"
   if ($latest.version -ne 2) {
     throw "Expected latest product version to be 2 after first update."
   }
@@ -150,6 +149,7 @@ try {
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
   }

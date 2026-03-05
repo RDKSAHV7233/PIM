@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { BulkEditApplyDto } from "./dto/bulk-edit-apply.dto";
 import { BulkEditPreviewDto } from "./dto/bulk-edit-preview.dto";
 import { BulkEditService } from "./bulk-edit.service";
@@ -18,8 +19,8 @@ export class BulkEditController {
   }
 
   @Get("operations")
-  listOperations(@Query("limit") limit?: string) {
-    return this.bulkEditService.listOperations(limit ? Number(limit) : undefined);
+  listOperations(@Query("limit") limit?: string, @Query() pagination?: CursorPaginationDto) {
+    return this.bulkEditService.listOperations(limit ? Number(limit) : undefined, pagination);
   }
 
   @Get("operations/:id")

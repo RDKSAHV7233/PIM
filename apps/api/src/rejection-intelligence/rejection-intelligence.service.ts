@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+﻿import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -10,7 +10,7 @@ export class RejectionIntelligenceService {
 
   async scoreProduct(productId: string, channelInput: string) {
     const channel = this.parseChannel(channelInput);
-    const product = await this.prisma.product.findUnique({
+    const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
         validationIssues: {
@@ -22,7 +22,8 @@ export class RejectionIntelligenceService {
       throw new NotFoundException("Product not found");
     }
 
-    const mediaRows = (await this.prisma.$queryRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    const mediaRows = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT id, width, height, mime_type AS "mimeType"
       FROM media_assets

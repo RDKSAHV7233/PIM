@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Load-EnvFile {
   param([string]$Path)
@@ -43,17 +45,19 @@ function Invoke-ApiJson {
     [string]$Url,
     [ValidateSet("GET", "POST", "PATCH", "DELETE")] [string]$Method = "GET",
     [hashtable]$Body = $null,
-    [string]$Role = $null
+    [hashtable]$Headers = $null
   )
-  $headers = @{}
-  if ($Role) {
-    $headers["x-pim-role"] = $Role
-  }
 
   if ($null -ne $Body) {
-    return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
+    if ($null -ne $Headers) {
+      return Invoke-RestMethod -Uri $Url -Method $Method -Headers $Headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
+    }
+    return Invoke-RestMethod -Uri $Url -Method $Method -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
   }
-  return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers
+  if ($null -ne $Headers) {
+    return Invoke-RestMethod -Uri $Url -Method $Method -Headers $Headers
+  }
+  return Invoke-RestMethod -Uri $Url -Method $Method
 }
 
 function Assert-Forbidden {
@@ -76,30 +80,35 @@ function Assert-Forbidden {
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
+  $adminHeaders = Get-SmokeAuthHeaders -BaseApiUrl $baseApiUrl -UserId "smoke-admin" -Role "admin"
+  $editorHeaders = Get-SmokeAuthHeaders -BaseApiUrl $baseApiUrl -UserId "smoke-editor" -Role "editor"
+  $viewerHeaders = Get-SmokeAuthHeaders -BaseApiUrl $baseApiUrl -UserId "smoke-viewer" -Role "viewer"
 
   $health = Invoke-ApiJson -Url "$baseApiUrl/health" -Method "GET"
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
-  $adminCategory = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Role "admin" -Body @{
+  $adminCategory = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Headers $adminHeaders -Body @{
     name = "RBAC Category $ts"
   }
 
   Assert-Forbidden -Label "Editor create category" -Action {
-    Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Role "editor" -Body @{
+    Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Headers $editorHeaders -Body @{
       name = "Should Fail"
     }
   }
 
-  $editorProduct = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Role "editor" -Body @{
+  $editorProduct = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Headers $editorHeaders -Body @{
     title = "RBAC Product $ts"
     brand = "PIM1"
     description = "RBAC editor write check"
@@ -108,7 +117,7 @@ try {
   }
 
   Assert-Forbidden -Label "Viewer create product" -Action {
-    Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Role "viewer" -Body @{
+    Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Headers $viewerHeaders -Body @{
       title = "Viewer Fail Product"
       brand = "PIM1"
       description = "RBAC viewer blocked check"
@@ -118,7 +127,7 @@ try {
   }
 
   Assert-Forbidden -Label "Editor create attribute definition" -Action {
-    Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories/$($adminCategory.id)/attributes" -Method "POST" -Role "editor" -Body @{
+    Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories/$($adminCategory.id)/attributes" -Method "POST" -Headers $editorHeaders -Body @{
       key = "rbac_key"
       name = "RBAC Attr"
       dataType = "text"
@@ -127,7 +136,7 @@ try {
     }
   }
 
-  $adminAttribute = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories/$($adminCategory.id)/attributes" -Method "POST" -Role "admin" -Body @{
+  $adminAttribute = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories/$($adminCategory.id)/attributes" -Method "POST" -Headers $adminHeaders -Body @{
     key = "rbac_ok"
     name = "RBAC Allowed Attr"
     dataType = "text"
@@ -135,7 +144,7 @@ try {
     appliesTo = "product"
   }
 
-  $viewerProducts = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "GET" -Role "viewer"
+  $viewerProducts = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "GET" -Headers $viewerHeaders
 
   $result = [PSCustomObject]@{
     health = $health.status
@@ -154,6 +163,7 @@ try {
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
   }

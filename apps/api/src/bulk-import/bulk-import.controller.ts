@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Header, Param, Post, Query, Res } from "@nestjs/common";
 import { FastifyReply } from "fastify";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { BulkImportService } from "./bulk-import.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
@@ -26,8 +27,9 @@ export class BulkImportController {
   listTemplates(
     @Query("tenantKey") tenantKey?: string,
     @Query("categoryId") categoryId?: string,
+    @Query() pagination?: CursorPaginationDto,
   ) {
-    return this.bulkImportService.listTemplates(tenantKey, categoryId);
+    return this.bulkImportService.listTemplates(tenantKey, categoryId, pagination);
   }
 
   @Get("templates/:id")
@@ -44,8 +46,8 @@ export class BulkImportController {
   }
 
   @Get("jobs")
-  listJobs(@Query("status") status?: string) {
-    return this.bulkImportService.listJobs(status);
+  listJobs(@Query("status") status?: string, @Query() pagination?: CursorPaginationDto) {
+    return this.bulkImportService.listJobs(status, pagination);
   }
 
   @Get("jobs/:id")
@@ -58,8 +60,9 @@ export class BulkImportController {
     @Param("id") jobId: string,
     @Query("status") status?: string,
     @Query("limit") limit?: string,
+    @Query() pagination?: CursorPaginationDto,
   ) {
-    return this.bulkImportService.listJobRows(jobId, status, limit ? Number(limit) : undefined);
+    return this.bulkImportService.listJobRows(jobId, status, limit ? Number(limit) : undefined, pagination);
   }
 
   @Get("jobs/:id/error-report")

@@ -1,18 +1,24 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { bulkAssociateMediaCsvAction, uploadMediaAssetAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  ApiHttpError,
   AppRole,
   getMediaAssets,
   getMediaAssetValidation,
   getProducts,
   MarketplaceChannel,
-  normalizeAppRole,
 } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
+import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -21,69 +27,132 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
 }
 
 interface MediaPageProps {
-  searchParams: Promise<{
-    role?: string;
-    productId?: string;
+  searchParams: Promise<{    productId?: string;
     variantId?: string;
     assetId?: string;
     bulkAssociationStatus?: string;
     channel?: MarketplaceChannel;
+    planLimit?: string;
+    planResource?: string;
+    planLimitValue?: string;
+    planCurrent?: string;
+    planUpgrade?: string;
   }>;
 }
 
 export default async function MediaPage({ searchParams }: MediaPageProps) {
   const query = await searchParams;
-  const actorRole = normalizeAppRole(query.role);
+  const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   const canWrite = actorRole !== "viewer";
   const productId = String(query.productId ?? "").trim();
   const variantId = String(query.variantId ?? "").trim();
   const channel = (query.channel ?? "amazon") as MarketplaceChannel;
   const assetId = String(query.assetId ?? "").trim();
   const bulkAssociationStatus = String(query.bulkAssociationStatus ?? "").trim();
+  const showPlanLimitModal =
+    String(query.planLimit ?? "").trim() === "1" &&
+    String(query.planResource ?? "").trim().length > 0 &&
+    Number.isFinite(Number(query.planLimitValue)) &&
+    Number.isFinite(Number(query.planCurrent)) &&
+    String(query.planUpgrade ?? "").trim().length > 0;
+  const planLimitResource = String(query.planResource ?? "").trim();
+  const planLimitValue = Number(query.planLimitValue);
+  const planCurrent = Number(query.planCurrent);
+  const planUpgrade = String(query.planUpgrade ?? "").trim();
+  const dismissPlanLimitHref = (() => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, raw]) => {
+      if (
+        key === "planLimit" ||
+        key === "planResource" ||
+        key === "planLimitValue" ||
+        key === "planCurrent" ||
+        key === "planUpgrade"
+      ) {
+        return;
+      }
+      const value = String(raw ?? "").trim();
+      if (value.length > 0) {
+        params.set(key, value);
+      }
+    });
+    const encoded = params.toString();
+    return encoded ? `/media?${encoded}` : "/media";
+  })();
 
-  const [products, assets] = await Promise.all([
-    getProducts({ role: actorRole }),
-    getMediaAssets(productId || undefined, variantId || undefined, { role: actorRole }),
-  ]);
-  const validation = assetId ? await getMediaAssetValidation(assetId, channel, { role: actorRole }) : null;
+  let rawProducts: Awaited<ReturnType<typeof getProducts>>;
+  let assets: Awaited<ReturnType<typeof getMediaAssets>>;
+  try {
+    [rawProducts, assets] = await Promise.all([
+      getProducts({ role: actorRole, authHeader }),
+      getMediaAssets(productId || undefined, variantId || undefined, { role: actorRole, authHeader }),
+    ]);
+  } catch (error: unknown) {
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+      redirect(buildLoginRedirect("/media", error.status));
+    }
+    throw error;
+  }
+  const products = filterTestData(rawProducts, true);
+  const validation = assetId
+    ? await getMediaAssetValidation(assetId, channel, { role: actorRole, authHeader })
+    : null;
 
   return (
     <div className="space-y-5">
+      <PlanLimitModal
+        isOpen={showPlanLimitModal}
+        resource={planLimitResource}
+        limit={planLimitValue}
+        current={planCurrent}
+        upgradeUrl={planUpgrade}
+        dismissHref={dismissPlanLimitHref}
+      />
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Phase 5: DAM + Media Validation</h1>
+        <h1 className="text-2xl font-semibold">Media Validation</h1>
         <p className="text-sm text-slate-600">
           Image upload/storage, metadata extraction, and marketplace media-rule validation.
         </p>
       </header>
 
       <div className="flex flex-wrap gap-2 text-sm">
-        <Link className="rounded-md border border-border px-3 py-2" href={`/?role=${encodeURIComponent(actorRole)}`}>
+        <Link className="rounded-md border border-border px-3 py-2" href={`/`}>
           Dashboard
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection?role=${encodeURIComponent(actorRole)}`}>
-          Phase 6
+        <Link className="rounded-md border border-border px-3 py-2" href={`/rejection`}>
+          Rejection Intelligence
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc?role=${encodeURIComponent(actorRole)}`}>
-          Phase 7
+        <Link className="rounded-md border border-border px-3 py-2" href={`/ondc`}>
+          ONDC Expansion
         </Link>
-        <Link className="rounded-md border border-border px-3 py-2" href={`/ai?role=${encodeURIComponent(actorRole)}`}>
-          Phase 8
+        <Link className="rounded-md border border-border px-3 py-2" href={`/ai`}>
+          AI Optimization
         </Link>
       </div>
 
       <Card>
         <CardTitle>Filter</CardTitle>
         <form method="get" className="grid gap-3 md:grid-cols-4">
-          <input type="hidden" name="role" value={actorRole} />
-          <Select name="productId" defaultValue={productId}>
-            <option value="">All products</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.title}
-              </option>
-            ))}
-          </Select>
-          <Input name="variantId" defaultValue={variantId} placeholder="Variant id (optional)" />
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-filter-product-id">
+              Product
+            </label>
+            <Select id="media-filter-product-id" name="productId" defaultValue={productId}>
+              <option value="">All products</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.title}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-filter-variant-id">
+              Variant ID
+            </label>
+            <Input id="media-filter-variant-id" name="variantId" defaultValue={variantId} placeholder="Optional" />
+          </div>
           <Button type="submit" className="w-fit">
             Apply filter
           </Button>
@@ -95,18 +164,43 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         {canWrite ? (
           <form action={uploadMediaAssetAction} className="grid gap-3 md:grid-cols-2">
             <RoleHiddenInput role={actorRole} />
-            <Select name="productId" defaultValue={productId}>
-              <option value="">Unlinked media</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.title}
-                </option>
-              ))}
-            </Select>
-            <Input name="variantId" defaultValue={variantId} placeholder="Variant id (optional)" />
-            <Input name="sourceFile" type="file" accept="image/*" required />
-            <Input name="width" type="number" min={1} placeholder="Width (optional if png)" />
-            <Input name="height" type="number" min={1} placeholder="Height (optional if png)" />
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-product-id">
+                Product
+              </label>
+              <Select id="media-upload-product-id" name="productId" defaultValue={productId}>
+                <option value="">Unlinked media</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-variant-id">
+                Variant ID
+              </label>
+              <Input id="media-upload-variant-id" name="variantId" defaultValue={variantId} placeholder="Optional" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-source-file">
+                Image File
+              </label>
+              <Input id="media-upload-source-file" name="sourceFile" type="file" accept="image/*" required />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-width">
+                Width
+              </label>
+              <Input id="media-upload-width" name="width" type="number" min={1} placeholder="Optional if PNG" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-height">
+                Height
+              </label>
+              <Input id="media-upload-height" name="height" type="number" min={1} placeholder="Optional if PNG" />
+            </div>
             <Button type="submit" className="w-fit">
               Upload media
             </Button>
@@ -125,13 +219,19 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
               Headers: <code>skuCode,imageUrl,contentBase64,fileName,mimeType,width,height</code>. Use{" "}
               <code>contentBase64</code> or <code>imageUrl</code>.
             </p>
-            <Textarea
-              name="csvContent"
-              rows={6}
-              defaultValue={`skuCode,contentBase64,fileName,mimeType,width,height
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-bulk-csv-content">
+                CSV Content
+              </label>
+              <Textarea
+                id="media-bulk-csv-content"
+                name="csvContent"
+                rows={6}
+                defaultValue={`skuCode,contentBase64,fileName,mimeType,width,height
 SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgQfXl7wAAAAASUVORK5CYII=,demo.png,image/png,1200,1200`}
-              placeholder="Paste CSV rows"
-            />
+                placeholder="Paste CSV rows"
+              />
+            </div>
             <Button type="submit" className="w-fit">
               Run bulk association
             </Button>
@@ -171,7 +271,7 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
                   <td className="py-2">
                     <Link
                       className="inline-flex items-center rounded-md border border-border px-3 py-2"
-                      href={`/media?role=${encodeURIComponent(actorRole)}&productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
+                      href={`/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
                     >
                       Validate
                     </Link>
@@ -187,7 +287,6 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
         <Card>
           <CardTitle>Channel Validation</CardTitle>
           <form method="get" className="flex items-end gap-3">
-            <input type="hidden" name="role" value={actorRole} />
             <input type="hidden" name="productId" value={productId} />
             <input type="hidden" name="variantId" value={variantId} />
             <input type="hidden" name="assetId" value={assetId} />
@@ -230,3 +329,4 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
     </div>
   );
 }
+

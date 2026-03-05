@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Load-EnvFile {
   param([string]$Path)
@@ -39,18 +41,21 @@ function Wait-ForApi {
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
+  $authHeaders = Get-SmokeAuthHeaders -BaseApiUrl $baseApiUrl -UserId "smoke-admin" -Role "admin"
 
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-  $tenantKey = "pilot-tenant"
+  $tenantKey = $env:PIM_SMOKE_TENANT_KEY
   $category = Invoke-RestMethod -Uri "$baseApiUrl/taxonomy/categories" -Method Post -ContentType "application/json" -Body (@{
       name = "Pilot Category $ts"
     } | ConvertTo-Json)
@@ -64,7 +69,6 @@ try {
     } | ConvertTo-Json)
 
   $templateV1 = Invoke-RestMethod -Uri "$baseApiUrl/bulk-import/templates" -Method Post -ContentType "application/json" -Body (@{
-      tenantKey = $tenantKey
       categoryId = $category.id
       name = "Pilot Fashion Template"
       sourceFormat = "csv"
@@ -89,7 +93,6 @@ try {
     } | ConvertTo-Json)
 
   $templateV2 = Invoke-RestMethod -Uri "$baseApiUrl/bulk-import/templates" -Method Post -ContentType "application/json" -Body (@{
-      tenantKey = $tenantKey
       categoryId = $category.id
       name = "Pilot Fashion Template"
       sourceFormat = "csv"
@@ -105,7 +108,7 @@ try {
       maxRetries = 3
     } | ConvertTo-Json -Depth 10)
 
-  $templates = Invoke-RestMethod -Uri "$baseApiUrl/bulk-import/templates?tenantKey=$tenantKey&categoryId=$($category.id)" -Method Get
+  $templates = Invoke-RestMethod -Uri "$baseApiUrl/bulk-import/templates?categoryId=$($category.id)" -Method Get
   $v1Listed = $templates | Where-Object { $_.id -eq $templateV1.id } | Select-Object -First 1
   $v2Listed = $templates | Where-Object { $_.id -eq $templateV2.id } | Select-Object -First 1
 
@@ -166,7 +169,7 @@ Pilot Tee 2,PIM1,Pilot row 2,62046200,18,""{""""color"""":""""blue"""",""""sleev
     throw "Pilot dead-letter flow failed."
   }
 
-  $errorReport = Invoke-WebRequest -Uri "$baseApiUrl/bulk-import/jobs/$($badJob.id)/error-report" -Method Get
+  $errorReport = Invoke-WebRequest -Uri "$baseApiUrl/bulk-import/jobs/$($badJob.id)/error-report" -Method Get -Headers $authHeaders
   if (-not $errorReport.Content.Contains("dead_letter")) {
     throw "Pilot error report export validation failed."
   }
@@ -233,6 +236,7 @@ Pilot Tee 2,PIM1,Pilot row 2,62046200,18,""{""""color"""":""""blue"""",""""sleev
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
   }

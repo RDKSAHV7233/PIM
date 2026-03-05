@@ -67,7 +67,7 @@ $apiOutLog = Join-Path $runLogs "api-connector-$runId.out.log"
 $apiErrLog = Join-Path $runLogs "api-connector-$runId.err.log"
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "-r", "dotenv/config", "apps/api/dist/main.js", "dotenv_config_path=.env" -WorkingDirectory $repoRoot -PassThru -RedirectStandardOutput $apiOutLog -RedirectStandardError $apiErrLog

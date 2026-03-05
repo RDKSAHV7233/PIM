@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
 import { CreateProductForm } from "@/components/product/CreateProductForm";
 import { EmptyState } from "@/components/ui/empty-state";
+import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, Product } from "@/lib/api";
 import type { ReadinessStatus } from "@/lib/channel-readiness";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -25,16 +26,21 @@ interface ProductsTabProps {
   categories: Category[];
   stats: CatalogStats;
   hideTestData: boolean;
+  installedConnectorCount: number;
+  mappingManagerHref: string | null;
+  connectorManagementHref: string;
 }
 
 function classifyProduct(product: ProductWithCompliance, channelStatus: ReadinessStatus): TriageBucket {
   if (product.complianceErrorCount > 0 || channelStatus === "errors") {
     return "needs_attention";
   }
-  if (product.complianceWarningCount > 0) {
-    return "at_risk";
-  }
-  if (channelStatus === "warnings" || channelStatus === "unknown" || channelStatus === "loading") {
+  if (
+    product.complianceWarningCount > 0 ||
+    channelStatus === "warnings" ||
+    channelStatus === "unknown" ||
+    channelStatus === "loading"
+  ) {
     return "at_risk";
   }
   return "ready";
@@ -70,8 +76,18 @@ function sortProducts(
   return left.title.localeCompare(right.title);
 }
 
-export function ProductsTab({ role, products, categories, stats, hideTestData }: ProductsTabProps) {
+export function ProductsTab({
+  role,
+  products,
+  categories,
+  stats,
+  hideTestData,
+  installedConnectorCount,
+  mappingManagerHref,
+  connectorManagementHref,
+}: ProductsTabProps) {
   const canWrite = role !== "viewer";
+  const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>("all");
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessMap, setReadinessMap] = useState<Record<string, ReadinessStatus>>({});
@@ -132,6 +148,20 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
     );
   }, [readinessMap, selectedFilter, sortedProducts]);
 
+  const onboardingSteps = useMemo(() => {
+    const hasProducts = filteredProducts.length > 0;
+    const hasCompleteness = filteredProducts.some((product) => typeof product.completenessScore === "number");
+    const hasIssueResolved = filteredProducts.some((product) => product.complianceErrorCount === 0);
+    const hasConnector = installedConnectorCount > 0;
+    return [
+      { key: "import", label: "Import your first catalog", done: hasProducts },
+      { key: "completeness", label: "Review completeness score", done: hasCompleteness },
+      { key: "issue", label: "Fix your first issue", done: hasIssueResolved },
+      { key: "connector", label: "Connect a channel", done: hasConnector },
+    ];
+  }, [filteredProducts, installedConnectorCount]);
+  const completedSteps = onboardingSteps.filter((step) => step.done).length;
+
   function onHideTestDataChange(nextValue: boolean) {
     const params = new URLSearchParams(searchParams.toString());
     if (nextValue) {
@@ -161,19 +191,60 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
               </span>
             )}
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-500">
-            <input
-              type="checkbox"
-              checked={hideTestData}
-              onChange={(event) => onHideTestDataChange(event.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Hide test data
-          </label>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/quality/issues${hideTestData ? "" : "?hideTestData=false"}`}
+              className="text-xs font-semibold text-slate-600 underline"
+            >
+              Open Issue Inbox
+            </Link>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={hideTestData}
+                onChange={(event) => onHideTestDataChange(event.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Hide test data
+            </label>
+          </div>
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Categories: {stats.categories} | Products: {stats.products} | Variants: {stats.variants}
         </p>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-900">Getting Started</h2>
+          <div className="flex items-center gap-3">
+            <Link href={connectorManagementHref} className="text-xs font-semibold text-slate-600 underline">
+              Manage Connectors
+            </Link>
+            {mappingManagerHref ? (
+              <Link href={mappingManagerHref} className="text-xs font-semibold text-slate-600 underline">
+                Open Mapping Manager
+              </Link>
+            ) : null}
+            <span className="text-xs text-slate-500">
+              {completedSteps}/{onboardingSteps.length} completed
+            </span>
+          </div>
+        </div>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {onboardingSteps.map((step) => (
+            <li key={step.key} className="flex items-center gap-2">
+              <span
+                className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold ${
+                  step.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {step.done ? "OK" : "..."}
+              </span>
+              <span className={step.done ? "text-slate-700" : "text-slate-500"}>{step.label}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {statusesLoaded && triageCounts.needsAttention > 0 && (
@@ -207,6 +278,18 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
             <Button type="button" onClick={() => setShowCreateProduct((value) => !value)}>
               {showCreateProduct ? "Close new product form" : "+ New Product"}
             </Button>
+            {skuUsagePercent !== null && skuUsagePercent >= 80 && (
+              <a
+                href="/settings/plan"
+                className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                  skuUsagePercent >= 100
+                    ? "border border-red-200 bg-red-50 text-red-700"
+                    : "border border-amber-200 bg-amber-50 text-amber-700"
+                }`}
+              >
+                {skuUsagePercent >= 100 ? "Limit reached" : "Nearing limit"} ({skuUsagePercent}%)
+              </a>
+            )}
           </div>
         ) : null}
 
@@ -225,7 +308,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Products</h2>
         {filteredProducts.length === 0 ? (
           <EmptyState
-            icon="📦"
+            icon="BOX"
             title="Your catalog is empty"
             description="Import your existing catalog from Excel, or create your first product manually."
             action={{ label: "Import from Excel", href: "?tab=import" }}
@@ -236,7 +319,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
           />
         ) : visibleProducts.length === 0 ? (
           <EmptyState
-            icon="🔎"
+            icon="SEARCH"
             title="No products match your search"
             description="Try clearing some filters, or check if the SKU code is correct."
             action={{ label: "Clear all filters", onClick: () => setSelectedFilter("all") }}
@@ -267,7 +350,7 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
                 {visibleProducts.map((product) => (
                   <tr key={product.id} className="border-t border-border">
                     <td className="py-2">
-                      <Link href={`/products/${product.id}?role=${encodeURIComponent(role)}`}>{product.title}</Link>
+                      <Link href={`/products/${product.id}`}>{product.title}</Link>
                     </td>
                     <td className="py-2">{product.brand || "-"}</td>
                     <td className="py-2">{product.hsnCode || "-"}</td>
@@ -307,5 +390,6 @@ export function ProductsTab({ role, products, categories, stats, hideTestData }:
     </div>
   );
 }
+
 
 

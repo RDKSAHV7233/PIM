@@ -1,0 +1,86 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { PimLocale } from "@/lib/locale";
+import { getAuthCopy } from "./auth-copy";
+
+interface AccountLockedPageClientProps {
+  email: string;
+  maskedEmail: string;
+  unlockAtIso: string;
+  locale: PimLocale;
+}
+
+export function AccountLockedPageClient({ email, maskedEmail, unlockAtIso, locale }: AccountLockedPageClientProps) {
+  const authCopy = getAuthCopy(locale);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const lockedUntilText = useMemo(() => {
+    const unlockAt = new Date(unlockAtIso);
+    if (Number.isNaN(unlockAt.getTime())) {
+      return "";
+    }
+    return unlockAt.toLocaleTimeString();
+  }, [unlockAtIso]);
+
+  async function resendUnlock() {
+    if (!email) {
+      setMessage(authCopy.resendNeedsEmail);
+      return;
+    }
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/resend-unlock", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+      if (!response.ok) {
+        setMessage(authCopy.resendFailed);
+        return;
+      }
+      setMessage(authCopy.resendSent);
+    } catch {
+      setMessage(authCopy.resendFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-md space-y-5 rounded-lg border border-red-200 bg-white p-6">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold text-slate-900">{authCopy.lockedTitle}</h1>
+        <p className="text-sm text-slate-700">
+          {authCopy.lockedBodyPrefix} <strong>{maskedEmail}</strong>.
+        </p>
+        {lockedUntilText && (
+          <p className="text-sm text-slate-600">
+            {authCopy.lockedUntilPrefix} <strong>{lockedUntilText}</strong>.
+          </p>
+        )}
+      </header>
+
+      <div className="space-y-3">
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={resendUnlock}
+          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {authCopy.resendUnlock}
+        </button>
+        {message && <p className="text-sm text-slate-700">{message}</p>}
+      </div>
+
+      <Link href={`/login?lang=${encodeURIComponent(locale)}`} className="inline-flex text-sm font-medium text-slate-700 underline">
+        {authCopy.backToLogin}
+      </Link>
+    </div>
+  );
+}

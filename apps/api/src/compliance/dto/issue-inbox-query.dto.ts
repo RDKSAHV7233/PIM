@@ -1,0 +1,37 @@
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+
+export type IssueInboxSeverityFilter = "BLOCKING" | "WARNING";
+
+export class IssueInboxQueryDto {
+  @IsOptional()
+  @IsIn(["BLOCKING", "WARNING"])
+  severity?: IssueInboxSeverityFilter;
+
+  @IsOptional()
+  @IsString()
+  installationId?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsIn(["draft", "active", "archived"])
+  productStatus?: "draft" | "active" | "archived";
+
+  @IsOptional()
+  @IsIn(["cursor"])
+  pagination?: "cursor";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+}

@@ -86,8 +86,20 @@ enum BulkEditItemStatus {
   failed
 }
 
+enum ConnectorPermissionPrincipalType {
+  user
+  role
+}
+
+enum ConnectorPermissionAction {
+  install
+  reconnect
+  uninstall
+}
+
 model Category {
   id                   String                @id @default(cuid())
+  tenantKey            String                @default("default")
   name                 String
   slug                 String                @unique
   path                 String
@@ -106,6 +118,7 @@ model Category {
 
   @@index([parentId])
   @@index([path])
+  @@index([tenantKey])
 }
 
 model BulkImportTemplate {
@@ -130,6 +143,7 @@ model BulkImportTemplate {
 
 model Product {
   id               String            @id @default(cuid())
+  tenantKey        String            @default("default")
   title            String
   description      String            @default("")
   brand            String            @default("")
@@ -145,16 +159,21 @@ model Product {
   exportJobs       MarketplaceExportJob[]
   importedRows     BulkImportRow[]
   bulkEditItems    BulkEditOperationItem[]
+  deletedAt        DateTime?
+  purgedById       String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@index([categoryId])
   @@index([status])
   @@index([hsnCode])
+  @@index([tenantKey])
+  @@index([tenantKey, deletedAt])
 }
 
 model Variant {
   id               String            @id @default(cuid())
+  tenantKey        String            @default("default")
   productId        String
   product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
   skuCode          String            @unique
@@ -169,10 +188,12 @@ model Variant {
 
   @@index([productId])
   @@index([status])
+  @@index([tenantKey])
 }
 
 model AttributeDefinition {
   id            String            @id @default(cuid())
+  tenantKey     String            @default("default")
   categoryId    String
   category      Category          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   key           String
@@ -187,10 +208,12 @@ model AttributeDefinition {
   @@unique([categoryId, key, appliesTo])
   @@index([categoryId])
   @@index([appliesTo])
+  @@index([tenantKey])
 }
 
 model ComplianceRule {
   id        String           @id @default(cuid())
+  tenantKey String           @default("default")
   ruleCode  String           @unique
   name      String
   categoryId String?
@@ -205,10 +228,12 @@ model ComplianceRule {
 
   @@index([categoryId, active])
   @@index([ruleType])
+  @@index([tenantKey])
 }
 
 model ValidationIssue {
   id        String                @id @default(cuid())
+  tenantKey String                @default("default")
   productId String
   product   Product               @relation("ProductValidationIssues", fields: [productId], references: [id], onDelete: Cascade)
   variantId String?
@@ -227,11 +252,17 @@ model ValidationIssue {
   @@index([variantId])
   @@index([status])
   @@index([ruleCode])
+  @@index([tenantKey])
 }
 
 model ChannelMappingTemplate {
   id             String               @id @default(cuid())
+  tenantKey      String               @default("default")
   name           String
+  isSystemPack   Boolean              @default(false)
+  createdBy      String?
+  version        Int                  @default(1)
+  parentTemplateId String?
   categoryId     String
   category       Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   channel        MarketplaceChannel
@@ -244,10 +275,14 @@ model ChannelMappingTemplate {
 
   @@unique([categoryId, channel, name])
   @@index([categoryId, channel])
+  @@index([tenantKey, channel, version])
+  @@index([parentTemplateId])
+  @@index([tenantKey])
 }
 
 model MarketplaceExportJob {
   id           String                 @id @default(cuid())
+  tenantKey    String                 @default("default")
   productId    String
   product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
   categoryId   String
@@ -268,10 +303,12 @@ model MarketplaceExportJob {
   @@index([productId, channel])
   @@index([status, updatedAt])
   @@index([templateId])
+  @@index([tenantKey])
 }
 
 model BulkImportJob {
   id             String              @id @default(cuid())
+  tenantKey      String              @default("default")
   categoryId     String
   category       Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   sourceFormat   String
@@ -291,10 +328,12 @@ model BulkImportJob {
 
   @@index([categoryId])
   @@index([status, updatedAt])
+  @@index([tenantKey])
 }
 
 model BulkImportRow {
   id            String              @id @default(cuid())
+  tenantKey     String              @default("default")
   jobId         String
   job           BulkImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   rowNumber     Int
@@ -311,10 +350,12 @@ model BulkImportRow {
   @@unique([jobId, rowNumber])
   @@index([jobId, status, rowNumber])
   @@index([productId])
+  @@index([tenantKey])
 }
 
 model BulkEditOperation {
   id             String                  @id @default(cuid())
+  tenantKey      String                  @default("default")
   status         BulkEditOperationStatus @default(processing)
   scope          Json
   updates        Json
@@ -326,10 +367,12 @@ model BulkEditOperation {
   updatedAt      DateTime                @updatedAt
 
   @@index([status, updatedAt])
+  @@index([tenantKey])
 }
 
 model BulkEditOperationItem {
   id          String             @id @default(cuid())
+  tenantKey   String             @default("default")
   operationId String
   operation   BulkEditOperation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
   productId   String?
@@ -343,10 +386,56 @@ model BulkEditOperationItem {
 
   @@index([operationId, status])
   @@index([productId])
+  @@index([tenantKey])
+}
+
+model AccountConsentEvent {
+  id               String   @id
+  tenantKey        String   @default("default") @map("tenant_key")
+  userId           String   @map("user_id")
+  accepted         Boolean
+  policyVersion    String   @default("dpdp-v1") @map("policy_version")
+  purpose          String   @default("account_access")
+  consentRecordedAt DateTime @default(now()) @map("consent_recorded_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, userId, createdAt(sort: Desc)], map: "idx_account_consent_events_tenant_user_created")
+  @@map("account_consent_events")
+}
+
+model AccountExportRequest {
+  id                     String   @id
+  tenantKey              String   @default("default") @map("tenant_key")
+  userId                 String   @map("user_id")
+  actorRole              String   @map("actor_role")
+  format                 String
+  status                 String   @default("queued")
+  requestedAt            DateTime @default(now()) @map("requested_at")
+  estimatedReadyInSeconds Int     @default(120) @map("estimated_ready_in_seconds")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, userId, requestedAt(sort: Desc)], map: "idx_account_export_requests_tenant_user_requested")
+  @@map("account_export_requests")
+}
+
+model AccountDeletionRequest {
+  id          String   @id
+  tenantKey   String   @default("default") @map("tenant_key")
+  userId      String   @map("user_id")
+  actorRole   String   @map("actor_role")
+  reason      String?
+  status      String   @default("scheduled")
+  requestedAt DateTime @default(now()) @map("requested_at")
+  scheduledFor DateTime @map("scheduled_for")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, userId, requestedAt(sort: Desc)], map: "idx_account_deletion_requests_tenant_user_requested")
+  @@map("account_deletion_requests")
 }
 
 model AuditLog {
   id        String   @id
+  tenantKey String   @default("default") @map("tenant_key")
   actorId   String   @map("actor_id")
   actorRole String   @map("actor_role")
   action    String
@@ -358,5 +447,78 @@ model AuditLog {
   @@index([createdAt], map: "idx_audit_logs_created_at")
   @@index([actorId, createdAt], map: "idx_audit_logs_actor_created_at")
   @@index([resource, createdAt], map: "idx_audit_logs_resource_created_at")
+  @@index([tenantKey], map: "idx_audit_logs_tenant_key")
   @@map("audit_logs")
+}
+
+model PlanLimits {
+  id                     String   @id @default(cuid())
+  planTier               String   @unique
+  maxSkus                Int
+  maxSubmissionsPerMonth Int
+  maxUsers               Int
+  maxStorageGb           Float
+  maxConnectorInstallations Int   @default(2)
+  maxAccountsPerConnector Int     @default(1)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model PlanUsage {
+  id              String   @id @default(cuid())
+  tenantKey       String   @default("default")
+  month           String
+  planTier        String   @default("STARTER")
+  skuCount        Int      @default(0)
+  submissionCount Int      @default(0)
+  storageGb       Float    @default(0)
+  connectorInstallationsCount Int @default(0)
+  connectorAccountsCount      Int @default(0)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@unique([tenantKey, month])
+  @@index([tenantKey, month])
+}
+
+model TenantPlanProfile {
+  id           String   @id @default(cuid())
+  tenantKey    String   @unique
+  planTier     String   @default("STARTER")
+  effectiveFrom DateTime?
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantKey, planTier])
+}
+
+model ConnectorPermission {
+  id            String                            @id @default(cuid())
+  tenantKey     String                            @default("default")
+  principalType ConnectorPermissionPrincipalType
+  principalId   String
+  connectorSlug String
+  accountAlias  String                            @default("*")
+  action        ConnectorPermissionAction
+  createdBy     String?
+  createdAt     DateTime                          @default(now())
+  updatedAt     DateTime                          @updatedAt
+
+  @@unique([tenantKey, principalType, principalId, connectorSlug, accountAlias, action])
+  @@index([tenantKey, principalType, principalId])
+  @@index([tenantKey, connectorSlug, action])
+}
+
+model AuthIdentity {
+  id        String   @id @default(cuid())
+  tenantKey String   @default("default")
+  userId    String   @unique
+  role      String   @default("viewer")
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantKey, role, isActive])
 }

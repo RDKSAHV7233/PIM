@@ -1,0 +1,61 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+
+      - name: Build API
+        run: npm run build --workspace @pim1/api
+
+      - name: Build Web
+        run: npm run build --workspace @pim1/web
+
+      - name: Deploy to staging
+        shell: bash
+        env:
+          STAGING_DEPLOY_COMMAND: ${{ secrets.STAGING_DEPLOY_COMMAND }}
+        run: |
+          if [ -z "${STAGING_DEPLOY_COMMAND}" ]; then
+            echo "Missing STAGING_DEPLOY_COMMAND secret. Configure provider deploy command."
+            exit 1
+          fi
+          eval "${STAGING_DEPLOY_COMMAND}"
+
+      - name: Staging smoke test
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: |
+          if [ -z "${STAGING_BASE_URL}" ]; then
+            echo "Missing STAGING_BASE_URL secret for smoke tests."
+            exit 1
+          fi
+          response="$(curl -fsS "${STAGING_BASE_URL}/api/v1/health")"
+          echo "health=${response}"
+          echo "${response}" | grep -q "\"status\":\"ok\""
+          echo "${response}" | grep -q "\"env\":\"staging\""

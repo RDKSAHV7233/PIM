@@ -55,7 +55,7 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
         const response = await fetch(
           `/api/marketplace/readiness?productId=${encodeURIComponent(productId)}&channel=${encodeURIComponent(
             channel,
-          )}&role=${encodeURIComponent(role)}`,
+          )}`,
           {
             method: "GET",
             cache: "no-store",
@@ -145,3 +145,4 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
     </div>
   );
 }
+

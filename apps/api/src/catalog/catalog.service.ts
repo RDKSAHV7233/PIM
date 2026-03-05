@@ -1,6 +1,16 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, RecordStatus } from "@prisma/client";
+import { AppliesTo, Prisma, RecordStatus } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { ComplianceService } from "../compliance/compliance.service";
+import { withSoftDeleteBypass } from "../common/prisma-soft-delete.middleware";
+import {
+  CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
@@ -12,19 +22,69 @@ export class CatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
+    private readonly planUsageService: PlanUsageService,
+    private readonly auditService: AuditService,
   ) {}
 
   async stats() {
     const [categories, products, variants] = await Promise.all([
-      this.prisma.category.count(),
-      this.prisma.product.count(),
-      this.prisma.variant.count(),
+      this.prisma.tenant().category.count(),
+      this.prisma.tenant().product.count(),
+      this.prisma.tenant().variant.count(),
     ]);
     return { categories, products, variants };
   }
 
-  async listProducts() {
-    return this.prisma.product.findMany({
+  async listProducts(
+    pagination?: CursorPaginationQuery,
+  ) {
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const products = await this.prisma.tenant().product.findMany({
+        where: token && cursorDate
+          ? {
+              OR: [
+                { updatedAt: { lt: cursorDate } },
+                {
+                  updatedAt: cursorDate,
+                  id: { lt: token.id },
+                },
+              ],
+            }
+          : undefined,
+        include: {
+          category: true,
+          variants: true,
+          validationIssues: { where: { status: "open" } },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
+      const hasNext = products.length > limit;
+      const page = hasNext ? products.slice(0, limit) : products;
+      const scored = await this.attachCompletenessScores(page);
+      const last = scored[scored.length - 1];
+      return {
+        items: scored,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.updatedAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+      };
+    }
+
+    const products = await this.prisma.tenant().product.findMany({
       include: {
         category: true,
         variants: true,
@@ -32,10 +92,11 @@ export class CatalogService {
       },
       orderBy: [{ updatedAt: "desc" }],
     });
+    return this.attachCompletenessScores(products);
   }
 
   async getProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({
+    const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
         category: true,
@@ -46,12 +107,14 @@ export class CatalogService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    return product;
+    const [withScore] = await this.attachCompletenessScores([product]);
+    return withScore;
   }
 
   async createProduct(dto: CreateProductDto) {
     await this.requireCategory(dto.categoryId);
-    const product = await this.prisma.product.create({
+    const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
+    const product = await this.prisma.tenant().product.create({
       data: {
         title: dto.title.trim(),
         description: dto.description.trim(),
@@ -59,12 +122,13 @@ export class CatalogService {
         categoryId: dto.categoryId,
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
-        attributes: (dto.attributes ?? {}) as Prisma.JsonObject,
+        attributes: attributes as Prisma.JsonObject,
         status: dto.status as RecordStatus,
       },
       include: { category: true, variants: true },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
+    await this.planUsageService.touchUsageForCurrentTenant();
     return product;
   }
 
@@ -74,7 +138,8 @@ export class CatalogService {
       this.throwVersionConflict(dto.expectedVersion, current.version);
     }
     await this.requireCategory(dto.categoryId);
-    const updateResult = await this.prisma.product.updateMany({
+    const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
+    const updateResult = await this.prisma.tenant().product.updateMany({
       where: {
         id: productId,
         version: dto.expectedVersion,
@@ -86,7 +151,7 @@ export class CatalogService {
         categoryId: dto.categoryId,
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
-        attributes: (dto.attributes ?? {}) as Prisma.JsonObject,
+        attributes: attributes as Prisma.JsonObject,
         status: dto.status as RecordStatus,
         version: { increment: 1 },
       },
@@ -95,7 +160,7 @@ export class CatalogService {
       const latest = await this.requireProduct(productId);
       this.throwVersionConflict(dto.expectedVersion, latest.version);
     }
-    const product = await this.prisma.product.findUniqueOrThrow({
+    const product = await this.prisma.tenant().product.findUniqueOrThrow({
       where: { id: productId },
       include: { category: true, variants: true },
     });
@@ -105,12 +170,86 @@ export class CatalogService {
 
   async deleteProduct(productId: string) {
     await this.requireProduct(productId);
-    await this.prisma.product.delete({ where: { id: productId } });
+    await this.prisma.tenant().product.update({
+      where: { id: productId },
+      data: {
+        deletedAt: new Date(),
+        purgedById: null,
+      },
+    });
   }
 
-  async listVariants(productId: string) {
+  async purgeProduct(productId: string, actorId: string) {
+    const product = await this.requireProductIncludingDeleted(productId);
+    if (!product.deletedAt) {
+      throw new BadRequestException("Product must be soft-deleted before purge.");
+    }
+
+    await this.prisma.tenant().product.delete({ where: { id: productId } });
+    await this.auditService.record({
+      actorId,
+      actorRole: "admin",
+      action: "PURGE",
+      resource: "/api/v1/catalog/products/:id/purge",
+      resourceId: productId,
+      metadata: {
+        model: "Product",
+      },
+    });
+    return {
+      id: productId,
+      status: "purged" as const,
+    };
+  }
+
+  async listVariants(
+    productId: string,
+    pagination?: CursorPaginationQuery,
+  ) {
     await this.requireProduct(productId);
-    return this.prisma.variant.findMany({
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const variants = await this.prisma.tenant().variant.findMany({
+        where: {
+          productId,
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  {
+                    updatedAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
+      const hasNext = variants.length > limit;
+      const items = hasNext ? variants.slice(0, limit) : variants;
+      const last = items[items.length - 1];
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.updatedAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+      };
+    }
+    return this.prisma.tenant().variant.findMany({
       where: { productId },
       orderBy: [{ updatedAt: "desc" }],
     });
@@ -120,7 +259,7 @@ export class CatalogService {
     await this.requireProduct(productId);
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
-      return await this.prisma.variant.create({
+      return await this.prisma.tenant().variant.create({
         data: {
           productId,
           skuCode: dto.skuCode.trim(),
@@ -143,7 +282,7 @@ export class CatalogService {
     await this.requireVariant(variantId);
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
-      return await this.prisma.variant.update({
+      return await this.prisma.tenant().variant.update({
         where: { id: variantId },
         data: {
           skuCode: dto.skuCode.trim(),
@@ -164,11 +303,11 @@ export class CatalogService {
 
   async deleteVariant(variantId: string) {
     await this.requireVariant(variantId);
-    await this.prisma.variant.delete({ where: { id: variantId } });
+    await this.prisma.tenant().variant.delete({ where: { id: variantId } });
   }
 
   private async requireCategory(categoryId: string) {
-    const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
@@ -176,7 +315,19 @@ export class CatalogService {
   }
 
   private async requireProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+    return product;
+  }
+
+  private async requireProductIncludingDeleted(productId: string) {
+    const product = await this.prisma.tenant().product.findUnique(
+      withSoftDeleteBypass<Prisma.ProductFindUniqueArgs>({
+        where: { id: productId },
+      }),
+    );
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -184,7 +335,7 @@ export class CatalogService {
   }
 
   private async requireVariant(variantId: string) {
-    const variant = await this.prisma.variant.findUnique({ where: { id: variantId } });
+    const variant = await this.prisma.tenant().variant.findUnique({ where: { id: variantId } });
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }
@@ -197,6 +348,59 @@ export class CatalogService {
     }
   }
 
+  private normalizeProductAttributes(attributes: Record<string, unknown>) {
+    const normalized = { ...this.asRecord(attributes) };
+    const pricing = this.asRecord(normalized.pricing);
+
+    const pricingMrp = this.readNonNegativeNumber(pricing.mrp, "pricing.mrp");
+    const pricingSellingPrice = this.readNonNegativeNumber(pricing.sellingPrice, "pricing.sellingPrice");
+    const rootMrp = this.readNonNegativeNumber(normalized.mrp, "mrp");
+    const rootSellingPrice =
+      this.readNonNegativeNumber(normalized.sellingPrice, "sellingPrice") ??
+      this.readNonNegativeNumber(normalized.selling_price, "selling_price");
+
+    const resolvedMrp = pricingMrp ?? rootMrp;
+    const resolvedSellingPrice = pricingSellingPrice ?? rootSellingPrice;
+    if (resolvedMrp !== undefined && resolvedSellingPrice !== undefined && resolvedSellingPrice > resolvedMrp) {
+      throw new BadRequestException("Selling price cannot exceed MRP");
+    }
+
+    delete normalized.mrp;
+    delete normalized.sellingPrice;
+    delete normalized.selling_price;
+
+    if (resolvedMrp !== undefined || resolvedSellingPrice !== undefined || Object.keys(pricing).length > 0) {
+      const nextPricing = { ...pricing };
+      if (resolvedMrp !== undefined) {
+        nextPricing.mrp = resolvedMrp;
+      } else {
+        delete nextPricing.mrp;
+      }
+      if (resolvedSellingPrice !== undefined) {
+        nextPricing.sellingPrice = resolvedSellingPrice;
+      } else {
+        delete nextPricing.sellingPrice;
+      }
+      normalized.pricing = nextPricing;
+    }
+
+    return normalized;
+  }
+
+  private readNonNegativeNumber(value: unknown, fieldName: string): number | undefined {
+    if (value === null || value === undefined || value === "") {
+      return undefined;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      throw new BadRequestException(`${fieldName} must be numeric`);
+    }
+    if (parsed < 0) {
+      throw new BadRequestException(`${fieldName} cannot be negative`);
+    }
+    return parsed;
+  }
+
   private throwVersionConflict(expectedVersion: number, currentVersion: number): never {
     throw new ConflictException({
       code: "VERSION_CONFLICT",
@@ -204,5 +408,84 @@ export class CatalogService {
       expectedVersion,
       currentVersion,
     });
+  }
+
+  private async attachCompletenessScores<
+    T extends {
+      categoryId: string;
+      title: string;
+      brand: string;
+      description: string;
+      hsnCode: string | null;
+      gstRate: number | null;
+      attributes: unknown;
+    },
+  >(products: T[]) {
+    if (products.length === 0) {
+      return products;
+    }
+
+    const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));
+    const requiredAttributes = await this.prisma.tenant().attributeDefinition.findMany({
+      where: {
+        categoryId: { in: categoryIds },
+        appliesTo: AppliesTo.product,
+        required: true,
+      },
+      select: {
+        categoryId: true,
+        key: true,
+      },
+    });
+
+    const requiredByCategory = new Map<string, string[]>();
+    for (const attribute of requiredAttributes) {
+      const existing = requiredByCategory.get(attribute.categoryId) ?? [];
+      existing.push(attribute.key);
+      requiredByCategory.set(attribute.categoryId, existing);
+    }
+
+    return products.map((product) => ({
+      ...product,
+      completenessScore: this.calculateCompletenessScore(
+        product,
+        requiredByCategory.get(product.categoryId) ?? [],
+      ),
+    }));
+  }
+
+  private calculateCompletenessScore(
+    product: {
+      title: string;
+      brand: string;
+      description: string;
+      hsnCode: string | null;
+      gstRate: number | null;
+      attributes: unknown;
+    },
+    requiredAttributeKeys: string[],
+  ) {
+    const coreValues = [product.title, product.brand, product.description, product.hsnCode, product.gstRate];
+    const filledCore = coreValues.filter((value) => !this.isEmpty(value)).length;
+    const requiredTotal = coreValues.length + requiredAttributeKeys.length;
+
+    if (requiredTotal === 0) {
+      return 100;
+    }
+
+    const attributes = this.asRecord(product.attributes);
+    const filledAttributes = requiredAttributeKeys.filter((key) => !this.isEmpty(attributes[key])).length;
+    return Math.round(((filledCore + filledAttributes) / requiredTotal) * 100);
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  }
+
+  private isEmpty(value: unknown) {
+    return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 }

@@ -6,19 +6,25 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "tsc -p tsconfig.build.json --noEmit"
+    "lint": "tsc -p tsconfig.build.json --noEmit",
+    "credentials:rotate:script": "node -r ts-node/register ../../scripts/rotate-credentials.ts"
   },
   "dependencies": {
+    "@fastify/static": "^9.0.0",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/swagger": "^11.2.6",
     "@prisma/client": "^6.16.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "redis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "xlsx": "^0.18.5"
+    "swagger-ui-express": "^5.0.1",
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",

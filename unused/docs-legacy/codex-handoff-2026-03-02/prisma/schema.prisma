@@ -1,0 +1,315 @@
+// prisma/schema.prisma
+// PIM1 — Connector-First Architecture
+// Authoritative schema — March 2026
+// DO NOT modify enum names or model names without updating connector.interface.ts
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum ConnectorAuth {
+  OAUTH2_LWA      // Amazon Login With Amazon
+  OAUTH2_AUTHCODE // Flipkart Authorization Code
+  API_KEY         // Meesho static key pair
+  STATIC          // hardcoded / no rotation
+  EXCEL_ONLY      // no API; export file only
+}
+
+enum ConnectorCap {
+  PUBLISH         // can call publishProduct()
+  VALIDATE        // can call validateProduct()
+  STATUS_SYNC     // can call syncSubmissionStatus()
+  WEBHOOK_RECEIVE // can receive webhook events
+  EXCEL_EXPORT    // can call generateExportFile()
+}
+
+enum InstallStatus {
+  ACTIVE
+  PAUSED
+  CREDENTIAL_EXPIRED
+  DISABLED
+}
+
+enum CredentialType {
+  REFRESH_TOKEN
+  ACCESS_TOKEN
+  API_KEY
+  STATIC
+}
+
+enum CredStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  INVALID
+}
+
+enum SubmissionType {
+  VALIDATE
+  PUBLISH
+  UPDATE
+  EXPORT_FILE
+}
+
+enum SubmissionSource {
+  MANUAL
+  AUTO_RETRY
+  WEBHOOK_SYNC
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUCCESS
+  REJECTED
+  SUPPRESSED
+  ERROR
+}
+
+// ─────────────────────────────────────────────
+// CORE DOMAIN — unchanged from Phases 1–4
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  planTier  String   // STARTER | GROWTH | SCALE | ENTERPRISE
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id          String   @id @default(cuid())
+  tenantId    String
+  email       String
+  role        String   // admin | editor | viewer
+  lastLoginAt DateTime?
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  tenantId          String
+  title             String
+  sku               String
+  brand             String?
+  hsnCode           String?
+  gstRate           Float?
+  mrp               Float?
+  status            String   @default("draft")
+  version           Int      @default(1)
+  completenessScore Int      @default(0)  // 0–100, computed on every create/update
+  mainImageId       String?              // FK to MediaAsset
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId, completenessScore])
+}
+
+model Variant {
+  id         String  @id @default(cuid())
+  tenantId   String
+  productId  String
+  skuCode    String
+  attributes Json
+  mrp        Float?
+  price      Float?
+}
+
+model Category {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  slug     String
+  path     String
+  parentId String?
+}
+
+model AttributeDefinition {
+  id         String  @id @default(cuid())
+  tenantId   String
+  categoryId String
+  key        String
+  dataType   String
+  required   Boolean @default(false)
+  options    Json?
+}
+
+model ComplianceRule {
+  id        String @id @default(cuid())
+  tenantId  String
+  ruleCode  String
+  severity  String // error | warning
+  fieldPath String
+  constraint String
+}
+
+model ValidationIssue {
+  id        String @id @default(cuid())
+  tenantId  String
+  productId String
+  ruleCode  String
+  severity  String
+  message   String
+  status    String @default("open") // open | resolved
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  actorId    String   // verified User.id from JWT — never a role string
+  changeSet  Json
+  createdAt  DateTime @default(now())
+}
+
+model BulkImportJob {
+  id               String   @id @default(cuid())
+  tenantId         String
+  status           String
+  totalRows        Int      @default(0)
+  processedRows    Int      @default(0)
+  dlqCount         Int      @default(0)
+  originalFilename String
+  createdAt        DateTime @default(now())
+}
+
+model ChannelMappingTemplate {
+  id            String @id @default(cuid())
+  tenantId      String
+  connectorSlug String
+  categoryId    String
+  fieldMap      Json
+  version       Int    @default(1)
+}
+
+// ─────────────────────────────────────────────
+// MEDIA — Phase 5-S1
+// ─────────────────────────────────────────────
+
+model MediaAsset {
+  id            String   @id @default(cuid())
+  tenantId      String
+  productId     String?
+  variantId     String?
+  storageKey    String   // R2/S3 object key — source of truth
+  cdnUrl        String   // permanent public HTTPS URL — used in SP-API payloads
+  thumbnailUrl  String?
+  mimeType      String
+  widthPx       Int?
+  heightPx      Int?
+  fileSizeBytes Int
+  checksum      String   // SHA-256 — deduplication key
+  uploadedBy    String   // authenticated User.id
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, productId])
+}
+
+// ─────────────────────────────────────────────
+// INTEGRATION DOMAIN — Phase 5-S2
+// ─────────────────────────────────────────────
+
+/// Registry of available connectors.
+/// Seeded once via SQL — not tenant-specific.
+model ConnectorDefinition {
+  id               String        @id @default(cuid())
+  slug             String        @unique // "amazon-in" | "flipkart" | "meesho" | "ondc"
+  displayName      String
+  authType         ConnectorAuth
+  capabilities     ConnectorCap[]
+  marketplaceId    String?       // "A21TJRUUN4KGV" for Amazon India
+  connectorVersion String        @default("1.0.0")
+  schemaVersion    String?       // e.g. "2021-08-01" for SP-API
+  isActive         Boolean       @default(true)
+  isDeprecated     Boolean       @default(false)
+  deprecationNote  String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+/// A connector enabled for one tenant. Multi-account aware.
+model ConnectorInstallation {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  connectorId        String
+  accountAlias       String        @default("primary") // "india", "uae", "store-2"
+  externalAccountRef String?       // Amazon sellerId, Shopify shop URL
+  status             InstallStatus
+  metadata           Json?         // connector-specific: subscriptionId, env flag, etc.
+  installedAt        DateTime      @default(now())
+  installedBy        String        // User.id
+  lastSyncAt         DateTime?
+
+  @@unique([tenantId, connectorId, accountAlias]) // allows multi-account per connector
+  @@index([tenantId])
+}
+
+/// Encrypted token store. One row per credential type per installation.
+model ConnectorCredential {
+  id               String         @id @default(cuid())
+  tenantId         String
+  installationId   String         // FK to ConnectorInstallation
+  credentialType   CredentialType
+  encryptedValue   String         // AES-256-GCM encrypted — NEVER log this value
+  keyVersion       String         @default("v1") // for key rotation
+  status           CredStatus
+  scope            String?        // OAuth scopes granted
+  expiresAt        DateTime?
+  lastValidatedAt  DateTime?      // set by credential heartbeat worker
+  lastRefreshAt    DateTime?      // set on successful token refresh
+  failureReason    String?        // set when status → EXPIRED or INVALID
+  metadata         Json?          // connector-specific extra fields
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([installationId, credentialType])
+}
+
+/// Authoritative record of every listing attempt.
+model ConnectorSubmission {
+  id              String           @id @default(cuid())
+  tenantId        String
+  installationId  String
+  productId       String
+  variantId       String?
+  idempotencyKey  String           @unique // format: "${jobId}:PUBLISH" — stable across retries
+  submissionType  SubmissionType
+  source          SubmissionSource
+  attemptNumber   Int              @default(1)
+  status          SubmissionStatus
+  externalRef     String?          // Amazon ASIN, Flipkart FSN, Meesho upload ID
+  payloadSnapshot Json             // what was sent — immutable
+  // GOVERNANCE: may contain PII. Redact after 90 days, purge after 365 days. Do not log.
+  channelErrors   Json?            // structured ConnectorIssue[] from channel response
+  submittedAt     DateTime         @default(now())
+  resolvedAt      DateTime?
+
+  @@index([tenantId, installationId, status])
+  @@index([tenantId, productId])
+}
+
+/// Inbound async channel notifications.
+model ConnectorWebhookEvent {
+  id              String    @id @default(cuid())
+  tenantId        String
+  installationId  String
+  externalEventId String    // channel-assigned event ID — deduplication
+  eventType       String    // "LISTINGS_ITEM_ISSUES_CHANGE", "LISTING_STATUS_CHANGE"
+  payload         Json      // raw webhook body
+  // GOVERNANCE: may contain PII. Redact after 90 days, purge after 365 days. Do not log.
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  submissionId    String?   // resolved FK to ConnectorSubmission
+
+  @@unique([installationId, externalEventId]) // scoped per installation — providers guarantee uniqueness per account only
+  @@index([tenantId, installationId, processedAt])
+}

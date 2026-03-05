@@ -1,0 +1,68 @@
+{
+  "capturedAt": "2026-03-03T15:10:15.332Z",
+  "environment": "staging",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "apiBase": "http://127.0.0.1:4000/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "env": "development",
+      "db_pool": {
+        "active": 0,
+        "idle": 7,
+        "waiting": 0,
+        "applicationName": "pim1-api"
+      }
+    }
+  },
+  "gates": {
+    "artifactsInWindow": 3,
+    "allEvidenceArtifactsInWindow": 5,
+    "consecutiveE10SignoffRuns": 2,
+    "recentArtifacts": [
+      {
+        "file": "2026-03-03T14-21-50.328Z_E10-ST-QA-001-RUN2.json",
+        "suite": "E10-ST-QA-001-RUN2",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T14:21:50.328Z",
+        "runUrl": "local://pim1/gate-run-sprint/2026-03-03T14-16Z",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-03T14-21-45.470Z_E10-ST-QA-001-RUN1.json",
+        "suite": "E10-ST-QA-001-RUN1",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T14:21:45.470Z",
+        "runUrl": "local://pim1/gate-run-sprint/2026-03-03T14-12Z",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-03T11-43-35.079Z_E7-ST-OPS-005.json",
+        "suite": "E7-ST-OPS-005",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T11:43:35.079Z",
+        "runUrl": "local://pim1/e7-st-ops-005",
+        "gitTag": "sha-a0292b4"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": true,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true
+    },
+    "pending": [
+      "Health endpoint env mismatch: expected 'staging', got 'development'."
+    ]
+  },
+  "broadRollout": {
+    "pending": [
+      "14-day controlled rollout observation window not complete.",
+      "Production SLO trend evidence window not complete."
+    ]
+  }
+}

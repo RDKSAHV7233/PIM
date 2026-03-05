@@ -39,7 +39,7 @@ export class AuditLogInterceptor implements NestInterceptor {
   constructor(private readonly auditService: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<FastifyRequest & { pimRole?: string }>();
+    const request = context.switchToHttp().getRequest<FastifyRequest & { pimRole?: string; pimUserId?: string }>();
     const response = context.switchToHttp().getResponse<FastifyReply>();
     const method = (request.method ?? "GET").toUpperCase();
     if (READ_METHODS.has(method)) {
@@ -49,7 +49,9 @@ export class AuditLogInterceptor implements NestInterceptor {
     const actorIdHeader = Array.isArray(request.headers["x-pim-actor"])
       ? request.headers["x-pim-actor"][0]
       : request.headers["x-pim-actor"];
-    const actorId = typeof actorIdHeader === "string" && actorIdHeader.trim().length > 0
+    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
+      ? request.pimUserId.trim()
+      : typeof actorIdHeader === "string" && actorIdHeader.trim().length > 0
       ? actorIdHeader.trim()
       : "system";
     const actorRole = request.pimRole ?? "admin";

@@ -1,7 +1,20 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { promises as fs } from "node:fs";
+import { IncomingMessage } from "node:http";
+import { request as httpsRequest, RequestOptions as HttpsRequestOptions } from "node:https";
+import { isIP } from "node:net";
 import path from "node:path";
+import {
+  CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
@@ -23,6 +36,12 @@ type ResolvedMediaInput = {
   sourceRef?: string | null;
 };
 
+type ResolvedRemoteImageUrl = {
+  parsedUrl: URL;
+  resolvedAddress: string;
+  family: 4 | 6;
+};
+
 type ChannelRule = {
   minWidth: number;
   minHeight: number;
@@ -37,7 +56,60 @@ const CHANNEL_RULES: Record<Channel, ChannelRule> = {
 };
 
 const MAX_MEDIA_FILE_BYTES = 10 * 1024 * 1024;
+const REMOTE_FETCH_TIMEOUT_MS = 10_000;
 const MAX_BULK_ASSOCIATION_ROWS = 5000;
+const BLOCKED_HOSTS = new Set([
+  "localhost",
+  "metadata.google.internal",
+  "100.100.100.200",
+  "169.254.169.254",
+  "169.254.170.2",
+]);
+
+function isBlockedIpv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isBlockedIpv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+  if (normalized === "::1" || normalized === "::" || normalized.startsWith("fe80:")) {
+    return true;
+  }
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
+    return true;
+  }
+  if (normalized.startsWith("::ffff:")) {
+    const mapped = normalized.replace("::ffff:", "");
+    return isBlockedIpv4(mapped);
+  }
+  return false;
+}
+
+function isBlockedIpAddress(address: string): boolean {
+  const version = isIP(address);
+  if (version === 4) {
+    return isBlockedIpv4(address);
+  }
+  if (version === 6) {
+    return isBlockedIpv6(address);
+  }
+  return true;
+}
 
 function parsePngDimensions(buffer: Buffer): { width: number; height: number } | null {
   if (buffer.length < 24) {
@@ -56,49 +128,8 @@ function parsePngDimensions(buffer: Buffer): { width: number; height: number } |
 }
 
 @Injectable()
-export class MediaService implements OnModuleInit {
+export class MediaService {
   constructor(private readonly prisma: PrismaService) {}
-
-  async onModuleInit() {
-    await this.ensureTable();
-  }
-
-  private async ensureTable() {
-    await this.prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS media_assets (
-        id TEXT PRIMARY KEY,
-        product_id TEXT NULL REFERENCES "Product"(id) ON DELETE SET NULL,
-        variant_id TEXT NULL REFERENCES "Variant"(id) ON DELETE SET NULL,
-        entity_type TEXT NOT NULL DEFAULT 'product',
-        file_name TEXT NOT NULL,
-        mime_type TEXT NOT NULL,
-        storage_path TEXT NOT NULL,
-        width INTEGER NULL,
-        height INTEGER NULL,
-        size_bytes INTEGER NOT NULL,
-        checksum TEXT NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS idx_media_assets_product_created_at
-      ON media_assets (product_id, created_at DESC);
-    `);
-    await this.prisma.$executeRawUnsafe(`
-      ALTER TABLE media_assets
-      ADD COLUMN IF NOT EXISTS variant_id TEXT NULL REFERENCES "Variant"(id) ON DELETE SET NULL;
-    `);
-    await this.prisma.$executeRawUnsafe(`
-      ALTER TABLE media_assets
-      ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'product';
-    `);
-    await this.prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS idx_media_assets_variant_created_at
-      ON media_assets (variant_id, created_at DESC);
-    `);
-  }
 
   async createAsset(dto: CreateMediaAssetDto) {
     const entity = await this.resolveEntityLink(dto.productId, dto.variantId);
@@ -140,7 +171,7 @@ export class MediaService implements OnModuleInit {
         if (!skuCode) {
           throw new BadRequestException("skuCode is required.");
         }
-        const variant = await this.prisma.variant.findUnique({
+        const variant = await this.prisma.tenant().variant.findUnique({
           where: { skuCode },
           select: {
             id: true,
@@ -198,9 +229,48 @@ export class MediaService implements OnModuleInit {
     };
   }
 
-  async listAssets(productId?: string, variantId?: string) {
-    if (variantId) {
-      return this.prisma.$queryRawUnsafe(
+  async listAssets(productId?: string, variantId?: string, pagination?: CursorPaginationQuery) {
+    const tenantKey = this.getCurrentTenantKey();
+    if (isCursorPagination(pagination)) {
+      const limit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+
+      const params: Array<string | Date | number> = [];
+      const clauses: string[] = [];
+
+      params.push(tenantKey);
+      clauses.push(`tenant_key = $${params.length}`);
+
+      if (variantId) {
+        params.push(variantId);
+        clauses.push(`variant_id = $${params.length}`);
+      } else if (productId) {
+        params.push(productId);
+        clauses.push(`product_id = $${params.length}`);
+      }
+
+      if (token && cursorDate) {
+        params.push(cursorDate);
+        const dateParam = params.length;
+        params.push(token.id);
+        const idParam = params.length;
+        clauses.push(
+          `(created_at < $${dateParam} OR (created_at = $${dateParam} AND id < $${idParam}))`,
+        );
+      }
+
+      const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+      params.push(limit + 1);
+      const limitParam = params.length;
+      // RLS-BYPASS: manual tenant filter
+      const rows = (await this.prisma.tenant().$queryRawUnsafe(
         `
         SELECT
           id,
@@ -218,14 +288,65 @@ export class MediaService implements OnModuleInit {
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM media_assets
-        WHERE variant_id = $1
+        ${whereSql}
+        ORDER BY created_at DESC, id DESC
+        LIMIT $${limitParam}
+        `,
+        ...params,
+      )) as Array<Record<string, unknown>>;
+
+      const hasNext = rows.length > limit;
+      const items = hasNext ? rows.slice(0, limit) : rows;
+      const last = items[items.length - 1] as { id?: string; createdAt?: unknown } | undefined;
+      const createdAt = last?.createdAt instanceof Date
+        ? last.createdAt
+        : typeof last?.createdAt === "string"
+        ? new Date(last.createdAt)
+        : null;
+
+      return {
+        items,
+        limit,
+        nextCursor: hasNext && last?.id && createdAt && !Number.isNaN(createdAt.getTime())
+          ? encodeCursorToken({
+              sort: createdAt.toISOString(),
+              id: String(last.id),
+            })
+          : null,
+      };
+    }
+
+    if (variantId) {
+      // RLS-BYPASS: manual tenant filter
+      return this.prisma.tenant().$queryRawUnsafe(
+        `
+        SELECT
+          id,
+          product_id AS "productId",
+          variant_id AS "variantId",
+          entity_type AS "entityType",
+          file_name AS "fileName",
+          mime_type AS "mimeType",
+          storage_path AS "storagePath",
+          width,
+          height,
+          size_bytes AS "sizeBytes",
+          checksum,
+          metadata,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM media_assets
+        WHERE tenant_key = $1
+          AND variant_id = $2
         ORDER BY created_at DESC
         `,
+        tenantKey,
         variantId,
       );
     }
     if (productId) {
-      return this.prisma.$queryRawUnsafe(
+      // RLS-BYPASS: manual tenant filter
+      return this.prisma.tenant().$queryRawUnsafe(
         `
         SELECT
           id,
@@ -243,13 +364,16 @@ export class MediaService implements OnModuleInit {
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM media_assets
-        WHERE product_id = $1
+        WHERE tenant_key = $1
+          AND product_id = $2
         ORDER BY created_at DESC
         `,
+        tenantKey,
         productId,
       );
     }
-    return this.prisma.$queryRawUnsafe(`
+    // RLS-BYPASS: manual tenant filter
+    return this.prisma.tenant().$queryRawUnsafe(`
       SELECT
         id,
         product_id AS "productId",
@@ -266,13 +390,18 @@ export class MediaService implements OnModuleInit {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM media_assets
+      WHERE tenant_key = $1
       ORDER BY created_at DESC
       LIMIT 200
-    `);
+    `,
+    tenantKey,
+    );
   }
 
   async getAsset(assetId: string) {
-    const rows = (await this.prisma.$queryRawUnsafe(
+    const tenantKey = this.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT
         id,
@@ -290,9 +419,11 @@ export class MediaService implements OnModuleInit {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM media_assets
-      WHERE id = $1
+      WHERE tenant_key = $1
+        AND id = $2
       LIMIT 1
       `,
+      tenantKey,
       assetId,
     )) as Array<Record<string, unknown>>;
 
@@ -357,6 +488,7 @@ export class MediaService implements OnModuleInit {
     source: "direct_upload" | "bulk_association";
     sourceRef: string | null;
   }) {
+    const tenantKey = this.getCurrentTenantKey();
     const fileBuffer = input.contentBuffer;
     if (fileBuffer.length === 0) {
       throw new BadRequestException("Uploaded media content is empty.");
@@ -370,16 +502,19 @@ export class MediaService implements OnModuleInit {
     const height = input.height ?? detectedDimensions?.height ?? null;
     const checksum = createHash("sha256").update(fileBuffer).digest("hex");
 
-    const existing = (await this.prisma.$queryRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    const existing = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT id
       FROM media_assets
-      WHERE checksum = $1
-        AND product_id IS NOT DISTINCT FROM $2
-        AND variant_id IS NOT DISTINCT FROM $3
+      WHERE tenant_key = $1
+        AND checksum = $2
+        AND product_id IS NOT DISTINCT FROM $3
+        AND variant_id IS NOT DISTINCT FROM $4
       ORDER BY created_at DESC
       LIMIT 1
       `,
+      tenantKey,
       checksum,
       input.entity.productId,
       input.entity.variantId,
@@ -400,13 +535,15 @@ export class MediaService implements OnModuleInit {
     const storagePath = path.join(storageDir, `${assetId}${extension}`);
     await fs.writeFile(storagePath, fileBuffer);
 
-    await this.prisma.$executeRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant().$executeRawUnsafe(
       `
       INSERT INTO media_assets (
-        id, product_id, variant_id, entity_type, file_name, mime_type, storage_path, width, height, size_bytes, checksum, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+        id, tenant_key, product_id, variant_id, entity_type, file_name, mime_type, storage_path, width, height, size_bytes, checksum, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
       `,
       assetId,
+      tenantKey,
       input.entity.productId,
       input.entity.variantId,
       input.entity.entityType,
@@ -432,7 +569,7 @@ export class MediaService implements OnModuleInit {
     const normalizedProductId = productId?.trim() || null;
     const normalizedVariantId = variantId?.trim() || null;
     if (normalizedVariantId) {
-      const variant = await this.prisma.variant.findUnique({
+      const variant = await this.prisma.tenant().variant.findUnique({
         where: { id: normalizedVariantId },
         select: { id: true, productId: true },
       });
@@ -449,7 +586,7 @@ export class MediaService implements OnModuleInit {
       };
     }
     if (normalizedProductId) {
-      const product = await this.prisma.product.findUnique({
+      const product = await this.prisma.tenant().product.findUnique({
         where: { id: normalizedProductId },
         select: { id: true },
       });
@@ -510,32 +647,172 @@ export class MediaService implements OnModuleInit {
       return this.parseDataUrl(imageUrl, row);
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20_000);
+    const resolvedUrl = await this.validateRemoteImageUrl(imageUrl);
     try {
-      const response = await fetch(imageUrl, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new BadRequestException(`Unable to download imageUrl (${response.status}).`);
+      const remoteImage = await this.fetchRemoteImage(resolvedUrl);
+      const contentType = remoteImage.contentType;
+      if (!contentType.startsWith("image/")) {
+        throw new BadRequestException("Remote imageUrl must return content-type image/*.");
       }
-      const contentBuffer = Buffer.from(await response.arrayBuffer());
+      const contentBuffer = remoteImage.contentBuffer;
       const mimeType =
         row.mimeType?.trim().toLowerCase() ||
-        response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ||
+        contentType ||
         "application/octet-stream";
+      if (!mimeType.startsWith("image/")) {
+        throw new BadRequestException("Remote imageUrl must resolve to image/* MIME type.");
+      }
       return {
-        fileName: row.fileName?.trim() || this.fileNameFromUrl(imageUrl, row.skuCode),
+        fileName: row.fileName?.trim() || this.fileNameFromUrl(resolvedUrl.parsedUrl.toString(), row.skuCode),
         mimeType,
         contentBuffer,
         width: row.width,
         height: row.height,
-        sourceRef: imageUrl,
+        sourceRef: resolvedUrl.parsedUrl.toString(),
       };
-    } finally {
-      clearTimeout(timeout);
+    } catch (error: unknown) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException("Unable to fetch remote imageUrl.");
     }
+  }
+
+  private async validateRemoteImageUrl(imageUrl: string): Promise<ResolvedRemoteImageUrl> {
+    let parsed: URL;
+    try {
+      parsed = new URL(imageUrl);
+    } catch {
+      throw new BadRequestException("imageUrl must be a valid URL.");
+    }
+
+    if (parsed.protocol !== "https:") {
+      throw new BadRequestException("imageUrl must use https.");
+    }
+    if (parsed.username || parsed.password) {
+      throw new BadRequestException("imageUrl must not include credentials.");
+    }
+    if (parsed.port && parsed.port !== "443") {
+      throw new BadRequestException("imageUrl must use default HTTPS port.");
+    }
+
+    const hostname = parsed.hostname.trim().toLowerCase();
+    if (!hostname) {
+      throw new BadRequestException("imageUrl hostname is required.");
+    }
+    if (BLOCKED_HOSTS.has(hostname) || hostname.endsWith(".localhost")) {
+      throw new BadRequestException("imageUrl points to a blocked host.");
+    }
+
+    if (isIP(hostname) > 0) {
+      if (isBlockedIpAddress(hostname)) {
+        throw new BadRequestException("imageUrl points to a private or link-local IP.");
+      }
+      const family = isIP(hostname);
+      return {
+        parsedUrl: parsed,
+        resolvedAddress: hostname,
+        family: family === 6 ? 6 : 4,
+      };
+    }
+
+    const resolved = await dnsLookup(hostname, { all: true, verbatim: true });
+    if (!resolved || resolved.length === 0) {
+      throw new BadRequestException("imageUrl hostname could not be resolved.");
+    }
+    const allowed = resolved.filter((entry) => entry?.address && !isBlockedIpAddress(entry.address));
+    if (allowed.length === 0) {
+      throw new BadRequestException("imageUrl hostname resolves to blocked network ranges.");
+    }
+    for (const entry of resolved) {
+      if (!entry?.address || isBlockedIpAddress(entry.address)) {
+        throw new BadRequestException("imageUrl hostname resolves to blocked network ranges.");
+      }
+    }
+    const selected = allowed[0];
+    return {
+      parsedUrl: parsed,
+      resolvedAddress: selected.address,
+      family: selected.family === 6 ? 6 : 4,
+    };
+  }
+
+  private async fetchRemoteImage(
+    resolved: ResolvedRemoteImageUrl,
+  ): Promise<{ contentType: string; contentBuffer: Buffer }> {
+    return await new Promise<{ contentType: string; contentBuffer: Buffer }>((resolve, reject) => {
+      const pathAndQuery = `${resolved.parsedUrl.pathname}${resolved.parsedUrl.search}`;
+      const requestOptions: HttpsRequestOptions = {
+        protocol: "https:",
+        hostname: resolved.parsedUrl.hostname,
+        port: resolved.parsedUrl.port ? Number(resolved.parsedUrl.port) : 443,
+        path: pathAndQuery,
+        method: "GET",
+        servername: resolved.parsedUrl.hostname,
+        lookup: (_hostname, _options, callback) => {
+          callback(null, resolved.resolvedAddress, resolved.family);
+        },
+      };
+
+      const req = httpsRequest(requestOptions, (response) => {
+        this.readIncomingMessageWithLimit(response, MAX_MEDIA_FILE_BYTES)
+          .then(resolve)
+          .catch(reject);
+      });
+      req.setTimeout(REMOTE_FETCH_TIMEOUT_MS, () => {
+        req.destroy(new Error("REMOTE_FETCH_TIMEOUT"));
+      });
+      req.on("error", (error) => {
+        reject(error);
+      });
+      req.end();
+    });
+  }
+
+  private async readIncomingMessageWithLimit(
+    response: IncomingMessage,
+    maxBytes: number,
+  ): Promise<{ contentType: string; contentBuffer: Buffer }> {
+    const statusCode = response.statusCode ?? 0;
+    if (statusCode < 200 || statusCode >= 300) {
+      response.resume();
+      throw new BadRequestException(`Unable to download imageUrl (${statusCode}).`);
+    }
+    const contentType = response.headers["content-type"]?.split(";")[0].trim().toLowerCase() ?? "";
+    if (!contentType.startsWith("image/")) {
+      response.resume();
+      throw new BadRequestException("Remote imageUrl must return content-type image/*.");
+    }
+    const contentLengthHeader = response.headers["content-length"];
+    if (contentLengthHeader) {
+      const lengthRaw = Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader;
+      const contentLength = Number(lengthRaw);
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        response.resume();
+        throw new BadRequestException("Remote image exceeds 10MB limit.");
+      }
+    }
+
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    return await new Promise<{ contentType: string; contentBuffer: Buffer }>((resolve, reject) => {
+      response.on("data", (chunk: Buffer) => {
+        totalBytes += chunk.byteLength;
+        if (totalBytes > maxBytes) {
+          response.destroy(new BadRequestException("Remote image exceeds 10MB limit."));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on("end", () =>
+        resolve({
+          contentType,
+          contentBuffer: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
+        }),
+      );
+      response.on("error", (error) => reject(error));
+      response.on("aborted", () => reject(new BadRequestException("Remote image fetch was aborted.")));
+    });
   }
 
   private parseDataUrl(imageUrl: string, row: BulkMediaAssociationRowDto): ResolvedMediaInput {
@@ -667,4 +944,9 @@ export class MediaService implements OnModuleInit {
     }
     throw new BadRequestException("Unsupported channel. Use amazon, flipkart, or meesho.");
   }
+
+  private getCurrentTenantKey(): string {
+    return normalizeTenantKey(getTenantKeyFromContext());
+  }
 }
+

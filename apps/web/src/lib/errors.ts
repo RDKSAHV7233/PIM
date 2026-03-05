@@ -49,7 +49,7 @@ export function translateError(code: string | undefined | null): UserFacingError
   return (
     ERROR_MAP[code] ?? {
       title: "Something went wrong",
-      description: `An error occurred (code: ${code}).`,
+      description: "An unexpected error occurred.",
       action: "Try again or contact support.",
     }
   );
@@ -57,9 +57,11 @@ export function translateError(code: string | undefined | null): UserFacingError
 
 export function extractErrorCode(input: string | undefined | null): string {
   const text = String(input ?? "");
-  if (!text.trim()) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
     return "UNKNOWN_ERROR";
   }
+
   const known = [
     "VERSION_CONFLICT",
     "dead_letter",
@@ -73,6 +75,27 @@ export function extractErrorCode(input: string | undefined | null): string {
       return code;
     }
   }
+
+  // Handle plain-language backend messages so sellers still get useful copy.
+  if ((normalized.includes("required") || normalized.includes("must")) && normalized.includes("field")) {
+    return "REQUIRED_FIELD";
+  }
+  if (normalized.includes(" is required")) {
+    return "REQUIRED_FIELD";
+  }
+  if (normalized.includes("hsn") && (normalized.includes("invalid") || normalized.includes("digit"))) {
+    return "INVALID_HSN";
+  }
+  if (normalized.includes("gst") && (normalized.includes("invalid") || normalized.includes("rate"))) {
+    return "INVALID_GST_RATE";
+  }
+  if (normalized.includes("dead letter") || normalized.includes("dead_letter")) {
+    return "dead_letter";
+  }
+  if (normalized.includes("retrying")) {
+    return "retrying";
+  }
+
   return "UNKNOWN_ERROR";
 }
 

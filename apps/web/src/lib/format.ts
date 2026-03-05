@@ -1,6 +1,6 @@
 export function formatINR(value: number | null | undefined): string {
   if (value == null) {
-    return "—";
+    return "-";
   }
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -11,16 +11,16 @@ export function formatINR(value: number | null | undefined): string {
 
 export function formatINRCompact(value: number | null | undefined): string {
   if (value == null) {
-    return "—";
+    return "-";
   }
   if (value >= 1_00_00_000) {
-    return `₹${(value / 1_00_00_000).toFixed(1)}Cr`;
+    return `\u20B9${(value / 1_00_00_000).toFixed(1)}Cr`;
   }
   if (value >= 1_00_000) {
-    return `₹${(value / 1_00_000).toFixed(1)}L`;
+    return `\u20B9${(value / 1_00_000).toFixed(1)}L`;
   }
   if (value >= 1_000) {
-    return `₹${(value / 1_000).toFixed(1)}K`;
+    return `\u20B9${(value / 1_000).toFixed(1)}K`;
   }
   return formatINR(value);
 }

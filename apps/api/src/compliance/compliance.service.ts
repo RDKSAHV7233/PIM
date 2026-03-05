@@ -1,7 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RuleSeverity, RuleType, ValidationIssueStatus } from "@prisma/client";
+import {
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateComplianceRuleDto } from "./dto/create-compliance-rule.dto";
+import { IssueInboxQueryDto } from "./dto/issue-inbox-query.dto";
 import { UpdateComplianceRuleDto } from "./dto/update-compliance-rule.dto";
 
 type IssueDraft = {
@@ -12,12 +18,32 @@ type IssueDraft = {
   fieldPath?: string;
 };
 
+type IssueInboxRow = {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  productStatus: string;
+  categoryId: string;
+  categoryName: string;
+  fieldPath: string | null;
+  severity: RuleSeverity;
+  message: string;
+  createdAt: Date;
+};
+
+type IssueInboxCursor = {
+  severityRank: 0 | 1;
+  createdAt: string;
+  id: string;
+};
+
 @Injectable()
 export class ComplianceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listRules(categoryId?: string) {
-    return this.prisma.complianceRule.findMany({
+    return this.prisma.tenant().complianceRule.findMany({
       where: categoryId ? { categoryId } : undefined,
       orderBy: [{ updatedAt: "desc" }],
     });
@@ -28,7 +54,7 @@ export class ComplianceService {
       await this.requireCategory(dto.categoryId);
     }
     try {
-      return await this.prisma.complianceRule.create({
+      return await this.prisma.tenant().complianceRule.create({
         data: {
           ruleCode: dto.ruleCode.trim().toUpperCase(),
           name: dto.name.trim(),
@@ -52,7 +78,7 @@ export class ComplianceService {
     if (dto.categoryId) {
       await this.requireCategory(dto.categoryId);
     }
-    return this.prisma.complianceRule.update({
+    return this.prisma.tenant().complianceRule.update({
       where: { id: ruleId },
       data: {
         name: dto.name.trim(),
@@ -67,19 +93,254 @@ export class ComplianceService {
 
   async deleteRule(ruleId: string) {
     await this.requireRule(ruleId);
-    await this.prisma.complianceRule.delete({ where: { id: ruleId } });
+    await this.prisma.tenant().complianceRule.delete({ where: { id: ruleId } });
   }
 
   async getProductIssues(productId: string) {
     await this.requireProduct(productId);
-    return this.prisma.validationIssue.findMany({
+    return this.prisma.tenant().validationIssue.findMany({
       where: { productId, status: ValidationIssueStatus.open },
       orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
     });
   }
 
+  async listIssueInbox(query: IssueInboxQueryDto) {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const limit = resolveCursorLimit(query.limit);
+    const cursor = this.decodeIssueInboxCursor(query.cursor);
+
+    const whereClauses: string[] = [
+      `vi."tenantKey" = $1`,
+      `vi.status = 'open'`,
+    ];
+    const params: Array<string | number | Date> = [tenantKey];
+
+    if (query.severity === "BLOCKING") {
+      params.push("error");
+      whereClauses.push(`vi.severity = $${params.length}::"RuleSeverity"`);
+    } else if (query.severity === "WARNING") {
+      params.push("warning");
+      whereClauses.push(`vi.severity = $${params.length}::"RuleSeverity"`);
+    }
+
+    if (query.categoryId) {
+      params.push(query.categoryId);
+      whereClauses.push(`p."categoryId" = $${params.length}`);
+    }
+
+    if (query.productStatus) {
+      params.push(query.productStatus);
+      whereClauses.push(`p.status::text = $${params.length}`);
+    }
+
+    if (query.installationId) {
+      params.push(query.installationId);
+      whereClauses.push(`
+        EXISTS (
+          SELECT 1
+          FROM connector_submissions cs
+          WHERE cs.tenant_key = $1
+            AND cs.product_id = vi."productId"
+            AND cs.installation_id = $${params.length}
+        )
+      `);
+    }
+
+    if (cursor) {
+      params.push(cursor.severityRank);
+      const rankParam = params.length;
+      params.push(cursor.createdAt);
+      const createdAtParam = params.length;
+      params.push(cursor.id);
+      const idParam = params.length;
+      whereClauses.push(`
+        (
+          (CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END > $${rankParam})
+          OR (
+            CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END = $${rankParam}
+            AND (
+              vi."createdAt" > $${createdAtParam}::timestamptz
+              OR (vi."createdAt" = $${createdAtParam}::timestamptz AND vi.id > $${idParam})
+            )
+          )
+        )
+      `);
+    }
+
+    params.push(limit + 1);
+    const limitParam = params.length;
+
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<IssueInboxRow[]>(
+      `
+      SELECT
+        vi.id AS id,
+        vi."productId" AS "productId",
+        p.title AS "productName",
+        COALESCE(v."skuCode", '-') AS sku,
+        p.status::text AS "productStatus",
+        p."categoryId" AS "categoryId",
+        c.name AS "categoryName",
+        vi."fieldPath" AS "fieldPath",
+        vi.severity AS severity,
+        vi.message AS message,
+        vi."createdAt" AS "createdAt"
+      FROM "ValidationIssue" vi
+      JOIN "Product" p ON p.id = vi."productId"
+      LEFT JOIN "Category" c ON c.id = p."categoryId"
+      LEFT JOIN LATERAL (
+        SELECT vv."skuCode"
+        FROM "Variant" vv
+        WHERE vv."productId" = p.id
+        ORDER BY vv."createdAt" ASC, vv.id ASC
+        LIMIT 1
+      ) v ON TRUE
+      WHERE ${whereClauses.join(" AND ")}
+      ORDER BY
+        CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END ASC,
+        vi."createdAt" ASC,
+        vi.id ASC
+      LIMIT $${limitParam}
+      `,
+      ...params,
+    );
+
+    const hasNext = rows.length > limit;
+    const pageRows = hasNext ? rows.slice(0, limit) : rows;
+    const last = pageRows[pageRows.length - 1];
+
+    // RLS-BYPASS: manual tenant filter
+    const summaryRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
+      Array<{ resolvedToday: number; resolvedYesterday: number }>
+    >(
+      `
+      SELECT
+        COUNT(*) FILTER (
+          WHERE (vi."updatedAt" AT TIME ZONE 'Asia/Kolkata')::date =
+            (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+        )::int AS "resolvedToday",
+        COUNT(*) FILTER (
+          WHERE (vi."updatedAt" AT TIME ZONE 'Asia/Kolkata')::date =
+            ((NOW() AT TIME ZONE 'Asia/Kolkata')::date - 1)
+        )::int AS "resolvedYesterday"
+      FROM "ValidationIssue" vi
+      WHERE vi."tenantKey" = $1
+        AND vi.status = 'resolved'
+        AND vi.severity = 'warning'
+      `,
+      tenantKey,
+    );
+
+    const summary = summaryRows[0] ?? { resolvedToday: 0, resolvedYesterday: 0 };
+
+    return {
+      items: pageRows.map((row) => ({
+        issueId: row.id,
+        productId: row.productId,
+        productName: row.productName,
+        sku: row.sku,
+        productStatus: row.productStatus,
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        fieldPath: row.fieldPath,
+        severity: row.severity === "error" ? "BLOCKING" : "WARNING",
+        sellerMessage: row.message,
+        suggestedFix: this.buildSuggestedFix(row.fieldPath),
+        detectedAt: row.createdAt.toISOString(),
+      })),
+      nextCursor: hasNext && last
+        ? this.encodeIssueInboxCursor({
+            severityRank: last.severity === "error" ? 0 : 1,
+            createdAt: last.createdAt.toISOString(),
+            id: last.id,
+          })
+        : null,
+      limit,
+      resolvedToday: summary.resolvedToday,
+      resolvedYesterday: summary.resolvedYesterday,
+      trend:
+        summary.resolvedToday > summary.resolvedYesterday
+          ? "up"
+          : summary.resolvedToday < summary.resolvedYesterday
+            ? "down"
+            : "flat",
+    };
+  }
+
+  async resolveIssueInboxWarnings(issueIds: string[]) {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const uniqueIssueIds = Array.from(
+      new Set(
+        issueIds
+          .map((issueId) => String(issueId ?? "").trim())
+          .filter((issueId) => issueId.length > 0),
+      ),
+    );
+    if (uniqueIssueIds.length === 0) {
+      throw new BadRequestException("At least one issueId is required.");
+    }
+
+    const existingIssues = await this.prisma.tenant(tenantKey).validationIssue.findMany({
+      where: {
+        tenantKey,
+        id: { in: uniqueIssueIds },
+      },
+      select: {
+        id: true,
+        severity: true,
+        status: true,
+      },
+    });
+    const issueMap = new Map(existingIssues.map((issue) => [issue.id, issue]));
+    const resolvableIssueIds: string[] = [];
+    let skippedBlocked = 0;
+    let skippedAlreadyResolved = 0;
+    let skippedMissing = 0;
+
+    for (const issueId of uniqueIssueIds) {
+      const issue = issueMap.get(issueId);
+      if (!issue) {
+        skippedMissing += 1;
+        continue;
+      }
+      if (issue.status !== ValidationIssueStatus.open) {
+        skippedAlreadyResolved += 1;
+        continue;
+      }
+      if (issue.severity !== RuleSeverity.warning) {
+        skippedBlocked += 1;
+        continue;
+      }
+      resolvableIssueIds.push(issue.id);
+    }
+
+    if (resolvableIssueIds.length === 0) {
+      throw new BadRequestException("Only open warning issues can be resolved from inbox.");
+    }
+
+    const updateResult = await this.prisma.tenant(tenantKey).validationIssue.updateMany({
+      where: {
+        tenantKey,
+        id: { in: resolvableIssueIds },
+        severity: RuleSeverity.warning,
+        status: ValidationIssueStatus.open,
+      },
+      data: {
+        status: ValidationIssueStatus.resolved,
+      },
+    });
+
+    return {
+      requested: uniqueIssueIds.length,
+      resolved: updateResult.count,
+      skippedBlocked,
+      skippedAlreadyResolved,
+      skippedMissing,
+    };
+  }
+
   async validateAndPersistProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({
+    const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: { category: true },
     });
@@ -94,7 +355,7 @@ export class ComplianceService {
     await this.applyDynamicAttributeChecks(product.categoryId, attributes, issues);
     await this.applyComplianceRuleChecks(product.categoryId, product, attributes, issues);
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.tenant().$transaction(async (tx) => {
       await tx.validationIssue.deleteMany({ where: { productId } });
       if (issues.length > 0) {
         await tx.validationIssue.createMany({
@@ -162,7 +423,7 @@ export class ComplianceService {
     attributes: Record<string, unknown>,
     issues: IssueDraft[],
   ) {
-    const definitions = await this.prisma.attributeDefinition.findMany({
+    const definitions = await this.prisma.tenant().attributeDefinition.findMany({
       where: {
         categoryId,
         appliesTo: "product",
@@ -221,7 +482,7 @@ export class ComplianceService {
     attributes: Record<string, unknown>,
     issues: IssueDraft[],
   ) {
-    const rules = await this.prisma.complianceRule.findMany({
+    const rules = await this.prisma.tenant().complianceRule.findMany({
       where: {
         active: true,
         OR: [{ categoryId: null }, { categoryId }],
@@ -349,8 +610,53 @@ export class ComplianceService {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 
+  private buildSuggestedFix(fieldPath: string | null): string {
+    if (!fieldPath || fieldPath.trim().length === 0) {
+      return "Update the product details and re-run compliance validation.";
+    }
+    return `Update ${fieldPath.trim()} and re-run compliance validation.`;
+  }
+
+  private decodeIssueInboxCursor(cursor: string | undefined): IssueInboxCursor | null {
+    const value = String(cursor ?? "").trim();
+    if (!value) {
+      return null;
+    }
+    try {
+      const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+      const severityRankRaw = Number(decoded.severityRank);
+      const createdAt = String(decoded.createdAt ?? "").trim();
+      const id = String(decoded.id ?? "").trim();
+      if ((severityRankRaw !== 0 && severityRankRaw !== 1) || !createdAt || !id) {
+        return null;
+      }
+      const parsedDate = new Date(createdAt);
+      if (Number.isNaN(parsedDate.getTime())) {
+        return null;
+      }
+      return {
+        severityRank: severityRankRaw as 0 | 1,
+        createdAt: parsedDate.toISOString(),
+        id,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private encodeIssueInboxCursor(cursor: IssueInboxCursor): string {
+    return Buffer.from(
+      JSON.stringify({
+        severityRank: cursor.severityRank,
+        createdAt: cursor.createdAt,
+        id: cursor.id,
+      }),
+      "utf8",
+    ).toString("base64url");
+  }
+
   private async requireRule(ruleId: string) {
-    const rule = await this.prisma.complianceRule.findUnique({ where: { id: ruleId } });
+    const rule = await this.prisma.tenant().complianceRule.findUnique({ where: { id: ruleId } });
     if (!rule) {
       throw new NotFoundException("Compliance rule not found");
     }
@@ -358,7 +664,7 @@ export class ComplianceService {
   }
 
   private async requireCategory(categoryId: string) {
-    const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
@@ -366,7 +672,7 @@ export class ComplianceService {
   }
 
   private async requireProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException("Product not found");
     }

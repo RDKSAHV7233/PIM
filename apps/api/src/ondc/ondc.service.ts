@@ -1,37 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
 
 @Injectable()
-export class OndcService implements OnModuleInit {
+export class OndcService {
   constructor(private readonly prisma: PrismaService) {}
-
-  async onModuleInit() {
-    await this.ensureTable();
-  }
-
-  private async ensureTable() {
-    await this.prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS ondc_mappings (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        category_id TEXT NOT NULL REFERENCES "Category"(id) ON DELETE CASCADE,
-        node_type TEXT NOT NULL,
-        version TEXT NOT NULL,
-        required_fields JSONB NOT NULL,
-        field_map JSONB NOT NULL,
-        discovery_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        is_default BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS idx_ondc_mappings_lookup
-      ON ondc_mappings (node_type, version, category_id, updated_at DESC);
-    `);
-  }
 
   listVersions() {
     return [
@@ -69,11 +43,15 @@ export class OndcService implements OnModuleInit {
     }
 
     if (dto.isDefault) {
-      await this.prisma.$executeRawUnsafe(
+      // RLS-BYPASS: manual tenant filter
+      await this.prisma.tenant().$executeRawUnsafe(
         `
         UPDATE ondc_mappings
         SET is_default = FALSE, updated_at = NOW()
-        WHERE node_type = $1 AND version = $2 AND category_id = $3
+        WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
+          AND node_type = $1
+          AND version = $2
+          AND category_id = $3
         `,
         dto.nodeType,
         dto.version,
@@ -81,7 +59,8 @@ export class OndcService implements OnModuleInit {
       );
     }
 
-    await this.prisma.$executeRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant().$executeRawUnsafe(
       `
       INSERT INTO ondc_mappings (
         id, name, category_id, node_type, version, required_fields, field_map, discovery_metadata, is_default
@@ -102,7 +81,8 @@ export class OndcService implements OnModuleInit {
   }
 
   async listMappings(nodeType?: string, version?: string, categoryId?: string) {
-    return this.prisma.$queryRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    return this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT
         id,
@@ -117,7 +97,8 @@ export class OndcService implements OnModuleInit {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM ondc_mappings
-      WHERE ($1::text IS NULL OR node_type = $1)
+      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
+        AND ($1::text IS NULL OR node_type = $1)
         AND ($2::text IS NULL OR version = $2)
         AND ($3::text IS NULL OR category_id = $3)
       ORDER BY is_default DESC, updated_at DESC
@@ -130,7 +111,8 @@ export class OndcService implements OnModuleInit {
   }
 
   async getMapping(mappingId: string) {
-    const rows = (await this.prisma.$queryRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT
         id,
@@ -145,7 +127,8 @@ export class OndcService implements OnModuleInit {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM ondc_mappings
-      WHERE id = $1
+      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
+        AND id = $1
       LIMIT 1
       `,
       mappingId,
@@ -157,7 +140,7 @@ export class OndcService implements OnModuleInit {
   }
 
   async simulateProduct(productId: string, nodeType: string, version: string, mappingId?: string) {
-    const product = await this.prisma.product.findUnique({
+    const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: { category: true },
     });
@@ -202,7 +185,8 @@ export class OndcService implements OnModuleInit {
   }
 
   private async getDefaultMapping(categoryId: string, nodeType: string, version: string) {
-    const rows = (await this.prisma.$queryRawUnsafe(
+    // RLS-BYPASS: manual tenant filter
+    const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT
         id,
@@ -215,7 +199,10 @@ export class OndcService implements OnModuleInit {
         discovery_metadata AS "discoveryMetadata",
         is_default AS "isDefault"
       FROM ondc_mappings
-      WHERE category_id = $1 AND node_type = $2 AND version = $3
+      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
+        AND category_id = $1
+        AND node_type = $2
+        AND version = $3
       ORDER BY is_default DESC, updated_at DESC
       LIMIT 1
       `,
@@ -231,7 +218,7 @@ export class OndcService implements OnModuleInit {
   }
 
   private async requireCategory(categoryId: string) {
-    const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+    const category = await this.prisma.tenant().category.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
@@ -281,3 +268,4 @@ export class OndcService implements OnModuleInit {
     return direct[source];
   }
 }
+

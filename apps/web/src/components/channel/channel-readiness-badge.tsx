@@ -20,18 +20,20 @@ function badgeContent(
 ): string {
   const label = channelConfig[channel].label;
   if (status === "ready") {
-    return `[OK] ${label}`;
+    return `OK ${label}`;
   }
   if (status === "warnings") {
-    return `[!] ${label} ${warningCount}`;
+    const warningLabel = warningCount === 1 ? "warning" : "warnings";
+    return `WARN ${label} ${warningCount} ${warningLabel}`;
   }
   if (status === "errors") {
-    return `[X] ${label} ${errorCount}`;
+    const errorLabel = errorCount === 1 ? "error" : "errors";
+    return `BLOCK ${label} ${errorCount} ${errorLabel}`;
   }
   if (status === "loading") {
-    return `${label}...`;
+    return `${label} loading`;
   }
-  return `[?] ${label}`;
+  return `UNKNOWN ${label}`;
 }
 
 function badgeStyle(status: ReadinessStatus) {

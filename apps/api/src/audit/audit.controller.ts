@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from "@nestjs/common";
+import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AuditService } from "./audit.service";
 
 @Controller("audit")
@@ -6,8 +7,8 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get("logs")
-  listLogs(@Query("limit") limit?: string, @Query("actorId") actorId?: string) {
+  listLogs(@Query("limit") limit?: string, @Query("actorId") actorId?: string, @Query() pagination?: CursorPaginationDto) {
     const parsedLimit = limit ? Number(limit) : 50;
-    return this.auditService.list(parsedLimit, actorId);
+    return this.auditService.list(parsedLimit, actorId, pagination);
   }
 }

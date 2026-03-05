@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMarketplaceSimulation, MarketplaceChannel, normalizeAppRole } from "@/lib/api";
+import { getMarketplaceSimulation, MarketplaceChannel } from "@/lib/api";
 import { summarizeSimulation } from "@/lib/channel-readiness";
+import { getServerActorRole } from "@/lib/server-session";
+import { resolveBearerToken } from "../../_auth";
 
 function parseChannel(value: string | null): MarketplaceChannel | null {
   if (value === "amazon" || value === "flipkart" || value === "meesho") {
@@ -14,7 +16,8 @@ export async function GET(request: NextRequest) {
   const productId = String(params.get("productId") ?? "").trim();
   const templateId = String(params.get("templateId") ?? "").trim() || undefined;
   const channel = parseChannel(params.get("channel"));
-  const role = normalizeAppRole(params.get("role"));
+  const role = await getServerActorRole();
+  const authHeader = resolveBearerToken(request) ?? undefined;
 
   if (!productId || !channel) {
     return NextResponse.json(
@@ -26,7 +29,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const simulation = await getMarketplaceSimulation(productId, channel, templateId, { role });
+    const simulation = await getMarketplaceSimulation(productId, channel, templateId, {
+      role,
+      authHeader,
+    });
     const summary = summarizeSimulation(channel, simulation);
     return NextResponse.json(summary);
   } catch {

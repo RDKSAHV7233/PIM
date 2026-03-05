@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Prisma migrate deploy + RLS verification
+        run: |
+          npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+          node scripts/verify-tenant-rls.cjs
+
+      - name: Unsafe raw SQL comment guard
+        env:
+          CHECK_ONLY_CHANGED: "true"
+          GIT_BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+        run: node scripts/check-unsafe-raw-comments.cjs
+
+      - name: Lint API
+        run: npm run lint --workspace @pim1/api
+
+      - name: Build API
+        run: npm run build --workspace @pim1/api
+
+      - name: Tenant isolation concurrency integration test
+        run: npm run test:integration:rls-isolation
+
+      - name: Amazon authoritative validation integration test
+        run: npm run test:integration:amazon-authoritative-validation
+
+      - name: Catalog completeness integration test
+        run: npm run test:integration:catalog-completeness
+
+      - name: OpenAPI spec freshness check
+        run: npm run openapi:check
+
+      - name: Build Web
+        run: npm run build --workspace @pim1/web

@@ -1,0 +1,51 @@
+{
+  "lastUpdated": "2026-03-02",
+  "items": [
+    {
+      "id": "RD-MEESHO-1",
+      "priority": "critical",
+      "status": "pending",
+      "owner": "EL",
+      "action": "Email Meesho integration team for API credentials and template/version policy",
+      "blockingSprint": "P5-S3",
+      "targetDate": "2026-03-02"
+    },
+    {
+      "id": "RD-AMAZON-1",
+      "priority": "critical",
+      "status": "pending",
+      "owner": "EL",
+      "action": "Register Amazon SP-API developer application and obtain sandbox credentials",
+      "blockingSprint": "P5-S3",
+      "targetDate": "2026-03-05"
+    },
+    {
+      "id": "RD-FLIPKART-1",
+      "priority": "critical",
+      "status": "pending",
+      "owner": "EL",
+      "action": "Register Flipkart partner access and obtain OAuth credentials",
+      "blockingSprint": "P5-S3",
+      "targetDate": "2026-03-05"
+    },
+    {
+      "id": "RD-AMAZON-2",
+      "priority": "high",
+      "status": "pending",
+      "owner": "EL",
+      "action": "Research SP-API India listing payload and product type definitions",
+      "blockingSprint": "P5-S4",
+      "targetDate": "2026-03-10"
+    },
+    {
+      "id": "RD-AMAZON-3",
+      "priority": "high",
+      "status": "pending",
+      "owner": "EL",
+      "action": "Confirm Amazon notifications subscription and webhook/event delivery model",
+      "blockingSprint": "P5-S5",
+      "targetDate": "2026-03-12"
+    }
+  ]
+}
+

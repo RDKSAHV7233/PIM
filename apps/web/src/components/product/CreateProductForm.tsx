@@ -90,7 +90,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
     setLoadingAttributes(true);
     setAttributeFetchError("");
 
-    fetch(`/api/taxonomy/categories/${encodeURIComponent(selectedCategoryId)}/attributes?role=${role}`, {
+    fetch(`/api/taxonomy/categories/${encodeURIComponent(selectedCategoryId)}/attributes`, {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
@@ -146,17 +146,8 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
       }
     });
 
-    const parsedMrp = parseNumberOrEmpty(mrp);
-    const parsedSellingPrice = parseNumberOrEmpty(sellingPrice);
-    if (parsedMrp !== null) {
-      payload.mrp = parsedMrp;
-    }
-    if (parsedSellingPrice !== null) {
-      payload.selling_price = parsedSellingPrice;
-    }
-
     return JSON.stringify(payload);
-  }, [attributeValues, definitions, mrp, sellingPrice]);
+  }, [attributeValues, definitions]);
 
   const submitAction = async (formData: FormData) => {
     startTransition(async () => {
@@ -237,15 +228,15 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
 
       <div className="space-y-1">
         <label
-          htmlFor={fieldId("selling_price")}
+          htmlFor={fieldId("sellingPrice")}
           className="text-xs font-semibold uppercase tracking-wide text-slate-600"
         >
           Selling Price <span className="text-red-500">*</span>
         </label>
         <div className="flex items-center gap-3">
           <Input
-            id={fieldId("selling_price")}
-            name="selling_price"
+            id={fieldId("sellingPrice")}
+            name="sellingPrice"
             type="number"
             min={0}
             step="1"

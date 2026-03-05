@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RecordStatus } from "@prisma/client";
 import { ComplianceService } from "../compliance/compliance.service";
+import {
+  CursorPaginationQuery,
+  decodeCursorToken,
+  encodeCursorToken,
+  isCursorPagination,
+  resolveCursorLimit,
+} from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
 
@@ -37,12 +44,13 @@ export class BulkEditService {
 
   async preview(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
     const normalizedScope = this.normalizeScope(scope);
+    this.ensureNonEmptyScope(normalizedScope);
     const normalizedUpdates = this.normalizeUpdates(updatesInput);
     const where = this.buildWhere(normalizedScope);
 
     const [requestedCount, sample] = await Promise.all([
-      this.prisma.product.count({ where }),
-      this.prisma.product.findMany({
+      this.prisma.tenant().product.count({ where }),
+      this.prisma.tenant().product.findMany({
         where,
         orderBy: [{ updatedAt: "desc" }],
         take: 25,
@@ -61,17 +69,18 @@ export class BulkEditService {
 
   async apply(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
     const normalizedScope = this.normalizeScope(scope);
+    this.ensureNonEmptyScope(normalizedScope);
     const normalizedUpdates = this.normalizeUpdates(updatesInput);
     const where = this.buildWhere(normalizedScope);
     const updateData = this.toUpdateData(normalizedUpdates);
 
-    const products = await this.prisma.product.findMany({
+    const products = await this.prisma.tenant().product.findMany({
       where,
       orderBy: [{ updatedAt: "desc" }],
       select: this.productSelect,
     });
 
-    const operation = await this.prisma.bulkEditOperation.create({
+    const operation = await this.prisma.tenant().bulkEditOperation.create({
       data: {
         status: "processing",
         scope: normalizedScope as Prisma.JsonObject,
@@ -86,7 +95,7 @@ export class BulkEditService {
     for (const product of products) {
       const before = this.toSnapshot(product);
       try {
-        const updated = await this.prisma.product.update({
+        const updated = await this.prisma.tenant().product.update({
           where: { id: product.id },
           data: updateData,
           select: this.productSelect,
@@ -94,7 +103,7 @@ export class BulkEditService {
 
         await this.complianceService.validateAndPersistProduct(updated.id);
 
-        await this.prisma.bulkEditOperationItem.create({
+        await this.prisma.tenant().bulkEditOperationItem.create({
           data: {
             operationId: operation.id,
             productId: updated.id,
@@ -105,7 +114,7 @@ export class BulkEditService {
         });
         appliedCount += 1;
       } catch (error: unknown) {
-        await this.prisma.bulkEditOperationItem.create({
+        await this.prisma.tenant().bulkEditOperationItem.create({
           data: {
             operationId: operation.id,
             productId: product.id,
@@ -120,7 +129,7 @@ export class BulkEditService {
 
     const status = failedCount > 0 && appliedCount === 0 ? "failed" : "completed";
 
-    return this.prisma.bulkEditOperation.update({
+    return this.prisma.tenant().bulkEditOperation.update({
       where: { id: operation.id },
       data: {
         status,
@@ -135,9 +144,54 @@ export class BulkEditService {
     });
   }
 
-  async listOperations(limit = 20) {
+  async listOperations(limit = 20, pagination?: CursorPaginationQuery) {
+    if (isCursorPagination(pagination)) {
+      const safeLimit = resolveCursorLimit(pagination?.limit);
+      const token = decodeCursorToken(pagination?.cursor);
+      if (pagination?.cursor && !token) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const cursorDate = token ? new Date(token.sort) : null;
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+        throw new BadRequestException("Invalid cursor.");
+      }
+      const rows = await this.prisma.tenant().bulkEditOperation.findMany({
+        where: token && cursorDate
+          ? {
+              OR: [
+                { createdAt: { lt: cursorDate } },
+                {
+                  createdAt: cursorDate,
+                  id: { lt: token.id },
+                },
+              ],
+            }
+          : undefined,
+        take: safeLimit + 1,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          items: {
+            take: 100,
+            orderBy: [{ createdAt: "desc" }],
+          },
+        },
+      });
+      const hasNext = rows.length > safeLimit;
+      const items = hasNext ? rows.slice(0, safeLimit) : rows;
+      const last = items[items.length - 1];
+      return {
+        items,
+        limit: safeLimit,
+        nextCursor: hasNext && last
+          ? encodeCursorToken({
+              sort: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+      };
+    }
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.floor(limit))) : 20;
-    return this.prisma.bulkEditOperation.findMany({
+    return this.prisma.tenant().bulkEditOperation.findMany({
       take: safeLimit,
       orderBy: [{ createdAt: "desc" }],
       include: {
@@ -150,7 +204,7 @@ export class BulkEditService {
   }
 
   async getOperation(operationId: string) {
-    const operation = await this.prisma.bulkEditOperation.findUnique({
+    const operation = await this.prisma.tenant().bulkEditOperation.findUnique({
       where: { id: operationId },
       include: {
         items: {
@@ -208,6 +262,18 @@ export class BulkEditService {
     }
 
     return normalized;
+  }
+
+  private ensureNonEmptyScope(scope: {
+    categoryId?: string;
+    status?: RecordStatus;
+    brandContains?: string;
+    productIds?: string[];
+  }) {
+    const hasProductIds = Array.isArray(scope.productIds) && scope.productIds.length > 0;
+    if (!scope.categoryId && !scope.status && !scope.brandContains && !hasProductIds) {
+      throw new BadRequestException("Bulk edit scope is required and cannot be empty.");
+    }
   }
 
   private normalizeUpdates(updatesInput: Record<string, unknown>): NormalizedUpdates {

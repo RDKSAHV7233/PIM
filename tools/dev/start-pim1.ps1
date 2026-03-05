@@ -97,11 +97,69 @@ function Get-FileTail {
   return (Get-Content -Path $Path -Tail $Lines -ErrorAction SilentlyContinue) -join [Environment]::NewLine
 }
 
+function Set-DefaultEnvVar {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    [Parameter(Mandatory = $true)]
+    [string]$Value
+  )
+
+  $current = [System.Environment]::GetEnvironmentVariable($Name, "Process")
+  if ([string]::IsNullOrWhiteSpace($current)) {
+    [System.Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+  }
+}
+
+function Ensure-LocalApiEnvDefaults {
+  $databaseUrl = [System.Environment]::GetEnvironmentVariable("DATABASE_URL", "Process")
+  if (-not [string]::IsNullOrWhiteSpace($databaseUrl)) {
+    Set-DefaultEnvVar -Name "DATABASE_URL_POOLED" -Value $databaseUrl
+    Set-DefaultEnvVar -Name "DATABASE_URL_DIRECT" -Value $databaseUrl
+  }
+
+  Set-DefaultEnvVar -Name "JWT_SECRET" -Value "pim1-local-dev-jwt-secret-minimum-length-32"
+  Set-DefaultEnvVar -Name "JWT_EXPIRY" -Value "4h"
+  Set-DefaultEnvVar -Name "CREDENTIAL_ENCRYPTION_KEY_V1" -Value "pim1-local-encryption-key-v1-minimum-32"
+  Set-DefaultEnvVar -Name "CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION" -Value "1"
+  Set-DefaultEnvVar -Name "REDIS_URL" -Value "redis://localhost:6379"
+  Set-DefaultEnvVar -Name "JWT_BLOCKLIST_REDIS_DISABLED" -Value "true"
+  Set-DefaultEnvVar -Name "AUTH_MODE" -Value "local"
+  Set-DefaultEnvVar -Name "PIM_AUTH_PASSWORD" -Value "pim1-demo-password"
+  Set-DefaultEnvVar -Name "R2_ACCOUNT_ID" -Value "local-dev"
+  Set-DefaultEnvVar -Name "R2_ACCESS_KEY_ID" -Value "local-dev"
+  Set-DefaultEnvVar -Name "R2_SECRET_ACCESS_KEY" -Value "local-dev"
+  Set-DefaultEnvVar -Name "R2_BUCKET_NAME" -Value "pim1-local"
+  Set-DefaultEnvVar -Name "R2_PUBLIC_URL" -Value "https://example.com/pim1-local"
+  Set-DefaultEnvVar -Name "APP_ENV" -Value "development"
+  Set-DefaultEnvVar -Name "FEATURE_REAL_SPAPI_VALIDATION" -Value "false"
+
+  $apiBase = [System.Environment]::GetEnvironmentVariable("PIM_API_BASE_URL", "Process")
+  if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    [System.Environment]::SetEnvironmentVariable("PIM_API_BASE_URL", "http://localhost:4000/api/v1", "Process")
+  } elseif ($apiBase.TrimEnd("/") -eq "http://localhost:4000/api") {
+    [System.Environment]::SetEnvironmentVariable("PIM_API_BASE_URL", "http://localhost:4000/api/v1", "Process")
+  }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $runLogs = Join-Path $repoRoot ".runlogs"
 if (-not (Test-Path $runLogs)) {
   New-Item -Path $runLogs -ItemType Directory | Out-Null
 }
+$envPath = Join-Path $repoRoot ".env"
+if (Test-Path $envPath) {
+  Get-Content $envPath | ForEach-Object {
+    if ($_ -match "^\s*#" -or $_ -match "^\s*$") { return }
+    $parts = $_.Split("=", 2)
+    if ($parts.Length -eq 2) {
+      $name = $parts[0].Trim()
+      $value = $parts[1].Trim().Trim('"')
+      [System.Environment]::SetEnvironmentVariable($name, $value, "Process")
+    }
+  }
+}
+Ensure-LocalApiEnvDefaults
 $runId = [Guid]::NewGuid().ToString("N")
 
 Stop-PortListeners -Port 3000
@@ -119,13 +177,10 @@ if (-not $SkipCacheReset -and $WebMode -eq "dev") {
 }
 
 if ($WebMode -eq "start") {
-  $buildIdPath = Join-Path $repoRoot "apps\web\.next\BUILD_ID"
-  if (-not (Test-Path $buildIdPath)) {
-    Write-Host "No production build found. Building @pim1/web..."
-    npm.cmd run build --workspace @pim1/web
-    if ($LASTEXITCODE -ne 0) {
-      throw "Web build failed. Run 'npm run build --workspace @pim1/web' and fix errors."
-    }
+  Write-Host "Building @pim1/web before start mode to avoid serving stale UI..."
+  npm.cmd run build --workspace @pim1/web
+  if ($LASTEXITCODE -ne 0) {
+    throw "Web build failed. Run 'npm run build --workspace @pim1/web' and fix errors."
   }
 }
 
@@ -134,7 +189,12 @@ $apiErr = Join-Path $runLogs "api-dev-$runId.err.log"
 $webOut = Join-Path $runLogs "web-dev-$runId.out.log"
 $webErr = Join-Path $runLogs "web-dev-$runId.err.log"
 
-$apiProcess = Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev:api" -WorkingDirectory $repoRoot -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru
+$apiArgs = if ($WebMode -eq "start") {
+  @("run", "start", "--workspace", "@pim1/api")
+} else {
+  @("run", "dev:api")
+}
+$apiProcess = Start-Process -FilePath "npm.cmd" -ArgumentList $apiArgs -WorkingDirectory $repoRoot -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru
 
 if ($WebMode -eq "dev") {
   $webProcess = Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev:web" -WorkingDirectory $repoRoot -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
@@ -170,7 +230,7 @@ $webStatus = $null
 $apiStatus = $null
 try {
   $webStatus = Wait-ForHttp -Url "http://localhost:3000" -TimeoutSeconds 20
-  $apiStatus = Wait-ForHttp -Url "http://localhost:4000/api/health" -TimeoutSeconds 20
+  $apiStatus = Wait-ForHttp -Url "http://localhost:4000/api/v1/health" -TimeoutSeconds 20
 } catch {
   Write-Host "HTTP health checks failed."
   Write-Host "---- web stderr ----"
@@ -187,7 +247,7 @@ try {
 [pscustomobject]@{
   status = "ready"
   webUrl = "http://localhost:3000"
-  apiUrl = "http://localhost:4000/api"
+  apiUrl = "http://localhost:4000/api/v1"
   webHttpStatus = $webStatus
   apiHttpStatus = $apiStatus
   webPortPid = $webPid

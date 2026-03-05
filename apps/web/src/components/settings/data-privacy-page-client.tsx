@@ -1,0 +1,272 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
+
+type ExportFormat = "json" | "csv";
+
+interface PrivacyStatusPayload {
+  latestConsent: {
+    accepted: boolean;
+    policyVersion: string;
+    purpose: string;
+    consentRecordedAt: string;
+  } | null;
+  latestExport: {
+    jobId: string;
+    status: string;
+    format: string;
+    requestedAt: string;
+    estimatedReadyInSeconds: number;
+  } | null;
+  latestDeletion: {
+    ticketId: string;
+    status: string;
+    requestedAt: string;
+    scheduledFor: string;
+  } | null;
+}
+
+function readCookie(name: string): string {
+  const prefix = `${name}=`;
+  const parts = document.cookie.split(";");
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return "";
+}
+
+export function DataPrivacyPageClient() {
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
+  const [exportMessage, setExportMessage] = useState("");
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [working, setWorking] = useState<"export" | "delete" | null>(null);
+  const [statusError, setStatusError] = useState("");
+  const [status, setStatus] = useState<PrivacyStatusPayload | null>(null);
+
+  useEffect(() => {
+    async function loadStatus() {
+      try {
+        const response = await fetch("/api/account/privacy-status", {
+          method: "GET",
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          if (response.status === 401) {
+            setStatusError("Session expired. Please login again.");
+            return;
+          }
+          setStatusError(payload.error ?? "Unable to load privacy status.");
+          return;
+        }
+        const payload = (await response.json()) as PrivacyStatusPayload;
+        setStatus(payload);
+        setStatusError("");
+      } catch {
+        setStatusError("Network error while loading privacy status.");
+      }
+    }
+
+    void loadStatus();
+  }, []);
+
+  async function requestExport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWorking("export");
+    setExportMessage("");
+
+    try {
+      const csrfToken = readCookie("pim_csrf_token");
+      const response = await fetch("/api/account/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+        },
+        body: JSON.stringify({ format: exportFormat }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        jobId?: string;
+        estimatedReadyInSeconds?: number;
+        error?: string;
+      };
+      if (!response.ok) {
+        if (response.status === 401) {
+          setExportMessage("Session expired. Please login again.");
+          return;
+        }
+        setExportMessage(payload.error ?? "Unable to queue export.");
+        return;
+      }
+      setExportMessage(
+        `Export queued (${payload.jobId ?? "n/a"}). Estimated ready in ${payload.estimatedReadyInSeconds ?? 120}s.`,
+      );
+    } catch {
+      setExportMessage("Network error while queuing export.");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function requestDelete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWorking("delete");
+    setDeleteMessage("");
+
+    try {
+      const csrfToken = readCookie("pim_csrf_token");
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+        },
+        body: JSON.stringify({
+          confirmation,
+          reason: deleteReason,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        ticketId?: string;
+        scheduledFor?: string;
+      };
+      if (!response.ok) {
+        if (response.status === 401) {
+          setDeleteMessage("Session expired. Please login again.");
+          return;
+        }
+        setDeleteMessage(payload.error ?? "Unable to schedule account deletion.");
+        return;
+      }
+      setDeleteMessage(
+        `Deletion scheduled (${payload.ticketId ?? "n/a"}). Effective at ${payload.scheduledFor ?? "next cycle"}.`,
+      );
+      setConfirmation("");
+      setDeleteReason("");
+    } catch {
+      setDeleteMessage("Network error while scheduling deletion.");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Link href="/" className="text-sm underline">
+        Back to dashboard
+      </Link>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold">Data and Privacy</h1>
+        <p className="text-sm text-slate-600">
+          Manage data export and account deletion requests under DPDP compliance workflows.
+        </p>
+      </header>
+
+      <section className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        <h2 className="text-base font-semibold text-slate-900">Current privacy status</h2>
+        {statusError ? (
+          <p className="text-red-700">{statusError}</p>
+        ) : (
+          <div className="space-y-1">
+            <p>
+              Latest consent:{" "}
+              {status?.latestConsent
+                ? `${status.latestConsent.policyVersion} at ${new Date(status.latestConsent.consentRecordedAt).toLocaleString()}`
+                : "No consent recorded yet."}
+            </p>
+            <p>
+              Latest export:{" "}
+              {status?.latestExport
+                ? `${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) at ${new Date(status.latestExport.requestedAt).toLocaleString()}`
+                : "No export request yet."}
+            </p>
+            <p>
+              Latest deletion:{" "}
+              {status?.latestDeletion
+                ? `${status.latestDeletion.status} for ${new Date(status.latestDeletion.scheduledFor).toLocaleString()}`
+                : "No deletion request yet."}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-slate-900">Request data export</h2>
+        <form className="space-y-3" onSubmit={requestExport}>
+          <div className="space-y-1">
+            <label htmlFor="export-format" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Format
+            </label>
+            <select
+              id="export-format"
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="json">JSON</option>
+              <option value="csv">CSV</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={working !== null}
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {working === "export" ? "Queuing export..." : "Queue export"}
+          </button>
+        </form>
+        {exportMessage && <p className="text-sm text-slate-700">{exportMessage}</p>}
+      </section>
+
+      <section className="space-y-3 rounded-md border border-red-200 bg-red-50 p-4">
+        <h2 className="text-lg font-semibold text-red-900">Delete account</h2>
+        <p className="text-sm text-red-800">
+          This schedules irreversible account erasure. Type <span className="font-semibold">DELETE</span> to confirm.
+        </p>
+        <form className="space-y-3" onSubmit={requestDelete}>
+          <div className="space-y-1">
+            <label htmlFor="delete-confirmation" className="text-xs font-semibold uppercase tracking-wide text-red-700">
+              Confirmation text
+            </label>
+            <input
+              id="delete-confirmation"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              className="w-full rounded-md border border-red-300 bg-white px-3 py-2 text-sm"
+              placeholder="Type DELETE"
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="delete-reason" className="text-xs font-semibold uppercase tracking-wide text-red-700">
+              Reason (optional)
+            </label>
+            <textarea
+              id="delete-reason"
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+              className="w-full rounded-md border border-red-300 bg-white px-3 py-2 text-sm"
+              rows={3}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={working !== null || confirmation.trim().toUpperCase() !== "DELETE"}
+            className="rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {working === "delete" ? "Scheduling deletion..." : "Schedule account deletion"}
+          </button>
+        </form>
+        {deleteMessage && <p className="text-sm text-red-900">{deleteMessage}</p>}
+      </section>
+    </div>
+  );
+}

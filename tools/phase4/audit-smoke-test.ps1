@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $repoRoot
+. (Join-Path $repoRoot "tools\dev\smoke-tenant.ps1")
+. (Join-Path $repoRoot "tools\\dev\\smoke-auth.ps1")
 
 function Load-EnvFile {
   param([string]$Path)
@@ -42,39 +44,35 @@ function Invoke-ApiJson {
   param(
     [string]$Url,
     [ValidateSet("GET", "POST", "PATCH", "DELETE")] [string]$Method = "GET",
-    [hashtable]$Body = $null,
-    [string]$Role = "admin",
-    [string]$Actor = "audit-smoke"
+    [hashtable]$Body = $null
   )
-  $headers = @{
-    "x-pim-role" = $Role
-    "x-pim-actor" = $Actor
-  }
 
   if ($null -ne $Body) {
-    return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
+    return Invoke-RestMethod -Uri $Url -Method $Method -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 10)
   }
-  return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers
+  return Invoke-RestMethod -Uri $Url -Method $Method
 }
 
 Load-EnvFile -Path (Join-Path $repoRoot ".env")
+Set-SmokeTenantDatabaseUrl
 
 $apiProc = $null
 $port = Get-Random -Minimum 4100 -Maximum 4999
 [System.Environment]::SetEnvironmentVariable("PORT", [string]$port, "Process")
-$baseApiUrl = "http://127.0.0.1:$port/api"
+$baseApiUrl = "http://127.0.0.1:$port/api/v1"
 $actor = "audit-smoke"
 
 try {
   $apiProc = Start-Process -FilePath "node" -ArgumentList "apps/api/dist/main.js" -WorkingDirectory $repoRoot -PassThru
   Wait-ForApi -Url "$baseApiUrl/health" -Process $apiProc
+  Enable-SmokeAuthDefaults -BaseApiUrl $baseApiUrl
 
   $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-  $category = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Role "admin" -Actor $actor -Body @{
+  $category = Invoke-ApiJson -Url "$baseApiUrl/taxonomy/categories" -Method "POST" -Body @{
     name = "Audit Category $ts"
   }
 
-  $product = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Role "editor" -Actor $actor -Body @{
+  $product = Invoke-ApiJson -Url "$baseApiUrl/catalog/products" -Method "POST" -Body @{
     title = "Audit Product $ts"
     brand = "PIM1"
     description = "Audit baseline validation"
@@ -82,7 +80,7 @@ try {
     status = "draft"
   }
 
-  $bulkEdit = Invoke-ApiJson -Url "$baseApiUrl/bulk-edit/apply" -Method "POST" -Role "editor" -Actor $actor -Body @{
+  $bulkEdit = Invoke-ApiJson -Url "$baseApiUrl/bulk-edit/apply" -Method "POST" -Body @{
     scope = @{
       categoryId = $category.id
       status = "draft"
@@ -94,7 +92,7 @@ try {
 
   Start-Sleep -Milliseconds 800
 
-  $logs = Invoke-ApiJson -Url "$baseApiUrl/audit/logs?actorId=$actor&limit=30" -Method "GET" -Role "admin" -Actor $actor
+  $logs = Invoke-ApiJson -Url "$baseApiUrl/audit/logs?actorId=$actor&limit=30" -Method "GET"
   if ($logs.Count -lt 3) {
     throw "Expected at least 3 audit log records for actor '$actor'."
   }
@@ -125,6 +123,7 @@ try {
   }
   Write-Output ($result | ConvertTo-Json -Compress)
 } finally {
+  Disable-SmokeAuthDefaults
   if ($null -ne $apiProc -and -not $apiProc.HasExited) {
     Stop-Process -Id $apiProc.Id -Force
   }

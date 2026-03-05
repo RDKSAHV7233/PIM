@@ -1,0 +1,874 @@
+[
+  {
+    "sprintId": "FOUNDATION",
+    "title": "Auth / RBAC / RLS / Queue Baseline",
+    "durationWeeks": 1,
+    "owner": "EL",
+    "blocksEverything": true,
+    "description": "No connector code starts until this sprint passes. ConnectorCredential stores encrypted OAuth tokens — those tokens are only as secure as the identity layer underneath them.",
+    "tasks": [
+      {
+        "id": "F-01",
+        "title": "Implement JWT authentication",
+        "estimate": "1 day",
+        "files": [
+          "src/auth/jwt.strategy.ts",
+          "src/auth/jwt-auth.guard.ts",
+          "src/auth/auth.controller.ts",
+          "src/auth/auth.module.ts"
+        ],
+        "acceptance": [
+          "JwtAuthGuard applied to all routes via APP_GUARD",
+          "AuthController exposes POST /auth/login returning signed JWT",
+          "JWT payload contains tenantId and userId from verified claims",
+          "x-tenant-id header is NOT used for tenantId resolution"
+        ],
+        "notes": "Use @nestjs/jwt and passport-jwt. tenantId and userId must come from verified claims only."
+      },
+      {
+        "id": "F-02",
+        "title": "Tenant resolution middleware",
+        "estimate": "0.5 day",
+        "files": [
+          "src/auth/tenant.middleware.ts"
+        ],
+        "acceptance": [
+          "tenantId extracted from JWT claim",
+          "app.tenant_key SET LOCAL on every DB connection for RLS",
+          "Header x-tenant-id is ignored if JWT is present"
+        ]
+      },
+      {
+        "id": "F-03",
+        "title": "RLS verification on all tables",
+        "estimate": "0.5 day",
+        "files": [
+          "tools/verify-tenant-rls.cjs"
+        ],
+        "acceptance": [
+          "Script runs against all 9 core tables + 5 connector tables + MediaAsset",
+          "Cross-tenant row count = 0 in isolation test",
+          "Output is JSON: { table, rowCount, passed }"
+        ]
+      },
+      {
+        "id": "F-04",
+        "title": "AuditLog actorId from JWT",
+        "estimate": "0.5 day",
+        "files": [
+          "src/audit/audit.interceptor.ts"
+        ],
+        "acceptance": [
+          "AuditLog.actorId is verified User.id from JWT",
+          "Never a role string like 'admin'"
+        ]
+      },
+      {
+        "id": "F-05",
+        "title": "Queue baseline — abstract QueueService",
+        "estimate": "0.5 day",
+        "files": [
+          "src/queue/queue.service.ts",
+          "src/queue/queue.module.ts"
+        ],
+        "acceptance": [
+          "Abstract QueueService with enqueue(queueName, payload) and process(queueName, handler)",
+          "BulkImportJob queue confirmed functional",
+          "ConnectorSubmission and WebhookEvent queues declared (not yet implemented)"
+        ]
+      },
+      {
+        "id": "F-06",
+        "title": "Structured log baseline",
+        "estimate": "0.5 day",
+        "files": [
+          "src/common/logging/correlation.middleware.ts",
+          "src/common/logging/logger.service.ts"
+        ],
+        "acceptance": [
+          "Every log line has: correlationId, tenantId, timestamp, level, message",
+          "All logs are JSON (not plain text)",
+          "ERROR and WARN piped to centralized sink"
+        ]
+      },
+      {
+        "id": "F-07",
+        "title": "Update smoke tests to use JWT auth",
+        "estimate": "0.5 day",
+        "files": [
+          "tools/smoke/*.ps1",
+          "tools/smoke/*.sh"
+        ],
+        "acceptance": [
+          "All existing smoke tests pass with JWT Authorization header",
+          "No smoke test uses x-tenant-id header"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Call any API endpoint without Authorization header → 401 Unauthorized",
+      "Call API with valid JWT for Tenant A but x-tenant-id: Tenant-B header → Tenant A data returned, header ignored",
+      "Run verify-tenant-rls.cjs → cross-tenant row count = 0",
+      "Create a product, check AuditLog.actorId → matches authenticated User.id (not 'admin')",
+      "Run all phase smoke tests with JWT auth → zero failures"
+    ]
+  },
+
+  {
+    "sprintId": "P5-S1",
+    "title": "Cloud Media Storage + Completeness Score",
+    "durationWeeks": 1,
+    "owner": "EL",
+    "prerequisite": "FOUNDATION gate check passed",
+    "preSprint": [
+      "Cloudflare R2 bucket provisioned (or AWS S3 ap-south-1)",
+      ".env updated with R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL",
+      "prisma migrate dev run after foundation changes"
+    ],
+    "tasks": [
+      {
+        "id": "S1-01",
+        "title": "Schema migration — MediaAsset + Product additions",
+        "estimate": "0.5 day",
+        "files": ["prisma/schema.prisma"],
+        "acceptance": [
+          "MediaAsset model added with cdnUrl (String), storageKey (String)",
+          "Product.completenessScore (Int default 0) added",
+          "Product.mainImageId (String?) added",
+          "@@index([tenantId, completenessScore]) present in migration SQL",
+          "prisma migrate dev runs cleanly",
+          "prisma generate succeeds"
+        ]
+      },
+      {
+        "id": "S1-02",
+        "title": "MediaStorageService — R2/S3 upload",
+        "estimate": "1 day",
+        "files": [
+          "src/media/media-storage.service.ts",
+          "src/media/media.module.ts"
+        ],
+        "acceptance": [
+          "upload(buffer, key, mimeType): Promise<string> returns permanent public cdnUrl",
+          "Key format: {tenantId}/{productId}/{uuid}.{ext}",
+          "storageKey never exposed to client — only cdnUrl returned",
+          "Tested with real 5MB image — URL resolves publicly from external network"
+        ],
+        "notes": "Install @aws-sdk/client-s3. R2 is S3-compatible — same SDK works for both."
+      },
+      {
+        "id": "S1-03",
+        "title": "Update media.service.ts — replace fs.writeFile",
+        "estimate": "0.5 day",
+        "files": ["src/media/media.service.ts"],
+        "acceptance": [
+          "fs.writeFile replaced with MediaStorageService.upload()",
+          "All response shapes return cdnUrl",
+          "storagePath removed from all SQL queries and response types",
+          "grep -r storagePath src/ returns zero occurrences"
+        ]
+      },
+      {
+        "id": "S1-04",
+        "title": "Update media smoke test",
+        "estimate": "0.5 day",
+        "files": ["tools/smoke/media-smoke-test.ps1"],
+        "acceptance": [
+          "Assert cdnUrl is valid HTTPS URL (starts with https://)",
+          "Assert storagePath is absent from response",
+          "Assert cdnUrl resolves with HTTP 200 from external network (not localhost)"
+        ]
+      },
+      {
+        "id": "S1-05",
+        "title": "computeCompleteness() function",
+        "estimate": "0.5 day",
+        "files": ["src/products/completeness.service.ts"],
+        "acceptance": [
+          "Returns 0–100 integer",
+          "Field weights: title=15, sku=10, description=10, category=10, hsnCode=10, gstRate=5, mrp=10, sellingPrice=5, mainImage=15, brand=5, colour=3, size=2",
+          "All fields filled → 100",
+          "No image → 85",
+          "No image + no brand + no colour + no size → 65",
+          "No fields → 0",
+          "Unit tests for all four cases above"
+        ]
+      },
+      {
+        "id": "S1-06",
+        "title": "Call computeCompleteness on product create/update",
+        "estimate": "0.25 day",
+        "files": ["src/products/products.service.ts"],
+        "acceptance": [
+          "computeCompleteness() called in create() and update()",
+          "Score written to Product.completenessScore before Prisma save",
+          "Score recomputed on every update — not cached"
+        ]
+      },
+      {
+        "id": "S1-07",
+        "title": "POST /api/products/recompute-completeness (admin)",
+        "estimate": "0.25 day",
+        "files": ["src/products/products.controller.ts"],
+        "acceptance": [
+          "Endpoint is admin-only",
+          "Processes in batches of 100 — no full in-memory load",
+          "Returns { updated: number } count"
+        ]
+      },
+      {
+        "id": "S1-08",
+        "title": "Product list UI — completeness ring badge",
+        "estimate": "1 day",
+        "files": ["apps/web/src/components/product/CompletenessRing.tsx"],
+        "acceptance": [
+          "SVG ring badge with strokeDasharray arc",
+          "green ≥80, amber 50–79, red <50",
+          "Sort dropdown: 'Most complete', 'Needs work'",
+          "Filter buttons: All | ≥80% Ready | 50–79% Close | <50% Needs work",
+          "Filter state persisted in URL query params"
+        ]
+      },
+      {
+        "id": "S1-09",
+        "title": "Product detail UI — completeness panel",
+        "estimate": "0.5 day",
+        "files": ["apps/web/src/components/product/CompletenessPanel.tsx"],
+        "acceptance": [
+          "Shows score ring + 'X of Y fields filled'",
+          "Missing fields list sorted by weight descending",
+          "+N% impact labels per field",
+          "mainImage (+15%) appears above size (+2%)"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Upload 2MB PNG → response has cdnUrl starting with https://, no storagePath",
+      "GET cdnUrl from external network (not localhost) → HTTP 200, image renders",
+      "Product with all fields except mainImage → completenessScore = 85",
+      "Product with all fields except mainImage, brand, colour, size → completenessScore = 65",
+      "Fully complete product → completenessScore = 100",
+      "Product list sorted by completenessScore asc → lowest score first",
+      "Product list filtered to ≥80% → only products with score ≥ 80 shown",
+      "Media smoke test → zero failures"
+    ]
+  },
+
+  {
+    "sprintId": "P5-S2",
+    "title": "Connector Framework + Install API",
+    "durationWeeks": 1,
+    "owner": "EL",
+    "prerequisite": "P5-S1 gate check passed",
+    "preSprint": [
+      "Conditions 2 and 3 schema fields confirmed in schema.prisma",
+      "All 5 connector model migrations drafted and ready"
+    ],
+    "rdBlockers": [],
+    "tasks": [
+      {
+        "id": "S2-01",
+        "title": "Apply all 5 connector model migrations",
+        "estimate": "0.5 day",
+        "files": ["prisma/schema.prisma", "prisma/migrations/"],
+        "acceptance": [
+          "All 5 models migrated: ConnectorDefinition, ConnectorInstallation, ConnectorCredential, ConnectorSubmission, ConnectorWebhookEvent",
+          "idempotencyKey @unique on ConnectorSubmission",
+          "@@unique([installationId, externalEventId]) on ConnectorWebhookEvent (NOT global @unique)",
+          "accountAlias, submissionType, source, attemptNumber, lastValidatedAt, lastRefreshAt, failureReason all present",
+          "Generated SQL inspected — all @@unique and @@index constraints present",
+          "prisma generate succeeds"
+        ]
+      },
+      {
+        "id": "S2-02",
+        "title": "connector.interface.ts — binding contract",
+        "estimate": "0.5 day",
+        "files": ["src/connector-framework/connector.interface.ts"],
+        "acceptance": [
+          "Use file from this package as-is — DO NOT modify interface shape",
+          "normaliseError returns ConnectorIssue (not string)",
+          "Optional methods marked with ? from the start",
+          "tsc --noEmit passes with zero errors"
+        ],
+        "notes": "The interface file in this package is authoritative. Copy it directly."
+      },
+      {
+        "id": "S2-03",
+        "title": "ConnectorRegistry",
+        "estimate": "0.5 day",
+        "files": ["src/connector-framework/connector.registry.ts"],
+        "acceptance": [
+          "Map<string, ConnectorInterface> populated at module init",
+          "Amazon, Flipkart, Meesho stubs registered",
+          "getConnector(slug) throws typed ConnectorNotFoundError if slug not registered — never returns undefined",
+          "All three stubs: validateCredentials returns true, validateProduct returns {isValid:true, errors:[], warnings:[], source:'LOCAL_RULES'}, normaliseError returns input as ConnectorIssue"
+        ]
+      },
+      {
+        "id": "S2-04",
+        "title": "ConnectorFrameworkService",
+        "estimate": "0.5 day",
+        "files": ["src/connector-framework/connector-framework.service.ts"],
+        "acceptance": [
+          "getInstallation(tenantId, slug): Promise<ConnectorInstallation | null>",
+          "requireInstallation(tenantId, slug) throws if not found or status === CREDENTIAL_EXPIRED",
+          "validate(installation, product): Promise<ValidationResult>",
+          "publish(installation, product): checks capabilities.includes(PUBLISH) before calling publishProduct() — throws CapabilityNotSupportedError if not capable"
+        ]
+      },
+      {
+        "id": "S2-05",
+        "title": "ConnectorInstallerController + Service",
+        "estimate": "0.5 day",
+        "files": [
+          "src/connector-installer/connector-installer.controller.ts",
+          "src/connector-installer/connector-installer.service.ts",
+          "src/connector-installer/connector-installer.module.ts"
+        ],
+        "acceptance": [
+          "POST /api/connectors/:slug/install — creates ConnectorInstallation with status ACTIVE",
+          "GET /api/connectors/installed — returns paginated list (PaginatedResponse<ConnectorInstallation>)",
+          "POST /api/connectors/:id/uninstall",
+          "POST /api/connectors/:id/reconnect — re-initiates OAuth",
+          "install: checks @@unique([tenantId, connectorId, accountAlias]) — clear error if alias already exists",
+          "install with different accountAlias: succeeds (multi-account)"
+        ]
+      },
+      {
+        "id": "S2-06",
+        "title": "Seed ConnectorDefinition records",
+        "estimate": "0.25 day",
+        "files": ["prisma/seed/connector-definitions.sql"],
+        "acceptance": [
+          "Amazon, Flipkart, Meesho seed records with correct capabilities, authType, marketplaceId",
+          "Seed is idempotent: INSERT ... ON CONFLICT DO NOTHING",
+          "Runs in CI/CD on every deploy"
+        ]
+      },
+      {
+        "id": "S2-07",
+        "title": "Settings UI — Connected Channels page",
+        "estimate": "1 day",
+        "files": ["apps/web/src/pages/settings/channels.tsx"],
+        "acceptance": [
+          "Lists available connectors with name, logo placeholder, capabilities",
+          "Install button per connector",
+          "Installed connectors show status badge (ACTIVE / CREDENTIAL_EXPIRED / PAUSED)",
+          "CREDENTIAL_EXPIRED badge shows Reconnect button",
+          "Status badge polls GET /api/connectors/installed every 30 seconds"
+        ]
+      },
+      {
+        "id": "S2-08",
+        "title": "Unit tests — framework layer",
+        "estimate": "0.5 day",
+        "files": ["test/unit/connector-framework.spec.ts"],
+        "acceptance": [
+          "ConnectorRegistry: unregistered slug throws ConnectorNotFoundError",
+          "ConnectorFrameworkService: CREDENTIAL_EXPIRED installation throws before calling connector",
+          "ConnectorInstallerService: duplicate install with same accountAlias returns typed error",
+          "ConnectorFrameworkService.publish: connector without PUBLISH capability throws CapabilityNotSupportedError"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "GET /api/connectors/installed (empty tenant) → [] not 404",
+      "POST /api/connectors/amazon-in/install → ConnectorInstallation created, status ACTIVE, accountAlias 'primary'",
+      "POST /api/connectors/amazon-in/install again (same alias) → typed error",
+      "POST /api/connectors/amazon-in/install with accountAlias 'uae' → second installation created",
+      "GET /api/connectors/installed → returns both installations for that tenant",
+      "tsc --noEmit → zero errors",
+      "jest --testPathPattern connector → all pass"
+    ]
+  },
+
+  {
+    "sprintId": "P5-S3",
+    "title": "OAuth + Live Validation",
+    "durationWeeks": 2,
+    "owner": "EL",
+    "prerequisite": "P5-S2 gate check passed",
+    "rdBlockers": [
+      "RD-AMAZON-1: Amazon Developer Application approved (3–7 days)",
+      "RD-FLIPKART-1: Flipkart Partner Portal registration approved (3–10 days)",
+      "RD-MEESHO-1: Meesho API credentials received (1–2 weeks)"
+    ],
+    "notes": "Coding can start on OAuth flow structure before credentials arrive. No end-to-end test is possible until credentials arrive.",
+    "tasks": [
+      {
+        "id": "S3-01",
+        "title": "EncryptionService — AES-256-GCM",
+        "estimate": "0.5 day",
+        "files": ["src/common/encryption/encryption.service.ts"],
+        "acceptance": [
+          "encrypt(plaintext): string using AES-256-GCM",
+          "decrypt(ciphertext): string",
+          "Key from env CREDENTIAL_ENCRYPTION_KEY — never from DB",
+          "keyVersion stored in metadata for rotation support",
+          "Key rotation runbook documented in docs/runbooks/credential-key-rotation.md"
+        ]
+      },
+      {
+        "id": "S3-02",
+        "title": "AmazonLwaClient — token exchange and refresh",
+        "estimate": "1 day",
+        "files": ["src/connectors/amazon/amazon-lwa.client.ts"],
+        "rdRequired": "RD-AMAZON-1",
+        "acceptance": [
+          "exchangeCode(authCode): Promise<{accessToken, refreshToken, expiresIn}>",
+          "refreshAccessToken(refreshToken): Promise<{accessToken, expiresIn}>",
+          "Endpoint: https://api.amazon.com/auth/o2/token",
+          "Scopes: sellingpartnerapi::catalog_items_2022-04-01 sellingpartnerapi::listings_items_2021-08-01",
+          "refreshToken stored encrypted in ConnectorCredential",
+          "accessToken NEVER stored in DB — in memory for duration of request only"
+        ]
+      },
+      {
+        "id": "S3-03",
+        "title": "Amazon OAuth flow endpoints",
+        "estimate": "1 day",
+        "files": ["src/auth/amazon-oauth.controller.ts"],
+        "rdRequired": "RD-AMAZON-1",
+        "acceptance": [
+          "GET /auth/amazon/start → redirects to Amazon consent URL with client_id, scope, signed state param",
+          "GET /auth/amazon/callback → verifies state CSRF token tied to tenantId, exchanges code, stores ConnectorCredential, redirects to Settings UI",
+          "State parameter is signed and short-lived — verified in callback before processing"
+        ]
+      },
+      {
+        "id": "S3-04",
+        "title": "Flipkart OAuth flow",
+        "estimate": "0.5 day",
+        "files": ["src/connectors/flipkart/flipkart-api.client.ts"],
+        "rdRequired": "RD-FLIPKART-1",
+        "acceptance": [
+          "GET /auth/flipkart/start and GET /auth/flipkart/callback",
+          "Authorization Code flow",
+          "refreshToken stored encrypted",
+          "failureReason = 'Token expired (Flipkart 30-day limit)' when heartbeat detects expiry"
+        ]
+      },
+      {
+        "id": "S3-05",
+        "title": "Meesho static credential store",
+        "estimate": "0.25 day",
+        "files": ["src/connectors/meesho/meesho.connector.ts"],
+        "rdRequired": "RD-MEESHO-1",
+        "acceptance": [
+          "Settings form for Merchant ID and Secret Key",
+          "Both stored as ConnectorCredential records (API_KEY type)",
+          "ConnectorInstallation.metadata stores environment flag (sandbox vs production)",
+          "validateCredentials() calls Meesho ping/health endpoint"
+        ]
+      },
+      {
+        "id": "S3-06",
+        "title": "ConnectorContext.getAccessToken() implementation",
+        "estimate": "0.5 day",
+        "files": ["src/connector-framework/connector.context.ts"],
+        "acceptance": [
+          "In-memory cache per request only — never across requests",
+          "On miss: loads refreshToken from ConnectorCredential, calls LWA.refreshAccessToken()",
+          "On refresh failure: sets ConnectorCredential.status = EXPIRED",
+          "Never caches access token in DB"
+        ]
+      },
+      {
+        "id": "S3-07",
+        "title": "amazon.connector.validateProduct() — live SP-API",
+        "estimate": "1 day",
+        "files": ["src/connectors/amazon/amazon.connector.ts"],
+        "rdRequired": "RD-AMAZON-1",
+        "acceptance": [
+          "Calls SP-API PUT /listings/2021-08-01/items/{sellerId}/{sku}?mode=VALIDATION_PREVIEW&marketplaceIds=A21TJRUUN4KGV",
+          "source = 'LIVE_API' in ValidationResult",
+          "issues[].code, issues[].severity, issues[].message parsed into ConnectorIssue[]",
+          "normaliseError() called on each issue for sellerMessage"
+        ]
+      },
+      {
+        "id": "S3-08",
+        "title": "Rejection simulator — live validation flag",
+        "estimate": "0.5 day",
+        "files": ["src/rejection-intelligence/rejection-intelligence.service.ts"],
+        "acceptance": [
+          "Feature flag: FEATURE_REAL_SPAPI_VALIDATION=true AND installation exists for Amazon → calls live API",
+          "UI label: 'Validated by Amazon (live)' vs 'Local rules — connect Amazon account for live validation'",
+          "Never shows 'live' label if API call failed and local rules were used as fallback"
+        ]
+      },
+      {
+        "id": "S3-09",
+        "title": "Credential heartbeat worker",
+        "estimate": "0.5 day",
+        "files": ["src/workers/credential-heartbeat.worker.ts"],
+        "acceptance": [
+          "Cron every 6 hours",
+          "For each ACTIVE installation: calls connector.validateCredentials()",
+          "On failure: ConnectorCredential.status → EXPIRED, ConnectorInstallation.status → CREDENTIAL_EXPIRED",
+          "Email sent to ALL users with admin role for that tenant (not just installer)",
+          "Single attempt per cycle — no retry"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Amazon OAuth end-to-end with sandbox credentials → ConnectorCredential created, refreshToken encrypted, status ACTIVE, scope populated",
+      "Run validateProduct() on sandbox product with Amazon credentials → source: 'LIVE_API', real errors/warnings from Amazon",
+      "Rejection simulator with flag on + Amazon connected → 'Validated by Amazon (live)' label",
+      "Rejection simulator with flag off → 'Local rules' label, no SP-API call",
+      "Manually expire stored token, wait for heartbeat → CREDENTIAL_EXPIRED, admin email sent",
+      "Meesho credentials stored → encrypted, validateCredentials() returns true against Meesho ping"
+    ]
+  },
+
+  {
+    "sprintId": "P5-S4",
+    "title": "Live Publish + Meesho Excel",
+    "durationWeeks": 1,
+    "owner": "EL",
+    "prerequisite": "P5-S3 gate check passed",
+    "rdBlockers": [
+      "RD-AMAZON-2: SP-API payload structure for PUT /listings (attribute mapping)",
+      "RD-FLIPKART-2: Flipkart category attribute schema API",
+      "RD-MEESHO-2: Latest Meesho supplier Excel template per category"
+    ],
+    "tasks": [
+      {
+        "id": "S4-01",
+        "title": "amazon.connector.publishProduct()",
+        "estimate": "1 day",
+        "files": ["src/connectors/amazon/amazon.connector.ts"],
+        "rdRequired": "RD-AMAZON-2",
+        "acceptance": [
+          "SP-API PUT /listings/2021-08-01/items/{sellerId}/{sku} (no VALIDATION_PREVIEW)",
+          "202 response → SubmissionRef with isAsync=true, status=PENDING — NOT SUCCESS",
+          "4xx response → parse issues into ConnectorIssue[], return as errors",
+          "Request throttling: max 1 req/sec for Listings Items API",
+          "Exponential backoff on 429"
+        ]
+      },
+      {
+        "id": "S4-02",
+        "title": "flipkart.connector.publishProduct()",
+        "estimate": "1 day",
+        "files": ["src/connectors/flipkart/flipkart.connector.ts"],
+        "rdRequired": "RD-FLIPKART-2",
+        "acceptance": [
+          "POST /sellers/listings/v3",
+          "Fetches category attribute schema from Flipkart API before building payload",
+          "Handles sync response (some categories return result immediately)",
+          "isAsync=false for sync categories"
+        ]
+      },
+      {
+        "id": "S4-03",
+        "title": "meesho.connector.generateExportFile()",
+        "estimate": "1 day",
+        "files": [
+          "src/connectors/meesho/meesho.connector.ts",
+          "src/connectors/meesho/meesho-excel.generator.ts"
+        ],
+        "rdRequired": "RD-MEESHO-2",
+        "acceptance": [
+          "Uses ExcelJS (or SheetJS) to build Excel",
+          "Columns mapped to LATEST Meesho supplier template",
+          "Filename: meesho_upload_{category}_{YYYYMMDD}.xlsx",
+          "Template version check implemented — warn if template may be outdated",
+          "Returns ExportFile with buffer and filename"
+        ]
+      },
+      {
+        "id": "S4-04",
+        "title": "Update processExportJob() — capability branch + submission record",
+        "estimate": "0.5 day",
+        "files": ["src/marketplace/marketplace.service.ts"],
+        "acceptance": [
+          "Use file from this package — capability branch guard and stable idempotencyKey already implemented",
+          "idempotencyKey format: ${jobId}:PUBLISH — stable across all retries",
+          "capabilities.includes(PUBLISH) checked before calling publish",
+          "Meesho path calls completeExportOnly() (generateExportFile)",
+          "Unique constraint violation caught — returns existing submission (idempotency)"
+        ]
+      },
+      {
+        "id": "S4-05",
+        "title": "Publish worker",
+        "estimate": "0.5 day",
+        "files": ["src/workers/publish.worker.ts"],
+        "acceptance": [
+          "Queue consumer for PENDING ConnectorSubmissions",
+          "Calls connector.publishProduct()",
+          "Transient errors (429, 503, network timeout) → increment attemptNumber, re-enqueue with backoff (30s, 2min, 10min)",
+          "Permanent errors (400, 401) → status = REJECTED immediately, no retry",
+          "After 3 transient failures → status = ERROR, DLQ entry created"
+        ]
+      },
+      {
+        "id": "S4-06",
+        "title": "Meesho export UI",
+        "estimate": "0.5 day",
+        "files": ["apps/web/src/components/meesho/MeeshoExport.tsx"],
+        "acceptance": [
+          "'Export to Meesho' button in product selection",
+          "Generates file, triggers browser download",
+          "Collapsible 4-step instruction panel for Supplier Panel upload",
+          "Export history table: filename, generated at, products included, download link"
+        ]
+      },
+      {
+        "id": "S4-07",
+        "title": "Structured logs for all connector calls",
+        "estimate": "0.25 day",
+        "files": ["src/connector-framework/connector-framework.service.ts"],
+        "acceptance": [
+          "Every connector API call logs: tenantId, installationId, connectorSlug, method, durationMs, success (boolean), errorCode",
+          "Correlation ID middleware active",
+          "Zero console.log() in connector paths"
+        ]
+      },
+      {
+        "id": "S4-08",
+        "title": "Integration test — idempotency",
+        "estimate": "0.5 day",
+        "files": ["test/integration/connector-idempotency.test.ts"],
+        "acceptance": [
+          "Implement placeholder tests in this package's test file",
+          "Submit same product twice with same idempotencyKey → exactly one ConnectorSubmission",
+          "Test runs against staging with sandbox credentials",
+          "Test passes before gate check"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Submit product to Amazon sandbox → ConnectorSubmission created with status PENDING, valid idempotencyKey (${jobId}:PUBLISH format), payloadSnapshot populated",
+      "Submit same product twice with same idempotencyKey → exactly one ConnectorSubmission exists",
+      "Submit product to Flipkart sandbox → ConnectorSubmission created",
+      "Generate Meesho Excel for 3 products → file downloads, filename includes category and date, all 3 products with correct column mapping",
+      "Structured log output → every connector API call produces JSON log with tenantId, connectorSlug, method, durationMs, success"
+    ]
+  },
+
+  {
+    "sprintId": "P5-S5",
+    "title": "Webhooks + Real-Time Result Loop",
+    "durationWeeks": 1,
+    "owner": "EL",
+    "prerequisite": "P5-S4 gate check passed",
+    "rdBlockers": [
+      "RD-AMAZON-3: Amazon SP-API notification subscription API and payload schema",
+      "RD-AMAZON-4: Webhook URL must be public HTTPS — ngrok or staging URL required"
+    ],
+    "tasks": [
+      {
+        "id": "S5-01",
+        "title": "WebhookReceiverController",
+        "estimate": "0.5 day",
+        "files": ["src/webhook-receiver/webhook-receiver.controller.ts"],
+        "acceptance": [
+          "POST /api/webhooks/amazon-in (public, no auth, rate-limited by IP)",
+          "Raw body as Buffer — body-parser excluded from this route before HMAC verification",
+          "HMAC-SHA256 signature verified using Amazon Developer Console client secret",
+          "Invalid signature → 403, log rejection with raw headers (not body)",
+          "Return 200 immediately after enqueue — never process synchronously"
+        ]
+      },
+      {
+        "id": "S5-02",
+        "title": "Subscribe to Amazon SP-API notifications",
+        "estimate": "0.5 day",
+        "files": ["src/connectors/amazon/amazon-sp-api.client.ts"],
+        "rdRequired": "RD-AMAZON-3",
+        "acceptance": [
+          "Subscribe to LISTINGS_ITEM_ISSUES_CHANGE and LISTINGS_ITEM_STATUS_CHANGE",
+          "Uses SP-API Notifications API to register destination URL",
+          "subscriptionId stored in ConnectorInstallation.metadata"
+        ]
+      },
+      {
+        "id": "S5-03",
+        "title": "Inbound webhook storage — enqueue and acknowledge",
+        "estimate": "0.25 day",
+        "files": ["src/webhook-receiver/webhook-receiver.service.ts"],
+        "acceptance": [
+          "Creates ConnectorWebhookEvent with raw payload, receivedAt, externalEventId from Amazon header",
+          "Enqueues for async processing",
+          "Returns 200 within 5 seconds — no synchronous processing"
+        ]
+      },
+      {
+        "id": "S5-04",
+        "title": "Webhook processor worker",
+        "estimate": "1 day",
+        "files": ["src/workers/webhook-processor.worker.ts"],
+        "acceptance": [
+          "Deduplicates on @@unique([installationId, externalEventId]) — catches P2002 Prisma error = already processed = success",
+          "Calls connector.parseWebhookEvent() — returns ParsedWebhookEvent (not raw Amazon JSON)",
+          "Resolves ConnectorSubmission via tenantId + productId + externalRef",
+          "Updates ConnectorSubmission.status and channelErrors",
+          "Sets processedAt",
+          "Worker contains NO Amazon-specific logic — only framework calls"
+        ]
+      },
+      {
+        "id": "S5-05",
+        "title": "Channel readiness badge — real-time from ConnectorSubmission",
+        "estimate": "0.5 day",
+        "files": ["apps/web/src/components/channel/ChannelBadge.tsx"],
+        "acceptance": [
+          "Reads from ConnectorSubmission.status",
+          "PENDING = 'submitting', SUCCESS = 'live', REJECTED = 'blocked' with error details, SUPPRESSED = 'suppressed'",
+          "Polls every 10 seconds while PENDING",
+          "Stops polling on terminal status (SUCCESS/REJECTED/SUPPRESSED/ERROR)"
+        ]
+      },
+      {
+        "id": "S5-06",
+        "title": "Submission result notification",
+        "estimate": "0.5 day",
+        "files": ["src/notifications/submission-notification.service.ts"],
+        "acceptance": [
+          "Triggered on ConnectorSubmission status → REJECTED or SUPPRESSED",
+          "Email + in-app notification to all tenant admin users",
+          "Content: product title, channel, top 3 errors with sellerMessage (normalised), link to product detail",
+          "Never includes raw channel error codes",
+          "Sent from separate notification queue — not synchronously in webhook processor"
+        ]
+      },
+      {
+        "id": "S5-07",
+        "title": "End-to-end integration test",
+        "estimate": "0.5 day",
+        "files": ["test/integration/connector-idempotency.test.ts"],
+        "acceptance": [
+          "Implement all P5-S5 placeholder tests",
+          "Submit product → receive webhook → assert status updates within 60 seconds",
+          "Duplicate webhook with same externalEventId → exactly one processedAt set",
+          "Invalid signature webhook → 403 response, no DB row created"
+        ]
+      },
+      {
+        "id": "S5-08",
+        "title": "Full regression smoke suite",
+        "estimate": "0.5 day",
+        "acceptance": [
+          "All smoke tests from Foundation, P5-S1 through P5-S4 pass",
+          "No regressions before declaring Phase 5 complete"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Submit product to Amazon sandbox, wait → ConnectorSubmission status updates to REJECTED or SUCCESS via webhook within 60 seconds",
+      "Channel readiness badge updates without page reload",
+      "Send same webhook event twice (same externalEventId) → exactly one ConnectorWebhookEvent.processedAt set",
+      "REJECTED submission → email sent to tenant admin with product title, channel, normalised error messages",
+      "Full regression smoke suite → zero failures",
+      "Media smoke test → cdnUrl still resolves publicly",
+      "Completeness score smoke test → scores correct for known fixtures"
+    ]
+  },
+
+  {
+    "sprintId": "P6-S1",
+    "title": "Real Submission Data Pipeline",
+    "durationWeeks": 2,
+    "owner": "EL",
+    "prerequisite": "Phase 5 complete. At least 50 real ConnectorSubmission records exist.",
+    "tasks": [
+      {
+        "id": "P6S1-01",
+        "title": "SubmissionErrorAnalysis table + daily aggregation cron",
+        "estimate": "1 day",
+        "files": ["prisma/schema.prisma", "src/rejection-intelligence/error-analysis.service.ts"],
+        "acceptance": [
+          "SubmissionErrorAnalysis model: connectorId, errorCode, fieldPath, frequency, lastSeenAt",
+          "Daily cron aggregates ConnectorSubmission.channelErrors",
+          "Frequency table updated — not replaced"
+        ]
+      },
+      {
+        "id": "P6S1-02",
+        "title": "Top rejection patterns panel — real data",
+        "estimate": "1 day",
+        "acceptance": [
+          "Shows real counts from SubmissionErrorAnalysis",
+          "Label: 'Based on your submission history (N listings)' or 'Simulated — submit listings to see real patterns'",
+          "Zero synthetic data in production display"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Top patterns panel shows real data from ConnectorSubmission records",
+      "Label accurately reflects source",
+      "Zero synthetic data in production display"
+    ]
+  },
+
+  {
+    "sprintId": "P6-S2",
+    "title": "Predictive Scoring with Real Weights",
+    "durationWeeks": 2,
+    "owner": "EL",
+    "prerequisite": "P6-S1 complete",
+    "tasks": [
+      {
+        "id": "P6S2-01",
+        "title": "Update RejectionIntelligenceService.scoreProduct()",
+        "estimate": "1.5 days",
+        "acceptance": [
+          "Weights by actual rejection frequency from SubmissionErrorAnalysis",
+          "Source flag: 'HISTORICAL_DATA' or 'HEURISTIC_FALLBACK'",
+          "Unit test: product missing 80%-rejection field scores higher than product missing 5%-rejection field"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Score for product missing high-frequency rejection field > score for product missing low-frequency field",
+      "Source flag correct for both HISTORICAL_DATA and HEURISTIC_FALLBACK cases"
+    ]
+  },
+
+  {
+    "sprintId": "P6-S3",
+    "title": "Version History + Workflow Gating",
+    "durationWeeks": 2,
+    "owner": "EL",
+    "prerequisite": "P6-S2 complete",
+    "tasks": [
+      {
+        "id": "P6S3-01",
+        "title": "ProductVersion table + diff engine",
+        "estimate": "1 day",
+        "acceptance": [
+          "Snapshot of all fields on every save",
+          "Field-level diff between any two versions",
+          "Rollback to any previous version"
+        ]
+      },
+      {
+        "id": "P6S3-02",
+        "title": "Version history UI panel",
+        "estimate": "0.5 day",
+        "acceptance": [
+          "List versions with actor, timestamp, changed fields",
+          "Rollback button"
+        ]
+      },
+      {
+        "id": "P6S3-03",
+        "title": "Draft → Review → Approve workflow (optional per tenant)",
+        "estimate": "1.5 days",
+        "acceptance": [
+          "Enabled in tenant settings",
+          "Editors create drafts, admins approve before publish",
+          "Editor cannot submit to channel without admin approval when workflow is enabled"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Create product, make 3 edits → version history shows 4 entries",
+      "Rollback to v1 → fields revert correctly",
+      "Workflow gate: editor cannot submit to channel without admin approval when workflow is enabled"
+    ]
+  }
+]

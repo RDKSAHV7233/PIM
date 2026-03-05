@@ -1,0 +1,2538 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Service health"
+          }
+        },
+        "summary": "Health endpoint",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/resend-unlock": {
+      "post": {
+        "operationId": "AuthController_resendUnlock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendUnlockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password-reset/request": {
+      "post": {
+        "operationId": "AuthController_requestPasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestPasswordResetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/consent": {
+      "post": {
+        "operationId": "AuthController_recordConsent",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordConsentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account/privacy-status": {
+      "get": {
+        "operationId": "AuthController_getPrivacyStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account/export": {
+      "post": {
+        "operationId": "AuthController_requestAccountExport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestAccountExportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account": {
+      "delete": {
+        "operationId": "AuthController_deleteAccount",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/audit/logs": {
+      "get": {
+        "operationId": "AuditController_listLogs",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/billing/usage": {
+      "get": {
+        "operationId": "BillingController_usage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Plan usage fetched"
+          }
+        },
+        "summary": "Get current tenant plan usage",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/api/v1/taxonomy/categories": {
+      "get": {
+        "operationId": "TaxonomyController_listCategories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      },
+      "post": {
+        "operationId": "TaxonomyController_createCategory",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      }
+    },
+    "/api/v1/taxonomy/categories/{id}": {
+      "get": {
+        "operationId": "TaxonomyController_getCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      },
+      "patch": {
+        "operationId": "TaxonomyController_updateCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      },
+      "delete": {
+        "operationId": "TaxonomyController_deleteCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      }
+    },
+    "/api/v1/taxonomy/categories/{id}/attributes": {
+      "get": {
+        "operationId": "TaxonomyController_listAttributeDefinitions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      },
+      "post": {
+        "operationId": "TaxonomyController_createAttributeDefinition",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAttributeDefinitionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      }
+    },
+    "/api/v1/taxonomy/categories/attributes/{attributeId}": {
+      "patch": {
+        "operationId": "TaxonomyController_updateAttributeDefinition",
+        "parameters": [
+          {
+            "name": "attributeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAttributeDefinitionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      },
+      "delete": {
+        "operationId": "TaxonomyController_deleteAttributeDefinition",
+        "parameters": [
+          {
+            "name": "attributeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      }
+    },
+    "/api/v1/compliance/rules": {
+      "get": {
+        "operationId": "ComplianceController_listRules",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      },
+      "post": {
+        "operationId": "ComplianceController_createRule",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateComplianceRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/api/v1/compliance/rules/{id}": {
+      "patch": {
+        "operationId": "ComplianceController_updateRule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateComplianceRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      },
+      "delete": {
+        "operationId": "ComplianceController_deleteRule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/api/v1/compliance/products/{id}/validate": {
+      "post": {
+        "operationId": "ComplianceController_validateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/api/v1/compliance/products/{id}/issues": {
+      "get": {
+        "operationId": "ComplianceController_getProductIssues",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/api/v1/dashboard/readiness": {
+      "get": {
+        "operationId": "DashboardController_getReadiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Readiness summary fetched"
+          }
+        },
+        "summary": "Per-connector readiness summary for current tenant",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dashboard/catalog-health": {
+      "get": {
+        "operationId": "DashboardController_getCatalogHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Catalog health fetched"
+          }
+        },
+        "summary": "Catalog health and completeness summary for current tenant",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/metrics/kpi-trends": {
+      "get": {
+        "operationId": "MetricsController_getKpiTrends",
+        "parameters": [
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "Trend window in days (1-90). Defaults to 30.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KPI trend series fetched"
+          }
+        },
+        "summary": "KPI trends by tenant and connector",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/api/v1/connectors/definitions": {
+      "get": {
+        "operationId": "ConnectorInstallerController_listDefinitions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{slug}/install": {
+      "post": {
+        "operationId": "ConnectorInstallerController_installConnector",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallConnectorDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Connector installed"
+          }
+        },
+        "summary": "Install connector for tenant",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/installed": {
+      "get": {
+        "operationId": "ConnectorInstallerController_listInstalled",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Installed connectors fetched"
+          }
+        },
+        "summary": "List installed connectors",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{id}/uninstall": {
+      "post": {
+        "operationId": "ConnectorInstallerController_uninstall",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{slug}/install/{id}": {
+      "delete": {
+        "operationId": "ConnectorInstallerController_uninstallBySlugAndId",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector uninstalled"
+          }
+        },
+        "summary": "Uninstall connector by slug + installation id",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{id}/reconnect": {
+      "post": {
+        "operationId": "ConnectorInstallerController_reconnect",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs": {
+      "post": {
+        "operationId": "BulkImportController_createJob",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBulkImportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      },
+      "get": {
+        "operationId": "BulkImportController_listJobs",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/templates": {
+      "post": {
+        "operationId": "BulkImportController_createTemplate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBulkImportTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      },
+      "get": {
+        "operationId": "BulkImportController_listTemplates",
+        "parameters": [
+          {
+            "name": "tenantKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/templates/{id}": {
+      "get": {
+        "operationId": "BulkImportController_getTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/mapping-suggestions": {
+      "post": {
+        "operationId": "BulkImportController_suggestMapping",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestMappingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}": {
+      "get": {
+        "operationId": "BulkImportController_getJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/rows": {
+      "get": {
+        "operationId": "BulkImportController_listRows",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/error-report": {
+      "get": {
+        "operationId": "BulkImportController_getErrorReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/process": {
+      "post": {
+        "operationId": "BulkImportController_processJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessBulkImportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/requeue-dlq": {
+      "post": {
+        "operationId": "BulkImportController_requeueDlq",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueDlqDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/rows/{rowId}/process": {
+      "post": {
+        "operationId": "BulkImportController_processRow",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/jobs/{id}/rows/{rowId}/repair": {
+      "post": {
+        "operationId": "BulkImportController_repairRow",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairBulkImportRowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-edit/preview": {
+      "post": {
+        "operationId": "BulkEditController_preview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkEditPreviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkEdit"
+        ]
+      }
+    },
+    "/api/v1/bulk-edit/apply": {
+      "post": {
+        "operationId": "BulkEditController_apply",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkEditApplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkEdit"
+        ]
+      }
+    },
+    "/api/v1/bulk-edit/operations": {
+      "get": {
+        "operationId": "BulkEditController_listOperations",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkEdit"
+        ]
+      }
+    },
+    "/api/v1/bulk-edit/operations/{id}": {
+      "get": {
+        "operationId": "BulkEditController_getOperation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkEdit"
+        ]
+      }
+    },
+    "/api/v1/catalog/stats": {
+      "get": {
+        "operationId": "CatalogController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products": {
+      "get": {
+        "operationId": "CatalogController_listProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Products fetched"
+          }
+        },
+        "summary": "List products",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "post": {
+        "operationId": "CatalogController_createProduct",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Product created"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create product",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{id}": {
+      "get": {
+        "operationId": "CatalogController_getProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product fetched"
+          }
+        },
+        "summary": "Get product by id",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "CatalogController_updateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated"
+          }
+        },
+        "summary": "Update product",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "CatalogController_deleteProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{id}/purge": {
+      "delete": {
+        "operationId": "CatalogController_purgeProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{id}/variants": {
+      "get": {
+        "operationId": "CatalogController_listVariants",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "post": {
+        "operationId": "CatalogController_createVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVariantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/variants/{id}": {
+      "patch": {
+        "operationId": "CatalogController_updateVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVariantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "delete": {
+        "operationId": "CatalogController_deleteVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "ProductsController_listProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Products fetched"
+          }
+        },
+        "summary": "List products",
+        "tags": [
+          "Products"
+        ]
+      },
+      "post": {
+        "operationId": "ProductsController_createProduct",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Product created"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create product",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}": {
+      "get": {
+        "operationId": "ProductsController_getProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product fetched"
+          }
+        },
+        "summary": "Get product by id",
+        "tags": [
+          "Products"
+        ]
+      },
+      "patch": {
+        "operationId": "ProductsController_updateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated"
+          }
+        },
+        "summary": "Update product",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/marketplace/channels": {
+      "get": {
+        "operationId": "MarketplaceController_listChannels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/channels/{channel}/mapping": {
+      "get": {
+        "operationId": "MarketplaceController_getChannelMapping",
+        "parameters": [
+          {
+            "name": "channel",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/categories/{id}/templates": {
+      "get": {
+        "operationId": "MarketplaceController_listTemplates",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_createTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMappingTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/products/{id}/simulate": {
+      "get": {
+        "operationId": "MarketplaceController_simulateProductQuery",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_simulateProductBody",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateMarketplaceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/products/{id}/export-jobs": {
+      "post": {
+        "operationId": "MarketplaceController_createExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Export job queued"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create marketplace export job",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs": {
+      "get": {
+        "operationId": "MarketplaceController_listExportJobs",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export jobs fetched"
+          }
+        },
+        "summary": "List export jobs",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-job": {
+      "post": {
+        "operationId": "MarketplaceController_createExportJobAlias",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobAliasDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Export job queued"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create export job (alias endpoint)",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}": {
+      "get": {
+        "operationId": "MarketplaceController_getExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}/process": {
+      "post": {
+        "operationId": "MarketplaceController_processExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}/requeue": {
+      "post": {
+        "operationId": "MarketplaceController_requeueExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions": {
+      "get": {
+        "operationId": "SubmissionsController_listSubmissions",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submissions fetched"
+          }
+        },
+        "summary": "List submissions",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/media/assets": {
+      "post": {
+        "operationId": "MediaController_createAsset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaAssetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      },
+      "get": {
+        "operationId": "MediaController_listAssets",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}": {
+      "get": {
+        "operationId": "MediaController_getAsset",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/assets/{id}/validation": {
+      "get": {
+        "operationId": "MediaController_validateAsset",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/media/bulk-associations": {
+      "post": {
+        "operationId": "MediaController_bulkAssociate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMediaAssociationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/api/v1/rejection-intelligence/products/{id}/score": {
+      "get": {
+        "operationId": "RejectionIntelligenceController_scoreProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "RejectionIntelligence"
+        ]
+      }
+    },
+    "/api/v1/ondc/versions": {
+      "get": {
+        "operationId": "OndcController_listVersions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      }
+    },
+    "/api/v1/ondc/mappings": {
+      "post": {
+        "operationId": "OndcController_createMapping",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOndcMappingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      },
+      "get": {
+        "operationId": "OndcController_listMappings",
+        "parameters": [
+          {
+            "name": "nodeType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      }
+    },
+    "/api/v1/ondc/mappings/{id}": {
+      "get": {
+        "operationId": "OndcController_getMapping",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      }
+    },
+    "/api/v1/ondc/products/{id}/simulate": {
+      "post": {
+        "operationId": "OndcController_simulateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      },
+      "get": {
+        "operationId": "OndcController_simulateProductGet",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mappingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ondc"
+        ]
+      }
+    },
+    "/api/v1/auto-suggestions/products/{id}/title-suggestion": {
+      "get": {
+        "operationId": "AutoSuggestionsController_getTitleSuggestion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AutoSuggestions"
+        ]
+      }
+    },
+    "/api/v1/auto-suggestions/products/{id}/attribute-enrichment": {
+      "get": {
+        "operationId": "AutoSuggestionsController_getAttributeEnrichment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AutoSuggestions"
+        ]
+      }
+    },
+    "/api/v1/auto-suggestions/products/{id}/category-suggestion": {
+      "get": {
+        "operationId": "AutoSuggestionsController_getCategorySuggestion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AutoSuggestions"
+        ]
+      }
+    },
+    "/api/v1/auto-suggestions/products/{id}/repair": {
+      "post": {
+        "operationId": "AutoSuggestionsController_applyRepair",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AutoSuggestions"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "PIM1 API",
+    "description": "PIM1 API OpenAPI specification",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResendUnlockDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestPasswordResetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RecordConsentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestAccountExportDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DeleteAccountDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCategoryDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateCategoryDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateAttributeDefinitionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateAttributeDefinitionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateComplianceRuleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateComplianceRuleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "InstallConnectorDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateBulkImportJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateBulkImportTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SuggestMappingDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ProcessBulkImportJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequeueDlqDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RepairBulkImportRowDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BulkEditPreviewDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BulkEditApplyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateVariantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateVariantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateMappingTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SimulateMarketplaceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateExportJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateExportJobAliasDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateMediaAssetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BulkMediaAssociationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateOndcMappingDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}
