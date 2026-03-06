@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "date": "2026-03-06T10:34:28.391Z",
+  "gitTag": "sha-db09908",
+  "runUrl": "local://manual-gate-run-2026-03-06",
+  "suite": "E10-ST-QA-001-RUN5"
+}

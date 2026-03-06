@@ -40,7 +40,27 @@
                                             "docs/execution/E2_E4_STORIES_EXECUTION_2026-03-03.md"
                                         ],
                            "stories":  [
-
+                                           {
+                                               "storyId":  "ST-REPO-CLEANUP-001",
+                                               "title":  "Phase-ordered repo tree cleanup with blocker-first sequencing",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "c1d4ae9",
+                                               "tests_passed":  [
+                                                                    "node --check scripts/staging-postdeploy-check.cjs",
+                                                                    "node --check scripts/run-increment-gates.cjs",
+                                                                    "npm run test:integration:product-workflow-transitions",
+                                                                    "npm run prisma:migrate:deploy",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "npx tsc -p apps/web/tsconfig.json --noEmit",
+                                                                    "npm test",
+                                                                    "npm run build"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           }
                                        ]
                        },
                        {
