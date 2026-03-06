@@ -1,0 +1,36 @@
+﻿diff --git a/src/auth/config.ts b/src/auth/config.ts
+index cb51f9f..5cf3993 100644
+--- a/src/auth/config.ts
++++ b/src/auth/config.ts
+@@ -162,8 +162,31 @@ export const authConfig = {
+   auditRetentionDays: numberEnv("AUDIT_RETENTION_DAYS", 365, 30, 2555),
+   alertNotificationChannels: listEnv("ALERT_NOTIFICATION_CHANNELS", "webhook"),
+   alertsEnabled: boolEnv("ALERTS_ENABLED", true),
++  pimAdapterBaseUrl: (process.env.PIM1_ADAPTER_BASE_URL ?? "").trim().replace(/\/+$/, ""),
++  pimAdapterTimeoutMs: numberEnv("PIM1_ADAPTER_TIMEOUT_MS", 8000, 500, 60000),
++  pimAdapterForwardAuth: boolEnv("PIM1_ADAPTER_FORWARD_AUTH", true),
++  pimAdapterRequired: boolEnv("PIM1_ADAPTER_REQUIRED", false),
+ };
+ 
++if (authConfig.pimAdapterBaseUrl) {
++  let parsed: URL;
++  try {
++    parsed = new URL(authConfig.pimAdapterBaseUrl);
++  } catch {
++    throw new Error("Invalid PIM1_ADAPTER_BASE_URL: must be a valid absolute URL");
++  }
++  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
++    throw new Error("Invalid PIM1_ADAPTER_BASE_URL: only http/https are allowed");
++  }
++  if (authConfig.isProdLike && parsed.protocol !== "https:") {
++    throw new Error("Refusing to start in prod-like environments with non-https PIM1_ADAPTER_BASE_URL");
++  }
++}
++
++if (authConfig.pimAdapterRequired && !authConfig.pimAdapterBaseUrl) {
++  throw new Error("PIM1_ADAPTER_REQUIRED=true but PIM1_ADAPTER_BASE_URL is not configured");
++}
++
+ if (authConfig.isProdLike) {
+   if (authConfig.bootstrapEnabled) {
+     throw new Error("Refusing to start in prod-like environments with BOOTSTRAP_ENABLED=true");

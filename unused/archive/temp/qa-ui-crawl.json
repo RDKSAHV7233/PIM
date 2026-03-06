@@ -1,0 +1,152 @@
+{
+  "loginStatus": 201,
+  "loginBodySnippet": "{\"userId\":\"admin@pim1.local\",\"tenantId\":\"default\",\"role\":\"admin\",\"expiresInSeconds\":14400}",
+  "cookiePresent": true,
+  "checkedAt": "2026-03-05T19:40:47.943Z",
+  "pages": [
+    {
+      "path": "/dashboard",
+      "status": 200,
+      "length": 84299,
+      "markers": []
+    },
+    {
+      "path": "/catalog/products",
+      "status": 200,
+      "length": 63570,
+      "markers": []
+    },
+    {
+      "path": "/catalog/categories",
+      "status": 200,
+      "length": 84277,
+      "markers": []
+    },
+    {
+      "path": "/catalog/attributes",
+      "status": 200,
+      "length": 86597,
+      "markers": []
+    },
+    {
+      "path": "/catalog/media",
+      "status": 200,
+      "length": 82959,
+      "markers": []
+    },
+    {
+      "path": "/channels",
+      "status": 200,
+      "length": 68093,
+      "markers": []
+    },
+    {
+      "path": "/channels/connectors",
+      "status": 200,
+      "length": 152675,
+      "markers": []
+    },
+    {
+      "path": "/channels/mappings",
+      "status": 200,
+      "length": 90710,
+      "markers": []
+    },
+    {
+      "path": "/channels/submissions",
+      "status": 200,
+      "length": 62910,
+      "markers": []
+    },
+    {
+      "path": "/channels/health",
+      "status": 200,
+      "length": 64482,
+      "markers": []
+    },
+    {
+      "path": "/operations/imports",
+      "status": 200,
+      "length": 65608,
+      "markers": []
+    },
+    {
+      "path": "/operations/bulk-edit",
+      "status": 200,
+      "length": 190452,
+      "markers": []
+    },
+    {
+      "path": "/operations/jobs",
+      "status": 200,
+      "length": 68096,
+      "markers": []
+    },
+    {
+      "path": "/operations/repair",
+      "status": 200,
+      "length": 56061,
+      "markers": []
+    },
+    {
+      "path": "/quality/issues",
+      "status": 200,
+      "length": 130744,
+      "markers": []
+    },
+    {
+      "path": "/quality/validation",
+      "status": 200,
+      "length": 61798,
+      "markers": []
+    },
+    {
+      "path": "/quality/approvals",
+      "status": 200,
+      "length": 67412,
+      "markers": []
+    },
+    {
+      "path": "/quality/completeness",
+      "status": 200,
+      "length": 57816,
+      "markers": []
+    },
+    {
+      "path": "/admin/workspace",
+      "status": 200,
+      "length": 25433,
+      "markers": []
+    },
+    {
+      "path": "/admin/plan",
+      "status": 200,
+      "length": 65232,
+      "markers": []
+    },
+    {
+      "path": "/admin/users",
+      "status": 200,
+      "length": 78753,
+      "markers": []
+    },
+    {
+      "path": "/admin/connectors",
+      "status": 200,
+      "length": 60622,
+      "markers": []
+    },
+    {
+      "path": "/admin/privacy",
+      "status": 200,
+      "length": 21196,
+      "markers": []
+    },
+    {
+      "path": "/admin/audit",
+      "status": 200,
+      "length": 22253,
+      "markers": []
+    }
+  ]
+}

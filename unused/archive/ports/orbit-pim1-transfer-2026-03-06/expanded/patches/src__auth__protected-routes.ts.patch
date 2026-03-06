@@ -1,0 +1,931 @@
+﻿diff --git a/src/auth/protected-routes.ts b/src/auth/protected-routes.ts
+index da38c18..5afc38d 100644
+--- a/src/auth/protected-routes.ts
++++ b/src/auth/protected-routes.ts
+@@ -65,6 +65,18 @@ import { resolveRawBody, verifyWebhookSignature as verifyWebhookHmac } from "./w
+ import { getRedisHealthSnapshot } from "./redis-health";
+ import { grantAccessPolicy, listAccessPolicies, revokeAccessPolicy } from "./access-policy";
+ import { redactPayload } from "./payload-redaction";
++import { PimAdapterNotConfiguredError, proxyPim1Request } from "./pim1-adapter";
++import {
++  archiveMappingVersion,
++  createMappingDraft,
++  evaluateMappingPreflight,
++  listPublishedCategoryScopes,
++  listMappingVersions,
++  publishMappingVersion,
++  resolveEffectiveMapping,
++  validateMappingVersion,
++} from "./connector-mapping";
++import { searchConnectorTaxonomy, taxonomyForConnector } from "./pim1-taxonomy";
+ import {
+   createMarketplaceListing,
+   listMarketplaceListings,
+@@ -245,6 +257,69 @@ const accessEffectiveCheckSchema = z.object({
+     .optional(),
+ });
+ 
++const compatSubmissionQuerySchema = z.object({
++  connectorSlug: z.string().min(2).max(160).optional(),
++  status: z.enum(["queued", "running", "succeeded", "failed", "dead"]).optional(),
++  minAttempt: z.coerce.number().int().min(0).max(100).optional(),
++  limit: z.coerce.number().int().positive().max(500).default(100),
++});
++
++const compatSubmissionStatsQuerySchema = z.object({
++  installationId: z.string().min(1).max(255).optional(),
++  days: z.coerce.number().int().positive().max(365).default(30),
++});
++
++const compatConnectorInstallSchema = z.object({
++  host: z.string().min(1).max(255).optional(),
++  port: z.number().int().positive().max(65535).optional(),
++  auth_type: z.string().min(2).max(64).optional(),
++  auth_payload: z.record(z.string(), z.unknown()).optional(),
++  min_required_resource: z.string().min(1).max(255).optional(),
++});
++
++const mappingListQuerySchema = z.object({
++  categoryScope: z.string().min(1).max(255).optional(),
++  includeArchived: z.coerce.boolean().default(false),
++});
++
++const mappingCreateSchema = z.object({
++  category_scope: z.string().min(1).max(255),
++  mapping_level: z.enum(["tenant_connector_default", "tenant_connector_category_mapping"]),
++  connector_definition_id: z.string().min(1).max(255),
++  connector_definition_version: z.string().min(1).max(64),
++  compatibility_state: z.enum(["compatible", "deprecated", "remap_required", "blocked"]).optional(),
++  mapping_rules: z.record(z.string(), z.unknown()),
++  fallback_policy: z.record(z.string(), z.unknown()).optional(),
++  fallback_ack_required: z.boolean().optional(),
++});
++
++const mappingConfirmSchema = z.object({
++  confirm: z.boolean().default(false),
++});
++
++const mappingArchiveSchema = z.object({
++  reason: z.string().min(3).max(500),
++});
++
++const mappingResolveQuerySchema = z.object({
++  categoryScope: z.string().min(1).max(255),
++});
++
++const mappingPreflightSchema = z.object({
++  category_scope: z.string().min(1).max(255),
++  fallback_acknowledged: z.boolean().optional(),
++});
++
++const taxonomySearchQuerySchema = z.object({
++  q: z.string().max(255).optional(),
++  limit: z.coerce.number().int().positive().max(500).default(50),
++});
++
++const publishReadinessSchema = z.object({
++  category_scope: z.string().min(1).max(255),
++  fallback_acknowledged: z.boolean().optional(),
++});
++
+ function toActorType(authType: "user_jwt" | "api_key" | "internal_jwt" | "mtls"): "user" | "api_key" | "system" {
+   if (authType === "api_key") return "api_key";
+   if (authType === "internal_jwt" || authType === "mtls") return "system";
+@@ -542,6 +617,254 @@ function toLegacyEventType(eventType: string): string {
+   }
+ }
+ 
++function normalizeConnectorSlug(slug: string): string {
++  return slug.trim().toLowerCase();
++}
++
++function toSubmissionStatus(status: string): "queued" | "running" | "succeeded" | "failed" | "dead" {
++  if (status === "queued" || status === "running" || status === "succeeded" || status === "failed" || status === "dead") {
++    return status;
++  }
++  return "failed";
++}
++
++async function listInstalledConnectorsForTenant(tenantId: string): Promise<
++  Array<{
++    installationId: string;
++    connectorSlug: string;
++    authType: string;
++    createdAt: string;
++    updatedAt: string;
++  }>
++> {
++  const { rows } = await authDb.query(
++    `
++      SELECT id::text AS installation_id, connector_slug, auth_type, created_at, updated_at
++      FROM connector_configs
++      WHERE tenant_id=$1
++      ORDER BY created_at DESC
++    `,
++    [tenantId]
++  );
++  return (rows as Array<Record<string, unknown>>).map((row) => ({
++    installationId: String(row.installation_id),
++    connectorSlug: String(row.connector_slug),
++    authType: String(row.auth_type ?? "basic"),
++    createdAt: new Date(String(row.created_at)).toISOString(),
++    updatedAt: new Date(String(row.updated_at)).toISOString(),
++  }));
++}
++
++async function installConnectorForTenant(input: {
++  tenantId: string;
++  connectorSlug: string;
++  host?: string;
++  port?: number;
++  authType?: string;
++  authPayload?: Record<string, unknown>;
++  minRequiredResource?: string;
++}): Promise<{
++  installationId: string;
++  connectorSlug: string;
++  authType: string;
++  createdAt: string;
++  updatedAt: string;
++}> {
++  const slug = normalizeConnectorSlug(input.connectorSlug);
++  const { rows } = await authDb.query(
++    `
++      INSERT INTO connector_configs (
++        tenant_id, connector_slug, host, port, auth_type, auth_payload, min_required_resource
++      )
++      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
++      ON CONFLICT (tenant_id, connector_slug)
++      DO UPDATE SET
++        host = COALESCE(EXCLUDED.host, connector_configs.host),
++        port = COALESCE(EXCLUDED.port, connector_configs.port),
++        auth_type = COALESCE(EXCLUDED.auth_type, connector_configs.auth_type),
++        auth_payload = COALESCE(EXCLUDED.auth_payload, connector_configs.auth_payload),
++        min_required_resource = COALESCE(EXCLUDED.min_required_resource, connector_configs.min_required_resource),
++        updated_at = NOW()
++      RETURNING id::text AS installation_id, connector_slug, auth_type, created_at, updated_at
++    `,
++    [
++      input.tenantId,
++      slug,
++      input.host ?? null,
++      input.port ?? null,
++      input.authType ?? "basic",
++      JSON.stringify(input.authPayload ?? {}),
++      input.minRequiredResource ?? null,
++    ]
++  );
++  const row = rows[0] as Record<string, unknown> | undefined;
++  if (!row) throw new Error("install_failed");
++  return {
++    installationId: String(row.installation_id),
++    connectorSlug: String(row.connector_slug),
++    authType: String(row.auth_type ?? "basic"),
++    createdAt: new Date(String(row.created_at)).toISOString(),
++    updatedAt: new Date(String(row.updated_at)).toISOString(),
++  };
++}
++
++async function uninstallConnectorForTenant(input: {
++  tenantId: string;
++  connectorSlug: string;
++  installationId: string;
++}): Promise<boolean> {
++  const slug = normalizeConnectorSlug(input.connectorSlug);
++  const result = await authDb.query(
++    `
++      DELETE FROM connector_configs
++      WHERE tenant_id=$1 AND connector_slug=$2 AND id::text=$3
++    `,
++    [input.tenantId, slug, input.installationId]
++  );
++  return Number(result.rowCount ?? 0) > 0;
++}
++
++async function resolveConnectorSlugForInstallation(tenantId: string, installationId: string): Promise<string | null> {
++  const { rows } = await authDb.query(
++    `
++      SELECT connector_slug
++      FROM connector_configs
++      WHERE tenant_id=$1 AND id::text=$2
++      LIMIT 1
++    `,
++    [tenantId, installationId]
++  );
++  const row = rows[0] as { connector_slug?: string } | undefined;
++  if (!row?.connector_slug) return null;
++  return normalizeConnectorSlug(row.connector_slug);
++}
++
++async function listCompatibilitySubmissions(input: {
++  tenantId: string;
++  connectorSlug?: string;
++  status?: "queued" | "running" | "succeeded" | "failed" | "dead";
++  minAttempt?: number;
++  limit: number;
++}): Promise<Array<Record<string, unknown>>> {
++  const { rows } = await authDb.query(
++    `
++      SELECT
++        id::text AS submission_id,
++        connector_id AS connector_slug,
++        status,
++        retry_count,
++        max_retries,
++        created_at,
++        payload
++      FROM executions
++      WHERE tenant_id=$1
++        AND ($2::text IS NULL OR connector_id=$2::text)
++        AND ($3::text IS NULL OR status=$3::text)
++        AND ($4::int IS NULL OR retry_count >= $4::int)
++      ORDER BY created_at DESC
++      LIMIT $5
++    `,
++    [input.tenantId, input.connectorSlug ?? null, input.status ?? null, input.minAttempt ?? null, input.limit]
++  );
++  return (rows as Array<Record<string, unknown>>).map((row) => {
++    const payload = (row.payload ?? {}) as Record<string, unknown>;
++    return {
++      id: String(row.submission_id),
++      connectorSlug: String(row.connector_slug),
++      status: toSubmissionStatus(String(row.status)),
++      attempt: Number(row.retry_count ?? 0),
++      maxAttempts: Number(row.max_retries ?? 0),
++      submittedAt: new Date(String(row.created_at)).toISOString(),
++      productId: typeof payload.product_id === "string" ? payload.product_id : null,
++      executionId: String(row.submission_id),
++    };
++  });
++}
++
++async function compatibilitySubmissionStats(input: {
++  tenantId: string;
++  connectorSlug?: string;
++  days: number;
++}): Promise<{ total: number; succeeded: number; failed: number; running: number; queued: number; dead: number }> {
++  const { rows } = await authDb.query(
++    `
++      SELECT status, COUNT(*)::int AS count
++      FROM executions
++      WHERE tenant_id=$1
++        AND created_at >= NOW() - (($2::int || ' days')::interval)
++        AND ($3::text IS NULL OR connector_id=$3::text)
++      GROUP BY status
++    `,
++    [input.tenantId, input.days, input.connectorSlug ?? null]
++  );
++  const counts: { queued: number; running: number; succeeded: number; failed: number; dead: number } = {
++    queued: 0,
++    running: 0,
++    succeeded: 0,
++    failed: 0,
++    dead: 0,
++  };
++  for (const row of rows as Array<{ status: string; count: number }>) {
++    counts[toSubmissionStatus(String(row.status))] = Number(row.count ?? 0);
++  }
++  return {
++    total: counts.queued + counts.running + counts.succeeded + counts.failed + counts.dead,
++    succeeded: counts.succeeded,
++    failed: counts.failed,
++    running: counts.running,
++    queued: counts.queued,
++    dead: counts.dead,
++  };
++}
++
++async function getConnectorInstallationState(input: {
++  tenantId: string;
++  connectorSlug: string;
++}): Promise<{
++  installed: boolean;
++  installationId: string | null;
++  credentialsConfigured: boolean;
++}> {
++  const { rows } = await authDb.query(
++    `
++      SELECT id::text AS installation_id, auth_payload, encrypted_fields
++      FROM connector_configs
++      WHERE tenant_id=$1 AND connector_slug=$2
++      ORDER BY created_at DESC
++      LIMIT 1
++    `,
++    [input.tenantId, input.connectorSlug]
++  );
++  const row = rows[0] as
++    | {
++        installation_id?: string;
++        auth_payload?: Record<string, unknown>;
++        encrypted_fields?: Record<string, unknown>;
++      }
++    | undefined;
++  if (!row) {
++    return {
++      installed: false,
++      installationId: null,
++      credentialsConfigured: false,
++    };
++  }
++  const authPayload =
++    row.auth_payload && typeof row.auth_payload === "object" && !Array.isArray(row.auth_payload)
++      ? (row.auth_payload as Record<string, unknown>)
++      : {};
++  const encryptedFields =
++    row.encrypted_fields && typeof row.encrypted_fields === "object" && !Array.isArray(row.encrypted_fields)
++      ? (row.encrypted_fields as Record<string, unknown>)
++      : {};
++  const credentialsConfigured = Object.keys(authPayload).length > 0 || Object.keys(encryptedFields).length > 0;
++  return {
++    installed: true,
++    installationId: String(row.installation_id ?? ""),
++    credentialsConfigured,
++  };
++}
++
+ const requireExecutionDomain = requireTenantResource("execution", "executionId");
+ const requireApiKeyDomain = requireTenantResource("api_key", "id");
+ const requireUserDomain = requireTenantResource("user", "userId");
+@@ -748,6 +1071,582 @@ export function protectedRouter() {
+     }
+   );
+ 
++  // PIM1 compatibility endpoints expected by connector-facing UI packages.
++  router.get(
++    "/connectors/installed",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const items = await listInstalledConnectorsForTenant(req.tenantId!);
++      await auditFromRequest(req, "compat.connectors.installed.list", "success", { count: items.length });
++      return res.status(200).json({ items });
++    }
++  );
++
++  router.post(
++    "/connectors/:slug/install",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    requireMfa,
++    async (req: OrbitRequest, res) => {
++      const slug = normalizeConnectorSlug(String(req.params.slug ?? ""));
++      if (!slug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = compatConnectorInstallSchema.safeParse(req.body ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++
++      const available = await loadRuntimeConnectorDefinitions(true);
++      const exists = available.some((item) => normalizeConnectorSlug(item.id) === slug);
++      if (!exists) return res.status(404).json({ error: "connector_not_found" });
++
++      const installed = await installConnectorForTenant({
++        tenantId: req.tenantId!,
++        connectorSlug: slug,
++        host: parsed.data.host,
++        port: parsed.data.port,
++        authType: parsed.data.auth_type,
++        authPayload: parsed.data.auth_payload,
++        minRequiredResource: parsed.data.min_required_resource,
++      });
++      await auditFromRequest(req, "compat.connectors.install", "success", {
++        connector_slug: slug,
++        installation_id: installed.installationId,
++      });
++      return res.status(201).json({ ok: true, installation: installed });
++    }
++  );
++
++  router.delete(
++    "/connectors/:slug/install/:id",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    requireMfa,
++    async (req: OrbitRequest, res) => {
++      const slug = normalizeConnectorSlug(String(req.params.slug ?? ""));
++      const installationId = String(req.params.id ?? "").trim();
++      if (!slug || !installationId) return res.status(400).json({ error: "invalid_request" });
++      const removed = await uninstallConnectorForTenant({
++        tenantId: req.tenantId!,
++        connectorSlug: slug,
++        installationId,
++      });
++      if (!removed) return res.status(404).json({ error: "not_found" });
++      await auditFromRequest(req, "compat.connectors.uninstall", "success", {
++        connector_slug: slug,
++        installation_id: installationId,
++      });
++      return res.status(200).json({ ok: true, installation_id: installationId });
++    }
++  );
++
++  router.get(
++    "/submissions",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("executions:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const parsed = compatSubmissionQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const rows = await listCompatibilitySubmissions({
++        tenantId: req.tenantId!,
++        connectorSlug: parsed.data.connectorSlug ? normalizeConnectorSlug(parsed.data.connectorSlug) : undefined,
++        status: parsed.data.status,
++        minAttempt: parsed.data.minAttempt,
++        limit: parsed.data.limit,
++      });
++      await auditFromRequest(req, "compat.submissions.list", "success", {
++        count: rows.length,
++      });
++      return res.status(200).json({ items: rows });
++    }
++  );
++
++  router.get(
++    "/submissions/stats",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("executions:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const parsed = compatSubmissionStatsQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      let connectorSlug: string | undefined;
++      if (parsed.data.installationId) {
++        const installationId = String(parsed.data.installationId).trim();
++        const resolved = await resolveConnectorSlugForInstallation(req.tenantId!, installationId);
++        if (!resolved) return res.status(404).json({ error: "installation_not_found" });
++        connectorSlug = resolved;
++      }
++      const stats = await compatibilitySubmissionStats({
++        tenantId: req.tenantId!,
++        connectorSlug,
++        days: parsed.data.days,
++      });
++      await auditFromRequest(req, "compat.submissions.stats", "success", {
++        days: parsed.data.days,
++        connector_slug: connectorSlug ?? null,
++      });
++      return res.status(200).json({ stats });
++    }
++  );
++
++  router.get(
++    "/mappings/:connectorSlug/versions",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingListQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const items = await listMappingVersions({
++        tenantId: req.tenantId!,
++        connectorSlug,
++        categoryScope: parsed.data.categoryScope,
++        includeArchived: parsed.data.includeArchived,
++      });
++      await auditFromRequest(req, "mappings.versions.list", "success", {
++        connector_slug: connectorSlug,
++        category_scope: parsed.data.categoryScope ?? null,
++        count: items.length,
++      });
++      return res.status(200).json({ items });
++    }
++  );
++
++  router.post(
++    "/mappings/:connectorSlug/versions",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingCreateSchema.safeParse(req.body ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      try {
++        const created = await createMappingDraft({
++          tenantId: req.tenantId!,
++          actorId: req.userId ?? null,
++          connectorSlug,
++          categoryScope: parsed.data.category_scope,
++          mappingLevel: parsed.data.mapping_level,
++          connectorDefinitionId: parsed.data.connector_definition_id,
++          connectorDefinitionVersion: parsed.data.connector_definition_version,
++          compatibilityState: parsed.data.compatibility_state,
++          mappingRules: parsed.data.mapping_rules,
++          fallbackPolicy: parsed.data.fallback_policy,
++          fallbackAckRequired: parsed.data.fallback_ack_required,
++        });
++        await auditFromRequest(req, "mappings.version.create", "success", {
++          connector_slug: connectorSlug,
++          mapping_version_id: created.id,
++          category_scope: created.categoryScope,
++          mapping_level: created.mappingLevel,
++        });
++        return res.status(201).json(created);
++      } catch (error) {
++        const message = error instanceof Error ? error.message : "internal_error";
++        await auditFromRequest(req, "mappings.version.create", "failure", {
++          connector_slug: connectorSlug,
++          error: message,
++        });
++        if (message.startsWith("invalid_mapping:")) {
++          return res.status(400).json({ error: "invalid_mapping", reason: message.replace("invalid_mapping:", "") });
++        }
++        return res.status(500).json({ error: "internal_error" });
++      }
++    }
++  );
++
++  router.post(
++    "/mappings/:connectorSlug/versions/:id/validate",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      const versionId = String(req.params.id ?? "").trim();
++      if (!connectorSlug || !versionId) return res.status(400).json({ error: "invalid_request" });
++      try {
++        const validated = await validateMappingVersion({
++          tenantId: req.tenantId!,
++          connectorSlug,
++          versionId,
++          actorId: req.userId ?? null,
++        });
++        await auditFromRequest(req, "mappings.version.validate", "success", {
++          connector_slug: connectorSlug,
++          mapping_version_id: validated.id,
++        });
++        return res.status(200).json(validated);
++      } catch (error) {
++        const message = error instanceof Error ? error.message : "internal_error";
++        await auditFromRequest(req, "mappings.version.validate", "failure", {
++          connector_slug: connectorSlug,
++          mapping_version_id: versionId,
++          error: message,
++        });
++        if (message === "not_found") return res.status(404).json({ error: "not_found" });
++        if (message === "invalid_transition") return res.status(409).json({ error: "invalid_transition" });
++        if (message.startsWith("invalid_mapping:")) {
++          return res.status(400).json({ error: "invalid_mapping", reason: message.replace("invalid_mapping:", "") });
++        }
++        return res.status(500).json({ error: "internal_error" });
++      }
++    }
++  );
++
++  router.post(
++    "/mappings/:connectorSlug/versions/:id/publish",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      const versionId = String(req.params.id ?? "").trim();
++      if (!connectorSlug || !versionId) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingConfirmSchema.safeParse(req.body ?? {});
++      if (!parsed.success || parsed.data.confirm !== true) {
++        return res.status(400).json({ error: "confirmation_required" });
++      }
++      try {
++        const published = await publishMappingVersion({
++          tenantId: req.tenantId!,
++          connectorSlug,
++          versionId,
++          actorId: req.userId ?? null,
++        });
++        await auditFromRequest(req, "mappings.version.publish", "success", {
++          connector_slug: connectorSlug,
++          mapping_version_id: published.published.id,
++          superseded_count: published.superseded.length,
++        });
++        return res.status(200).json(published);
++      } catch (error) {
++        const message = error instanceof Error ? error.message : "internal_error";
++        await auditFromRequest(req, "mappings.version.publish", "failure", {
++          connector_slug: connectorSlug,
++          mapping_version_id: versionId,
++          error: message,
++        });
++        if (message === "not_found") return res.status(404).json({ error: "not_found" });
++        if (message === "must_validate_before_publish") return res.status(409).json({ error: "must_validate_before_publish" });
++        return res.status(500).json({ error: "internal_error" });
++      }
++    }
++  );
++
++  router.post(
++    "/mappings/:connectorSlug/versions/:id/archive",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    requireMfa,
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      const versionId = String(req.params.id ?? "").trim();
++      if (!connectorSlug || !versionId) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingArchiveSchema.safeParse(req.body ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      try {
++        const archived = await archiveMappingVersion({
++          tenantId: req.tenantId!,
++          connectorSlug,
++          versionId,
++          actorId: req.userId ?? null,
++        });
++        await auditFromRequest(req, "mappings.version.archive", "success", {
++          connector_slug: connectorSlug,
++          mapping_version_id: archived.id,
++          reason: parsed.data.reason,
++        });
++        return res.status(200).json(archived);
++      } catch (error) {
++        const message = error instanceof Error ? error.message : "internal_error";
++        await auditFromRequest(req, "mappings.version.archive", "failure", {
++          connector_slug: connectorSlug,
++          mapping_version_id: versionId,
++          reason: parsed.data.reason,
++          error: message,
++        });
++        if (message === "not_found") return res.status(404).json({ error: "not_found" });
++        if (message === "invalid_transition") return res.status(409).json({ error: "invalid_transition" });
++        return res.status(500).json({ error: "internal_error" });
++      }
++    }
++  );
++
++  router.get(
++    "/mappings/:connectorSlug/resolve",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("config:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingResolveQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const resolution = await resolveEffectiveMapping({
++        tenantId: req.tenantId!,
++        connectorSlug,
++        categoryScope: parsed.data.categoryScope,
++        actorId: req.userId ?? null,
++        recordEvaluation: true,
++      });
++      await auditFromRequest(req, "mappings.resolve", "success", {
++        connector_slug: connectorSlug,
++        category_scope: parsed.data.categoryScope,
++        matched_versions: resolution.matchedVersions.length,
++        compatibility_state: resolution.compatibilityState,
++      });
++      return res.status(200).json({
++        resolved: resolution.resolvedMapping,
++        compatibility_state: resolution.compatibilityState,
++        fallback_applied: resolution.fallbackApplied,
++        fallback_ack_required: resolution.fallbackAckRequired,
++        matched_versions: resolution.matchedVersions,
++      });
++    }
++  );
++
++  router.post(
++    "/mappings/:connectorSlug/preflight",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = mappingPreflightSchema.safeParse(req.body ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const result = await evaluateMappingPreflight({
++        tenantId: req.tenantId!,
++        connectorSlug,
++        categoryScope: parsed.data.category_scope,
++        fallbackAcknowledged: parsed.data.fallback_acknowledged,
++        actorId: req.userId ?? null,
++      });
++      await auditFromRequest(req, "mappings.preflight", "success", {
++        connector_slug: connectorSlug,
++        category_scope: parsed.data.category_scope,
++        ok: result.ok,
++        blocker_count: result.blockers.length,
++      });
++      return res.status(result.ok ? 200 : 409).json(result);
++    }
++  );
++
++  router.get(
++    "/taxonomy/:connectorSlug/search",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("config:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = taxonomySearchQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const items = searchConnectorTaxonomy({
++        connectorSlug,
++        query: parsed.data.q,
++        limit: parsed.data.limit,
++      });
++      await auditFromRequest(req, "taxonomy.search", "success", {
++        connector_slug: connectorSlug,
++        query: parsed.data.q ?? "",
++        count: items.length,
++      });
++      return res.status(200).json({ items });
++    }
++  );
++
++  router.get(
++    "/taxonomy/:connectorSlug/unmapped",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = taxonomySearchQuerySchema.safeParse(req.query ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++      const taxonomy = searchConnectorTaxonomy({
++        connectorSlug,
++        query: parsed.data.q,
++        limit: parsed.data.limit,
++      }).filter((node) => node.leaf);
++      const mappedScopes = new Set(
++        await listPublishedCategoryScopes({
++          tenantId: req.tenantId!,
++          connectorSlug,
++        })
++      );
++      const unmapped = taxonomy.filter((node) => !mappedScopes.has(node.id));
++      await auditFromRequest(req, "taxonomy.unmapped", "success", {
++        connector_slug: connectorSlug,
++        count: unmapped.length,
++      });
++      return res.status(200).json({
++        total_leaf_categories: taxonomy.length,
++        mapped_leaf_categories: taxonomy.length - unmapped.length,
++        unmapped_leaf_categories: unmapped.length,
++        items: unmapped,
++      });
++    }
++  );
++
++  router.post(
++    "/publish-readiness/:connectorSlug",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("connectors:manage", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const connectorSlug = normalizeConnectorSlug(String(req.params.connectorSlug ?? ""));
++      if (!connectorSlug) return res.status(400).json({ error: "invalid_request" });
++      const parsed = publishReadinessSchema.safeParse(req.body ?? {});
++      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
++
++      const blockers: string[] = [];
++      const warnings: string[] = [];
++
++      const install = await getConnectorInstallationState({
++        tenantId: req.tenantId!,
++        connectorSlug,
++      });
++      if (!install.installed) blockers.push("connector_not_installed");
++      if (install.installed && !install.credentialsConfigured) blockers.push("connector_credentials_missing");
++
++      const preflight = await evaluateMappingPreflight({
++        tenantId: req.tenantId!,
++        connectorSlug,
++        categoryScope: parsed.data.category_scope,
++        fallbackAcknowledged: parsed.data.fallback_acknowledged,
++        actorId: req.userId ?? null,
++      });
++      blockers.push(...preflight.blockers);
++      warnings.push(...preflight.warnings);
++
++      try {
++        const breaker = await getCircuitBreakerConfig({
++          tenantId: req.tenantId!,
++          connectorId: connectorSlug,
++        });
++        if (breaker.forced_state === "open") blockers.push("connector_circuit_forced_open");
++      } catch {
++        warnings.push("connector_circuit_config_unavailable");
++      }
++
++      const connectorHealth = connectorRegistry.health().find((entry) => entry.id === connectorSlug);
++      if (connectorHealth?.status === "degraded") warnings.push("connector_degraded");
++      if (connectorHealth?.status === "down") blockers.push("connector_down");
++
++      const taxonomy = taxonomyForConnector(connectorSlug);
++      const categoryNode = taxonomy.find((node) => node.id === parsed.data.category_scope) ?? null;
++      if (categoryNode && categoryNode.required_attributes.length > 0) {
++        const resolved = await resolveEffectiveMapping({
++          tenantId: req.tenantId!,
++          connectorSlug,
++          categoryScope: parsed.data.category_scope,
++        });
++        const fields =
++          resolved.resolvedMapping &&
++          typeof resolved.resolvedMapping === "object" &&
++          !Array.isArray(resolved.resolvedMapping) &&
++          resolved.resolvedMapping.field_mappings &&
++          typeof resolved.resolvedMapping.field_mappings === "object" &&
++          !Array.isArray(resolved.resolvedMapping.field_mappings)
++            ? (resolved.resolvedMapping.field_mappings as Record<string, unknown>)
++            : {};
++        const missingRequired = categoryNode.required_attributes.filter((key) => typeof fields[key] !== "string");
++        if (missingRequired.length > 0) blockers.push(`required_attributes_missing:${missingRequired.join(",")}`);
++      }
++
++      const uniqueBlockers = Array.from(new Set(blockers));
++      const uniqueWarnings = Array.from(new Set(warnings));
++      const ok = uniqueBlockers.length === 0;
++
++      await auditFromRequest(req, "publish.readiness", "success", {
++        connector_slug: connectorSlug,
++        category_scope: parsed.data.category_scope,
++        ok,
++        blocker_count: uniqueBlockers.length,
++      });
++
++      return res.status(ok ? 200 : 409).json({
++        ok,
++        connector_slug: connectorSlug,
++        category_scope: parsed.data.category_scope,
++        blockers: uniqueBlockers,
++        warnings: uniqueWarnings,
++        sections: {
++          installation: install,
++          mapping_preflight: preflight,
++          connector_health: connectorHealth ?? null,
++        },
++      });
++    }
++  );
++
++  router.get(
++    "/products",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("config:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      try {
++        const proxied = await proxyPim1Request({
++          req,
++          method: "GET",
++          path: "/api/v1/products",
++          query: req.query,
++        });
++        return res.status(proxied.status).json(proxied.body);
++      } catch (error) {
++        if (error instanceof PimAdapterNotConfiguredError) {
++          return sendApiError(res, 501, "pim_adapter_not_configured", {
++            message: "Configure PIM1_ADAPTER_BASE_URL or implement local product APIs.",
++          });
++        }
++        return sendApiError(res, 502, "pim_adapter_upstream_unreachable", {
++          retryable: true,
++          message: error instanceof Error ? error.message : "upstream_error",
++        });
++      }
++    }
++  );
++
++  router.get(
++    "/media/:id",
++    jwtAuth,
++    tenantResolver,
++    requirePermissionWithPolicy("config:read", tenantDomain),
++    async (req: OrbitRequest, res) => {
++      const mediaId = String(req.params.id ?? "").trim();
++      if (!mediaId) return res.status(400).json({ error: "invalid_request" });
++      try {
++        const proxied = await proxyPim1Request({
++          req,
++          method: "GET",
++          path: `/api/v1/media/${encodeURIComponent(mediaId)}`,
++        });
++        return res.status(proxied.status).json(proxied.body);
++      } catch (error) {
++        if (error instanceof PimAdapterNotConfiguredError) {
++          return sendApiError(res, 501, "pim_adapter_not_configured", {
++            message: "Configure PIM1_ADAPTER_BASE_URL or implement local media APIs.",
++          });
++        }
++        return sendApiError(res, 502, "pim_adapter_upstream_unreachable", {
++          retryable: true,
++          message: error instanceof Error ? error.message : "upstream_error",
++        });
++      }
++    }
++  );
++
+   router.get(
+     "/internal/connectors/catalog",
+     jwtAuth,

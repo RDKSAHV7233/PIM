@@ -1,0 +1,20 @@
+﻿diff --git a/tests/t22.access-control.integration.test.js b/tests/t22.access-control.integration.test.js
+index 20101ce..a64c6e0 100644
+--- a/tests/t22.access-control.integration.test.js
++++ b/tests/t22.access-control.integration.test.js
+@@ -1849,10 +1849,12 @@ test("T22-21: idempotency is tenant-scoped across same connector and key", () =>
+       }
+       if (query.includes("UPDATE executions") && query.includes("SET status")) return { rows: [], rowCount: 1 };
+       if (query.includes("INSERT INTO connector_event_queue")) return { rows: [], rowCount: 1 };
+-      if (query.includes("INSERT INTO connector_event_idempotency")) {
++      if (query.includes("INSERT INTO connector_event_idempotency") && query.includes("RETURNING execution_id")) {
+         const key = params[1] + "|" + params[2] + "|" + params[3];
+-        if (!idempotency.has(key)) idempotency.set(key, params[4]);
+-        return { rows: [], rowCount: 1 };
++        const existing = idempotency.get(key);
++        if (existing) return { rows: [{ execution_id: existing }], rowCount: 1 };
++        idempotency.set(key, params[4]);
++        return { rows: [{ execution_id: params[4] }], rowCount: 1 };
+       }
+       return { rows: [], rowCount: 0 };
+     };

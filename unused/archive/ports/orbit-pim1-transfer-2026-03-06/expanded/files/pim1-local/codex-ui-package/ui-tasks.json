@@ -1,0 +1,646 @@
+[
+  {
+    "sprintId": "FOUNDATION",
+    "title": "App Shell · Auth · Routing · API Client · Design System",
+    "durationWeeks": 1,
+    "prerequisite": null,
+    "tasks": [
+      {
+        "id": "UI-SHELL-01",
+        "title": "Top bar with global search",
+        "estimate": "0.5d",
+        "files": ["src/components/shell/TopBar.tsx", "src/app/(app)/layout.tsx"],
+        "acceptance": [
+          "Logo links to /home",
+          "⌘K opens global search modal scoped to: products, SKUs, issues, connectors, submissions",
+          "Search results grouped by type with result count per group",
+          "Notifications bell shows unread count badge from GET /api/v1/notifications",
+          "User avatar menu: profile, switch tenant, log out (POST /api/v1/auth/logout)"
+        ],
+        "notes": "Logo must use alt text for screen readers."
+      },
+      {
+        "id": "UI-SHELL-02",
+        "title": "Left sidebar with dynamic badges",
+        "estimate": "0.5d",
+        "files": ["src/components/shell/Sidebar.tsx", "src/components/shell/MobileTabBar.tsx"],
+        "acceptance": [
+          "Desktop ≥1280px: persistent expanded sidebar. Collapsible to icon strip — preference saved via useLocalStorage (R12)",
+          "Tablet 768–1279px: collapsed icons by default, tap to expand as overlay",
+          "Mobile <768px: sidebar hidden. Bottom tab bar shows: Home, Catalog, Issues, Channels, Settings (R15)",
+          "Issues badge: count from GET /api/v1/issues?severity=error&status=open",
+          "Channels badge: amber dot when any ConnectorInstallation.status === CREDENTIAL_EXPIRED",
+          "Submissions badge: count of PENDING submissions",
+          "Active route: accent color left border"
+        ]
+      },
+      {
+        "id": "UI-AUTH-01",
+        "title": "Login page with rate limit and lockout states",
+        "estimate": "0.5d",
+        "files": ["src/app/(auth)/login/page.tsx", "src/components/auth/AccountLockedPage.tsx"],
+        "acceptance": [
+          "API returns 429: replace form with 'Too many attempts' message + countdown from Retry-After header",
+          "API returns 423 with ACCOUNT_LOCKED: show masked email (first 2 chars + *** + @domain) and 'Resend unlock email' link",
+          "POST /api/v1/auth/resend-unlock called on link click. Shows 'Email sent' on success",
+          "Password field NOT rendered when account is locked",
+          "API returns 401 with attemptsRemaining ≤ 2: show 'Forgot password?' link inline",
+          "All strings use i18n keys (R2)"
+        ],
+        "rdRequired": false
+      },
+      {
+        "id": "UI-SHELL-GAP01-SETUP",
+        "title": "ConnectionStatusBar + offline state setup",
+        "estimate": "0.5d",
+        "files": ["src/components/shell/ConnectionStatusBar.tsx", "src/hooks/index.ts"],
+        "acceptance": [
+          "4px strip at top of viewport: invisible when online, gray when navigator.onLine false",
+          "useOnlineStatus hook: isOnline, showOfflineBanner (fires after 30s offline)",
+          "Yellow dismissible banner after 30s offline: uses i18n key K.offlineBanner",
+          "2-second green 'Back online' flash on reconnect"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Sidebar collapses to icon strip and preference persists across page reload",
+      "GET /api/v1/issues?severity=error&status=open count appears correctly in Issues badge",
+      "Login with wrong credentials 5× → account locked screen shown with masked email",
+      "Disable wifi in browser devtools → gray connection strip appears immediately",
+      "axe-core passes zero violations on /login and /(app)/home pages"
+    ]
+  },
+  {
+    "sprintId": "P5-S1",
+    "title": "Product List · Product Detail · Completeness · Media Upload",
+    "durationWeeks": 1.5,
+    "prerequisite": "FOUNDATION",
+    "tasks": [
+      {
+        "id": "UI-CAT-01",
+        "title": "Product list with completeness ring and channel badges",
+        "estimate": "1d",
+        "files": ["src/app/(app)/catalog/page.tsx", "src/components/ui/CompletenessRing.tsx", "src/components/ui/StatusBadge.tsx"],
+        "acceptance": [
+          "Fetches GET /api/v1/products with cursor pagination, default 50 rows (R5)",
+          "CompletenessRing SVG arc with role='img' and aria-label per R10. Score text inside arc.",
+          "Click ring → opens CompletenessBreakdownPanel slide-over",
+          "Channel badges per ConnectorSlug. Multi-account: show highest severity (REJECTED>PENDING>WARNING>SUCCESS). Tooltip shows per-account breakdown when installationCount > 1",
+          "PENDING badges use animate-pulse-badge class (R9). Badge auto-refresh every 15s while any PENDING",
+          "Badge 'not connected' when no installation exists for that connector",
+          "Add Product toolbar button shows amber badge when skus >= 80% of plan limit from usePlanUsage",
+          "Loading: skeleton rows (8). Empty: EmptyStatePanel. Error: retryable banner"
+        ]
+      },
+      {
+        "id": "UI-CAT-02",
+        "title": "Filter drawer with URL persistence",
+        "estimate": "0.5d",
+        "files": ["src/components/ui/FilterDrawer.tsx"],
+        "acceptance": [
+          "All active filters in URL query params (shareable link)",
+          "Filter drawer: slides from right on mobile, inline on desktop",
+          "Filter chip strip below toolbar: active filters with individual × close",
+          "Filters: search text, category multi-select, status, completeness range slider with presets (<50, 50–79, ≥80), missing image toggle, channel readiness, has issues toggle, recently updated, submission status"
+        ]
+      },
+      {
+        "id": "UI-MED-01",
+        "title": "Media library page",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/media/page.tsx"],
+        "acceptance": [
+          "Grid/list view toggle. Upload CTA prominent.",
+          "Asset detail drawer: dimensions, file size, mimeType, cdnUrl, checksum, upload date",
+          "Cursor-based pagination (R5)",
+          "Cloudflare CDN warning if asset lastVerifiedAt > 24h old"
+        ]
+      },
+      {
+        "id": "UI-PD-01",
+        "title": "Product detail header with save and offline state",
+        "estimate": "1d",
+        "files": ["src/app/(app)/catalog/[id]/page.tsx"],
+        "acceptance": [
+          "Header is sticky (z-index above tabs)",
+          "Inline title editing: click text → input, blur/enter triggers save",
+          "⌘S keyboard shortcut triggers save",
+          "Save states: idle button → 'Saving…' spinner → 'Saved ✓' (2s) → idle. On error: 'Save failed — retry' button (R11)",
+          "Offline + unsaved changes: 'Offline — will save on reconnect' state. Auto-retry on reconnect (useOnlineStatus hook)",
+          "React Router useBlocker: prompt 'You have unsaved changes' on navigate-away when isDirty (useUnsavedChanges hook)",
+          "Channel badges in header poll every 10s while PENDING. Pulse animation (R9)"
+        ]
+      },
+      {
+        "id": "UI-PD-02",
+        "title": "Overview tab with completeness blockers panel",
+        "estimate": "0.5d",
+        "files": ["src/components/product/OverviewTab.tsx", "src/components/product/CompletenessBreakdownPanel.tsx"],
+        "acceptance": [
+          "All core fields: title, description, brand, category picker, hsnCode, gstRate select, mrp, sellingPrice, colour, size",
+          "mrp >= sellingPrice validation, hsnCode 6 or 8 numeric digits, title max 200 chars",
+          "CompletenessBreakdownPanel: fields sorted by potential score gain desc. Each missing field has Fix link (scroll or tab switch)",
+          "Field weights from COMPLETENESS.weights in tokens.ts"
+        ]
+      },
+      {
+        "id": "UI-PD-03",
+        "title": "Media tab with cloud upload",
+        "estimate": "0.5d",
+        "files": ["src/components/product/MediaTab.tsx"],
+        "acceptance": [
+          "Drag-reorder: reorder updates Product.mainImageId when slot 0 changes",
+          "Upload via POST /api/v1/media/upload multipart with progress bar",
+          "Client-side validation: JPEG/PNG/WebP only, max 10MB before upload",
+          "After upload: poll GET /api/v1/media/:id until cdnUrl present",
+          "Connector rules shown as info chips: Amazon 1000×1000 min, Flipkart 500×500, Meesho 800×800 square",
+          "HTTP 402 on upload → PlanLimitModal (R6)"
+        ]
+      },
+      {
+        "id": "UI-PD-06",
+        "title": "CompletenessRing accessibility (fix during initial build)",
+        "estimate": "2h",
+        "files": ["src/components/ui/CompletenessRing.tsx"],
+        "acceptance": [
+          "role='img' on SVG. aria-label: 'Completeness: {score} out of 100. {Good/Needs work/Incomplete}.' (R10)",
+          "Product list row: visually hidden <span class='sr-only'> alongside ring with same text",
+          "Clickable ring in product detail header: wrapped in <button> with aria-label 'Open completeness breakdown. Score: {score} out of 100.'",
+          "Product detail header shows text label below ring: '85% · Good' / '62% · Needs work' / '34% · Incomplete'",
+          "axe-core zero violations on product list and product detail pages"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "GET /api/v1/products with 100 seeded products: list renders in <300ms, correct channel badges shown",
+      "CompletenessRing: screen reader reads 'Completeness: 85 out of 100. Good.' on product list row",
+      "Edit product title, navigate away → 'You have unsaved changes' prompt appears",
+      "Disable wifi, edit field, click Save → 'Offline — will save on reconnect' shown. Re-enable wifi → saves automatically",
+      "Upload image > 10MB → client-side error before request sent",
+      "axe-core passes zero violations on /catalog and /catalog/[id]"
+    ]
+  },
+  {
+    "sprintId": "P5-S2",
+    "title": "Channels Overview · Connector Install Flows · Connector Audit",
+    "durationWeeks": 1.5,
+    "prerequisite": "P5-S1",
+    "tasks": [
+      {
+        "id": "UI-CH-01",
+        "title": "Connector overview with live status badges",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/channels/page.tsx"],
+        "acceptance": [
+          "Fetches GET /api/v1/connectors/installed. Polls every 30s",
+          "One ConnectorCard per installation (not per slug) when multi-account exists",
+          "CREDENTIAL_EXPIRED: amber border, prominent Reconnect CTA",
+          "Capability chips from ConnectorInstalled.capabilities",
+          "ONDC card: greyed-out 'Coming soon' with 'Architecture in progress' tooltip. No Connect CTA.",
+          "Submission success rate from GET /api/v1/submissions/stats?installationId={id}&days=30"
+        ]
+      },
+      {
+        "id": "UI-CH-04",
+        "title": "Multi-account badge state (must be built before badge component finalised)",
+        "estimate": "0.5d",
+        "files": ["src/components/ui/ConnectorCard.tsx", "src/components/ui/StatusBadge.tsx"],
+        "acceptance": [
+          "ChannelBadge.installationCount > 1: badge shows highest severity from BADGE_SEVERITY map in tokens.ts",
+          "Hover tooltip on multi-account badge: shows per-account status breakdown using accountAlias as label",
+          "Product list channel badge: severity ranking applied. Single installation: unchanged behavior",
+          "Channels overview: ConnectorCard shows accountAlias badge when multiple installations exist for same slug",
+          "Product detail Channels tab: segmented tabs per installation when count > 1. Default active tab = most severe status"
+        ]
+      },
+      {
+        "id": "UI-CH-02",
+        "title": "Amazon OAuth install flow (5 steps)",
+        "estimate": "1d",
+        "files": ["src/app/(app)/channels/[slug]/page.tsx", "src/components/channels/OAuthInstallFlow.tsx"],
+        "acceptance": [
+          "Step 1–2: informational. 'Start connection' calls GET /api/v1/auth/amazon/start",
+          "Step 3: opens Amazon consent URL in new tab. Parent polls GET /api/v1/connectors/installed until ACTIVE or 5min timeout",
+          "Step 4: auto-handled. 'Verifying credentials…' spinner",
+          "Step 5 success: masked sellerId, ACTIVE badge, 'Validate a product' next steps",
+          "Step 5 failure: error reason from failureReason field, 'Try again' button",
+          "CSRF state param verified server-side. UI surfaces error if state mismatch."
+        ]
+      },
+      {
+        "id": "UI-CH-03",
+        "title": "Meesho credential form (not OAuth)",
+        "estimate": "0.5d",
+        "files": ["src/components/channels/MeeshoSetupForm.tsx"],
+        "acceptance": [
+          "'Test connection' calls POST /api/v1/connectors/meesho/test-credentials with { merchantId, secretKey }",
+          "On success: calls POST /api/v1/connectors/meesho/install. Shows ACTIVE state.",
+          "Capability strip explicitly omits PUBLISH chip",
+          "Inline note uses K.meeshoCapNote i18n key. Never mentions 'Publish'."
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Install Amazon connector: OAuth flow completes, installation shows ACTIVE status",
+      "Two Amazon accounts installed: channels page shows two separate ConnectorCards with different accountAlias labels",
+      "Product list badge for two-account Amazon with PENDING (India) + SUCCESS (UAE): badge shows PENDING",
+      "Meesho capability strip contains VALIDATE and EXCEL_EXPORT. PUBLISH chip is absent.",
+      "axe-core zero violations on /channels and /channels/[slug]"
+    ]
+  },
+  {
+    "sprintId": "P5-S3",
+    "title": "Product Channels Tab · Per-Channel Readiness · Issue Inbox",
+    "durationWeeks": 1.5,
+    "prerequisite": "P5-S2",
+    "tasks": [
+      {
+        "id": "UI-PD-04",
+        "title": "Channels tab connector cards",
+        "estimate": "1d",
+        "files": ["src/components/product/ChannelsTab.tsx"],
+        "acceptance": [
+          "One ConnectorCard per installed connector. Uninstalled shown as dimmed 'Connect' card",
+          "Per-channel readiness score from productDetail.channelReadiness[]. Arc + '{score}%' label below (same ring design as CompletenessRing)",
+          "SourceLabel visible on readiness score: LIVE_API / LOCAL_RULES / NOT_VALIDATED (R8)",
+          "Meesho: 'Generate export file' CTA only. Never 'Publish' (R4)",
+          "Reconnect CTA: calls GET /api/v1/auth/{connectorSlug}/start and redirects",
+          "Multi-account: segmented tabs per installation. Default active = most severe status"
+        ]
+      },
+      {
+        "id": "UI-ISS-01",
+        "title": "Issue inbox table",
+        "estimate": "1d",
+        "files": ["src/app/(app)/issues/page.tsx"],
+        "acceptance": [
+          "Fetches GET /api/v1/issues with cursor pagination. Default: severity=error, status=open",
+          "IssueChip renders sellerMessage. Raw code in tooltip only (R3)",
+          "SourceLabel on every row (R8)",
+          "'Jump to field' constructs deep link /catalog/{productId}?tab=attributes&field={fieldPath}",
+          "Mark resolved: PATCH /api/v1/issues/{id} { status: 'resolved' }. Row animates out.",
+          "Filters: severity, connector, field path search, source, status, category"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Product with Amazon LIVE_API validation: SourceLabel shows 'Live API' on Channels tab readiness score",
+      "Product with two Amazon installations: Channels tab shows segmented tabs. Most severe active by default.",
+      "Issue inbox: click 'Jump to field' for hsnCode error → opens product detail at Attributes tab with hsnCode field focused",
+      "Issue inbox: raw Amazon error code (e.g. INVALID_ATTRIBUTE_VALUE_WITH_CONTEXT) never visible in message column. Appears in tooltip only.",
+      "axe-core zero violations on /issues and /catalog/[id] Channels tab"
+    ]
+  },
+  {
+    "sprintId": "P5-S4",
+    "title": "Meesho Export Flow · Submission List · Submission Detail",
+    "durationWeeks": 2,
+    "prerequisite": "P5-S3",
+    "tasks": [
+      {
+        "id": "UI-CAT-03",
+        "title": "Bulk action bar",
+        "estimate": "0.5d",
+        "files": ["src/components/catalog/BulkActionBar.tsx"],
+        "acceptance": [
+          "Mounts at bottom of viewport when selection >= 1",
+          "'N products selected' count with deselect all ×",
+          "Bulk edit modal: optional field overrides. Blank = no change for that field",
+          "Export to Meesho: opens MeeshoExportFlow with selected product IDs"
+        ]
+      },
+      {
+        "id": "UI-MEE-01",
+        "title": "Meesho export flow with partial success state",
+        "estimate": "1d",
+        "files": ["src/components/meesho/MeeshoExportFlow.tsx", "src/components/ui/InstructionAccordion.tsx"],
+        "acceptance": [
+          "Step 1: product selection with count",
+          "Step 2 (POST /api/v1/connectors/meesho/export): export summary BEFORE download button",
+          "Summary: '{n} products included · {m} excluded'. Excluded list with reason + 'Fix →' deep link per product",
+          "Fix links: /catalog/{productId}?tab=overview&field={fieldName}",
+          "'Download {n} products' primary CTA (green). 'Cancel — fix all first' secondary.",
+          "If 0 excluded: skip summary step, go directly to download",
+          "If 0 included: no download button. 'No products can be exported. Fix the issues below first.'",
+          "Step 3: InstructionAccordion with 4-step Supplier Panel upload guide",
+          "HTTP 402 on export call → PlanLimitModal (R6). Never generic toast.",
+          "All Meesho CTAs use K.meeshoGenerateExport. Never say 'Publish' (R4)"
+        ]
+      },
+      {
+        "id": "UI-SUB-01",
+        "title": "Submission list with real-time PENDING updates",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/submissions/page.tsx"],
+        "acceptance": [
+          "Cursor pagination (R5). Filters: connector, type, status, date range, product search, has errors, source",
+          "PENDING rows: spinner in status badge cell. Auto-poll every 10s for PENDING subset.",
+          "Row click: DetailDrawer on right (no page nav)",
+          "Amazon ASIN in externalRef: links to Amazon Seller Central"
+        ]
+      },
+      {
+        "id": "UI-PD-05",
+        "title": "Product detail submissions tab timeline",
+        "estimate": "0.5d",
+        "files": ["src/components/product/SubmissionsTab.tsx"],
+        "acceptance": [
+          "GET /api/v1/submissions?productId={id} sorted by submittedAt desc",
+          "Expandable row: payloadSnapshot read-only JSON viewer with syntax highlight",
+          "Attempt number badge when attemptNumber > 1",
+          "IssueChip components using sellerMessage only (R3)",
+          "If payloadSnapshot.truncated: show 'Full payload stored externally' link to snapshotUrl"
+        ]
+      },
+      {
+        "id": "UI-SUB-02",
+        "title": "Submission detail drawer",
+        "estimate": "0.5d",
+        "files": ["src/components/submissions/SubmissionDetailDrawer.tsx"],
+        "acceptance": [
+          "PayloadSnapshot in read-only JSON code block with syntax highlighting",
+          "Channel errors as IssueChip (sellerMessage + fieldPath). Raw codes in tooltip only (R3)",
+          "Attempt timeline with idempotencyKey (truncated)",
+          "'Re-submit' button on REJECTED and ERROR: calls POST /api/v1/marketplace/export-job",
+          "HTTP 402 on re-submit → PlanLimitModal (R6)"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Export 10 products where 3 are missing category: Step 2b summary shows '7 included · 3 excluded'. Fix links navigate to correct product+field.",
+      "Export 0 includable products: download button not rendered",
+      "Submission list PENDING row: pulse animation shown. Auto-updates to SUCCESS within 60s when backend resolves.",
+      "Submission detail: no raw error codes visible in channel errors panel. All text uses sellerMessage.",
+      "axe-core zero violations on /submissions and Meesho export modal"
+    ]
+  },
+  {
+    "sprintId": "P5-S5",
+    "title": "Notifications · Home Dashboard · Plan Limits UI · Settings Plan",
+    "durationWeeks": 1.5,
+    "prerequisite": "P5-S4",
+    "tasks": [
+      {
+        "id": "UI-NOT-01",
+        "title": "In-app notification panel",
+        "estimate": "0.5d",
+        "files": ["src/components/shell/NotificationPanel.tsx", "src/components/ui/NotificationToast.tsx"],
+        "acceptance": [
+          "Bell icon in TopBar with unread count badge. Click opens slide-over panel.",
+          "PLAN_LIMIT_WARNING: amber ⚠ icon. Dismissible. Action 'View plan' → /settings/plan",
+          "PLAN_LIMIT_REACHED: red ✕ icon. NOT dismissible until plan upgraded or usage drops.",
+          "CONSENT_REQUIRED: blue 🔒 icon. NOT dismissible. Sticky at TOP of panel. Blocks page until re-consent given. (R17)",
+          "Standard events (rejection, credential expiry): dismissible, action links"
+        ]
+      },
+      {
+        "id": "UI-HOME-01",
+        "title": "Home readiness summary strip",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/home/page.tsx", "src/components/home/ReadinessStrip.tsx"],
+        "acceptance": [
+          "Fetches GET /api/v1/dashboard/readiness. Polls every 60s.",
+          "Three cards: Amazon · Flipkart · Meesho. Each: ready (green), blocked (red), pending (indigo) counts",
+          "Meesho card: no pending count (export-only). Shows 'Export-ready' and 'Blocked' only",
+          "notConnected: true → dimmed card with 'Connect {name}' CTA → navigates to /channels",
+          "Count chips: asOf tooltip shows relative time ('as of 2 minutes ago')",
+          "Plan limit >80% for submissions: amber 'Nearing limit' chip with /settings/plan link"
+        ]
+      },
+      {
+        "id": "UI-HOME-02",
+        "title": "Home attention needed panel",
+        "estimate": "0.5d",
+        "files": ["src/components/home/AttentionPanel.tsx"],
+        "acceptance": [
+          "Priority-ordered list: expired credentials, rejected listings, blocked products, failed bulk jobs",
+          "Plan limit ≥80% for any resource: prepended at priority 0 with amber icon",
+          "CONSENT_REQUIRED: prepended as non-dismissible red item at priority -1",
+          "Panel hidden when no action items",
+          "Each item is a link to the relevant page/action"
+        ]
+      },
+      {
+        "id": "UI-PLAN-01",
+        "title": "Plan limit 402 handling + upgrade flow",
+        "estimate": "1d",
+        "files": ["src/components/billing/PlanLimitModal.tsx", "src/hooks/index.ts", "src/components/catalog/ProductListToolbar.tsx", "src/components/media/MediaUploadZone.tsx"],
+        "acceptance": [
+          "PlanLimitModal registered in root (app)/layout.tsx via registerPlanLimitHandler()",
+          "POST /api/v1/products returns 402 → PlanLimitModal shown. Never generic toast. (R6)",
+          "'Upgrade plan' → /settings/plan. 'Maybe later' → dismiss, action cancelled.",
+          "Product list toolbar: amber badge on 'Add product' when skus ≥ 80% of limit. Tooltip: '{current} of {limit} SKUs used'",
+          "Media upload zone: warning banner when storageGb > 90% of limit",
+          "usePlanUsage hook fetches GET /api/v1/billing/usage on mount, caches 5 min"
+        ]
+      },
+      {
+        "id": "UI-SET-02",
+        "title": "Plan & usage meters (moved from P6-S3)",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/settings/plan/page.tsx"],
+        "acceptance": [
+          "Fetches GET /api/v1/billing/usage via usePlanUsage hook (no duplicate fetch)",
+          "Progress bars for: SKUs, submissions, storageGb, users. Color: green <80%, amber 80–95%, red >95%",
+          "Billing cycle reset date: 'Resets on {date}' below submissions meter",
+          "Upgrade CTA visible when ANY meter ≥ 80%",
+          "Upgrade CTA links to /settings/plan (internal). External pricing URL is on that page itself.",
+          "Enterprise plan: no limits shown. 'Unlimited' label."
+        ]
+      },
+      {
+        "id": "UI-SET-03",
+        "title": "Notifications settings — plan and DPDP event types",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/settings/notifications/page.tsx"],
+        "acceptance": [
+          "PLAN_LIMIT_WARNING row: toggleable on/off",
+          "PLAN_LIMIT_REACHED row: 🔒 icon, cannot be disabled",
+          "CONSENT_REQUIRED row: 🔒 icon, cannot be disabled",
+          "Toggle calls PATCH /api/v1/notifications/preferences/{type}"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "CONSENT_REQUIRED notification: cannot be dismissed. Sticky at top of notification panel.",
+      "POST /api/v1/products returns 402: PlanLimitModal shown with correct resource name. No toast appears.",
+      "Plan usage page: progress bars correct for SMOKE tenant. Resets date shown.",
+      "Home readiness strip: Amazon card shows 'Connect Amazon' when no installation exists.",
+      "axe-core zero violations on /home and /settings/plan"
+    ]
+  },
+  {
+    "sprintId": "PRE_GROWTH",
+    "title": "DPDP Consent · Data Export · Account Erasure",
+    "durationWeeks": 1,
+    "prerequisite": "P5-S5",
+    "notes": "LEGAL REQUIREMENT. Must ship before Growth tier self-serve is enabled.",
+    "tasks": [
+      {
+        "id": "UI-DPDP-01",
+        "title": "Consent screen at onboarding",
+        "estimate": "1d",
+        "files": ["src/app/onboarding/page.tsx", "src/components/onboarding/ConsentStep.tsx"],
+        "acceptance": [
+          "Full-page step (not modal). Step label: 'Data & Privacy'",
+          "Three plain-English paragraphs: what we collect, how we use it, your rights. NO legalese.",
+          "Checkbox UNCHECKED by default (R16). 'Continue to PIM1' disabled until ticked.",
+          "'I don't consent — delete my account' link visible. Calls DELETE /api/v1/account on confirm. Redirects to /goodbye.",
+          "On consent: POST /api/v1/auth/consent with { consentVersion: N }",
+          "consentRequired: true in auth response → redirect to consent step regardless of nav target (R17)",
+          "Font size ≥ 14px, line-height ≥ 1.6 on consent text",
+          "All strings use i18n keys (R2). Hindi translation required for Phase 7."
+        ]
+      },
+      {
+        "id": "UI-DPDP-02",
+        "title": "Data export and account erasure in Settings",
+        "estimate": "1d",
+        "files": ["src/app/(app)/settings/privacy/page.tsx", "src/components/settings/DeleteAccountModal.tsx"],
+        "acceptance": [
+          "'Data & Privacy' nav item in Settings sidebar between Notifications and Plan & Usage",
+          "'Export my data' button → POST /api/v1/account/export. Button becomes 'Export in progress…' on 202.",
+          "Inline note: 'We'll email you a download link within 30 minutes'",
+          "Last export timestamp shown if exists",
+          "'Delete my account' → opens DeleteAccountModal",
+          "Modal: type-to-confirm email field. Delete button disabled until email matches exactly (case-sensitive). (R16)",
+          "On confirm DELETE /api/v1/account: show 'Deletion scheduled by {completesBy}'. User NOT logged out.",
+          "Consent record shown: 'You consented on {date} (version {N})'. Link to policy.",
+          "All strings use i18n keys (R2)"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Complete onboarding without ticking consent checkbox: 'Continue' button remains disabled",
+      "Tick checkbox + continue: POST /api/v1/auth/consent called. Navigates to /home.",
+      "'I don't consent' → confirmation modal → DELETE /api/v1/account called → redirected to /goodbye",
+      "Delete account modal: type wrong email → delete button stays disabled. Type correct email → enabled.",
+      "axe-core zero violations on /onboarding and /settings/privacy"
+    ]
+  },
+  {
+    "sprintId": "P6-S1",
+    "title": "Bulk Import · Job Center · Connector Health Dashboard",
+    "durationWeeks": 2,
+    "prerequisite": "PRE_GROWTH",
+    "tasks": [
+      {
+        "id": "UI-BULK-01",
+        "title": "Import flow with column mapping",
+        "estimate": "1.5d",
+        "files": ["src/app/(app)/bulk/page.tsx", "src/components/bulk/ImportFlow.tsx"],
+        "acceptance": [
+          "Step 1: CSV/Excel upload with column preview",
+          "Step 2: column mapping UI — map uploaded columns to PIM1 fields",
+          "Step 3: validation preview — highlight rows with errors",
+          "Step 4: submit POST /api/v1/bulk/import. Shows job ID.",
+          "HTTP 402 on import → PlanLimitModal (R6)"
+        ]
+      },
+      {
+        "id": "UI-BULK-02",
+        "title": "Job center and DLQ visibility",
+        "estimate": "1d",
+        "files": ["src/components/bulk/JobCenter.tsx"],
+        "acceptance": [
+          "Running jobs: progress bar with % complete. Polls every 5s.",
+          "Completed jobs today: count + summary",
+          "Failed rows: count with 'Repair' link → opens failed row detail",
+          "DLQ visibility: if backend exposes dead letter queue size, show count with amber badge"
+        ]
+      },
+      {
+        "id": "UI-INS-01",
+        "title": "Connector health dashboard",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/insights/page.tsx", "src/components/insights/ConnectorHealthDashboard.tsx"],
+        "acceptance": [
+          "Success rate % last 30 days per connector",
+          "Recent failures count (last 24h) with links to filtered submission list",
+          "Webhook lag p95 (Amazon only, if webhook active)",
+          "Credential status row: green/amber/red per connector"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Upload CSV with 50 rows: column mapping step renders. 5 rows with errors highlighted in preview.",
+      "Submit import job: job appears in Job Center with progress bar.",
+      "Connector health dashboard shows correct success rate from real submission data."
+    ]
+  },
+  {
+    "sprintId": "P6-S2",
+    "title": "Rejection Intelligence Panel",
+    "durationWeeks": 2.5,
+    "prerequisite": "P6-S1",
+    "tasks": [
+      {
+        "id": "UI-INS-02",
+        "title": "Rejection intelligence panel",
+        "estimate": "1.5d",
+        "files": ["src/components/insights/RejectionIntelligencePanel.tsx"],
+        "acceptance": [
+          "Panel hidden until submissionCount >= 500 (not 50). Shows 'Not enough data yet. You have {N} submissions so far.' below threshold.",
+          "Each rejection pattern row shows SourceLabel. Never hide HISTORICAL_DATA vs HEURISTIC_FALLBACK. (R8)",
+          "Confidence label from API response.confidence field: 500–1999 = amber 'Early data', 2000–4999 = none, 5000+ = green 'High confidence'",
+          "HEURISTIC_FALLBACK rows show tooltip: 'This estimate is based on general rules, not your actual rejections.'",
+          "Threshold constant (500) defined in tokens.ts or config — never magic number in component"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "With 400 submissions: rejection panel shows 'Not enough data' message with count",
+      "With 600 submissions: panel shows rejection patterns with SourceLabel on each",
+      "With 600 submissions: confidence label shows 'Early data' in amber",
+      "HEURISTIC_FALLBACK source: tooltip visible on hover with correct text"
+    ]
+  },
+  {
+    "sprintId": "P6-S3",
+    "title": "Version History · Workflow Gating · Settings Cleanup",
+    "durationWeeks": 2,
+    "prerequisite": "P6-S2",
+    "tasks": [
+      {
+        "id": "UI-SET-01",
+        "title": "Notifications configuration page",
+        "estimate": "0.5d",
+        "files": ["src/app/(app)/settings/notifications/page.tsx"],
+        "acceptance": [
+          "List all notification event types with toggle",
+          "PLAN_LIMIT_REACHED and CONSENT_REQUIRED: locked (cannot disable). 🔒 icon shown.",
+          "Toggle calls PATCH /api/v1/notifications/preferences/{type}"
+        ]
+      },
+      {
+        "id": "UI-HISTORY-01",
+        "title": "Version history tab (P6-S3)",
+        "estimate": "1.5d",
+        "files": ["src/components/product/HistoryTab.tsx", "src/components/ui/DiffViewer.tsx"],
+        "acceptance": [
+          "Version list: version number, actor name, timestamp, changed fields count",
+          "Click version → DiffViewer: side-by-side old/new per field",
+          "Rollback button on non-current versions (requires ADMIN role or workflow approval)",
+          "DiffViewer highlights added/removed/changed text"
+        ]
+      },
+      {
+        "id": "UI-WORKFLOW-01",
+        "title": "Workflow gating tab (P6-S3, optional per tenant)",
+        "estimate": "1d",
+        "files": ["src/components/product/WorkflowTab.tsx"],
+        "acceptance": [
+          "Only shown if workflow gating enabled in tenant settings",
+          "Status chip: Draft / In Review / Approved",
+          "Comments thread, approve/reject buttons (ADMIN only)",
+          "Publish CTA locked (with lock badge) when status !== Approved and workflow enabled"
+        ]
+      }
+    ],
+    "gateCheck": [
+      "Edit product title 3 times: version history shows 3 entries. Rollback to v1 restores original title.",
+      "DiffViewer shows old/new values side by side for a multi-field edit.",
+      "Workflow enabled: Publish CTA shows lock badge for EDITOR role when status = DRAFT."
+    ]
+  }
+]

@@ -1,0 +1,122 @@
+﻿diff --git a/db/01-schema.sql b/db/01-schema.sql
+index 7122a97..566736f 100644
+--- a/db/01-schema.sql
++++ b/db/01-schema.sql
+@@ -881,6 +881,77 @@ CREATE TABLE IF NOT EXISTS connector_configs (
+   UNIQUE (tenant_id, connector_slug)
+ );
+ 
++CREATE TABLE IF NOT EXISTS connector_mapping_versions (
++  id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  tenant_id                    UUID REFERENCES tenants(id) ON DELETE CASCADE,
++  connector_slug               TEXT NOT NULL,
++  category_scope               TEXT NOT NULL DEFAULT '*',
++  mapping_level                TEXT NOT NULL CHECK (
++    mapping_level IN (
++      'connector_default_template',
++      'tenant_connector_default',
++      'tenant_connector_category_mapping'
++    )
++  ),
++  lifecycle_state              TEXT NOT NULL DEFAULT 'draft' CHECK (
++    lifecycle_state IN ('draft', 'validated', 'published', 'superseded', 'archived')
++  ),
++  connector_definition_id      TEXT NOT NULL,
++  connector_definition_version TEXT NOT NULL,
++  compatibility_state          TEXT NOT NULL DEFAULT 'compatible' CHECK (
++    compatibility_state IN ('compatible', 'deprecated', 'remap_required', 'blocked')
++  ),
++  mapping_rules                JSONB NOT NULL DEFAULT '{}'::jsonb,
++  fallback_policy              JSONB NOT NULL DEFAULT '{}'::jsonb,
++  fallback_ack_required        BOOLEAN NOT NULL DEFAULT false,
++  published_at                 TIMESTAMPTZ,
++  superseded_by                UUID REFERENCES connector_mapping_versions(id),
++  created_by                   UUID REFERENCES users(id),
++  created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++  archived_at                  TIMESTAMPTZ
++);
++
++ALTER TABLE connector_mapping_versions DROP CONSTRAINT IF EXISTS connector_mapping_versions_scope_check;
++ALTER TABLE connector_mapping_versions
++  ADD CONSTRAINT connector_mapping_versions_scope_check
++  CHECK (
++    (
++      mapping_level = 'connector_default_template'
++      AND tenant_id IS NULL
++      AND category_scope = '*'
++    )
++    OR (
++      mapping_level = 'tenant_connector_default'
++      AND tenant_id IS NOT NULL
++      AND category_scope = '*'
++    )
++    OR (
++      mapping_level = 'tenant_connector_category_mapping'
++      AND tenant_id IS NOT NULL
++      AND category_scope <> '*'
++    )
++  );
++
++CREATE TABLE IF NOT EXISTS connector_mapping_events (
++  id                 BIGSERIAL PRIMARY KEY,
++  tenant_id          UUID REFERENCES tenants(id) ON DELETE CASCADE,
++  mapping_version_id UUID NOT NULL REFERENCES connector_mapping_versions(id) ON DELETE CASCADE,
++  event_type         TEXT NOT NULL CHECK (
++    event_type IN (
++      'created',
++      'validated',
++      'published',
++      'superseded',
++      'archived',
++      'resolution_evaluated'
++    )
++  ),
++  actor_id           UUID REFERENCES users(id),
++  metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
++  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
+ CREATE TABLE IF NOT EXISTS connector_metrics (
+   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+   tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+@@ -945,6 +1016,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs (action, created_at DE
+ CREATE INDEX IF NOT EXISTS idx_audit_expires_at ON audit_logs (expires_at) WHERE expires_at IS NOT NULL;
+ CREATE INDEX IF NOT EXISTS idx_jwt_signing_keys_type_status ON jwt_signing_keys (key_type, status, created_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_connector_configs_tenant_slug ON connector_configs (tenant_id, connector_slug);
++CREATE UNIQUE INDEX IF NOT EXISTS uq_connector_mapping_published_tenant_scope
++  ON connector_mapping_versions (tenant_id, connector_slug, category_scope)
++  WHERE tenant_id IS NOT NULL AND lifecycle_state = 'published';
++CREATE UNIQUE INDEX IF NOT EXISTS uq_connector_mapping_published_template_scope
++  ON connector_mapping_versions (connector_slug)
++  WHERE tenant_id IS NULL AND mapping_level = 'connector_default_template' AND lifecycle_state = 'published';
++CREATE INDEX IF NOT EXISTS idx_connector_mapping_lookup
++  ON connector_mapping_versions (tenant_id, connector_slug, category_scope, lifecycle_state, created_at DESC);
++CREATE INDEX IF NOT EXISTS idx_connector_mapping_compatibility
++  ON connector_mapping_versions (tenant_id, connector_slug, compatibility_state, lifecycle_state, created_at DESC);
++CREATE INDEX IF NOT EXISTS idx_connector_mapping_events_tenant_time
++  ON connector_mapping_events (tenant_id, created_at DESC);
++CREATE INDEX IF NOT EXISTS idx_connector_mapping_events_version_time
++  ON connector_mapping_events (mapping_version_id, created_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_connector_metrics_recent ON connector_metrics (tenant_id, connector_id, created_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_login_history_user_recent ON login_history (tenant_id, user_id, logged_in_at DESC);
+ 
+@@ -953,6 +1038,11 @@ CREATE TRIGGER trg_connector_configs_updated_at
+ BEFORE UPDATE ON connector_configs
+ FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+ 
++DROP TRIGGER IF EXISTS trg_connector_mapping_versions_updated_at ON connector_mapping_versions;
++CREATE TRIGGER trg_connector_mapping_versions_updated_at
++BEFORE UPDATE ON connector_mapping_versions
++FOR EACH ROW EXECUTE FUNCTION update_updated_at();
++
+ DROP TRIGGER IF EXISTS trg_connector_marketplace_listings_updated_at ON connector_marketplace_listings;
+ CREATE TRIGGER trg_connector_marketplace_listings_updated_at
+ BEFORE UPDATE ON connector_marketplace_listings
+@@ -990,4 +1080,4 @@ CREATE TABLE IF NOT EXISTS alert_rules (
+ 
+ CREATE INDEX IF NOT EXISTS idx_alerts_tenant_created ON alerts (tenant_id, created_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_alerts_type_severity ON alerts (alert_type, severity, created_at DESC);
+-CREATE INDEX IF NOT EXISTS idx_alert_rules_tenant ON alert_rules (tenant_id, enabled);
+\ No newline at end of file
++CREATE INDEX IF NOT EXISTS idx_alert_rules_tenant ON alert_rules (tenant_id, enabled);

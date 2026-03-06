@@ -1,0 +1,59 @@
+﻿diff --git a/admin-ui/src/ui/OrbitShell.tsx b/admin-ui/src/ui/OrbitShell.tsx
+index 1449f77..be53b9a 100644
+--- a/admin-ui/src/ui/OrbitShell.tsx
++++ b/admin-ui/src/ui/OrbitShell.tsx
+@@ -14,6 +14,8 @@ import { OrbitConnectorsPage } from "../pages/orbit-connectors";
+ import { OrbitDashboardPage } from "../pages/orbit-dashboard";
+ import { OrbitDlqPage } from "../pages/orbit-dlq";
+ import { OrbitExecutionsPage } from "../pages/orbit-executions";
++import { OrbitMappingsPage } from "../pages/orbit-mappings";
++import { OrbitPublishReadinessPage } from "../pages/orbit-publish-readiness";
+ import { OrbitTenantsPage } from "../pages/orbit-tenants";
+ 
+ type AppTab =
+@@ -26,7 +28,9 @@ type AppTab =
+   | "tenants"
+   | "dlq"
+   | "access"
+-  | "api_keys";
++  | "api_keys"
++  | "mappings"
++  | "publish_readiness";
+ 
+ type TabDef = {
+   id: AppTab;
+@@ -41,6 +45,8 @@ const TABS: Record<UiRole, TabDef[]> = {
+     { id: "console", label: "Cmd Console" },
+     { id: "ledger", label: "Cmd Ledger" },
+     { id: "connectors", label: "Connectors" },
++    { id: "mappings", label: "Mappings", requires: ["connectors:manage"] },
++    { id: "publish_readiness", label: "Readiness", requires: ["connectors:manage"] },
+     { id: "connector_admin", label: "Conn Admin", requires: ["connectors:manage"] },
+     { id: "tenants", label: "Tenants" },
+     { id: "access", label: "Access" },
+@@ -51,6 +57,8 @@ const TABS: Record<UiRole, TabDef[]> = {
+     { id: "dashboard", label: "Dashboard" },
+     { id: "executions", label: "Executions" },
+     { id: "connectors", label: "Connectors" },
++    { id: "mappings", label: "Mappings", requires: ["connectors:manage"] },
++    { id: "publish_readiness", label: "Readiness", requires: ["connectors:manage"] },
+     { id: "tenants", label: "Tenants" },
+     { id: "api_keys", label: "API Keys", requires: ["api_keys:manage"] },
+     { id: "access", label: "Access" },
+@@ -58,6 +66,7 @@ const TABS: Record<UiRole, TabDef[]> = {
+   ],
+   connector_dev: [
+     { id: "connectors", label: "Connectors" },
++    { id: "mappings", label: "Mappings", requires: ["connectors:manage"] },
+     { id: "dashboard", label: "Dashboard" },
+   ],
+ };
+@@ -216,6 +225,8 @@ export function OrbitShell({
+         {!selectedExecutionId && activeTab === "console" ? <CommandConsole /> : null}
+         {!selectedExecutionId && activeTab === "ledger" ? <CommandLedger /> : null}
+         {!selectedExecutionId && activeTab === "connectors" ? <OrbitConnectorsPage /> : null}
++        {!selectedExecutionId && activeTab === "mappings" ? <OrbitMappingsPage /> : null}
++        {!selectedExecutionId && activeTab === "publish_readiness" ? <OrbitPublishReadinessPage /> : null}
+         {!selectedExecutionId && activeTab === "connector_admin" ? <OrbitConnectorAdminPage /> : null}
+         {!selectedExecutionId && activeTab === "tenants" ? <OrbitTenantsPage rows={executionList.data} /> : null}
+         {!selectedExecutionId && activeTab === "dlq" ? <OrbitDlqPage /> : null}

@@ -1,0 +1,12 @@
+﻿diff --git a/admin-ui/src/pages/orbit-access.tsx b/admin-ui/src/pages/orbit-access.tsx
+index 1e411d6..b569d1d 100644
+--- a/admin-ui/src/pages/orbit-access.tsx
++++ b/admin-ui/src/pages/orbit-access.tsx
+@@ -79,7 +79,6 @@ export function OrbitAccessPage() {
+     expires_at: "",
+   });
+ 
+-  const [revoke, setRevoke] = useState({ policy_id: "", reason: "" });
+   const [grantMessage, setGrantMessage] = useState<string | null>(null);
+   const [revokeMessage, setRevokeMessage] = useState<string | null>(null);
+   const [revokeReason, setRevokeReason] = useState("");

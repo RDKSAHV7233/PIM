@@ -1,0 +1,173 @@
+﻿diff --git a/tests/t31.connector-ingest-contract.integration.test.js b/tests/t31.connector-ingest-contract.integration.test.js
+index 31fbc5b..1168229 100644
+--- a/tests/t31.connector-ingest-contract.integration.test.js
++++ b/tests/t31.connector-ingest-contract.integration.test.js
+@@ -133,10 +133,12 @@ test("T31-1: canonical envelope uses event_id idempotency and deduplicates", ()
+         return { rows: [], rowCount: 1 };
+       }
+       if (query.includes("INSERT INTO connector_event_queue")) return { rows: [], rowCount: 1 };
+-      if (query.includes("INSERT INTO connector_event_idempotency")) {
++      if (query.includes("INSERT INTO connector_event_idempotency") && query.includes("RETURNING execution_id")) {
+         const key = params[1] + ":" + params[2] + ":" + params[3];
+-        if (!idempotency.has(key)) idempotency.set(key, params[4]);
+-        return { rows: [], rowCount: 1 };
++        const existing = idempotency.get(key);
++        if (existing) return { rows: [{ execution_id: existing }], rowCount: 1 };
++        idempotency.set(key, params[4]);
++        return { rows: [{ execution_id: params[4] }], rowCount: 1 };
+       }
+       if (query.includes("SELECT id, tenant_id, connector_id, status, payload")) {
+         const row = executions.get(params[0]) || null;
+@@ -199,6 +201,152 @@ test("T31-1: canonical envelope uses event_id idempotency and deduplicates", ()
+   expect(result.stdout).toContain("ok");
+ });
+ 
++test("T31-1b: canonical envelope rejects unknown fields", () => {
++  const result = runTsxInline(`
++    import { createRequire } from "module";
++    import { randomUUID } from "crypto";
++    const require = createRequire(process.cwd() + "/package.json");
++    const express = require("express");
++    const cookieParser = require("cookie-parser");
++    const { authDb } = require(process.cwd() + "/src/auth/db.ts");
++    const { hashApiKey } = require(process.cwd() + "/src/auth/crypto.ts");
++    const { protectedRouter } = require(process.cwd() + "/src/auth/protected-routes.ts");
++
++    const tenantId = randomUUID();
++    const rawApiKey = "orbit_t31_" + randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
++    const apiKeyRow = {
++      id: randomUUID(),
++      tenant_id: tenantId,
++      scopes: ["connectors:health", "connector:flipkart:events"],
++      is_active: true,
++      expires_at: null,
++      revoked_at: null,
++      replaced_by: null,
++      overlap_expires_at: null,
++      key_prefix: rawApiKey.slice(0, 14),
++      key_hash: hashApiKey(rawApiKey),
++    };
++
++    const executions = new Map();
++    const executionEvents = new Map();
++    const idempotency = new Map();
++
++    const handleQuery = async (sql, params = []) => {
++      const query = String(sql);
++      if (query === "BEGIN" || query === "COMMIT" || query === "ROLLBACK") return { rows: [], rowCount: 0 };
++      if (query.includes("FROM api_keys") && query.includes("WHERE key_prefix=$1 AND key_hash=$2")) {
++        if (params[0] === apiKeyRow.key_prefix && params[1] === apiKeyRow.key_hash) {
++          return { rows: [apiKeyRow], rowCount: 1 };
++        }
++        return { rows: [], rowCount: 0 };
++      }
++      if (query.includes("UPDATE api_keys SET last_used_at=NOW()")) return { rows: [], rowCount: 1 };
++      if (query.includes("SELECT execution_id") && query.includes("FROM connector_event_idempotency")) {
++        const key = params[0] + ":" + params[1] + ":" + params[2];
++        const executionId = idempotency.get(key);
++        if (!executionId) return { rows: [], rowCount: 0 };
++        return { rows: [{ execution_id: executionId }], rowCount: 1 };
++      }
++      if (query.includes("FROM tenant_configs") && query.includes("WHERE tenant_id=$1")) return { rows: [], rowCount: 0 };
++      if (query.includes("FROM connector_event_queue") && query.includes("COUNT(*)::int AS depth")) return { rows: [{ depth: 0 }], rowCount: 1 };
++      if (query.includes("INSERT INTO executions") && query.includes("VALUES ($1,$2,$3,'queued'")) {
++        const row = {
++          id: params[0],
++          tenant_id: params[1],
++          connector_id: params[2],
++          status: "queued",
++          payload: params[3],
++          replay_of: params[4] ?? null,
++          retry_count: 0,
++          max_retries: params[5],
++          last_error: null,
++          created_at: new Date().toISOString(),
++        };
++        executions.set(row.id, row);
++        executionEvents.set(row.id, []);
++        return { rows: [], rowCount: 1 };
++      }
++      if (query.includes("SELECT status FROM executions") && query.includes("FOR UPDATE")) {
++        const row = executions.get(params[0]) || null;
++        if (!row) return { rows: [], rowCount: 0 };
++        return { rows: [{ status: row.status }], rowCount: 1 };
++      }
++      if (query.includes("SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq")) {
++        const rows = executionEvents.get(params[0]) || [];
++        return { rows: [{ next_seq: rows.length + 1 }], rowCount: 1 };
++      }
++      if (query.includes("INSERT INTO execution_events")) {
++        const list = executionEvents.get(params[0]) || [];
++        list.push({
++          seq: params[2],
++          event_type: params[3],
++          payload: params[4],
++          created_at: new Date().toISOString(),
++        });
++        executionEvents.set(params[0], list);
++        return { rows: [], rowCount: 1 };
++      }
++      if (query.includes("UPDATE executions") && query.includes("SET status")) return { rows: [], rowCount: 1 };
++      if (query.includes("INSERT INTO connector_event_queue")) return { rows: [], rowCount: 1 };
++      if (query.includes("INSERT INTO connector_event_idempotency") && query.includes("RETURNING execution_id")) {
++        const key = params[1] + ":" + params[2] + ":" + params[3];
++        const existing = idempotency.get(key);
++        if (existing) return { rows: [{ execution_id: existing }], rowCount: 1 };
++        idempotency.set(key, params[4]);
++        return { rows: [{ execution_id: params[4] }], rowCount: 1 };
++      }
++      if (query.includes("SELECT id, tenant_id, connector_id, status, payload")) {
++        const row = executions.get(params[0]) || null;
++        if (!row || row.tenant_id !== params[1]) return { rows: [], rowCount: 0 };
++        return { rows: [row], rowCount: 1 };
++      }
++      if (query.includes("SELECT seq, event_type, payload, created_at")) {
++        const rows = executionEvents.get(params[0]) || [];
++        return { rows, rowCount: rows.length };
++      }
++      if (query.includes("INSERT INTO audit_logs")) return { rows: [], rowCount: 1 };
++      return { rows: [], rowCount: 0 };
++    };
++
++    authDb.query = handleQuery;
++    authDb.connect = async () => ({ query: handleQuery, release() {} });
++
++    const app = express();
++    app.use(express.json({ limit: "1mb" }));
++    app.use(cookieParser());
++    app.use(protectedRouter());
++    const server = await new Promise((resolve) => {
++      const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
++    });
++    try {
++      const port = server.address().port;
++      const baseBody = {
++        connector_id: "flipkart",
++        event_type: "order.created",
++        event_id: "evt-installation-scope",
++        occurred_at: "2026-02-24T12:00:00.000Z",
++        payload: { order_id: "ORD-T31-1B" },
++        meta: { source: "flipkart", trace_id: "trace-1b", schema_version: "1" }
++      };
++
++      const one = await fetch("http://127.0.0.1:" + port + "/connectors/events", {
++        method: "POST",
++        headers: { "content-type": "application/json", "x-api-key": rawApiKey },
++        body: JSON.stringify({ ...baseBody, installation_id: "seller-a" }),
++      });
++      if (one.status !== 400) throw new Error("expected_400_for_unknown_field");
++      const firstBody = await one.json();
++      if (firstBody.error !== "invalid_request") throw new Error("wrong_error");
++      console.log("ok");
++    } finally {
++      await new Promise((resolve) => server.close(resolve));
++    }
++  `);
++
++  expectSuccess(result);
++  expect(result.stdout).toContain("ok");
++});
++
+ test("T31-2: connector-scoped key cannot ingest for different connector id", () => {
+   const result = runTsxInline(`
+     import { createRequire } from "module";

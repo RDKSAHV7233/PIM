@@ -1,0 +1,104 @@
+﻿diff --git a/admin-ui/src/lib/api.ts b/admin-ui/src/lib/api.ts
+index 9478731..4a3013d 100644
+--- a/admin-ui/src/lib/api.ts
++++ b/admin-ui/src/lib/api.ts
+@@ -97,6 +97,31 @@ type MockCircuitBreakerEvent = {
+   created_at: string;
+ };
+ 
++type MockMappingVersion = {
++  id: string;
++  tenant_id: string;
++  connector_slug: string;
++  category_scope: string;
++  mapping_level: "tenant_connector_default" | "tenant_connector_category_mapping";
++  lifecycle_state: "draft" | "validated" | "published" | "superseded" | "archived";
++  connector_definition_id: string;
++  connector_definition_version: string;
++  compatibility_state: "compatible" | "deprecated" | "remap_required" | "blocked";
++  mapping_rules: Record<string, unknown>;
++  fallback_policy: Record<string, unknown>;
++  fallback_ack_required: boolean;
++  published_at: string | null;
++  updated_at: string;
++};
++
++type MockTaxonomyNode = {
++  id: string;
++  label: string;
++  parent_id: string | null;
++  leaf: boolean;
++  required_attributes: string[];
++};
++
+ const MOCK_EXECUTIONS: MockExecution[] = [
+   {
+     id: "exe_mock_001",
+@@ -128,6 +153,7 @@ const MOCK_EXECUTIONS: MockExecution[] = [
+ let MOCK_REPLAY_COUNTER = 1;
+ let MOCK_POLICY_COUNTER = 1;
+ let MOCK_API_KEY_COUNTER = 1;
++let MOCK_MAPPING_COUNTER = 1;
+ let MOCK_CONNECTOR_CONFIG = {
+   mode: "production",
+   sync_enabled: true,
+@@ -233,6 +259,17 @@ const MOCK_BREAKERS = new Map<string, MockCircuitBreaker>([
+   ],
+ ]);
+ const MOCK_BREAKER_EVENTS = new Map<string, MockCircuitBreakerEvent[]>();
++const MOCK_MAPPINGS: MockMappingVersion[] = [];
++const MOCK_TAXONOMY: MockTaxonomyNode[] = [
++  { id: "apparel", label: "Apparel", parent_id: null, leaf: false, required_attributes: [] },
++  { id: "apparel.men", label: "Men", parent_id: "apparel", leaf: false, required_attributes: [] },
++  { id: "apparel.men.shirts", label: "Men Shirts", parent_id: "apparel.men", leaf: true, required_attributes: ["title", "brand", "size", "color"] },
++  { id: "apparel.women", label: "Women", parent_id: "apparel", leaf: false, required_attributes: [] },
++  { id: "apparel.women.dresses", label: "Women Dresses", parent_id: "apparel.women", leaf: true, required_attributes: ["title", "brand", "size", "fabric"] },
++  { id: "electronics", label: "Electronics", parent_id: null, leaf: false, required_attributes: [] },
++  { id: "electronics.mobile", label: "Mobile", parent_id: "electronics", leaf: false, required_attributes: [] },
++  { id: "electronics.mobile.accessories", label: "Mobile Accessories", parent_id: "electronics.mobile", leaf: true, required_attributes: ["title", "brand", "compatible_models"] },
++];
+ 
+ function getMockExecution(executionId: string) {
+   return MOCK_EXECUTIONS.find((row) => row.id === executionId) ?? null;
+@@ -251,6 +288,41 @@ function parseScopeCsv(input: string): string[] {
+   return out;
+ }
+ 
++function mockResolveMappings(connectorSlug: string, categoryScope: string) {
++  const published = MOCK_MAPPINGS.filter(
++    (row) =>
++      row.connector_slug === connectorSlug &&
++      row.lifecycle_state === "published" &&
++      (row.category_scope === "*" || row.category_scope === categoryScope)
++  ).sort((a, b) => {
++    const rank = (value: MockMappingVersion["mapping_level"]) =>
++      value === "tenant_connector_default" ? 1 : 2;
++    return rank(a.mapping_level) - rank(b.mapping_level);
++  });
++  const merged: Record<string, unknown> = {};
++  for (const row of published) {
++    const rules = row.mapping_rules ?? {};
++    if (rules && typeof rules === "object" && !Array.isArray(rules)) {
++      Object.assign(merged, rules);
++    }
++  }
++  const fieldMappings =
++    merged.field_mappings && typeof merged.field_mappings === "object" && !Array.isArray(merged.field_mappings)
++      ? (merged.field_mappings as Record<string, unknown>)
++      : {};
++  const overrides =
++    merged.attribute_overrides && typeof merged.attribute_overrides === "object" && !Array.isArray(merged.attribute_overrides)
++      ? (merged.attribute_overrides as Record<string, unknown>)
++      : {};
++  return {
++    published,
++    resolved: {
++      ...merged,
++      field_mappings: { ...fieldMappings, ...overrides },
++    },
++  };
++}
++
+ function mockExecutionDetail(executionId: string) {
+   const row = getMockExecution(executionId);
+   if (!row) return null;

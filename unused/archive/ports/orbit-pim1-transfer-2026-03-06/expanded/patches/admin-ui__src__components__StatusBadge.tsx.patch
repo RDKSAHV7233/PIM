@@ -1,0 +1,23 @@
+﻿diff --git a/admin-ui/src/components/StatusBadge.tsx b/admin-ui/src/components/StatusBadge.tsx
+index e6727c7..0bf7b15 100644
+--- a/admin-ui/src/components/StatusBadge.tsx
++++ b/admin-ui/src/components/StatusBadge.tsx
+@@ -85,9 +85,10 @@ export function StatusBadge(props: StatusBadgeProps) {
+       color = ALERT_SEVERITY_COLOR[value as AlertSeverity];
+       break;
+ 
+-    default:
+-      const _: never = domain;
+-      return _;
++    default: {
++      const exhaustive: never = domain;
++      return exhaustive;
++    }
+   }
+ 
+   // Shared styling: inline styles for consistency with existing design system.
+@@ -126,4 +127,3 @@ export function StatusBadge(props: StatusBadgeProps) {
+     </span>
+   );
+ }
+-

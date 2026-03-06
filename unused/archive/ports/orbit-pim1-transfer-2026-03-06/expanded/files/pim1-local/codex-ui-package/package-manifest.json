@@ -1,0 +1,27 @@
+{
+  "name": "pim1-frontend-codex-package",
+  "version": "1.0.0",
+  "description": "PIM1 frontend Codex execution package — drop into apps/web/src/ and feed ui-tasks.json one sprint at a time",
+  "files": {
+    "CODEX_UI.md": "Main instruction file — read before every sprint",
+    "ui-tasks.json": "All 37 tasks across 10 sprints with acceptance criteria and gate checks",
+    "src/lib/tokens.ts": "Design tokens — colors, badge states, thresholds. SOURCE OF TRUTH.",
+    "src/lib/utils.ts": "Utility functions — cn(), relativeTime(), maskEmail(), highestSeverity()",
+    "src/lib/auth-store.ts": "Zustand auth store — token in memory only",
+    "src/lib/logger.ts": "Logger — no-ops in production",
+    "src/api/client.ts": "Axios instance with 402, 401 refresh, 423 lockout interceptors",
+    "src/types/api.ts": "All API response types",
+    "src/i18n/keys.ts": "All i18n key constants — use K.x in every component",
+    "src/i18n/en.ts": "English string map",
+    "src/hooks/index.ts": "Core hooks: usePlanUsage, useUnsavedChanges, useOnlineStatus, useLocalStorage",
+    "src/components/ui/StatusBadge.tsx": "Semantic status badge with text label always visible",
+    "src/components/ui/CompletenessRing.tsx": "SVG completeness arc with full accessibility",
+    "src/components/ui/primitives.tsx": "SourceLabel, IssueChip, PaginatedTableFooter, EmptyStatePanel",
+    "src/components/ui/ConnectorCard.tsx": "Single source of truth for connector status display",
+    "src/components/billing/PlanLimitModal.tsx": "Global 402 handler — shown instead of error toast"
+  },
+  "sprints": 10,
+  "tasks": 37,
+  "rules": "R1–R17 in CODEX_UI.md",
+  "relatedBackendPackage": "codex-package/ (CODEX.md + CODEX_ADDENDUM.md + ui-tasks.json)"
+}

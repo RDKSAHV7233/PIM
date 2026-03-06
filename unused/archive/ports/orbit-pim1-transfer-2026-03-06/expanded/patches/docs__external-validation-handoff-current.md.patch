@@ -1,0 +1,42 @@
+﻿diff --git a/docs/external-validation-handoff-current.md b/docs/external-validation-handoff-current.md
+index b31656d..1693408 100644
+--- a/docs/external-validation-handoff-current.md
++++ b/docs/external-validation-handoff-current.md
+@@ -1,5 +1,5 @@
+ # ORBIT External Validation Handoff (Current)
+-Generated: 2026-03-01T05:29:54.832Z
++Generated: 2026-03-06T09:44:06.745Z
+ 
+ ## Status Summary
+ - closed: 0
+@@ -10,20 +10,20 @@ Generated: 2026-03-01T05:29:54.832Z
+ 
+ ## Canonical Inputs
+ - launch control: `docs/launch-control-sheet.md`
+-- latest bundle: `artifacts/release-evidence/evidence-index-2026-03-01T05-22-54-802Z.json`
+-- latest verify: `artifacts/release-evidence/evidence-verify-2026-03-01T05-29-35-838Z.json`
+-- latest external pack: `artifacts/release-evidence/external-pack-2026-03-01T05-29-35-928Z.json`
+-- latest external status: `artifacts/release-evidence/external-status-2026-03-01T05-29-36-069Z.json`
++- latest bundle: `artifacts/release-evidence/evidence-index-2026-03-06T09-44-05-098Z.json`
++- latest verify: `artifacts/release-evidence/evidence-verify-2026-03-06T09-44-04-670Z.json`
++- latest external pack: `artifacts/release-evidence/external-pack-2026-03-06T09-44-06-504Z.json`
++- latest external status: `artifacts/release-evidence/external-status-2026-03-06T09-44-05-740Z.json`
+ 
+ ## Blocker Assignment Table
+ | blocker_id | state | template_json | template_md | missing_fields |
+ |---|---|---|---|---|
+-| B-01 | pending | `artifacts/release-evidence/external-b-01-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-01-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+-| B-02 | pending | `artifacts/release-evidence/external-b-02-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-02-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+-| B-03 | pending | `artifacts/release-evidence/external-b-03-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-03-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+-| B-04 | pending | `artifacts/release-evidence/external-b-04-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-04-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+-| B-05 | pending | `artifacts/release-evidence/external-b-05-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-05-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+-| B-06 | pending | `artifacts/release-evidence/external-b-06-2026-03-01T05-29-35-928Z.json` | `artifacts/release-evidence/external-b-06-2026-03-01T05-29-35-928Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-01 | pending | `artifacts/release-evidence/external-b-01-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-01-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-02 | pending | `artifacts/release-evidence/external-b-02-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-02-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-03 | pending | `artifacts/release-evidence/external-b-03-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-03-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-04 | pending | `artifacts/release-evidence/external-b-04-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-04-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-05 | pending | `artifacts/release-evidence/external-b-05-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-05-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
++| B-06 | pending | `artifacts/release-evidence/external-b-06-2026-03-06T09-44-06-504Z.json` | `artifacts/release-evidence/external-b-06-2026-03-06T09-44-06-504Z.md` | execution.executed_by, execution.environment, execution.started_at, execution.completed_at, execution.result, attachments, reviewer_signoff.reviewer, reviewer_signoff.approved, reviewer_signoff.approved_at |
+ 
+ ## Operator Commands
+ 1. `npm run external:orchestrate`

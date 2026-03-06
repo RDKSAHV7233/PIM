@@ -1,0 +1,220 @@
+﻿diff --git a/admin-ui/src/pages/orbit-dlq.tsx b/admin-ui/src/pages/orbit-dlq.tsx
+index 74af78c..59e4d1e 100644
+--- a/admin-ui/src/pages/orbit-dlq.tsx
++++ b/admin-ui/src/pages/orbit-dlq.tsx
+@@ -69,6 +69,7 @@ export function OrbitDlqPage() {
+   const [message, setMessage] = useState<string | null>(null);
+   const [replayBusyId, setReplayBusyId] = useState<string | null>(null);
+   const [resolveBusyId, setResolveBusyId] = useState<string | null>(null);
++  const [pendingAction, setPendingAction] = useState<{ type: "replay" | "resolve"; executionId: string } | null>(null);
+ 
+   const selected = rows.find((row) => row.executionId === selectedExecutionId) ?? null;
+ 
+@@ -122,81 +123,138 @@ export function OrbitDlqPage() {
+     }
+   }
+ 
++  async function confirmPendingAction() {
++    if (!pendingAction) return;
++    const action = pendingAction;
++    setPendingAction(null);
++    if (action.type === "replay") {
++      await replayOne(action.executionId);
++      return;
++    }
++    await resolveOne(action.executionId);
++  }
++
+   return (
+-    <div style={{ padding: "24px 28px" }}>
+-      {loading ? <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>Loading DLQ...</div> : null}
+-      {message ? <div style={{ color: message.toLowerCase().includes("queued") || message.toLowerCase().includes("resolved") ? C.green : C.red, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>{message}</div> : null}
++    <>
++      <div style={{ padding: "24px 28px" }}>
++        {loading ? <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>Loading DLQ...</div> : null}
++        {message ? <div style={{ color: message.toLowerCase().includes("queued") || message.toLowerCase().includes("resolved") ? C.green : C.red, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>{message}</div> : null}
+ 
+-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12 }}>
+-        <div style={{ border: `1px solid ${C.border}`, background: C.surface, overflow: "hidden" }}>
+-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+-            <thead>
+-              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+-                {["Execution", "Connector", "Attempts", "Failed At", ""].map((head) => (
+-                  <th key={head} align="left" style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 10 }}>
+-                    {head}
+-                  </th>
+-                ))}
+-              </tr>
+-            </thead>
+-            <tbody>
+-              {rows.map((row) => (
+-                <tr key={row.executionId} style={{ borderBottom: `1px solid ${C.border}`, background: row.executionId === selectedExecutionId ? `${C.red}12` : "transparent" }}>
+-                  <td style={{ padding: "8px 10px", color: C.red, fontFamily: C.mono, fontSize: 11 }}>{row.executionId}</td>
+-                  <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{row.connectorId}</td>
+-                  <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{row.attempts}</td>
+-                  <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{relTime(row.failedAt)}</td>
+-                  <td style={{ padding: "8px 10px" }}>
+-                    <button
+-                      type="button"
+-                      onClick={() => setSelectedExecutionId(row.executionId)}
+-                      aria-label={`Open DLQ entry ${row.executionId}`}
+-                      style={{ border: `1px solid ${C.border}`, background: "transparent", color: C.textSec, fontFamily: C.mono, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}
+-                    >
+-                      Details
+-                    </button>
+-                  </td>
++        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12 }}>
++          <div style={{ border: `1px solid ${C.border}`, background: C.surface, overflow: "hidden" }}>
++            <table style={{ width: "100%", borderCollapse: "collapse" }}>
++              <thead>
++                <tr style={{ borderBottom: `1px solid ${C.border}` }}>
++                  {["Execution", "Connector", "Attempts", "Failed At", ""].map((head) => (
++                    <th key={head} align="left" style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 10 }}>
++                      {head}
++                    </th>
++                  ))}
+                 </tr>
+-              ))}
+-              {!rows.length ? <tr><td colSpan={5} style={{ padding: 14, color: C.textSec, fontFamily: C.mono }}>No DLQ entries.</td></tr> : null}
+-            </tbody>
+-          </table>
+-        </div>
++              </thead>
++              <tbody>
++                {rows.map((row) => (
++                  <tr key={row.executionId} style={{ borderBottom: `1px solid ${C.border}`, background: row.executionId === selectedExecutionId ? `${C.red}12` : "transparent" }}>
++                    <td style={{ padding: "8px 10px", color: C.red, fontFamily: C.mono, fontSize: 11 }}>{row.executionId}</td>
++                    <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{row.connectorId}</td>
++                    <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{row.attempts}</td>
++                    <td style={{ padding: "8px 10px", color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>{relTime(row.failedAt)}</td>
++                    <td style={{ padding: "8px 10px" }}>
++                      <button
++                        type="button"
++                        onClick={() => setSelectedExecutionId(row.executionId)}
++                        aria-label={`Open DLQ entry ${row.executionId}`}
++                        style={{ border: `1px solid ${C.border}`, background: "transparent", color: C.textSec, fontFamily: C.mono, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}
++                      >
++                        Details
++                      </button>
++                    </td>
++                  </tr>
++                ))}
++                {!rows.length ? <tr><td colSpan={5} style={{ padding: 14, color: C.textSec, fontFamily: C.mono }}>No DLQ entries.</td></tr> : null}
++              </tbody>
++            </table>
++          </div>
+ 
+-        <div style={{ border: `1px solid ${C.border}`, background: C.surface, padding: 14 }}>
+-          {selected ? (
+-            <>
+-              <div style={{ color: C.red, fontFamily: C.mono, fontSize: 12, marginBottom: 8 }}>{selected.executionId}</div>
+-              <div style={{ color: C.textSec, fontFamily: C.sans, fontSize: 12, marginBottom: 8 }}>{selected.reason}</div>
+-              <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 4 }}>Connector: {selected.connectorId}</div>
+-              <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>Attempts: {selected.attempts}</div>
+-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+-                <button
+-                  type="button"
+-                  onClick={() => void replayOne(selected.executionId)}
+-                  disabled={replayBusyId === selected.executionId}
+-                  aria-label={`Replay dead-letter execution ${selected.executionId}`}
+-                  style={{ border: `1px solid ${C.blue}`, background: C.blue, color: C.bg, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: "pointer" }}
+-                >
+-                  {replayBusyId === selected.executionId ? "Replaying..." : "Replay"}
+-                </button>
+-                <button
+-                  type="button"
+-                  onClick={() => void resolveOne(selected.executionId)}
+-                  disabled={!isOperatorRole(claims) || resolveBusyId === selected.executionId}
+-                  aria-label={`Resolve dead-letter execution ${selected.executionId}`}
+-                  style={{ border: `1px solid ${C.border}`, background: "transparent", color: C.textSec, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: !isOperatorRole(claims) ? "not-allowed" : "pointer", opacity: !isOperatorRole(claims) ? 0.5 : 1 }}
+-                >
+-                  {resolveBusyId === selected.executionId ? "Resolving..." : "Resolve"}
+-                </button>
+-              </div>
+-            </>
+-          ) : (
+-            <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>Select a DLQ row.</div>
+-          )}
++          <div style={{ border: `1px solid ${C.border}`, background: C.surface, padding: 14 }}>
++            {selected ? (
++              <>
++                <div style={{ color: C.red, fontFamily: C.mono, fontSize: 12, marginBottom: 8 }}>{selected.executionId}</div>
++                <div style={{ color: C.textSec, fontFamily: C.sans, fontSize: 12, marginBottom: 8 }}>{selected.reason}</div>
++                <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 4 }}>Connector: {selected.connectorId}</div>
++                <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 10 }}>Attempts: {selected.attempts}</div>
++                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
++                  <button
++                    type="button"
++                    onClick={() => setPendingAction({ type: "replay", executionId: selected.executionId })}
++                    disabled={replayBusyId === selected.executionId}
++                    aria-label={`Replay dead-letter execution ${selected.executionId}`}
++                    style={{ border: `1px solid ${C.blue}`, background: C.blue, color: C.bg, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: "pointer" }}
++                  >
++                    {replayBusyId === selected.executionId ? "Replaying..." : "Replay"}
++                  </button>
++                  <button
++                    type="button"
++                    onClick={() => setPendingAction({ type: "resolve", executionId: selected.executionId })}
++                    disabled={!isOperatorRole(claims) || resolveBusyId === selected.executionId}
++                    aria-label={`Resolve dead-letter execution ${selected.executionId}`}
++                    style={{ border: `1px solid ${C.border}`, background: "transparent", color: C.textSec, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: !isOperatorRole(claims) ? "not-allowed" : "pointer", opacity: !isOperatorRole(claims) ? 0.5 : 1 }}
++                  >
++                    {resolveBusyId === selected.executionId ? "Resolving..." : "Resolve"}
++                  </button>
++                </div>
++              </>
++            ) : (
++              <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11 }}>Select a DLQ row.</div>
++            )}
++          </div>
+         </div>
+       </div>
+-    </div>
++      {pendingAction ? (
++        <div
++          role="dialog"
++          aria-modal="true"
++          style={{
++            position: "fixed",
++            inset: 0,
++            background: "rgba(0,0,0,0.55)",
++            display: "flex",
++            alignItems: "center",
++            justifyContent: "center",
++            zIndex: 999,
++          }}
++        >
++          <div style={{ width: 420, maxWidth: "90vw", border: `1px solid ${C.border}`, background: C.surface, padding: 14 }}>
++            <div style={{ color: C.text, fontFamily: C.mono, fontSize: 12, marginBottom: 8 }}>
++              Confirm {pendingAction.type === "replay" ? "Replay" : "Resolve"}
++            </div>
++            <div style={{ color: C.textSec, fontFamily: C.mono, fontSize: 11, marginBottom: 12 }}>
++              {pendingAction.type === "replay"
++                ? "Replay will create a new execution linked to this failed run."
++                : "Resolve will close this DLQ item without replaying it."}
++              <br />
++              Execution: {pendingAction.executionId}
++            </div>
++            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
++              <button
++                type="button"
++                onClick={() => setPendingAction(null)}
++                style={{ border: `1px solid ${C.border}`, background: "transparent", color: C.textSec, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: "pointer" }}
++              >
++                Cancel
++              </button>
++              <button
++                type="button"
++                onClick={() => void confirmPendingAction()}
++                style={{ border: `1px solid ${C.red}`, background: C.red, color: C.bg, fontFamily: C.mono, fontSize: 10, padding: "5px 10px", cursor: "pointer" }}
++              >
++                Confirm
++              </button>
++            </div>
++          </div>
++        </div>
++      ) : null}
++    </>
+   );
+ }
+ 
