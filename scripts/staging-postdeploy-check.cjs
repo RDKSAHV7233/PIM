@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+
+function requireEnv(name) {
+  const value = String(process.env[name] ?? "").trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+async function requestJson(baseUrl, path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method ?? "GET",
+    headers: options.headers ?? {},
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(20_000),
+  });
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = text;
+  }
+  return { status: response.status, payload };
+}
+
+function assertStatus(result, expected, context) {
+  if (result.status !== expected) {
+    throw new Error(
+      `${context} failed: expected ${expected}, got ${result.status}; payload=${JSON.stringify(result.payload)}`,
+    );
+  }
+}
+
+async function run() {
+  const baseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
+  const smokeUser = requireEnv("STAGING_SMOKE_USER");
+  const smokePassword = requireEnv("STAGING_SMOKE_PASSWORD");
+  const expectedEnv = String(process.env.STAGING_EXPECTED_ENV ?? "staging").trim();
+
+  const health = await requestJson(baseUrl, "/api/v1/health");
+  assertStatus(health, 200, "health");
+  if (!health.payload || health.payload.status !== "ok") {
+    throw new Error(`health payload invalid: ${JSON.stringify(health.payload)}`);
+  }
+  if (String(health.payload.env ?? "") !== expectedEnv) {
+    throw new Error(`health env mismatch: expected=${expectedEnv} got=${String(health.payload.env ?? "")}`);
+  }
+
+  const legacyHeaderProbe = await requestJson(baseUrl, "/api/v1/catalog/products", {
+    headers: {
+      "x-pim-role": "admin",
+      "x-pim-tenant": "forged-tenant",
+    },
+  });
+  if (![401, 403].includes(legacyHeaderProbe.status)) {
+    throw new Error(
+      `legacy header probe failed: expected 401/403, got ${legacyHeaderProbe.status}; payload=${JSON.stringify(legacyHeaderProbe.payload)}`,
+    );
+  }
+
+  const login = await requestJson(baseUrl, "/api/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: {
+      userId: smokeUser,
+      password: smokePassword,
+      expiresInMinutes: 30,
+    },
+  });
+  assertStatus(login, 201, "login");
+  const token = String(login.payload?.accessToken ?? "");
+  if (!token) {
+    throw new Error("login response missing accessToken");
+  }
+
+  const usage = await requestJson(baseUrl, "/api/v1/billing/usage", {
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+  });
+  assertStatus(usage, 200, "billing usage");
+
+  const connectors = await requestJson(baseUrl, "/api/v1/connectors/installed", {
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+  });
+  assertStatus(connectors, 200, "connectors installed");
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "health_status_ok",
+          "health_env_matches_staging",
+          "legacy_headers_not_authoritative",
+          "auth_login_works_for_smoke_user",
+          "billing_usage_authenticated",
+          "connectors_installed_authenticated",
+        ],
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+run().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
+

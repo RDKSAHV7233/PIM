@@ -59,3 +59,27 @@ jobs:
           echo "health=${response}"
           echo "${response}" | grep -q "\"status\":\"ok\""
           echo "${response}" | grep -q "\"env\":\"staging\""
+
+      - name: Staging post-deploy verification (auth + trust boundary)
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          STAGING_EXPECTED_ENV: staging
+        run: node scripts/staging-postdeploy-check.cjs
+
+      - name: Record staging gate artifact
+        shell: bash
+        env:
+          APP_ENV: staging
+          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
+        run: |
+          if [ -z "${STAGING_SMOKE_TENANT_ID}" ]; then
+            echo "Missing STAGING_SMOKE_TENANT_ID secret for gate artifact."
+            exit 1
+          fi
+          node scripts/record-gate-signoff.cjs \
+            --suite STAGING_DEPLOY_POSTCHECK \
+            --tenantId "${STAGING_SMOKE_TENANT_ID}" \
+            --runUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

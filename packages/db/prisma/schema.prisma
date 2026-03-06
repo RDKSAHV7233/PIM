@@ -9,6 +9,9 @@ datasource db {
 
 enum RecordStatus {
   draft
+  in_review
+  approved
+  rejected
   active
   archived
 }
