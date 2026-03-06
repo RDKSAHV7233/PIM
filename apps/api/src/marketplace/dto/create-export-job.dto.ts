@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { MARKETPLACE_CHANNELS } from "./simulate-marketplace.dto";
 
 export class CreateExportJobDto {
@@ -16,4 +16,9 @@ export class CreateExportJobDto {
   @Min(1)
   @Max(10)
   maxRetries?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  fallbackAcknowledged?: boolean;
 }

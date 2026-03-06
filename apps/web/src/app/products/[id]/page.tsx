@@ -25,6 +25,7 @@ import { ViewerEditTooltip } from "@/components/ui/viewer-edit-tooltip";
 import {
   ApiHttpError,
   AppRole,
+  evaluateConnectorPublishReadiness,
   getMarketplaceChannelMapping,
   getMarketplaceChannels,
   getMarketplaceExportJobs,
@@ -198,7 +199,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     }
     notFound();
   }
-  const [variants, channels, installedConnectors, templates, mapping, simulation, exportJobs, categoryAttributes] =
+  const [variants, channels, installedConnectors, templates, mapping, simulation, exportJobs, categoryAttributes, readiness] =
     await Promise.all([
     getProductVariants(id, { role: actorRole, authHeader }),
     getMarketplaceChannels({ role: actorRole, authHeader }),
@@ -211,6 +212,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     getMarketplaceSimulation(id, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }),
     getMarketplaceExportJobs(id, { role: actorRole, authHeader }),
     getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }),
+    evaluateConnectorPublishReadiness(
+      mapMarketplaceChannelToConnectorSlug(selectedChannel),
+      {
+        categoryScope: product.categoryId,
+        productId: id,
+        fallbackAcknowledged: false,
+      },
+      { role: actorRole, authHeader },
+    ),
   ]);
   const publishCapableConnectorSlugs = new Set(
     installedConnectors
@@ -242,6 +252,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const warningIssueCount =
     product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0;
   const recentJobs = exportJobs.slice(0, 5);
+  const readinessBlockers = readiness.blockers ?? [];
+  const readinessWarnings = readiness.warnings ?? [];
+  const fallbackAckRequired = readinessBlockers.includes("fallback_ack_required");
+  const blockersExcludingFallbackAck = readinessBlockers.filter(
+    (item) => item !== "fallback_acknowledgement_required",
+  );
+  const canQueueExportWithAck = blockersExcludingFallbackAck.length === 0;
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
     params.set("tab", tab);
@@ -749,6 +766,30 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <Card hidden={!(activeTab === "channels" || activeTab === "activity")}>
         <CardTitle>Pre-Export Jobs</CardTitle>
         <div className="space-y-3">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <p className="font-medium">
+              Publish Readiness:{" "}
+              <span className={readiness.ok ? "text-emerald-700" : "text-red-700"}>
+                {readiness.ok ? "Ready" : "Blocked"}
+              </span>
+            </p>
+            {readinessBlockers.length > 0 ? (
+              <ul className="mt-1 list-disc pl-5">
+                {readinessBlockers.map((blocker) => (
+                  <li key={`readiness-blocker-${blocker}`}>{blocker}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">No preflight blockers.</p>
+            )}
+            {readinessWarnings.length > 0 ? (
+              <ul className="mt-1 list-disc pl-5 text-xs text-slate-600">
+                {readinessWarnings.map((warning) => (
+                  <li key={`readiness-warning-${warning}`}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           {canWrite && publishableChannels.length > 0 ? (
             <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
               <RoleHiddenInput role={actorRole} />
@@ -785,7 +826,22 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 </label>
                 <Input id="export-max-retries" name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
               </div>
-              <Button type="submit">Queue export job</Button>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-fallback-ack">
+                  Fallback Acknowledgement
+                </label>
+                <Select
+                  id="export-fallback-ack"
+                  name="fallbackAcknowledged"
+                  defaultValue={fallbackAckRequired ? "false" : "true"}
+                >
+                  <option value="false">Not acknowledged</option>
+                  <option value="true">Acknowledge fallback usage</option>
+                </Select>
+              </div>
+              <Button type="submit" disabled={!canQueueExportWithAck}>
+                Queue export job
+              </Button>
             </form>
           ) : canWrite ? (
             <p className="text-sm text-slate-600">

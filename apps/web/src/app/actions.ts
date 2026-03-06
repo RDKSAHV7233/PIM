@@ -667,6 +667,7 @@ export async function createExportJobAction(formData: FormData) {
   const channel = String(formData.get("channel") ?? "").trim();
   const templateId = String(formData.get("templateId") ?? "").trim();
   const maxRetries = parseNumber(formData.get("maxRetries"));
+  const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
   if (!productId || !channel) {
     throw new Error("Product and channel are required for export.");
   }
@@ -675,6 +676,7 @@ export async function createExportJobAction(formData: FormData) {
       channel,
       templateId: templateId || undefined,
       maxRetries,
+      fallbackAcknowledged,
     });
   } catch (error: unknown) {
     const redirectPath = withPlanLimitQuery(`/products/${encodeURIComponent(productId)}`, error);
@@ -684,6 +686,86 @@ export async function createExportJobAction(formData: FormData) {
     throw error;
   }
   revalidatePath(`/products/${productId}`);
+}
+
+export async function createConnectorMappingVersionAction(formData: FormData) {
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
+  const categoryScope = String(formData.get("categoryScope") ?? "").trim();
+  const mappingLevel = String(formData.get("mappingLevel") ?? "").trim();
+  const connectorDefinitionId = String(formData.get("connectorDefinitionId") ?? "").trim();
+  const connectorDefinitionVersion = String(formData.get("connectorDefinitionVersion") ?? "").trim();
+  const compatibilityState = String(formData.get("compatibilityState") ?? "").trim();
+  if (!connectorSlug || !categoryScope || !mappingLevel || !connectorDefinitionId || !connectorDefinitionVersion) {
+    throw new Error("Connector slug, category scope, mapping level and connector definition are required.");
+  }
+
+  const mappingRules = parseJsonObject(formData.get("mappingRules"), "Mapping rules");
+  const fallbackPolicy = parseJsonObject(formData.get("fallbackPolicy"), "Fallback policy");
+  const fallbackAckRequired = String(formData.get("fallbackAckRequired") ?? "").trim() === "true";
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+
+  await postJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions`, {
+    categoryScope,
+    mappingLevel,
+    connectorDefinitionId,
+    connectorDefinitionVersion,
+    compatibilityState: compatibilityState || undefined,
+    mappingRules,
+    fallbackPolicy,
+    fallbackAckRequired,
+  });
+  revalidatePath("/channels/mappings");
+  redirect(redirectTo);
+}
+
+export async function validateConnectorMappingVersionAction(formData: FormData) {
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
+  const versionId = String(formData.get("versionId") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  if (!connectorSlug || !versionId) {
+    throw new Error("Connector slug and version id are required.");
+  }
+  await postJsonForAction(
+    formData,
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/validate`,
+    {},
+  );
+  revalidatePath("/channels/mappings");
+  redirect(redirectTo);
+}
+
+export async function publishConnectorMappingVersionAction(formData: FormData) {
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
+  const versionId = String(formData.get("versionId") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const confirm = String(formData.get("confirm") ?? "").trim() === "true";
+  if (!connectorSlug || !versionId || !confirm) {
+    throw new Error("Connector slug, version id, and explicit confirmation are required.");
+  }
+  await postJsonForAction(
+    formData,
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
+    { confirm: true },
+  );
+  revalidatePath("/channels/mappings");
+  redirect(redirectTo);
+}
+
+export async function archiveConnectorMappingVersionAction(formData: FormData) {
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
+  const versionId = String(formData.get("versionId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  if (!connectorSlug || !versionId || !reason) {
+    throw new Error("Connector slug, version id, and archive reason are required.");
+  }
+  await postJsonForAction(
+    formData,
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
+    { reason },
+  );
+  revalidatePath("/channels/mappings");
+  redirect(redirectTo);
 }
 
 export async function processExportJobAction(formData: FormData) {

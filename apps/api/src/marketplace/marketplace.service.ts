@@ -26,6 +26,7 @@ import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
+import { ConnectorMappingService } from "./connector-mapping.service";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { MARKETPLACE_CHANNELS } from "./dto/simulate-marketplace.dto";
 import { UpdateMappingTemplateDto } from "./dto/update-mapping-template.dto";
@@ -145,6 +146,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly connectorFramework: ConnectorFrameworkService,
     private readonly queueService: QueueService,
     private readonly metricsService: MetricsService,
+    private readonly connectorMappingService: ConnectorMappingService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -408,6 +410,12 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId);
+    await this.connectorMappingService.assertPublishReadyForExport({
+      connectorSlug,
+      categoryScope: product.categoryId,
+      fallbackAcknowledged: dto.fallbackAcknowledged,
+      productId,
+    });
     const job = await this.prisma.tenant().marketplaceExportJob.create({
       data: {
         productId,

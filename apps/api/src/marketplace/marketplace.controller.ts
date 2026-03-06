@@ -1,9 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { Roles } from "../common/rbac/roles";
+import { ConnectorMappingService } from "./connector-mapping.service";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
+import {
+  ArchiveConnectorMappingVersionDto,
+  ConnectorMappingPreflightDto,
+  ConnectorPublishReadinessDto,
+  ConnectorTaxonomySearchQueryDto,
+  CreateConnectorMappingVersionDto,
+  ListConnectorMappingVersionsQueryDto,
+  PublishConnectorMappingVersionDto,
+  ResolveConnectorMappingQueryDto,
+} from "./dto/connector-mapping.dto";
 import { CreateExportJobAliasDto } from "./dto/create-export-job-alias.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
@@ -14,11 +26,152 @@ import { MarketplaceService } from "./marketplace.service";
 @Controller("marketplace")
 @ApiTags("Marketplace")
 export class MarketplaceController {
-  constructor(private readonly marketplaceService: MarketplaceService) {}
+  constructor(
+    private readonly marketplaceService: MarketplaceService,
+    private readonly connectorMappingService: ConnectorMappingService,
+  ) {}
 
   @Get("channels")
   listChannels() {
     return this.marketplaceService.listChannels();
+  }
+
+  @Get("connectors/:connectorSlug/mappings/versions")
+  listConnectorMappingVersions(
+    @Param("connectorSlug") connectorSlug: string,
+    @Query() query: ListConnectorMappingVersionsQueryDto,
+  ) {
+    return this.connectorMappingService.listVersions({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      categoryScope: query.categoryScope,
+      includeArchived: query.includeArchived,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/versions")
+  @Roles("admin", "editor")
+  createConnectorMappingVersion(
+    @Param("connectorSlug") connectorSlug: string,
+    @Body() dto: CreateConnectorMappingVersionDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.createDraft({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      categoryScope: dto.categoryScope,
+      mappingLevel: dto.mappingLevel,
+      connectorDefinitionId: dto.connectorDefinitionId,
+      connectorDefinitionVersion: dto.connectorDefinitionVersion,
+      compatibilityState: dto.compatibilityState,
+      mappingRules: dto.mappingRules,
+      fallbackPolicy: dto.fallbackPolicy,
+      fallbackAckRequired: dto.fallbackAckRequired,
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/versions/:versionId/validate")
+  @Roles("admin", "editor")
+  validateConnectorMappingVersion(
+    @Param("connectorSlug") connectorSlug: string,
+    @Param("versionId") versionId: string,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.validateVersion({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      versionId: String(versionId ?? "").trim(),
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/versions/:versionId/publish")
+  @Roles("admin", "editor")
+  publishConnectorMappingVersion(
+    @Param("connectorSlug") connectorSlug: string,
+    @Param("versionId") versionId: string,
+    @Body() dto: PublishConnectorMappingVersionDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.publishVersion({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      versionId: String(versionId ?? "").trim(),
+      confirm: dto.confirm,
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/versions/:versionId/archive")
+  @Roles("admin")
+  archiveConnectorMappingVersion(
+    @Param("connectorSlug") connectorSlug: string,
+    @Param("versionId") versionId: string,
+    @Body() dto: ArchiveConnectorMappingVersionDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.archiveVersion({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      versionId: String(versionId ?? "").trim(),
+      reason: dto.reason,
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Get("connectors/:connectorSlug/mappings/resolve")
+  resolveConnectorMapping(
+    @Param("connectorSlug") connectorSlug: string,
+    @Query() query: ResolveConnectorMappingQueryDto,
+  ) {
+    return this.connectorMappingService.resolveEffectiveMapping({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      categoryScope: query.categoryScope,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/preflight")
+  preflightConnectorMapping(
+    @Param("connectorSlug") connectorSlug: string,
+    @Body() dto: ConnectorMappingPreflightDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.evaluateMappingPreflight({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      categoryScope: dto.categoryScope,
+      fallbackAcknowledged: dto.fallbackAcknowledged,
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Get("connectors/:connectorSlug/taxonomy/search")
+  searchConnectorTaxonomy(
+    @Param("connectorSlug") connectorSlug: string,
+    @Query() query: ConnectorTaxonomySearchQueryDto,
+  ) {
+    return this.connectorMappingService.searchTaxonomy({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      query: query.q,
+      limit: query.limit,
+    });
+  }
+
+  @Get("connectors/:connectorSlug/taxonomy/unmapped")
+  listUnmappedConnectorTaxonomy(@Param("connectorSlug") connectorSlug: string) {
+    return this.connectorMappingService.listUnmappedCategories({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+    });
+  }
+
+  @Post("connectors/:connectorSlug/publish-readiness")
+  evaluateConnectorPublishReadiness(
+    @Param("connectorSlug") connectorSlug: string,
+    @Body() dto: ConnectorPublishReadinessDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.evaluatePublishReadiness({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      categoryScope: dto.categoryScope,
+      fallbackAcknowledged: dto.fallbackAcknowledged,
+      productId: dto.productId,
+      actorId: request.pimUserId,
+    });
   }
 
   @Get("channels/:channel/mapping")

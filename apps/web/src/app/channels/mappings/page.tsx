@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  cloneMappingTemplateAction,
-  createMappingTemplateAction,
-  deleteMappingTemplateAction,
-  updateMappingTemplateAction,
+  archiveConnectorMappingVersionAction,
+  createConnectorMappingVersionAction,
+  publishConnectorMappingVersionAction,
+  validateConnectorMappingVersionAction,
 } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -17,11 +17,18 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
   type AppRole,
+  type ConnectorTaxonomyItem,
   type MarketplaceChannel,
+  evaluateConnectorMappingPreflight,
+  evaluateConnectorPublishReadiness,
+  getConnectorDefinitions,
+  getConnectorMappingVersions,
   getCategories,
   getMarketplaceChannelMapping,
   getMarketplaceChannels,
-  getMarketplaceTemplates,
+  getUnmappedConnectorTaxonomy,
+  resolveConnectorMapping,
+  searchConnectorTaxonomy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -34,6 +41,8 @@ interface ChannelsMappingsPageProps {
   searchParams: Promise<{
     categoryId?: string;
     channel?: MarketplaceChannel;
+    productId?: string;
+    taxonomyQ?: string;
   }>;
 }
 
@@ -50,6 +59,33 @@ function normalizeChannel(
   return matched?.channel ?? channels[0]?.channel ?? "amazon";
 }
 
+function mapChannelToConnectorSlug(channel: MarketplaceChannel): string {
+  if (channel === "amazon") {
+    return "amazon-in";
+  }
+  return channel;
+}
+
+function definitionForConnector(
+  definitions: Array<{ id: string; slug: string; connectorVersion: string }>,
+  connectorSlug: string,
+) {
+  return definitions.find((entry) => entry.slug === connectorSlug) ?? null;
+}
+
+function requiredAttributesFromTaxonomy(items: ConnectorTaxonomyItem[]): string[] {
+  const values = new Set<string>();
+  for (const item of items) {
+    for (const attr of item.requiredAttributes) {
+      const normalized = String(attr ?? "").trim();
+      if (normalized) {
+        values.add(normalized);
+      }
+    }
+  }
+  return Array.from(values).sort();
+}
+
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -57,35 +93,97 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   const canWrite = actorRole !== "viewer";
 
   try {
-    const [channels, categoriesRaw] = await Promise.all([
+    const [channels, categoriesRaw, connectorDefinitions] = await Promise.all([
       getMarketplaceChannels({ role: actorRole, authHeader }),
       getCategories({ role: actorRole, authHeader }),
+      getConnectorDefinitions({ role: actorRole, authHeader }),
     ]);
 
     const categories = filterTestData(categoriesRaw, true);
     const selectedCategoryId = String(query.categoryId ?? "").trim() || categories[0]?.id || "";
     const selectedChannel = normalizeChannel(query.channel, channels);
+    const connectorSlug = mapChannelToConnectorSlug(selectedChannel);
+    const definition = definitionForConnector(connectorDefinitions, connectorSlug);
+    const taxonomyQ = String(query.taxonomyQ ?? "").trim();
+    const selectedProductId = String(query.productId ?? "").trim();
 
-    const [mapping, templates] = await Promise.all([
+    const [mapping, versions, resolved, preflight, readiness, taxonomyMatches, unmappedCategories] =
+      await Promise.all([
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, {
         role: actorRole,
         authHeader,
       }),
+      getConnectorMappingVersions(
+        connectorSlug,
+        {
+          categoryScope: selectedCategoryId || undefined,
+          includeArchived: true,
+        },
+        { role: actorRole, authHeader },
+      ),
       selectedCategoryId
-        ? getMarketplaceTemplates(selectedCategoryId, selectedChannel, {
-            role: actorRole,
-            authHeader,
-          })
-        : Promise.resolve([]),
+        ? resolveConnectorMapping(connectorSlug, selectedCategoryId, { role: actorRole, authHeader })
+        : Promise.resolve(null),
+      selectedCategoryId
+        ? evaluateConnectorMappingPreflight(
+            connectorSlug,
+            { categoryScope: selectedCategoryId, fallbackAcknowledged: false },
+            { role: actorRole, authHeader },
+          )
+        : Promise.resolve(null),
+      selectedCategoryId
+        ? evaluateConnectorPublishReadiness(
+            connectorSlug,
+            {
+              categoryScope: selectedCategoryId,
+              productId: selectedProductId || undefined,
+              fallbackAcknowledged: false,
+            },
+            { role: actorRole, authHeader },
+          )
+        : Promise.resolve(null),
+      searchConnectorTaxonomy(
+        connectorSlug,
+        {
+          q: taxonomyQ || undefined,
+          limit: 25,
+        },
+        { role: actorRole, authHeader },
+      ),
+      getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader }),
     ]);
 
-    const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}`;
+    const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}${taxonomyQ ? `&taxonomyQ=${encodeURIComponent(taxonomyQ)}` : ""}${selectedProductId ? `&productId=${encodeURIComponent(selectedProductId)}` : ""}`;
+    const taxonomyDefaults = requiredAttributesFromTaxonomy(taxonomyMatches);
+    const mappingDraftRulesDefault = JSON.stringify(
+      {
+        field_mappings: mapping.fieldMap,
+        required_fields: mapping.requiredFields,
+        category: {
+          source: selectedCategoryId,
+          target: taxonomyMatches[0]?.id ?? "",
+        },
+        taxonomy_required_attributes: taxonomyDefaults,
+      },
+      null,
+      2,
+    );
+    const fallbackPolicyDefault = JSON.stringify(
+      {
+        enabled: true,
+        warning_tag: "fallback_category_mapping",
+        ack_message: "Fallback category will be used for publish if no explicit mapping exists.",
+      },
+      null,
+      2,
+    );
+    const resolvedMappingJson = resolved ? JSON.stringify(resolved.resolvedMapping, null, 2) : "{}";
 
   return (
       <div className="space-y-5">
         <PageHeader
           title="Mappings"
-          description="Manage channel mapping templates, required fields, and default assignment by category."
+          description="Manage mapping lifecycle, taxonomy linkage, preflight gates, and fallback policy for channel publishing."
           breadcrumb={
             <>
               Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span>
@@ -127,6 +225,12 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 ))}
               </Select>
             </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-taxonomy-q">
+                Taxonomy search
+              </label>
+              <Input id="mapping-taxonomy-q" name="taxonomyQ" defaultValue={taxonomyQ} placeholder="Search category path..." />
+            </div>
             <div className="flex items-end">
               <Button type="submit">Apply</Button>
             </div>
@@ -135,129 +239,201 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
 
         <section className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardTitle>System Mapping Snapshot</CardTitle>
+            <CardTitle>Resolved Mapping Snapshot</CardTitle>
             <div className="mt-2 space-y-2 text-sm text-slate-700">
               <p>
                 Channel: <span className="font-medium capitalize">{mapping.channel}</span>
               </p>
               <p>
-                Mapping Source:{" "}
-                <StatusChip label={mapping.source === "saved_template" ? "Saved template" : "System pack"} tone={mapping.source === "saved_template" ? "info" : "neutral"} />
+                Connector slug: <span className="font-medium">{connectorSlug}</span>
+              </p>
+              <p>
+                Compatibility:{" "}
+                <StatusChip
+                  label={resolved?.compatibilityState ?? "n/a"}
+                  tone={
+                    resolved?.compatibilityState === "blocked"
+                      ? "danger"
+                      : resolved?.compatibilityState === "deprecated" || resolved?.compatibilityState === "remap_required"
+                        ? "warning"
+                        : "success"
+                  }
+                />
               </p>
               <p>Required fields: {mapping.requiredFields.length}</p>
+              <p>Matched mapping versions: {resolved?.matched.length ?? 0}</p>
             </div>
             <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: current field map JSON</summary>
+              <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>
               <pre className="mt-2 max-h-60 overflow-auto text-xs text-slate-700">
-                {JSON.stringify(mapping.fieldMap, null, 2)}
+                {resolvedMappingJson}
               </pre>
             </details>
           </Card>
 
           <Card>
-            <CardTitle>Create Template</CardTitle>
+            <CardTitle>Create Mapping Version (Lifecycle)</CardTitle>
             {canWrite ? (
-              <form action={createMappingTemplateAction} className="mt-3 grid gap-3">
+              <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
                 <RoleHiddenInput role={actorRole} />
-                <input type="hidden" name="categoryId" value={selectedCategoryId} />
-                <input type="hidden" name="channel" value={selectedChannel} />
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-template-name">
-                    Template Name
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-level">
+                    Mapping Level
                   </label>
-                  <Input id="mapping-template-name" name="name" required />
+                  <Select id="mapping-level" name="mappingLevel" defaultValue="tenant_connector_category_mapping">
+                    <option value="tenant_connector_default">tenant_connector_default</option>
+                    <option value="tenant_connector_category_mapping">tenant_connector_category_mapping</option>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category-scope">
+                    Category Scope
+                  </label>
+                  <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} required />
                 </div>
                 <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
                   <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced mapping fields</summary>
                   <div className="mt-3 grid gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-required-fields">
-                        Required Fields (JSON array)
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-rules">
+                        Mapping Rules (JSON object)
                       </label>
-                      <Textarea id="mapping-required-fields" name="requiredFields" rows={3} defaultValue={JSON.stringify(mapping.requiredFields, null, 2)} />
+                      <Textarea id="mapping-rules" name="mappingRules" rows={8} defaultValue={mappingDraftRulesDefault} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-field-map">
-                        Field Map (JSON object)
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-policy">
+                        Fallback Policy (JSON object)
                       </label>
-                      <Textarea id="mapping-field-map" name="fieldMap" rows={4} defaultValue={JSON.stringify(mapping.fieldMap, null, 2)} />
+                      <Textarea id="fallback-policy" name="fallbackPolicy" rows={5} defaultValue={fallbackPolicyDefault} />
                     </div>
                   </div>
                 </details>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-is-default">
-                    Set as default
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-compatibility">
+                    Compatibility
                   </label>
-                  <Select id="mapping-is-default" name="isDefault" defaultValue="false">
-                    <option value="false">No</option>
-                    <option value="true">Yes</option>
+                  <Select id="mapping-compatibility" name="compatibilityState" defaultValue="compatible">
+                    <option value="compatible">compatible</option>
+                    <option value="deprecated">deprecated</option>
+                    <option value="remap_required">remap_required</option>
+                    <option value="blocked">blocked</option>
                   </Select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-fallback-ack-required">
+                    Fallback Ack Required
+                  </label>
+                  <Select id="mapping-fallback-ack-required" name="fallbackAckRequired" defaultValue="true">
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </Select>
+                </div>
+                <input type="hidden" name="redirectTo" value={redirectTo} />
+                <input type="hidden" name="connectorSlug" value={connectorSlug} />
+                <input type="hidden" name="connectorDefinitionId" value={definition?.id ?? connectorSlug} />
+                <input
+                  type="hidden"
+                  name="connectorDefinitionVersion"
+                  value={definition?.connectorVersion ?? "1.0.0"}
+                />
                 <Button type="submit" className="w-fit">
-                  Save template
+                  Create draft version
                 </Button>
               </form>
             ) : (
-              <p className="mt-2 text-sm text-slate-600">Viewer role is read-only for template management.</p>
+              <p className="mt-2 text-sm text-slate-600">Viewer role is read-only for mapping version management.</p>
             )}
           </Card>
         </section>
 
         <Card>
-          <CardTitle>Saved Templates</CardTitle>
+          <CardTitle>Lifecycle Versions</CardTitle>
           <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">Template</th>
-                  <th className="px-3 py-2">Channel</th>
-                  <th className="px-3 py-2">Default</th>
-                  <th className="px-3 py-2">Required Fields</th>
+                  <th className="px-3 py-2">Version</th>
+                  <th className="px-3 py-2">Scope</th>
+                  <th className="px-3 py-2">Lifecycle</th>
+                  <th className="px-3 py-2">Compatibility</th>
                   <th className="px-3 py-2">Updated</th>
                   <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {templates.length > 0 ? (
-                  templates.map((template) => (
-                    <tr key={template.id} className="border-t border-slate-200 hover:bg-slate-50/50">
+                {versions.length > 0 ? (
+                  versions.map((version) => (
+                    <tr key={version.id} className="border-t border-slate-200 hover:bg-slate-50/50">
                       <td className="px-3 py-2.5">
-                        <p className="font-medium text-slate-900">{template.name}</p>
-                        <p className="text-xs text-slate-500">{template.id}</p>
+                        <p className="font-medium text-slate-900">{version.connectorDefinitionVersion}</p>
+                        <p className="text-xs text-slate-500">{version.id}</p>
                       </td>
-                      <td className="px-3 py-2.5 capitalize">{template.channel}</td>
+                      <td className="px-3 py-2.5">{version.categoryScope}</td>
                       <td className="px-3 py-2.5">
-                        <StatusChip label={template.isDefault ? "Default" : "Custom"} tone={template.isDefault ? "success" : "neutral"} />
+                        <StatusChip
+                          label={version.lifecycleState}
+                          tone={
+                            version.lifecycleState === "published"
+                              ? "success"
+                              : version.lifecycleState === "archived" || version.lifecycleState === "superseded"
+                                ? "neutral"
+                                : "info"
+                          }
+                        />
                       </td>
-                      <td className="px-3 py-2.5">{template.requiredFields.length}</td>
-                      <td className="px-3 py-2.5 text-slate-600">{new Date(template.updatedAt).toLocaleString()}</td>
+                      <td className="px-3 py-2.5">
+                        <StatusChip
+                          label={version.compatibilityState}
+                          tone={
+                            version.compatibilityState === "blocked"
+                              ? "danger"
+                              : version.compatibilityState === "deprecated" || version.compatibilityState === "remap_required"
+                                ? "warning"
+                                : "success"
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600">{new Date(version.updatedAt).toLocaleString()}</td>
                       <td className="px-3 py-2.5">
                         {canWrite ? (
                           <div className="flex flex-wrap gap-2">
-                            <form action={updateMappingTemplateAction}>
+                            <form action={validateConnectorMappingVersionAction}>
                               <RoleHiddenInput role={actorRole} />
-                              <input type="hidden" name="templateId" value={template.id} />
+                              <input type="hidden" name="connectorSlug" value={connectorSlug} />
+                              <input type="hidden" name="versionId" value={version.id} />
                               <input type="hidden" name="redirectTo" value={redirectTo} />
-                              <input type="hidden" name="isDefault" value={template.isDefault ? "false" : "true"} />
-                              <Button type="submit" variant="secondary" className="text-xs">
-                                {template.isDefault ? "Unset default" : "Set default"}
+                              <Button
+                                type="submit"
+                                variant="secondary"
+                                className="text-xs"
+                                disabled={version.lifecycleState !== "draft"}
+                              >
+                                Validate
                               </Button>
                             </form>
-                            <form action={cloneMappingTemplateAction}>
+                            <form action={publishConnectorMappingVersionAction}>
                               <RoleHiddenInput role={actorRole} />
-                              <input type="hidden" name="templateId" value={template.id} />
+                              <input type="hidden" name="connectorSlug" value={connectorSlug} />
+                              <input type="hidden" name="versionId" value={version.id} />
                               <input type="hidden" name="redirectTo" value={redirectTo} />
-                              <input type="hidden" name="name" value={`${template.name} (Copy)`} />
-                              <Button type="submit" variant="secondary" className="text-xs">
-                                Clone
+                              <input type="hidden" name="confirm" value="true" />
+                              <Button
+                                type="submit"
+                                variant="secondary"
+                                className="text-xs"
+                                disabled={version.lifecycleState !== "validated"}
+                              >
+                                Publish
                               </Button>
                             </form>
-                            <form action={deleteMappingTemplateAction}>
+                            <form action={archiveConnectorMappingVersionAction}>
                               <RoleHiddenInput role={actorRole} />
-                              <input type="hidden" name="templateId" value={template.id} />
+                              <input type="hidden" name="connectorSlug" value={connectorSlug} />
+                              <input type="hidden" name="versionId" value={version.id} />
                               <input type="hidden" name="redirectTo" value={redirectTo} />
-                              <Button type="submit" className="text-xs">
-                                Delete
+                              <input type="hidden" name="reason" value="archived_from_mapping_manager" />
+                              <Button type="submit" className="text-xs" disabled={version.lifecycleState === "archived"}>
+                                Archive
                               </Button>
                             </form>
                           </div>
@@ -270,20 +446,109 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="px-3 py-6 text-sm text-slate-500" colSpan={6}>
-                      No templates found for this category/channel scope.
+                      No mapping versions found for this connector/category scope.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/catalog/products" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Open product simulator
-            </Link>
-            <Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Open connectors
-            </Link>
+        </Card>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardTitle>Taxonomy Alignment</CardTitle>
+            <div className="mt-2 space-y-2 text-sm text-slate-700">
+              <p>Search result categories: {taxonomyMatches.length}</p>
+              <p>Unmapped categories for {connectorSlug}: {unmappedCategories.length}</p>
+            </div>
+            <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-800">Show taxonomy search results</summary>
+              <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                {taxonomyMatches.map((item) => (
+                  <li key={item.id} className="rounded border border-slate-200 p-2">
+                    <p className="font-medium">{item.path}</p>
+                    <p className="text-xs text-slate-500">Required attrs: {item.requiredAttributes.join(", ") || "-"}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+            <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-800">Show unmapped categories</summary>
+              <ul className="mt-2 max-h-64 space-y-1 overflow-auto text-sm text-slate-700">
+                {unmappedCategories.map((item) => (
+                  <li key={item.id} className="rounded border border-slate-200 p-2">
+                    <p className="font-medium">{item.path}</p>
+                    <p className="text-xs text-slate-500">Required attrs: {item.requiredAttributes.join(", ") || "-"}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </Card>
+
+          <Card>
+            <CardTitle>Publish Readiness (Hard Gate)</CardTitle>
+            <div className="mt-2 grid gap-3 text-sm text-slate-700">
+              <div>
+                <p className="font-medium">Mapping preflight</p>
+                <StatusChip label={preflight?.ok ? "ok" : "blocked"} tone={preflight?.ok ? "success" : "danger"} />
+                <p className="mt-1 text-xs text-slate-500">Blockers: {preflight?.blockers.length ?? 0}</p>
+              </div>
+              <div>
+                <p className="font-medium">Publish readiness</p>
+                <StatusChip label={readiness?.ok ? "ok" : "blocked"} tone={readiness?.ok ? "success" : "danger"} />
+                <p className="mt-1 text-xs text-slate-500">Blockers: {readiness?.blockers.length ?? 0}</p>
+              </div>
+              <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-800">Blockers and warnings</summary>
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preflight blockers</p>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(preflight?.blockers ?? []).map((item) => (
+                        <li key={`pf-b-${item}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness blockers</p>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(readiness?.blockers ?? []).map((item) => (
+                        <li key={`rd-b-${item}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(readiness?.warnings ?? []).map((item) => (
+                        <li key={`rd-w-${item}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </details>
+              <p className="text-xs text-slate-500">
+                Export jobs now hard-block on readiness; fallback mapping requires explicit acknowledgement.
+              </p>
+            </div>
+          </Card>
+        </section>
+
+        <Card>
+          <CardTitle>Legacy Mapping Templates (Backward Compatible)</CardTitle>
+          <div className="mt-2 space-y-3 text-sm text-slate-700">
+            <p>
+              Existing template APIs remain active for backward compatibility while lifecycle mapping versions are rolled out.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/catalog/products" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Open product simulator
+              </Link>
+              <Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Open connectors
+              </Link>
+            </div>
           </div>
         </Card>
       </div>

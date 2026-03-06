@@ -303,6 +303,75 @@ export interface ChannelMappingTemplate {
   updatedAt: string;
 }
 
+export type ConnectorMappingLevel =
+  | "connector_default_template"
+  | "tenant_connector_default"
+  | "tenant_connector_category_mapping";
+export type ConnectorMappingLifecycle =
+  | "draft"
+  | "validated"
+  | "published"
+  | "superseded"
+  | "archived";
+export type ConnectorMappingCompatibility = "compatible" | "deprecated" | "remap_required" | "blocked";
+
+export interface ConnectorMappingVersion {
+  id: string;
+  tenantKey: string;
+  connectorSlug: string;
+  categoryScope: string;
+  mappingLevel: ConnectorMappingLevel;
+  lifecycleState: ConnectorMappingLifecycle;
+  connectorDefinitionId: string;
+  connectorDefinitionVersion: string;
+  compatibilityState: ConnectorMappingCompatibility;
+  mappingRules: Record<string, unknown>;
+  fallbackPolicy: Record<string, unknown>;
+  fallbackAckRequired: boolean;
+  publishedAt: string | null;
+  supersededBy: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
+export interface ConnectorMappingResolved {
+  connectorSlug: string;
+  categoryScope: string;
+  matched: ConnectorMappingVersion[];
+  resolvedMapping: Record<string, unknown>;
+  fallbackPolicy: Record<string, unknown>;
+  fallbackAckRequired: boolean;
+  compatibilityState: ConnectorMappingCompatibility;
+}
+
+export interface ConnectorMappingPreflight {
+  ok: boolean;
+  blockers: string[];
+  warnings: string[];
+  compatibilityState: ConnectorMappingCompatibility;
+  fallbackApplied: boolean;
+  fallbackAckRequired: boolean;
+  matchedVersionIds: string[];
+}
+
+export interface ConnectorPublishReadiness {
+  ok: boolean;
+  blockers: string[];
+  warnings: string[];
+  checks: Record<string, unknown>;
+}
+
+export interface ConnectorTaxonomyItem {
+  id: string;
+  label: string;
+  path: string;
+  parentId: string | null;
+  leaf: boolean;
+  requiredAttributes: string[];
+}
+
 export interface ConnectorPayloadPreviewResponse {
   installationId: string;
   connectorSlug: string;
@@ -905,6 +974,150 @@ export async function getMarketplaceTemplates(
   return fetchJson<ChannelMappingTemplate[]>(
     `/marketplace/categories/${categoryId}/templates${query}`,
     undefined,
+    options,
+  );
+}
+
+export async function getConnectorMappingVersions(
+  connectorSlug: string,
+  input?: { categoryScope?: string; includeArchived?: boolean },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (input?.categoryScope) {
+    params.set("categoryScope", input.categoryScope);
+  }
+  if (typeof input?.includeArchived === "boolean") {
+    params.set("includeArchived", String(input.includeArchived));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<ConnectorMappingVersion[]>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions${query}`,
+    undefined,
+    options,
+  );
+}
+
+export async function createConnectorMappingVersion(
+  connectorSlug: string,
+  body: {
+    categoryScope: string;
+    mappingLevel: "tenant_connector_default" | "tenant_connector_category_mapping";
+    connectorDefinitionId: string;
+    connectorDefinitionVersion: string;
+    compatibilityState?: ConnectorMappingCompatibility;
+    mappingRules: Record<string, unknown>;
+    fallbackPolicy?: Record<string, unknown>;
+    fallbackAckRequired?: boolean;
+  },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorMappingVersion>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions`,
+    body,
+    options,
+  );
+}
+
+export async function validateConnectorMappingVersion(
+  connectorSlug: string,
+  versionId: string,
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorMappingVersion>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/validate`,
+    {},
+    options,
+  );
+}
+
+export async function publishConnectorMappingVersion(
+  connectorSlug: string,
+  versionId: string,
+  body: { confirm: boolean },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorMappingVersion>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
+    body,
+    options,
+  );
+}
+
+export async function archiveConnectorMappingVersion(
+  connectorSlug: string,
+  versionId: string,
+  body: { reason: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorMappingVersion>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
+    body,
+    options,
+  );
+}
+
+export async function resolveConnectorMapping(
+  connectorSlug: string,
+  categoryScope: string,
+  options?: ApiRequestOptions,
+) {
+  const query = new URLSearchParams({ categoryScope }).toString();
+  return fetchJson<ConnectorMappingResolved>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/resolve?${query}`,
+    undefined,
+    options,
+  );
+}
+
+export async function evaluateConnectorMappingPreflight(
+  connectorSlug: string,
+  body: { categoryScope: string; fallbackAcknowledged?: boolean },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorMappingPreflight>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/preflight`,
+    body,
+    options,
+  );
+}
+
+export async function searchConnectorTaxonomy(
+  connectorSlug: string,
+  input?: { q?: string; limit?: number },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (input?.q) {
+    params.set("q", input.q);
+  }
+  if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<ConnectorTaxonomyItem[]>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/taxonomy/search${query}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getUnmappedConnectorTaxonomy(connectorSlug: string, options?: ApiRequestOptions) {
+  return fetchJson<Array<{ id: string; path: string; requiredAttributes: string[] }>>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/taxonomy/unmapped`,
+    undefined,
+    options,
+  );
+}
+
+export async function evaluateConnectorPublishReadiness(
+  connectorSlug: string,
+  body: { categoryScope: string; fallbackAcknowledged?: boolean; productId?: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorPublishReadiness>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/publish-readiness`,
+    body,
     options,
   );
 }
