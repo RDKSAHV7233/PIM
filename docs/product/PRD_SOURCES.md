@@ -9,7 +9,7 @@ Canonical source set used to consolidate `PRD.md`:
 5. `docs/design/PIM1_UI_Design_Review.html`
 6. `unused/root-docs-prd-alignment-2026-03-03/SCOPE.md`
 7. `unused/root-docs-prd-alignment-2026-03-03/BACKLOG.md`
-8. `unused/root-docs-prd-alignment-2026-03-03/phase-progress.md`
+8. `unused/root-docs-prd-alignment-2026-03-03/increment-progress.md` (legacy tracker file path)
 
 Canonical active docs after restructuring:
 - `docs/product/PRD.md`
