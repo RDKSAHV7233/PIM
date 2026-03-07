@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `262e795`
+- Current HEAD before archive-ignore closure: `2a9bc48`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -64,7 +64,7 @@
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
-## Immediate Next Step
-1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Only `unused/*` archive paths remain outside the active tracked tree; decide whether they need further bookkeeping or can stay untracked archive material.
-3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.
+## Closure Status
+1. All active runtime, test, and governance/product-doc diffs in this manifest are now committed and locked.
+2. The only remaining local noise was `unused/*` archive material, which is now ignored via `.gitignore` in commit `576f32e`.
+3. No restore/delete action is required for `unused/*` unless explicitly requested later.

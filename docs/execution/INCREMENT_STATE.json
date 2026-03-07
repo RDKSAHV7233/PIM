@@ -363,6 +363,21 @@
                                                 "reopened_by":  "",
                                                 "reopened_reason":  "",
                                                 "regression_evidence":  ""
+                                            },
+                                            {
+                                                "storyId":  "ST-REPO-ARCHIVE-IGNORE-001",
+                                                "title":  "Ignore local archive backup paths under unused",
+                                                "status":  "completed",
+                                                "locked":  true,
+                                                "owner":  "codex",
+                                                "commit":  "576f32e",
+                                                "tests_passed":  [
+                                                                     "git status --short",
+                                                                     "git check-ignore -v unused/temp/* unused/pim1-files-20260306_145759/*"
+                                                                 ],
+                                                "reopened_by":  "",
+                                                "reopened_reason":  "",
+                                                "regression_evidence":  ""
                                             }
                                         ]
                        },
