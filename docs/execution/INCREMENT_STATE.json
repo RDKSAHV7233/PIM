@@ -411,7 +411,9 @@
                                             "apps/web/src/app/channels/mappings/page.tsx",
                                             "apps/web/src/app/products/[id]/page.tsx",
                                             "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
-                                            "packages/db/prisma/migrations/20260306171000_connector_mapping_lifecycle_v1/migration.sql"
+                                            "packages/db/prisma/migrations/20260306171000_connector_mapping_lifecycle_v1/migration.sql",
+                                            "docs/product/PRD.md",
+                                            "docs/execution/PRD_TO_ENGINEERING_BACKLOG.md"
                                         ],
                            "stories":  [
                                            {
@@ -431,6 +433,22 @@
                                                "reopened_by":  "codex",
                                                "reopened_reason":  "CTO governance repair for non-immutable commit evidence on a locked story.",
                                                "regression_evidence":  "Locked story referenced 'working-tree' instead of an immutable commit despite matching git provenance at c577216 for mapping lifecycle, taxonomy, and publish-readiness activation."
+                                           },
+                                           {
+                                               "storyId":  "ST-CON-DOC-ALIGN-001",
+                                               "title":  "Align connector PRD and backlog with implemented public mapping contract",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "b4a2f8c",
+                                               "tests_passed":  [
+                                                                    "rg -n \"CR-006|CR-007|CR-008|CR-009|CR-010|ST-CON-006|ST-CON-007|ST-CON-008|INC-09\" docs/product/PRD.md docs/execution/PRD_TO_ENGINEERING_BACKLOG.md apps/api/src/marketplace apps/api/src/connector-framework -S",
+                                                                    "npm run test:integration:connector-mapping-lifecycle",
+                                                                    "git diff -- docs/product/PRD.md docs/execution/PRD_TO_ENGINEERING_BACKLOG.md"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
                                            }
                                        ]
                        }
