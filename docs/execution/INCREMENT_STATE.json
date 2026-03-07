@@ -122,6 +122,20 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "",
                                                "regression_evidence":  "Untracked active execution docs and gate files, plus tracked tsbuildinfo build artifact, kept the tree dirty after restore."
+                                           },
+                                           {
+                                               "storyId":  "ST-WEBHOOK-DEDUPE-TEST-001",
+                                               "title":  "Align webhook dedupe scope regression with connector plan entitlements",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "0ff5b02",
+                                               "tests_passed":  [
+                                                                    "npm run test:integration:webhook-dedupe-scope"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
                                            }
                                        ]
                        },
