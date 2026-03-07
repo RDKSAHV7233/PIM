@@ -197,6 +197,19 @@ async function run() {
     });
     assertStatus(blockingProduct, 201, "create blocking product");
 
+    const warningInReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${warningProduct.payload.id}`, token, {
+      expectedVersion: warningProduct.payload.version,
+      title: warningProduct.payload.title,
+      brand: warningProduct.payload.brand,
+      description: warningProduct.payload.description,
+      categoryId: warningProduct.payload.categoryId,
+      hsnCode: warningProduct.payload.hsnCode,
+      gstRate: warningProduct.payload.gstRate,
+      attributes: warningProduct.payload.attributes,
+      status: "in_review",
+    });
+    assertStatus(warningInReview, 200, "transition warning product to in_review");
+
     const validateWarning = await apiRequest(
       baseUrl,
       "POST",
@@ -248,6 +261,19 @@ async function run() {
       `warning issues should be resolved, got ${warningOnlyInbox.payload.items.length} remaining`,
     );
 
+    const inReviewInbox = await apiRequest(
+      baseUrl,
+      "GET",
+      "/issues/inbox?pagination=cursor&limit=25&productStatus=in_review",
+      token,
+    );
+    assertStatus(inReviewInbox, 200, "list issue inbox filtered by in_review status");
+    assert(Array.isArray(inReviewInbox.payload?.items), "in_review inbox response must include items array");
+    assert(
+      inReviewInbox.payload.items.every((issue) => issue.productStatus === "in_review"),
+      `expected only in_review issues, got ${JSON.stringify(inReviewInbox.payload.items)}`,
+    );
+
     console.log(
       JSON.stringify(
         {
@@ -257,6 +283,7 @@ async function run() {
             "issue_inbox_list_returns_blocking_and_warning",
             "issue_inbox_sorting_blocking_first",
             "issue_inbox_bulk_resolve_only_resolves_warning",
+            "issue_inbox_accepts_in_review_product_status_filter",
           ],
           checkedAt: new Date().toISOString(),
         },

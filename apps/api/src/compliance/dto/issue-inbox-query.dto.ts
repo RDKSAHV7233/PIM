@@ -17,8 +17,8 @@ export class IssueInboxQueryDto {
   categoryId?: string;
 
   @IsOptional()
-  @IsIn(["draft", "active", "archived"])
-  productStatus?: "draft" | "active" | "archived";
+  @IsIn(["draft", "in_review", "approved", "rejected", "active", "archived"])
+  productStatus?: "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 
   @IsOptional()
   @IsIn(["cursor"])
