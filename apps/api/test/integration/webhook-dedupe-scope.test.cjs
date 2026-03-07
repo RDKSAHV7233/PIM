@@ -175,6 +175,14 @@ async function run() {
     const token = login.payload?.accessToken;
     assert(typeof token === "string" && token.length > 10, "missing access token");
 
+    const setPlanTier = await apiRequest(baseUrl, "POST", "/billing/plan-tier", token, {
+      planTier: "ENTERPRISE",
+    });
+    assert(
+      setPlanTier.status === 200 || setPlanTier.status === 201,
+      `set plan tier failed: expected 200/201, got ${setPlanTier.status} payload=${JSON.stringify(setPlanTier.payload)}`,
+    );
+
     const installPrimary = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", token, {
       accountAlias: "primary",
     });
