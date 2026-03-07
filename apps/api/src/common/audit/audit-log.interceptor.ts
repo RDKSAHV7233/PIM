@@ -46,15 +46,12 @@ export class AuditLogInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const actorIdHeader = Array.isArray(request.headers["x-pim-actor"])
-      ? request.headers["x-pim-actor"][0]
-      : request.headers["x-pim-actor"];
     const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
       ? request.pimUserId.trim()
-      : typeof actorIdHeader === "string" && actorIdHeader.trim().length > 0
-      ? actorIdHeader.trim()
       : "system";
-    const actorRole = request.pimRole ?? "admin";
+    const actorRole = typeof request.pimRole === "string" && request.pimRole.trim().length > 0
+      ? request.pimRole
+      : "system";
     const resource = sanitizePath(request.url);
 
     return next.handle().pipe(
