@@ -1,0 +1,106 @@
+Document Name: User Guide
+
+Purpose:
+Explain how users manage products.
+
+Scope:
+Implemented role-aware pages and workflows present in PIM1 web routes and API modules.
+
+Content:
+Primary Navigation (implemented):
+- Dashboard
+- Catalog
+- Channels
+- Operations
+- Quality
+- Admin
+Source: apps/web/src/components/nav/app-sidebar.tsx
+
+Catalog Subsections:
+- Products
+- Categories
+- Attributes
+- Media
+
+Channels Subsections:
+- Overview
+- Connectors
+- Mappings
+- Submissions
+- Health
+
+Operations Subsections:
+- Imports
+- Bulk Edit
+- Jobs
+- Repair Center
+
+Quality Subsections:
+- Issue Inbox
+- Validation
+- Rejection Insights
+- Completeness
+- Approval Queue
+
+Admin Subsections:
+- Workspace Settings
+- Plan & Usage
+- Users & Roles
+- Connector Access
+- Privacy
+- Audit Logs
+
+Role Model (validated):
+- admin
+- editor
+- viewer
+Source: apps/api/src/auth/jwt.ts and RBAC guard
+
+Core User Workflows:
+1) Create Product
+- UI route: /catalog/products
+- API: POST /api/v1/catalog/products
+- Compliance validation triggered after create.
+
+2) Edit Product
+- UI route: /products/[id]
+- API: PATCH /api/v1/catalog/products/:id
+- Requires expectedVersion.
+
+3) Manage Categories
+- UI route: /catalog/categories
+- API: /api/v1/taxonomy/categories
+- Admin-restricted writes.
+
+4) Manage Attributes
+- UI route: /catalog/attributes
+- API: /api/v1/taxonomy/categories/:id/attributes
+- Admin-restricted writes.
+
+5) Manage Variants
+- UI route: /products/[id] (variants tab)
+- API: /api/v1/catalog/products/:id/variants
+
+6) Import Catalog
+- UI route: /operations/imports
+- API: /api/v1/bulk-import/*
+
+7) Bulk Edit
+- UI route: /operations/bulk-edit
+- API: /api/v1/bulk-edit/preview, /apply, /operations
+
+8) Connector and Channel Operations
+- UI route: /channels/connectors and /channels/submissions
+- API: /api/v1/connectors/* and /api/v1/submissions/*
+
+9) Quality Inbox and Validation
+- UI routes: /quality/issues, /quality/validation, /quality/completeness
+- API: compliance and issue inbox endpoints
+
+10) Plan and Governance
+- UI route: /admin/plan and /admin/audit
+- API: /api/v1/billing/* and /api/v1/audit/logs
+
+Additional formal end-user SOP:
+Information not available in PIM1 project.
+

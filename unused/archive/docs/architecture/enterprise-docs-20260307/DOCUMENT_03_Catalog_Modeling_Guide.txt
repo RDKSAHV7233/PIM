@@ -1,0 +1,63 @@
+Document Name: Catalog Modeling Guide
+
+Purpose:
+Describe catalog structure.
+
+Scope:
+Catalog data structures, classification, attribute modeling, variant structure, and enrichment flow implemented in PIM1.
+
+Content:
+Catalog Structure:
+- Category hierarchy:
+  - parentId + path denormalization.
+  - slug uniqueness.
+- Product structure:
+  - normalized business/compliance columns.
+  - flexible attributes JSON.
+  - status workflow and optimistic version control.
+  - soft delete and explicit purge.
+- Variant structure:
+  - product-linked SKU model with attributes and pricing/inventory.
+- Attribute structure:
+  - category-scoped definitions.
+  - appliesTo product/variant.
+  - required and allowedValues support.
+
+Validated Attribute Data Types:
+- text
+- number
+- boolean
+- select
+- json
+Source: apps/api/src/taxonomy/dto/create-attribute-definition.dto.ts
+
+Category Tree Behavior:
+- Category path is generated from parent path + name.
+- Descendant paths are refreshed on category rename/update.
+Source: apps/api/src/taxonomy/taxonomy.service.ts
+
+Variant Modeling:
+- skuCode is unique.
+- Variant status follows RecordStatus enum values.
+- Pricing validation enforces sellingPrice <= mrp when both set.
+Source: schema.prisma and catalog.service.ts
+
+Channel Catalog Mapping:
+- ChannelMappingTemplate stores requiredFields and fieldMap JSON.
+- Supports versioning and parent template inheritance linkage.
+- Mapping lookup endpoints exist by channel and category.
+Source: schema.prisma and marketplace.controller.ts
+
+Localization Model:
+Information not available in PIM1 project.
+
+Product Family Structure:
+Information not available in PIM1 project.
+
+Product Enrichment Workflow (implemented):
+1. Create or update product.
+2. Run compliance validation.
+3. Persist open issues.
+4. Run marketplace simulation (channel readiness).
+5. Create marketplace export jobs.
+

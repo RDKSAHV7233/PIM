@@ -1,0 +1,81 @@
+Document Name: Data Architecture
+
+Purpose:
+Describe database schema.
+
+Scope:
+Validated schema models, migration-owned runtime tables, relationships, indexes, and lifecycle controls in PIM1.
+
+Content:
+Schema Sources:
+- packages/db/prisma/schema.prisma
+- packages/db/prisma/migrations/*
+
+Primary ORM Models:
+- Category
+- BulkImportTemplate
+- Product
+- Variant
+- AttributeDefinition
+- ComplianceRule
+- ValidationIssue
+- ChannelMappingTemplate
+- MarketplaceExportJob
+- BulkImportJob
+- BulkImportRow
+- BulkEditOperation
+- BulkEditOperationItem
+- AccountConsentEvent
+- AccountExportRequest
+- AccountDeletionRequest
+- AuditLog
+- PlanLimits
+- PlanUsage
+- TenantPlanProfile
+- ConnectorPermission
+- AuthIdentity
+
+Migration-owned Runtime Tables:
+- connector_definitions
+- connector_installations
+- connector_credentials
+- connector_submissions
+- connector_webhook_events
+- media_assets
+- dashboard_snapshots
+- kpi_metric_events
+- ondc_mappings
+
+Key Relationship Matrix:
+| Parent | Child | Relationship |
+| Category | Product | Product.categoryId |
+| Category | AttributeDefinition | AttributeDefinition.categoryId |
+| Product | Variant | Variant.productId |
+| Product | ValidationIssue | ValidationIssue.productId |
+| Product | MarketplaceExportJob | MarketplaceExportJob.productId |
+| ConnectorDefinition | ConnectorInstallation | connector_installations.connector_id |
+| ConnectorInstallation | ConnectorCredential | connector_credentials.installation_id |
+| ConnectorInstallation | ConnectorSubmission | connector_submissions.installation_id |
+| ConnectorInstallation | ConnectorWebhookEvent | connector_webhook_events.installation_id |
+
+Indexing Strategy (validated):
+- Prisma indexes on product/status/category/tenant combinations, issue/status, import/edit operations, plan usage, audit.
+- SQL indexes for connector timeline/status lookups and idempotency uniqueness.
+- SQL indexes for media assets and dashboard snapshots/metrics.
+
+Key Constraints:
+- Product soft-delete query filtering via middleware unless bypass flag used.
+- Product purge route only after soft delete.
+- Connector submission idempotency unique index:
+  (tenant_key, installation_id, idempotency_key)
+- Connector webhook dedupe unique:
+  (installation_id, external_event_id)
+
+Data Versioning:
+- Product optimistic versioning with expectedVersion.
+- ChannelMappingTemplate version field.
+- Connector definition connector_version field.
+
+Cross-entity historical version system:
+Information not available in PIM1 project.
+

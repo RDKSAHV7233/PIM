@@ -1,0 +1,51 @@
+Document Name: Operations Guide
+
+Purpose:
+Describe monitoring, logging, backup, and troubleshooting.
+
+Scope:
+Validated operational controls, scripts, workflows, and runbooks available in PIM1 repository.
+
+Content:
+CI/CD Operations:
+- CI enforces migration + RLS verification + unsafe raw checks + lint/build/test + OpenAPI check.
+- Staging deployment executes migrate/build/deploy/smoke/post-check and records gate artifact.
+Sources: .github/workflows/ci.yml and .github/workflows/deploy-staging.yml
+
+Monitoring:
+- Health endpoint: GET /api/v1/health
+- Health response includes:
+  - status
+  - env
+  - auth mode
+  - db pool metrics
+  - queue metrics
+Source: apps/api/src/common/app.controller.ts
+
+Logging:
+- Structured logger service with correlation middleware.
+- Tenant/correlation metadata included in log shape.
+Source: apps/api/src/common/logging/*
+
+Error Handling:
+- API uses structured exception responses in auth/billing/connectors/bulk flows.
+- Queue service emits handler errors via callback and keeps lane metrics.
+- Submission retries and dead-letter views exposed by API.
+
+Backup and Data Safety:
+- credential-key-rotation runbook requires pg_dump backup before execution.
+- test-data-governance runbook advises backup before execute mode.
+Sources: docs/runbooks/credential-key-rotation.md and docs/runbooks/test-data-governance.md
+
+Disaster Recovery:
+Information not available in PIM1 project.
+
+Troubleshooting References:
+- docs/runbooks/auth-bootstrap-admin.md
+- docs/runbooks/credential-key-rotation.md
+- docs/runbooks/test-data-governance.md
+- scripts/staging-postdeploy-check.cjs (workflow reference)
+
+External observability platform configuration:
+Information not available in PIM1 project.
+

@@ -1,0 +1,64 @@
+Document Name: PIM Domain Model
+
+Purpose:
+Explain the core entities and relationships.
+
+Scope:
+Domain entities and relationships implemented in Prisma schema and migration-backed SQL tables.
+
+Content:
+Primary ORM Source:
+packages/db/prisma/schema.prisma
+
+Core Entity Model:
+| Entity | Key Fields | Key Relationships |
+| Product | id, tenantKey, title, description, brand, categoryId, hsnCode, gstRate, attributes, status, version, deletedAt | Category (belongs-to), Variant (has-many), ValidationIssue (has-many), MarketplaceExportJob (has-many) |
+| Variant | id, tenantKey, productId, skuCode, attributes, mrp, sellingPrice, inventoryQty, status | Product (belongs-to) |
+| Category | id, tenantKey, name, slug, parentId, path | Parent Category (self relation), Product (has-many), AttributeDefinition (has-many) |
+| AttributeDefinition | id, tenantKey, categoryId, key, name, dataType, required, appliesTo, allowedValues | Category (belongs-to) |
+| ComplianceRule | id, tenantKey, ruleCode, categoryId, severity, ruleType, config, active | Category (optional belongs-to), ValidationIssue via ruleId |
+| ValidationIssue | id, tenantKey, productId, variantId, ruleId, severity, ruleCode, message, fieldPath, status | Product/Variant/ComplianceRule |
+| ChannelMappingTemplate | id, tenantKey, categoryId, channel, name, version, requiredFields, fieldMap, parentTemplateId | Category (belongs-to), parent template (self relation) |
+| MarketplaceExportJob | id, tenantKey, productId, channel, templateId, status, payload, response, retries | Product (belongs-to), ChannelMappingTemplate (optional) |
+| BulkImportJob | id, tenantKey, categoryId, sourceFormat, sourcePayload, status, counters | BulkImportRow (has-many) |
+| BulkImportRow | id, tenantKey, jobId, rowNumber, sourceData, mappedData, status, errorCode, errorMessage, productId | BulkImportJob (belongs-to), Product (optional) |
+| BulkEditOperation | id, tenantKey, status, scope, updates, requestedCount, appliedCount, failedCount | BulkEditOperationItem (has-many) |
+| BulkEditOperationItem | id, tenantKey, operationId, productId, status, before, after, errorCode, errorMessage | BulkEditOperation (belongs-to), Product (belongs-to) |
+| PlanLimits | planTier, maxSkus, maxSubmissionsPerMonth, maxUsers, maxStorageGb, maxConnectorInstallations, maxAccountsPerConnector | Referenced by plan usage enforcement |
+| PlanUsage | id, tenantKey, month, planTier, skuCount, submissionCount, storageGb, connector counts | Unique by tenantKey + month |
+| TenantPlanProfile | tenantKey, planTier, effectiveFrom, updatedBy | Authoritative tenant plan source |
+| ConnectorPermission | tenantKey, principalType, principalId, connectorSlug, accountAlias, action | Connector action access control |
+| AuditLog | id, tenantKey, actorId, actorRole, action, resource, resourceId, metadata | Governance and traceability |
+| AuthIdentity | userId, tenantKey, role, passwordHash, lock fields, reset fields | Login identity model |
+
+Migration-backed SQL Tables (runtime domain):
+Source: packages/db/prisma/migrations/20260304130000_connector_framework_tables/migration.sql
+Source: packages/db/prisma/migrations/20260304152000_runtime_ddl_backfill/migration.sql
+
+- connector_definitions
+- connector_installations
+- connector_credentials
+- connector_submissions
+- connector_webhook_events
+- media_assets
+- dashboard_snapshots
+- kpi_metric_events
+- ondc_mappings
+
+Validation Rules (implemented):
+- HSN required and format check.
+- GST required; uncommon values flagged as warning.
+- Required dynamic product attributes per category.
+- Rule-based checks from ComplianceRule config.
+Source: apps/api/src/compliance/compliance.service.ts
+
+Completeness Logic (implemented):
+- Core fields counted: title, brand, description, hsnCode, gstRate.
+- Required category product attributes counted.
+- Score = rounded percent of filled required fields.
+Source: apps/api/src/catalog/catalog.service.ts
+
+Missing Model Areas:
+Information not available in PIM1 project.
+- Product Family model
+

@@ -1,0 +1,81 @@
+Document Name: Product Overview
+
+Purpose:
+Explain the purpose of the PIM1 platform.
+
+Scope:
+Product purpose, business problem, scope boundaries, documented users, implemented features, and project terminology validated from PIM1 sources.
+
+Content:
+Product Name: PIM1
+
+Validated Product Description:
+India-first, multi-tenant Product Information Management platform with connector-first marketplace architecture.
+Source: docs/product/PRD.md
+
+Business Problem Definition:
+- Fragmented product data management across spreadsheets and channel portals.
+- High rejection rates due to missing required fields and channel-specific constraints.
+- Slow onboarding and error-prone bulk updates.
+- Limited readiness and operational risk visibility.
+Source: docs/product/PRD.md
+
+Current Product Scope:
+In scope (validated in PRD and API modules):
+- Product, category, and variant catalog operations.
+- Compliance validation and issue persistence.
+- Channel readiness simulation and structured issue normalization.
+- Bulk import templates/jobs/retries/row repair.
+- Bulk edit with preview and operation history.
+- Connector install/credential/export/publish orchestration paths.
+
+Out of scope (PRD current cycle):
+- OMS/order lifecycle replacement.
+- Full DAM intelligence automation beyond current increment scope.
+- AI-led autonomous optimization as launch dependency.
+
+Documented Users and Roles:
+- Admin
+- Editor
+- Viewer
+- Marketplace Ops
+Source: docs/product/PRD.md
+
+Implemented Feature Baseline (validated from code and openapi):
+| Area | Implemented |
+| Auth & Access | JWT login/logout, jti blocklist revocation, RBAC guard, tenant middleware |
+| Catalog | Products, variants, status workflow, soft delete + purge, completeness score |
+| Taxonomy | Categories and attribute definitions |
+| Compliance | Rules CRUD, product validation, issue generation |
+| Quality | Issue inbox, warning resolution, validation surfaces |
+| Operations | Bulk import and bulk edit |
+| Marketplace | Simulation, mapping templates, export jobs, submissions/retry/dead-letter |
+| Connectors | Definitions, install/reconnect/uninstall/delete, permissions |
+| Media | Asset upload/list/validation and bulk associations |
+| Dashboard | Readiness, catalog health, health snapshot/trend |
+| Governance | Plan usage/profile/tier controls and audit logs |
+
+Terminology and Glossary (derived from entities/routes):
+- Product
+- Variant
+- Category
+- AttributeDefinition
+- ComplianceRule
+- ValidationIssue
+- ChannelMappingTemplate
+- MarketplaceExportJob
+- BulkImportJob
+- BulkEditOperation
+- ConnectorDefinition
+- ConnectorInstallation
+- ConnectorCredential
+- ConnectorSubmission
+- ConnectorWebhookEvent
+- PlanLimits
+- PlanUsage
+- TenantPlanProfile
+- ConnectorPermission
+- AuditLog
+- MediaAsset
+- DashboardSnapshot
+

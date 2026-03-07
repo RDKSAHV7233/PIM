@@ -1,0 +1,75 @@
+Document Name: Deployment Guide
+
+Purpose:
+Explain installation and deployment.
+
+Scope:
+Validated setup requirements, local run process, CI/CD deployment flow, and environment configuration from PIM1 repository.
+
+Content:
+System Requirements (validated):
+- Node.js 24+
+- Docker Desktop
+- PostgreSQL
+- Redis
+- RabbitMQ
+Source: README.md and docker-compose.yml
+
+Local Installation Process:
+1. Copy .env.example to .env.
+2. Install dependencies:
+   npm install
+3. Start local infra:
+   npm run infra:up
+4. Generate Prisma client:
+   npm run prisma:generate
+5. Initialize schema:
+   npm run prisma:migrate:init
+6. Run services:
+   npm run dev:api
+   npm run dev:web
+
+Build Validation Commands:
+- npm run lint --workspace @pim1/api
+- npm run lint --workspace @pim1/web
+- npm run build --workspace @pim1/api
+- npm run build --workspace @pim1/web
+
+CI Pipeline (validated):
+Source: .github/workflows/ci.yml
+- Checkout and setup Node 24
+- npm ci
+- Prisma generate
+- Prisma migrate deploy
+- verify-tenant-rls.cjs
+- unsafe raw SQL comment guard
+- lint/build
+- integration tests
+- OpenAPI freshness check
+
+Staging Deployment Pipeline:
+Source: .github/workflows/deploy-staging.yml
+- Trigger: push to main
+- APP_ENV=staging
+- generate/migrate/build API+web
+- execute provider deploy command from secret
+- smoke check /api/v1/health
+- post-deploy auth/trust boundary check script
+- record gate artifact
+
+Environment Configuration:
+Source: .env.example
+- DB URLs (pooled/direct)
+- JWT secrets and expiry
+- Redis URLs/prefixes
+- Credential encryption keys/version
+- R2/AWS media variables
+- Feature flags (ONDC, real validation toggle)
+
+Container/Cloud setup:
+- docker-compose defines local postgres/redis/rabbitmq.
+- deploy/aws/media-baseline.yaml exists for media baseline.
+
+Full production infrastructure topology specification:
+Information not available in PIM1 project.
+

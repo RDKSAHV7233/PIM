@@ -1,0 +1,62 @@
+Document Name: Implementation Playbook
+
+Purpose:
+Explain catalog onboarding, migration, and governance.
+
+Scope:
+Validated onboarding/playbook patterns, implementation workflows, and governance controls present in PIM1 documentation and code.
+
+Content:
+Catalog Onboarding:
+- A first-seller onboarding playbook is documented.
+- Includes:
+  - entry criteria
+  - pilot profile
+  - 120-minute session flow
+  - evidence capture
+  - exit gates
+  - escalation rules
+Source: docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md
+
+Data Migration and Import Strategy:
+- Bulk import supports:
+  - templates
+  - mapping suggestions
+  - job creation and chunk processing
+  - row status and repair loop
+  - error CSV report
+  - DLQ requeue
+Source: bulk-import controller/service and OpenAPI
+
+Attribute Mapping Strategy:
+- Channel mapping templates support:
+  - requiredFields JSON
+  - fieldMap JSON
+  - versioning
+  - clone/update/delete
+- Product simulation consumes channel mapping template.
+Source: marketplace routes and ChannelMappingTemplate model
+
+Governance Model:
+- RBAC roles: admin/editor/viewer.
+- Tenant controls:
+  - tenant context middleware from JWT
+  - Prisma tenant extension
+  - CI tenant RLS verification
+- Plan governance:
+  - plan profile and usage models
+  - plan guard with 402 on limits
+- Connector governance:
+  - connector permissions by principal type/id/action
+- Audit governance:
+  - audit log API and audit record writes for key operations
+
+Catalog Quality Rules:
+- Compliance validation on GST/HSN + dynamic required attributes + configured rules.
+- Validation issues persisted and queryable.
+- Completeness score computed from required fields.
+- Quality pages exposed in UI and API.
+
+Formal enterprise governance board process:
+Information not available in PIM1 project.
+

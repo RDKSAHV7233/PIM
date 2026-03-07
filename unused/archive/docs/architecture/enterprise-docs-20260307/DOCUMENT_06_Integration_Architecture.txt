@@ -1,0 +1,59 @@
+Document Name: Integration Architecture
+
+Purpose:
+Describe integrations.
+
+Scope:
+Validated integration capabilities and boundaries implemented in PIM1 source and migration artifacts.
+
+Content:
+Connector-first Integration Model:
+- Connector framework defines contract and capabilities.
+- Connector registry includes:
+  - amazon-in
+  - flipkart
+  - meesho
+Source: apps/api/src/connector-framework/* and apps/api/src/connectors/*
+
+Connector Data Model (migration-backed):
+- connector_definitions
+- connector_installations
+- connector_credentials
+- connector_submissions
+- connector_webhook_events
+Source: packages/db/prisma/migrations/20260304130000_connector_framework_tables/migration.sql
+
+Connector Access and Entitlements:
+- Action permissions for install/reconnect/uninstall.
+- Plan limit enforcement for connector installations and connector accounts.
+Source: connector permission service, billing plan guard and plan usage service
+
+Marketplace Integration Flows (implemented):
+1. Install connector definition.
+2. Create export job from product/channel.
+3. Process queue-driven submission attempt.
+4. Persist submission status and issues.
+5. Retry or dead-letter visibility through submissions APIs.
+
+Mapping Integration:
+- Category + channel mapping templates.
+- Required fields and field mapping JSON persisted in ChannelMappingTemplate.
+
+Media Integration:
+- Object storage path persisted in media_assets.
+- Remote image ingestion with HTTPS-only and SSRF guards.
+
+Event-driven Pattern:
+- In-process queue service with lane policies and backpressure.
+- Queue names include bulk-import, connector-submission, webhook-event.
+
+Integrations Not Defined:
+- ERP integration: Information not available in PIM1 project.
+- Ecommerce platform integration: Information not available in PIM1 project.
+- External DAM integration: Information not available in PIM1 project.
+
+Webhook Transport Decision:
+- ADR-004 status is pending.
+- Final Amazon notification transport implementation details are not finalized.
+Information not available in PIM1 project.
+

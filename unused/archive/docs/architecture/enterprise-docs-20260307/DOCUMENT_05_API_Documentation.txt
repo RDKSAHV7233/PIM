@@ -1,0 +1,160 @@
+Document Name: API Documentation
+
+Purpose:
+Describe APIs available in PIM1.
+
+Scope:
+Validated API surface from docs/openapi.yaml and controller implementations under apps/api/src.
+
+Content:
+API Base:
+- /api/v1
+Source: apps/api/src/main.ts
+
+Swagger Availability:
+- /api/v1/docs
+- /api/v1/docs-json
+Only when APP_ENV is not production.
+
+Authentication:
+- POST /api/v1/auth/login
+- POST /api/v1/auth/logout
+- POST /api/v1/auth/consent
+- GET /api/v1/auth/account/privacy-status
+- POST /api/v1/auth/account/export
+- DELETE /api/v1/auth/account
+- POST /api/v1/auth/resend-unlock
+- POST /api/v1/auth/password-reset/request
+
+Catalog APIs:
+- GET /api/v1/catalog/stats
+- GET /api/v1/catalog/products
+- POST /api/v1/catalog/products
+- GET /api/v1/catalog/products/{id}
+- PATCH /api/v1/catalog/products/{id}
+- DELETE /api/v1/catalog/products/{id}
+- DELETE /api/v1/catalog/products/{id}/purge
+- GET /api/v1/catalog/products/{id}/variants
+- POST /api/v1/catalog/products/{id}/variants
+- PATCH /api/v1/catalog/variants/{id}
+- DELETE /api/v1/catalog/variants/{id}
+
+Products Alias APIs:
+- GET /api/v1/products
+- POST /api/v1/products
+- GET /api/v1/products/{id}
+- PATCH /api/v1/products/{id}
+
+Taxonomy APIs:
+- GET /api/v1/taxonomy/categories
+- POST /api/v1/taxonomy/categories
+- GET /api/v1/taxonomy/categories/{id}
+- PATCH /api/v1/taxonomy/categories/{id}
+- DELETE /api/v1/taxonomy/categories/{id}
+- GET /api/v1/taxonomy/categories/{id}/attributes
+- POST /api/v1/taxonomy/categories/{id}/attributes
+- PATCH /api/v1/taxonomy/categories/attributes/{attributeId}
+- DELETE /api/v1/taxonomy/categories/attributes/{attributeId}
+
+Compliance and Quality APIs:
+- GET /api/v1/compliance/rules
+- POST /api/v1/compliance/rules
+- PATCH /api/v1/compliance/rules/{id}
+- DELETE /api/v1/compliance/rules/{id}
+- POST /api/v1/compliance/products/{id}/validate
+- GET /api/v1/compliance/products/{id}/issues
+- GET /api/v1/issues/inbox
+- POST /api/v1/issues/inbox/resolve
+
+Bulk Import APIs:
+- POST /api/v1/bulk-import/jobs
+- GET /api/v1/bulk-import/jobs
+- GET /api/v1/bulk-import/jobs/{id}
+- GET /api/v1/bulk-import/jobs/{id}/rows
+- POST /api/v1/bulk-import/jobs/{id}/process
+- POST /api/v1/bulk-import/jobs/{id}/requeue-dlq
+- POST /api/v1/bulk-import/jobs/{id}/rows/{rowId}/process
+- POST /api/v1/bulk-import/jobs/{id}/rows/{rowId}/repair
+- GET /api/v1/bulk-import/jobs/{id}/error-report
+- POST /api/v1/bulk-import/templates
+- GET /api/v1/bulk-import/templates
+- GET /api/v1/bulk-import/templates/{id}
+- POST /api/v1/bulk-import/mapping-suggestions
+
+Bulk Edit APIs:
+- POST /api/v1/bulk-edit/preview
+- POST /api/v1/bulk-edit/apply
+- GET /api/v1/bulk-edit/operations
+- GET /api/v1/bulk-edit/operations/{id}
+
+Marketplace APIs:
+- GET /api/v1/marketplace/channels
+- GET /api/v1/marketplace/channels/{channel}/mapping
+- GET /api/v1/marketplace/categories/{id}/templates
+- POST /api/v1/marketplace/categories/{id}/templates
+- GET /api/v1/marketplace/templates/{id}
+- PATCH /api/v1/marketplace/templates/{id}
+- DELETE /api/v1/marketplace/templates/{id}
+- POST /api/v1/marketplace/templates/{id}/clone
+- GET /api/v1/marketplace/products/{id}/simulate
+- POST /api/v1/marketplace/products/{id}/simulate
+- POST /api/v1/marketplace/products/{id}/export-jobs
+- GET /api/v1/marketplace/export-jobs
+- POST /api/v1/marketplace/export-job
+- GET /api/v1/marketplace/export-jobs/{id}
+- POST /api/v1/marketplace/export-jobs/{id}/process
+- POST /api/v1/marketplace/export-jobs/{id}/requeue
+
+Submission APIs:
+- GET /api/v1/submissions
+- GET /api/v1/submissions/dead-letter
+- GET /api/v1/submissions/{id}
+- GET /api/v1/submissions/{id}/issues
+- POST /api/v1/submissions/{id}/retry
+
+Connector APIs:
+- GET /api/v1/connectors/definitions
+- POST /api/v1/connectors/{slug}/install
+- GET /api/v1/connectors/installed
+- POST /api/v1/connectors/{id}/uninstall
+- DELETE /api/v1/connectors/{slug}/install/{id}
+- POST /api/v1/connectors/{id}/reconnect
+- POST /api/v1/connectors/{id}/payload-preview
+- GET /api/v1/connectors/permissions
+- POST /api/v1/connectors/permissions
+- DELETE /api/v1/connectors/permissions/{id}
+
+Media APIs:
+- POST /api/v1/media/assets
+- GET /api/v1/media/assets
+- GET /api/v1/media/assets/{id}
+- GET /api/v1/media/assets/{id}/validation
+- POST /api/v1/media/bulk-associations
+
+Dashboard and Metrics APIs:
+- GET /api/v1/dashboard/readiness
+- GET /api/v1/dashboard/catalog-health
+- GET /api/v1/dashboard/health
+- GET /api/v1/metrics/kpi-trends
+
+Billing APIs:
+- GET /api/v1/billing/usage
+- GET /api/v1/billing/plan-profile
+- POST /api/v1/billing/plan-tier
+
+Audit APIs:
+- GET /api/v1/audit/logs
+
+Additional APIs:
+- ONDC routes exist and are feature-flagged by module import.
+- Auto-suggestions routes exist under /api/v1/auto-suggestions.
+
+Pagination:
+- Cursor pagination supported.
+- Default limit: 50
+- Max limit: 200
+Source: apps/api/src/common/pagination/*
+
+Webhooks/Event Receiver Endpoint:
+Information not available in PIM1 project.
+

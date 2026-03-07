@@ -1,0 +1,75 @@
+Document Name: System Architecture
+
+Purpose:
+Describe system architecture.
+
+Scope:
+Validated high-level architecture, module architecture, data flow, caching, security, and performance controls present in PIM1.
+
+Content:
+High-Level Architecture:
+| Layer | Technology |
+| Web | Next.js 15 + TypeScript + Tailwind |
+| API | NestJS Fastify + TypeScript |
+| Database | PostgreSQL + Prisma |
+| Cache | Redis |
+| Queue | In-process QueueService |
+| Storage | Object storage/CDN references in env and media services |
+
+Architecture Flow:
+Web UI -> REST API (/api/v1) -> Prisma + tenant scope -> PostgreSQL
+                                       -> Redis cache/blocklist
+                                       -> Queue lanes for async processing
+                                       -> Object storage for media/payload overflow
+
+Module Architecture (apps/api/src/app.module.ts):
+- AuthModule
+- AuditModule
+- BillingModule
+- TaxonomyModule
+- ComplianceModule
+- DashboardModule
+- ConnectorFrameworkModule
+- ConnectorInstallerModule
+- BulkImportModule
+- BulkEditModule
+- CatalogModule
+- MarketplaceModule
+- MediaModule
+- MetricsModule
+- RejectionIntelligenceModule
+- AutoSuggestionsModule
+- OndcModule (feature-flag controlled)
+
+Global Controls:
+- APP_GUARD: JwtAuthGuard
+- APP_GUARD: RbacGuard
+- APP_INTERCEPTOR: AuditLogInterceptor
+- TenantContextMiddleware applied to all routes
+- Global API prefix set to /api/v1
+
+Caching Strategy:
+- Dashboard readiness/catalog-health/health are cached in Redis.
+- 5-minute TTL.
+- In-memory fallback allowed only outside production mode.
+Source: apps/api/src/dashboard/dashboard.service.ts
+
+Security Model:
+- JWT bearer tokens with claims (sub, tenantId, jti, role).
+- jti revocation blocklist with Redis and local short-lived cache.
+- Legacy role/tenant headers explicitly rejected.
+- Tenant context from JWT.
+- Prisma tenant extension applies tenant filters to scoped models.
+- CI verifies RLS coverage for tenant tables.
+
+Performance Model:
+- Cursor-based pagination default 50 max 200.
+- Queue backpressure supports lane concurrency, interval control, rate-limit pause logic.
+- Connector submission idempotency uniquely scoped by tenant+installation+idempotency key.
+
+Search and indexing service:
+Information not available in PIM1 project.
+
+Formal SLO/SLA definition:
+Information not available in PIM1 project.
+

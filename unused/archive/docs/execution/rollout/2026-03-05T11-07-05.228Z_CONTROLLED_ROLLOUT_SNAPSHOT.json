@@ -1,0 +1,113 @@
+{
+  "capturedAt": "2026-03-05T11:07:05.228Z",
+  "environment": "staging",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "apiBase": "http://localhost:4000/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "env": "development",
+      "auth": {
+        "mode": "local",
+        "identitySource": "local_env"
+      },
+      "db_pool": {
+        "active": 0,
+        "idle": 0,
+        "waiting": 0,
+        "applicationName": "pim1-api"
+      },
+      "queues": {
+        "connector-submission": {
+          "waiting": 0,
+          "active": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        }
+      }
+    }
+  },
+  "gates": {
+    "artifactsInWindow": 7,
+    "allEvidenceArtifactsInWindow": 9,
+    "consecutiveE10SignoffRuns": 0,
+    "recentArtifacts": [
+      {
+        "file": "2026-03-04T10-05-32.313Z_PHASE1-ENTRY-DRY-RUN.json",
+        "suite": "PHASE1-ENTRY-DRY-RUN",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-04T10:05:32.313Z",
+        "runUrl": "local://pim1/phase1-entry-dry-run",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-04T03-01-45.522Z_SPRINT_CORE_GATES.json",
+        "suite": "SPRINT_CORE_GATES",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-04T03:01:45.522Z",
+        "runUrl": "local://pim1/sprint-core-gates-2026-03-04-soft-delete-fix",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-04T01-02-15.239Z_SPRINT_CORE_GATES.json",
+        "suite": "SPRINT_CORE_GATES",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-04T01:02:15.239Z",
+        "runUrl": "local://pim1/sprint-core-gates-2026-03-04-rerun",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-04T00-51-46.816Z_SPRINT_CORE_GATES.json",
+        "suite": "SPRINT_CORE_GATES",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-04T00:51:46.816Z",
+        "runUrl": "local://pim1/sprint-core-gates-2026-03-04",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-03T14-21-50.328Z_E10-ST-QA-001-RUN2.json",
+        "suite": "E10-ST-QA-001-RUN2",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T14:21:50.328Z",
+        "runUrl": "local://pim1/gate-run-sprint/2026-03-03T14-16Z",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-03T14-21-45.470Z_E10-ST-QA-001-RUN1.json",
+        "suite": "E10-ST-QA-001-RUN1",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T14:21:45.470Z",
+        "runUrl": "local://pim1/gate-run-sprint/2026-03-03T14-12Z",
+        "gitTag": "sha-a0292b4"
+      },
+      {
+        "file": "2026-03-03T11-43-35.079Z_E7-ST-OPS-005.json",
+        "suite": "E7-ST-OPS-005",
+        "tenantId": "SMOKE_TENANT_LOCAL",
+        "date": "2026-03-03T11:43:35.079Z",
+        "runUrl": "local://pim1/e7-st-ops-005",
+        "gitTag": "sha-a0292b4"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": false,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true
+    },
+    "pending": [
+      "Need at least 2 consecutive E10 gate signoff artifacts.",
+      "Health endpoint env mismatch: expected 'staging', got 'development'."
+    ]
+  },
+  "broadRollout": {
+    "pending": [
+      "14-day controlled rollout observation window not complete.",
+      "Production SLO trend evidence window not complete."
+    ]
+  }
+}

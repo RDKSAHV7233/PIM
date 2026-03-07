@@ -1,0 +1,41 @@
+Repository Name: PIM1 Enterprise Documentation Repository
+
+Purpose:
+Index all separate documentation artifacts generated from validated PIM1 project data.
+
+Scope:
+Lists document files, validated source inputs, and missing-information policy used for this repository.
+
+Content:
+Artifact Files:
+1. DOCUMENT_01_Product_Overview.txt
+2. DOCUMENT_02_PIM_Domain_Model.txt
+3. DOCUMENT_03_Catalog_Modeling_Guide.txt
+4. DOCUMENT_04_User_Guide.txt
+5. DOCUMENT_05_API_Documentation.txt
+6. DOCUMENT_06_Integration_Architecture.txt
+7. DOCUMENT_07_System_Architecture.txt
+8. DOCUMENT_08_Data_Architecture.txt
+9. DOCUMENT_09_Deployment_Guide.txt
+10. DOCUMENT_10_Operations_Guide.txt
+11. DOCUMENT_11_Implementation_Playbook.txt
+
+Validated Source Inputs:
+- docs/product/PRD.md
+- docs/openapi.yaml
+- packages/db/prisma/schema.prisma
+- packages/db/prisma/migrations/*
+- apps/api/src/**/*.ts
+- apps/web/src/components/nav/app-sidebar.tsx
+- apps/web/src/app/**/page.tsx
+- README.md
+- .env.example
+- .github/workflows/ci.yml
+- .github/workflows/deploy-staging.yml
+- docs/runbooks/*.md
+- docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md
+
+Missing Information Rule Applied:
+If data is not present in validated PIM1 sources, the exact phrase is used:
+"Information not available in PIM1 project."
+
