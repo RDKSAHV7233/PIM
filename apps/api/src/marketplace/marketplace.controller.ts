@@ -1,5 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { RequireStepUp } from "../auth/step-up.decorator";
+import { StepUpGuard } from "../auth/step-up.guard";
+import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
@@ -86,6 +89,8 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/publish")
   @Roles("admin", "editor")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.publish")
   publishConnectorMappingVersion(
     @Param("connectorSlug") connectorSlug: string,
     @Param("versionId") versionId: string,
@@ -102,6 +107,8 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/rollback")
   @Roles("admin", "editor")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.rollback")
   rollbackConnectorMappingVersion(
     @Param("connectorSlug") connectorSlug: string,
     @Param("versionId") versionId: string,
@@ -119,6 +126,8 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/archive")
   @Roles("admin")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.archive")
   archiveConnectorMappingVersion(
     @Param("connectorSlug") connectorSlug: string,
     @Param("versionId") versionId: string,

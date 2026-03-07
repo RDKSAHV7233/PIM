@@ -6,6 +6,8 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const STEP_UP_HEADER = "x-pim-step-up-token";
+const STEP_UP_SCOPE = "mapping_high_risk";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -77,8 +79,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -108,9 +110,9 @@ async function apiRequest(baseUrl, method, route, token, body) {
   return { status: response.status, payload };
 }
 
-async function tracedRequest(label, baseUrl, method, route, token, body) {
+async function tracedRequest(label, baseUrl, method, route, token, body, extraHeaders) {
   console.log(`[metrics-kpi-test] ${label}: ${method} ${route}`);
-  return apiRequest(baseUrl, method, route, token, body);
+  return apiRequest(baseUrl, method, route, token, body, extraHeaders);
 }
 
 function assert(condition, message) {
@@ -123,6 +125,17 @@ function assertStatus(result, expected, context) {
   if (result.status !== expected) {
     throw new Error(`${context} failed: expected ${expected}, got ${result.status} payload=${JSON.stringify(result.payload)}`);
   }
+}
+
+async function issueStepUp(baseUrl, token) {
+  const result = await tracedRequest("issue step-up", baseUrl, "POST", "/auth/step-up", token, {
+    password: "pim1-demo-password",
+    scope: STEP_UP_SCOPE,
+  });
+  assertStatus(result, 201, "issue step-up");
+  const stepUpToken = String(result.payload?.stepUpToken ?? "");
+  assert(stepUpToken.length > 10, "missing step-up token");
+  return stepUpToken;
 }
 
 async function run() {
@@ -226,6 +239,7 @@ async function run() {
     );
     assertStatus(mappingValidated, 201, "validate mapping draft");
 
+    const publishStepUpToken = await issueStepUp(baseUrl, token);
     const mappingPublished = await tracedRequest(
       "publish mapping draft",
       baseUrl,
@@ -233,6 +247,7 @@ async function run() {
       `/marketplace/connectors/flipkart/mappings/versions/${mappingDraft.payload.id}/publish`,
       token,
       { confirm: true },
+      { [STEP_UP_HEADER]: publishStepUpToken },
     );
     assertStatus(mappingPublished, 201, "publish mapping draft");
 

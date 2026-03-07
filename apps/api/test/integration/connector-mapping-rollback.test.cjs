@@ -6,6 +6,8 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const STEP_UP_HEADER = "x-pim-step-up-token";
+const STEP_UP_SCOPE = "mapping_high_risk";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -77,8 +79,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -116,6 +118,17 @@ function assertStatus(result, expected, context) {
   }
 }
 
+async function issueStepUp(baseUrl, token) {
+  const result = await apiRequest(baseUrl, "POST", "/auth/step-up", token, {
+    password: "pim1-demo-password",
+    scope: STEP_UP_SCOPE,
+  });
+  assertStatus(result, 201, "issue step-up token");
+  const stepUpToken = String(result.payload?.stepUpToken ?? "");
+  assert(stepUpToken.length > 10, "missing step-up token");
+  return stepUpToken;
+}
+
 async function createDraft(baseUrl, token, connectorSlug, payload) {
   return apiRequest(baseUrl, "POST", `/marketplace/connectors/${connectorSlug}/mappings/versions`, token, payload);
 }
@@ -131,12 +144,14 @@ async function validateVersion(baseUrl, token, connectorSlug, versionId) {
 }
 
 async function publishVersion(baseUrl, token, connectorSlug, versionId) {
+  const stepUpToken = await issueStepUp(baseUrl, token);
   return apiRequest(
     baseUrl,
     "POST",
     `/marketplace/connectors/${connectorSlug}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
     token,
     { confirm: true },
+    { [STEP_UP_HEADER]: stepUpToken },
   );
 }
 
@@ -291,30 +306,36 @@ async function run() {
       `expected v2 mapping to be active, payload=${JSON.stringify(resolvedCurrent.payload)}`,
     );
 
+    const noConfirmStepUp = await issueStepUp(baseUrl, tokenA);
     const noConfirm = await apiRequest(
       baseUrl,
       "POST",
       `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(v1Id)}/rollback`,
       tokenA,
       { confirm: false, reason: "should fail" },
+      { [STEP_UP_HEADER]: noConfirmStepUp },
     );
     assertStatus(noConfirm, 400, "rollback confirmation required");
 
+    const tenantBStepUp = await issueStepUp(baseUrl, tokenB);
     const tenantBDenied = await apiRequest(
       baseUrl,
       "POST",
       `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(v1Id)}/rollback`,
       tokenB,
       { confirm: true, reason: "cross-tenant denied" },
+      { [STEP_UP_HEADER]: tenantBStepUp },
     );
     assertStatus(tenantBDenied, 404, "tenant B rollback denial");
 
+    const rollbackStepUp = await issueStepUp(baseUrl, tokenA);
     const rollback = await apiRequest(
       baseUrl,
       "POST",
       `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(v1Id)}/rollback`,
       tokenA,
       { confirm: true, reason: "restore prior known-good mapping" },
+      { [STEP_UP_HEADER]: rollbackStepUp },
     );
     assertStatus(rollback, 201, "rollback v1");
     assert(

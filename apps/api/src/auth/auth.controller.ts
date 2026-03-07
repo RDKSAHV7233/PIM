@@ -21,6 +21,7 @@ import { RecordConsentDto } from "./dto/record-consent.dto";
 import { RequestPasswordResetDto } from "./dto/request-password-reset.dto";
 import { RequestAccountExportDto } from "./dto/request-account-export.dto";
 import { ResendUnlockDto } from "./dto/resend-unlock.dto";
+import { StepUpChallengeDto } from "./dto/step-up.dto";
 import { PimJwtClaims } from "./jwt";
 import { Public } from "./public.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
@@ -166,6 +167,22 @@ export class AuthController {
       throw new UnauthorizedException("Bearer token is required.");
     }
     await this.authService.logout(claims);
+  }
+
+  @Post("step-up")
+  @Roles("admin", "editor", "viewer")
+  @HttpCode(201)
+  async issueStepUp(@Body() dto: StepUpChallengeDto, @Req() request: AuthenticatedRequest) {
+    const claims = request.pimJwtClaims;
+    if (!claims) {
+      throw new UnauthorizedException("Bearer token is required.");
+    }
+    return this.authService.issueStepUp({
+      claims,
+      password: dto.password,
+      scope: dto.scope,
+      ipAddress: request.ip,
+    });
   }
 
   private requireActor(request: AuthenticatedRequest): { userId: string; tenantId: string; role: AppRole } {

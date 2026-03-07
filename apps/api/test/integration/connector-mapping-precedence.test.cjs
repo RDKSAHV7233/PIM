@@ -6,6 +6,8 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const STEP_UP_HEADER = "x-pim-step-up-token";
+const STEP_UP_SCOPE = "mapping_high_risk";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -77,8 +79,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -116,6 +118,17 @@ function assertStatus(result, expected, context) {
   }
 }
 
+async function issueStepUp(baseUrl, token) {
+  const result = await apiRequest(baseUrl, "POST", "/auth/step-up", token, {
+    password: "pim1-demo-password",
+    scope: STEP_UP_SCOPE,
+  });
+  assertStatus(result, 201, "issue step-up token");
+  const stepUpToken = String(result.payload?.stepUpToken ?? "");
+  assert(stepUpToken.length > 10, "missing step-up token");
+  return stepUpToken;
+}
+
 async function createDraftVersion(baseUrl, token, connectorSlug, payload) {
   const result = await apiRequest(
     baseUrl,
@@ -141,24 +154,28 @@ async function validateVersion(baseUrl, token, connectorSlug, versionId) {
 }
 
 async function publishVersion(baseUrl, token, connectorSlug, versionId) {
+  const stepUpToken = await issueStepUp(baseUrl, token);
   const result = await apiRequest(
     baseUrl,
     "POST",
     `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
     token,
     { confirm: true },
+    { [STEP_UP_HEADER]: stepUpToken },
   );
   assertStatus(result, 201, "publish mapping version");
   return result.payload;
 }
 
 async function archiveVersion(baseUrl, token, connectorSlug, versionId, reason) {
+  const stepUpToken = await issueStepUp(baseUrl, token);
   const result = await apiRequest(
     baseUrl,
     "POST",
     `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
     token,
     { reason },
+    { [STEP_UP_HEADER]: stepUpToken },
   );
   assertStatus(result, 201, "archive mapping version");
   return result.payload;

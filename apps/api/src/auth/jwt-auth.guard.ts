@@ -45,6 +45,9 @@ export class JwtAuthGuard implements CanActivate {
 
     const claims = decodePimJwtFromAuthHeader(request.headers.authorization);
     if (claims) {
+      if (claims.tokenType === "step_up") {
+        throw new UnauthorizedException({ error: "STEP_UP_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+      }
       const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
       if (revoked) {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });

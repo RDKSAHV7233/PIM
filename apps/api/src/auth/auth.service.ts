@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { createClient } from "redis";
@@ -9,7 +9,7 @@ import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
-import { PimJwtClaims, signPimJwt } from "./jwt";
+import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
 
 const DEFAULT_LOGIN_EXPIRY_MINUTES = 4 * 60;
 const MAX_LOGIN_EXPIRY_MINUTES = 4 * 60;
@@ -22,6 +22,8 @@ const DEFAULT_REDIS_URL = "redis://localhost:6379";
 const REDIS_RETRY_BACKOFF_MS = 30_000;
 const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
+const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
+const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
 
 export interface LoginResponse {
   accessToken: string;
@@ -30,6 +32,13 @@ export interface LoginResponse {
   userId: string;
   tenantId: string;
   role: AppRole;
+}
+
+export interface StepUpResponse {
+  stepUpToken: string;
+  tokenType: "StepUp";
+  expiresInSeconds: number;
+  scope: StepUpScope;
 }
 
 interface IpAttemptState {
@@ -258,6 +267,61 @@ export class AuthService implements OnModuleDestroy {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const ttlSeconds = Math.max(1, claims.exp - nowSeconds);
     await this.jwtBlocklistService.revoke(claims.jti, ttlSeconds);
+  }
+
+  async issueStepUp(input: {
+    claims: PimJwtClaims;
+    password: string;
+    scope: StepUpScope;
+    ipAddress: string;
+  }): Promise<StepUpResponse> {
+    if (!this.verifyPassword(input.password)) {
+      await this.auditService.record({
+        actorId: input.claims.sub,
+        actorRole: input.claims.role ?? "viewer",
+        action: "auth.step_up_denied",
+        resource: "auth.step_up",
+        metadata: {
+          scope: input.scope,
+          reason: "invalid_credentials",
+          parentJti: input.claims.jti,
+          ipAddress: input.ipAddress,
+        },
+      });
+      throw new UnauthorizedException({ error: "STEP_UP_INVALID_CREDENTIALS" });
+    }
+
+    const expiresInSeconds = this.resolveStepUpExpirySeconds();
+    const stepUpToken = signPimJwt({
+      sub: input.claims.sub,
+      tenantId: input.claims.tenantId,
+      role: input.claims.role,
+      tokenType: "step_up",
+      stepUpScope: input.scope,
+      parentJti: input.claims.jti,
+      expiresInSeconds,
+      minimumExpiresInSeconds: 1,
+    });
+
+    await this.auditService.record({
+      actorId: input.claims.sub,
+      actorRole: input.claims.role ?? "viewer",
+      action: "auth.step_up_issued",
+      resource: "auth.step_up",
+      metadata: {
+        scope: input.scope,
+        parentJti: input.claims.jti,
+        expiresInSeconds,
+        ipAddress: input.ipAddress,
+      },
+    });
+
+    return {
+      stepUpToken,
+      tokenType: "StepUp",
+      expiresInSeconds,
+      scope: input.scope,
+    };
   }
 
   async resendUnlock(email: string): Promise<ResendUnlockResult> {
@@ -736,7 +800,11 @@ export class AuthService implements OnModuleDestroy {
   }
 
   private verifyCredential(dto: LoginDto): boolean {
-    if (typeof dto.password !== "string" || dto.password.trim().length === 0) {
+    return this.verifyPassword(dto.password);
+  }
+
+  private verifyPassword(password: string): boolean {
+    if (typeof password !== "string" || password.trim().length === 0) {
       return false;
     }
     const configuredPassword = String(process.env.PIM_AUTH_PASSWORD ?? "").trim();
@@ -746,7 +814,15 @@ export class AuthService implements OnModuleDestroy {
       return false;
     }
     const expected = configuredPassword || "pim1-demo-password";
-    return dto.password === expected;
+    return password === expected;
+  }
+
+  private resolveStepUpExpirySeconds(): number {
+    const configured = Number.parseInt(String(process.env.PIM_STEP_UP_EXPIRY_SECONDS ?? ""), 10);
+    if (!Number.isFinite(configured)) {
+      return DEFAULT_STEP_UP_EXPIRY_SECONDS;
+    }
+    return Math.min(MAX_STEP_UP_EXPIRY_SECONDS, Math.max(1, configured));
   }
 
   private isLocalAuthMode(): boolean {

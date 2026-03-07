@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import { AppRole } from "../common/rbac/roles";
 
 const DEFAULT_EXPIRY_SECONDS = 4 * 60 * 60;
+export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
+export type StepUpScope = typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK;
+export type PimJwtTokenType = "access" | "step_up";
 
 interface JwtHeader {
   alg: "HS256";
@@ -14,6 +17,9 @@ export interface PimJwtClaims {
   tenantId: string;
   jti: string;
   role?: AppRole;
+  tokenType?: PimJwtTokenType;
+  stepUpScope?: StepUpScope;
+  parentJti?: string;
   iat: number;
   exp: number;
 }
@@ -24,6 +30,10 @@ interface SignJwtInput {
   role?: AppRole;
   jti?: string;
   expiresInSeconds?: number;
+  tokenType?: PimJwtTokenType;
+  stepUpScope?: StepUpScope;
+  parentJti?: string;
+  minimumExpiresInSeconds?: number;
 }
 
 function getJwtSecret(): string {
@@ -58,17 +68,32 @@ function isAppRole(value: unknown): value is AppRole {
   return value === "admin" || value === "editor" || value === "viewer";
 }
 
+function isTokenType(value: unknown): value is PimJwtTokenType {
+  return value === "access" || value === "step_up";
+}
+
+function isStepUpScope(value: unknown): value is StepUpScope {
+  return value === STEP_UP_SCOPE_MAPPING_HIGH_RISK;
+}
+
 export function signPimJwt(input: SignJwtInput): string {
   const now = Math.floor(Date.now() / 1000);
+  const minimumExpiresInSeconds = Number.isFinite(input.minimumExpiresInSeconds)
+    ? Math.max(1, Math.floor(input.minimumExpiresInSeconds ?? 60))
+    : 60;
   const expiresInSeconds = Number.isFinite(input.expiresInSeconds)
-    ? Math.max(60, Math.floor(input.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS))
+    ? Math.max(minimumExpiresInSeconds, Math.floor(input.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS))
     : DEFAULT_EXPIRY_SECONDS;
+  const tokenType = input.tokenType ?? "access";
   const header: JwtHeader = { alg: "HS256", typ: "JWT" };
   const claims: PimJwtClaims = {
     sub: input.sub,
     tenantId: input.tenantId,
     jti: input.jti?.trim() || randomUUID(),
     role: input.role,
+    tokenType,
+    stepUpScope: tokenType === "step_up" ? input.stepUpScope : undefined,
+    parentJti: tokenType === "step_up" ? input.parentJti?.trim() : undefined,
     iat: now,
     exp: now + expiresInSeconds,
   };
@@ -89,11 +114,17 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     const iat = typeof payload.iat === "number" ? payload.iat : Number.NaN;
     const exp = typeof payload.exp === "number" ? payload.exp : Number.NaN;
     const role = isAppRole(payload.role) ? payload.role : undefined;
+    const tokenType = isTokenType(payload.tokenType) ? payload.tokenType : "access";
+    const stepUpScope = isStepUpScope(payload.stepUpScope) ? payload.stepUpScope : undefined;
+    const parentJti = typeof payload.parentJti === "string" ? payload.parentJti.trim() : undefined;
 
     if (!sub || !tenantId || !jti || !Number.isFinite(iat) || !Number.isFinite(exp)) {
       return null;
     }
-    return { sub, tenantId, jti, role, iat, exp };
+    if (tokenType === "step_up" && (!stepUpScope || !parentJti)) {
+      return null;
+    }
+    return { sub, tenantId, jti, role, tokenType, stepUpScope, parentJti, iat, exp };
   } catch {
     return null;
   }
