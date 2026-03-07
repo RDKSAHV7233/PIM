@@ -4,13 +4,28 @@ import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  ApiHttpError,
+  type ApiRequestOptions,
   applyBulkEdit as applyBulkEditRequest,
   deleteJson,
   getPlanLimitExceededPayload,
+  issueStepUp,
   patchJson,
   postJson,
+  rollbackConnectorMappingVersion,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
+
+const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
+const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
+const STEP_UP_ERROR_CODES = new Set([
+  "STEP_UP_REQUIRED",
+  "STEP_UP_INVALID_CREDENTIALS",
+  "STEP_UP_TOKEN_INVALID",
+  "STEP_UP_TOKEN_SESSION_MISMATCH",
+  "STEP_UP_SCOPE_MISMATCH",
+  "STEP_UP_PASSWORD_REQUIRED",
+]);
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -168,9 +183,13 @@ async function resolveActionOptions(formData: FormData) {
   };
 }
 
-async function postJsonForAction<T>(formData: FormData, path: string, body: unknown) {
+async function postJsonForAction<T>(formData: FormData, path: string, body: unknown, options?: ApiRequestOptions) {
   return postJson<T>(path, body, {
     ...(await resolveActionOptions(formData)),
+    ...(options ?? {}),
+    headers: {
+      ...(options?.headers ?? {}),
+    },
   });
 }
 
@@ -184,6 +203,60 @@ async function deleteJsonForAction(formData: FormData, path: string) {
   return deleteJson(path, {
     ...(await resolveActionOptions(formData)),
   });
+}
+
+function appendQueryParams(basePath: string, params: Record<string, string | undefined>): string {
+  const [path, query = ""] = basePath.split("?");
+  const search = new URLSearchParams(query);
+  for (const [key, value] of Object.entries(params)) {
+    if (value && value.trim()) {
+      search.set(key, value.trim());
+    }
+  }
+  const nextQuery = search.toString();
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
+
+function withStepUpErrorQuery(
+  basePath: string,
+  action: "publish" | "archive" | "rollback",
+  versionId: string,
+  error: unknown,
+): string | null {
+  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+    const payload = error.body as Record<string, unknown>;
+    const code = String(payload.error ?? "").trim();
+    if (STEP_UP_ERROR_CODES.has(code)) {
+      return appendQueryParams(basePath, {
+        stepUpError: code,
+        stepUpAction: action,
+        stepUpVersionId: versionId,
+      });
+    }
+  }
+  if (error instanceof Error && error.message === "STEP_UP_PASSWORD_REQUIRED") {
+    return appendQueryParams(basePath, {
+      stepUpError: "STEP_UP_PASSWORD_REQUIRED",
+      stepUpAction: action,
+      stepUpVersionId: versionId,
+    });
+  }
+  return null;
+}
+
+async function issueMappingStepUpToken(formData: FormData): Promise<string> {
+  const password = String(formData.get("stepUpPassword") ?? "").trim();
+  if (!password) {
+    throw new Error("STEP_UP_PASSWORD_REQUIRED");
+  }
+  const response = await issueStepUp(
+    {
+      password,
+      scope: STEP_UP_SCOPE_MAPPING_HIGH_RISK,
+    },
+    await resolveActionOptions(formData),
+  );
+  return String(response.stepUpToken ?? "").trim();
 }
 
 function withPlanLimitQuery(basePath: string, error: unknown): string | null {
@@ -742,11 +815,21 @@ export async function publishConnectorMappingVersionAction(formData: FormData) {
   if (!connectorSlug || !versionId || !confirm) {
     throw new Error("Connector slug, version id, and explicit confirmation are required.");
   }
-  await postJsonForAction(
-    formData,
-    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
-    { confirm: true },
-  );
+  try {
+    const stepUpToken = await issueMappingStepUpToken(formData);
+    await postJsonForAction(
+      formData,
+      `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/publish`,
+      { confirm: true },
+      { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
+    );
+  } catch (error: unknown) {
+    const redirectPath = withStepUpErrorQuery(redirectTo, "publish", versionId, error);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
+    throw error;
+  }
   revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }
@@ -759,11 +842,52 @@ export async function archiveConnectorMappingVersionAction(formData: FormData) {
   if (!connectorSlug || !versionId || !reason) {
     throw new Error("Connector slug, version id, and archive reason are required.");
   }
-  await postJsonForAction(
-    formData,
-    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
-    { reason },
-  );
+  try {
+    const stepUpToken = await issueMappingStepUpToken(formData);
+    await postJsonForAction(
+      formData,
+      `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
+      { reason },
+      { headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken } },
+    );
+  } catch (error: unknown) {
+    const redirectPath = withStepUpErrorQuery(redirectTo, "archive", versionId, error);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
+    throw error;
+  }
+  revalidatePath("/channels/mappings");
+  redirect(redirectTo);
+}
+
+export async function rollbackConnectorMappingVersionAction(formData: FormData) {
+  const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
+  const versionId = String(formData.get("versionId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const confirm = String(formData.get("confirm") ?? "").trim() === "true";
+  if (!connectorSlug || !versionId || !reason || !confirm) {
+    throw new Error("Connector slug, version id, rollback reason, and confirmation are required.");
+  }
+  try {
+    const stepUpToken = await issueMappingStepUpToken(formData);
+    await rollbackConnectorMappingVersion(
+      connectorSlug,
+      versionId,
+      { confirm: true, reason },
+      {
+        ...(await resolveActionOptions(formData)),
+        headers: { [STEP_UP_TOKEN_HEADER]: stepUpToken },
+      },
+    );
+  } catch (error: unknown) {
+    const redirectPath = withStepUpErrorQuery(redirectTo, "rollback", versionId, error);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
+    throw error;
+  }
   revalidatePath("/channels/mappings");
   redirect(redirectTo);
 }

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import {
   archiveConnectorMappingVersionAction,
   createConnectorMappingVersionAction,
   publishConnectorMappingVersionAction,
+  rollbackConnectorMappingVersionAction,
   validateConnectorMappingVersionAction,
 } from "@/app/actions";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,9 @@ interface ChannelsMappingsPageProps {
     categoryId?: string;
     channel?: MarketplaceChannel;
     productId?: string;
+    stepUpAction?: "publish" | "archive" | "rollback";
+    stepUpError?: string;
+    stepUpVersionId?: string;
     taxonomyQ?: string;
   }>;
 }
@@ -86,11 +91,138 @@ function requiredAttributesFromTaxonomy(items: ConnectorTaxonomyItem[]): string[
   return Array.from(values).sort();
 }
 
+type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
+
+function protectedActionLabel(action: ProtectedMappingActionKind): string {
+  if (action === "archive") {
+    return "archive";
+  }
+  if (action === "rollback") {
+    return "rollback";
+  }
+  return "publish";
+}
+
+function resolveStepUpErrorMessage(
+  code: string,
+  action: ProtectedMappingActionKind | "",
+): { title: string; description: string } | null {
+  if (!code) {
+    return null;
+  }
+  const actionLabel = action ? protectedActionLabel(action) : "continue";
+  switch (code) {
+    case "STEP_UP_PASSWORD_REQUIRED":
+      return {
+        title: "Step-up re-authentication required",
+        description: `Enter your password to ${actionLabel} this mapping version.`,
+      };
+    case "STEP_UP_INVALID_CREDENTIALS":
+      return {
+        title: "Step-up re-authentication failed",
+        description: `The password was not accepted. Re-enter your password to ${actionLabel} this mapping version.`,
+      };
+    case "STEP_UP_REQUIRED":
+      return {
+        title: "Step-up re-authentication required",
+        description: `Confirm your password before you ${actionLabel} this mapping version.`,
+      };
+    case "STEP_UP_TOKEN_INVALID":
+      return {
+        title: "Step-up session expired",
+        description: `Your elevated session expired before ${actionLabel} completed. Re-authenticate and try again.`,
+      };
+    case "STEP_UP_TOKEN_SESSION_MISMATCH":
+      return {
+        title: "Step-up session mismatch",
+        description: `Your step-up re-authentication no longer matches the current session. Refresh the page and try ${actionLabel} again.`,
+      };
+    case "STEP_UP_SCOPE_MISMATCH":
+      return {
+        title: "Step-up scope mismatch",
+        description: `The existing step-up token does not authorize this ${actionLabel} action. Re-authenticate and retry.`,
+      };
+    default:
+      return {
+        title: "Step-up re-authentication failed",
+        description: `The privileged ${actionLabel} action could not be completed. Try again.`,
+      };
+  }
+}
+
+function ProtectedMappingActionForm({
+  action,
+  actorRole,
+  connectorSlug,
+  description,
+  disabled,
+  label,
+  open,
+  redirectTo,
+  versionId,
+  children,
+}: {
+  action: (formData: FormData) => Promise<void>;
+  actorRole: AppRole;
+  connectorSlug: string;
+  description: string;
+  disabled: boolean;
+  label: string;
+  open?: boolean;
+  redirectTo: string;
+  versionId: string;
+  children?: ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <Button type="button" variant="secondary" className="text-xs" disabled>
+        {label}
+      </Button>
+    );
+  }
+
+  return (
+    <details className="rounded-md border border-slate-200 bg-slate-50" open={open}>
+      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">
+        {label}
+      </summary>
+      <form action={action} className="space-y-3 border-t border-slate-200 p-3">
+        <RoleHiddenInput role={actorRole} />
+        <input type="hidden" name="connectorSlug" value={connectorSlug} />
+        <input type="hidden" name="versionId" value={versionId} />
+        <input type="hidden" name="redirectTo" value={redirectTo} />
+        <div className="space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor={`${label}-${versionId}`}>
+            Step-up re-authentication
+          </label>
+          <Input
+            id={`${label}-${versionId}`}
+            name="stepUpPassword"
+            type="password"
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            required
+          />
+          <p className="text-xs text-slate-500">{description}</p>
+        </div>
+        {children}
+        <Button type="submit" className="text-xs">
+          {label}
+        </Button>
+      </form>
+    </details>
+  );
+}
+
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const canWrite = actorRole !== "viewer";
+  const stepUpAction = (String(query.stepUpAction ?? "").trim() as ProtectedMappingActionKind | "") || "";
+  const stepUpError = String(query.stepUpError ?? "").trim();
+  const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
+  const stepUpMessage = resolveStepUpErrorMessage(stepUpError, stepUpAction);
 
   try {
     const [channels, categoriesRaw, connectorDefinitions] = await Promise.all([
@@ -199,6 +331,13 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           }
         />
 
+        {stepUpMessage ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">{stepUpMessage.title}</p>
+            <p className="mt-1">{stepUpMessage.description}</p>
+          </div>
+        ) : null}
+
         <FilterBar>
           <form method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
             <div className="space-y-1">
@@ -261,7 +400,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 />
               </p>
               <p>Required fields: {mapping.requiredFields.length}</p>
-              <p>Matched mapping versions: {resolved?.matched.length ?? 0}</p>
+              <p>Matched mapping versions: {resolved?.matched?.length ?? 0}</p>
             </div>
             <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
               <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>
@@ -411,31 +550,74 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                                 Validate
                               </Button>
                             </form>
-                            <form action={publishConnectorMappingVersionAction}>
-                              <RoleHiddenInput role={actorRole} />
-                              <input type="hidden" name="connectorSlug" value={connectorSlug} />
-                              <input type="hidden" name="versionId" value={version.id} />
-                              <input type="hidden" name="redirectTo" value={redirectTo} />
+                            <ProtectedMappingActionForm
+                              action={publishConnectorMappingVersionAction}
+                              actorRole={actorRole}
+                              connectorSlug={connectorSlug}
+                              description="Publishing is a high-risk action. Confirm your password before promoting this version."
+                              disabled={version.lifecycleState !== "validated"}
+                              label="Publish"
+                              open={stepUpAction === "publish" && stepUpVersionId === version.id}
+                              redirectTo={redirectTo}
+                              versionId={version.id}
+                            >
                               <input type="hidden" name="confirm" value="true" />
-                              <Button
-                                type="submit"
-                                variant="secondary"
-                                className="text-xs"
-                                disabled={version.lifecycleState !== "validated"}
+                            </ProtectedMappingActionForm>
+                            <ProtectedMappingActionForm
+                              action={archiveConnectorMappingVersionAction}
+                              actorRole={actorRole}
+                              connectorSlug={connectorSlug}
+                              description="Archiving changes the active mapping history. Confirm your password before continuing."
+                              disabled={version.lifecycleState === "archived"}
+                              label="Archive"
+                              open={stepUpAction === "archive" && stepUpVersionId === version.id}
+                              redirectTo={redirectTo}
+                              versionId={version.id}
+                            >
+                              <div className="space-y-1">
+                                <label
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                  htmlFor={`archive-reason-${version.id}`}
+                                >
+                                  Archive reason
+                                </label>
+                                <Input
+                                  id={`archive-reason-${version.id}`}
+                                  name="reason"
+                                  defaultValue="archived_from_mapping_manager"
+                                  required
+                                />
+                              </div>
+                            </ProtectedMappingActionForm>
+                            {(version.lifecycleState === "superseded" || version.lifecycleState === "archived") && (
+                              <ProtectedMappingActionForm
+                                action={rollbackConnectorMappingVersionAction}
+                                actorRole={actorRole}
+                                connectorSlug={connectorSlug}
+                                description="Rollback restores this prior published mapping as a new published version."
+                                disabled={false}
+                                label="Rollback"
+                                open={stepUpAction === "rollback" && stepUpVersionId === version.id}
+                                redirectTo={redirectTo}
+                                versionId={version.id}
                               >
-                                Publish
-                              </Button>
-                            </form>
-                            <form action={archiveConnectorMappingVersionAction}>
-                              <RoleHiddenInput role={actorRole} />
-                              <input type="hidden" name="connectorSlug" value={connectorSlug} />
-                              <input type="hidden" name="versionId" value={version.id} />
-                              <input type="hidden" name="redirectTo" value={redirectTo} />
-                              <input type="hidden" name="reason" value="archived_from_mapping_manager" />
-                              <Button type="submit" className="text-xs" disabled={version.lifecycleState === "archived"}>
-                                Archive
-                              </Button>
-                            </form>
+                                <input type="hidden" name="confirm" value="true" />
+                                <div className="space-y-1">
+                                  <label
+                                    className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                    htmlFor={`rollback-reason-${version.id}`}
+                                  >
+                                    Rollback reason
+                                  </label>
+                                  <Input
+                                    id={`rollback-reason-${version.id}`}
+                                    name="reason"
+                                    defaultValue="restore_prior_known_good_mapping"
+                                    required
+                                  />
+                                </div>
+                              </ProtectedMappingActionForm>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-slate-500">Read-only</span>

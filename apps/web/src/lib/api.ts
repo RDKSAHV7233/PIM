@@ -719,10 +719,11 @@ export interface AiRepairResult {
 
 const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api/v1";
 
-interface ApiRequestOptions {
+export interface ApiRequestOptions {
   role?: AppRole;
   tenantKey?: string;
   authHeader?: string;
+  headers?: Record<string, string>;
 }
 
 export class ApiHttpError extends Error {
@@ -794,6 +795,7 @@ async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiReque
     headers: {
       "Content-Type": "application/json",
       ...(authHeader ? { Authorization: authHeader } : {}),
+      ...(options?.headers ?? {}),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -1053,6 +1055,36 @@ export async function archiveConnectorMappingVersion(
 ) {
   return postJson<ConnectorMappingVersion>(
     `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/archive`,
+    body,
+    options,
+  );
+}
+
+export interface StepUpResponse {
+  stepUpToken: string;
+  expiresAt: string;
+  scope: string;
+}
+
+export async function issueStepUp(
+  body: { password: string; scope: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<StepUpResponse>("/auth/step-up", body, options);
+}
+
+export async function rollbackConnectorMappingVersion(
+  connectorSlug: string,
+  versionId: string,
+  body: { confirm: boolean; reason: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<{
+    published: ConnectorMappingVersion;
+    superseded: string[];
+    rollbackSourceVersionId: string;
+  }>(
+    `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions/${encodeURIComponent(versionId)}/rollback`,
     body,
     options,
   );
