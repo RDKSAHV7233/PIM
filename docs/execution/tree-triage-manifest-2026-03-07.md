@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `d02839b`
+- Current HEAD: `6326749`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -21,13 +21,14 @@
 | `.env.example` | `+3/-0` | `active-new-development` | Root local env example carries the same active runtime flags as above; not safe to archive. | `commit-now` |
 | `.env.staging.example` | `+3/-0` | `active-new-development` | Staging env example now aligns with runtime feature flags and dashboard cache control; this affects deploy/config posture. | `commit-now` |
 | `apps/api/src/app.module.ts` | `+4/-1` | `active-new-development` | Root Nest module imports active runtime modules and now gates `OndcModule` behind `FEATURE_ONDC_ENABLED`; validated in `d02839b` with ONDC feature-gating integration coverage. | `commit-now` |
-| `apps/api/src/bulk-edit/bulk-edit.service.ts` | `+39/-3` | `active-new-development` | Active service under `BulkEditModule`, loaded by `apps/api/src/app.module.ts`. Runtime source, not cleanup material. | `keep-open` |
-| `apps/api/src/bulk-edit/dto/bulk-edit-scope.dto.ts` | `+1/-1` | `active-new-development` | DTO used by bulk-edit API surface; runtime contract file, not archive candidate. | `keep-open` |
-| `apps/api/src/bulk-import/bulk-import.service.ts` | `+60/-4` | `active-new-development` | Active service under `BulkImportModule`, loaded by `apps/api/src/app.module.ts`. Large diff indicates ongoing feature work. | `keep-open` |
-| `apps/api/src/catalog/catalog.controller.ts` | `+13/-2` | `active-new-development` | Controller in `CatalogModule`, loaded by `apps/api/src/app.module.ts`; API route surface should not be cleaned up by filename. | `keep-open` |
-| `apps/api/src/catalog/catalog.service.ts` | `+74/-5` | `active-new-development` | Core catalog runtime service with substantial logic changes; active product domain code. | `keep-open` |
-| `apps/api/src/catalog/dto/create-product.dto.ts` | `+3/-2` | `active-new-development` | DTO contract for product creation; tied to catalog controller/service behavior. | `keep-open` |
-| `apps/api/src/catalog/dto/update-product.dto.ts` | `+1/-1` | `active-new-development` | DTO contract for update path; active API contract surface. | `keep-open` |
+| `apps/api/src/bulk-edit/bulk-edit.service.ts` | `+39/-3` | `active-new-development` | Workflow status transitions are now enforced in bulk edit apply operations and committed in `6326749`; validated by product workflow and bulk-edit integration suites. | `commit-now` |
+| `apps/api/src/bulk-edit/dto/bulk-edit-scope.dto.ts` | `+1/-1` | `active-new-development` | Bulk edit scope status contract now includes workflow statuses and shipped in `6326749`. | `commit-now` |
+| `apps/api/src/bulk-import/bulk-import.service.ts` | `+60/-4` | `active-new-development` | Bulk import now rejects non-draft workflow entry statuses as failed rows instead of retry churn; committed in `6326749`. | `commit-now` |
+| `apps/api/src/catalog/catalog.controller.ts` | `+13/-2` | `active-new-development` | Product update path now passes actor context for status transition audit logging; committed in `6326749`. | `commit-now` |
+| `apps/api/src/catalog/catalog.service.ts` | `+74/-5` | `active-new-development` | Catalog create/update/stats now enforce workflow lifecycle and pending approval counts; committed in `6326749`. | `commit-now` |
+| `apps/api/src/catalog/dto/create-product.dto.ts` | `+3/-2` | `active-new-development` | Product create DTO now accepts optional workflow status input while enforcing draft-only entry in service logic; committed in `6326749`. | `commit-now` |
+| `apps/api/src/catalog/dto/update-product.dto.ts` | `+1/-1` | `active-new-development` | Product update DTO now recognizes workflow status values used by the lifecycle transition rules in `6326749`. | `commit-now` |
+| `apps/api/test/integration/product-workflow-transitions.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `6326749` to verify pending approval stats and bulk-edit workflow transition failure recording. | `commit-now` |
 | `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Global interceptor path, provided in the app runtime. Touching/removing without grouped validation is unsafe. | `keep-open` |
 | `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation now includes `FEATURE_ONDC_ENABLED`; validated in `d02839b` with env-validation and ONDC feature-gating integration coverage. | `commit-now` |
 | `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | DTO used in compliance/issues query path; active API surface. | `keep-open` |
@@ -55,13 +56,13 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 15 files
-- `commit-now`: 9 paths
+- `keep-open`: 8 files
+- `commit-now`: 17 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
 1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Group the remaining `keep-open` runtime files into coherent feature commits instead of tree-cleanup commits.
+2. Group the remaining `keep-open` runtime files into the audit/compliance/webhook test cluster, then the docs cluster.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.

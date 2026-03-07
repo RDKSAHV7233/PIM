@@ -198,7 +198,24 @@
                                             "apps/api/test/integration/product-workflow-transitions.test.cjs"
                                         ],
                            "stories":  [
-
+                                           {
+                                               "storyId":  "ST-WORKFLOW-LIFECYCLE-001",
+                                               "title":  "Enforce product workflow lifecycle across catalog create, update, bulk import, and bulk edit",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "6326749",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "npm run test:integration:product-workflow-transitions",
+                                                                    "npm run test:integration:bulk-edit-empty-scope",
+                                                                    "npm run test:integration:catalog-completeness"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           }
                                        ]
                        },
                        {
