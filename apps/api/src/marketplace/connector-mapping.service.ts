@@ -532,6 +532,213 @@ export class ConnectorMappingService {
     return result;
   }
 
+  async rollbackVersion(input: {
+    connectorSlug: string;
+    versionId: string;
+    confirm: boolean;
+    reason: string;
+    actorId?: string | null;
+  }): Promise<{ published: ConnectorMappingVersion; superseded: string[]; rollbackSourceVersionId: string }> {
+    if (!input.confirm) {
+      throw new BadRequestException("rollback_confirmation_required");
+    }
+    const tenantKey = this.getTenantKey();
+    const result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
+      const sourceRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `
+        SELECT *
+        FROM connector_mapping_versions
+        WHERE tenant_key = $1
+          AND connector_slug = $2
+          AND id = $3
+        FOR UPDATE
+        `,
+        tenantKey,
+        input.connectorSlug,
+        input.versionId,
+      );
+      if (!sourceRows[0]) {
+        throw new NotFoundException("mapping_version_not_found");
+      }
+      const source = toVersion(sourceRows[0]);
+      if (source.lifecycleState === "draft" || source.lifecycleState === "validated") {
+        throw new ConflictException("rollback_requires_previously_published_version");
+      }
+      if (source.lifecycleState === "published") {
+        throw new ConflictException("mapping_version_already_published");
+      }
+      if (source.compatibilityState === "blocked") {
+        throw new ConflictException("rollback_source_blocked");
+      }
+
+      const rulesValidation = this.validateMappingRules({
+        mappingLevel: source.mappingLevel,
+        categoryScope: source.categoryScope,
+        mappingRules: source.mappingRules,
+        fallbackAckRequired: source.fallbackAckRequired,
+        fallbackPolicy: source.fallbackPolicy,
+      });
+      if (!rulesValidation.valid) {
+        throw new BadRequestException({
+          error: "invalid_mapping",
+          details: rulesValidation.errors,
+        });
+      }
+
+      const currentlyPublishedRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `
+        SELECT *
+        FROM connector_mapping_versions
+        WHERE tenant_key = $1
+          AND connector_slug = $2
+          AND category_scope = $3
+          AND lifecycle_state = 'published'
+        FOR UPDATE
+        `,
+        tenantKey,
+        input.connectorSlug,
+        source.categoryScope,
+      );
+
+      const rollbackVersionId = randomUUID();
+      await tx.$queryRawUnsafe(
+        `
+        INSERT INTO connector_mapping_versions (
+          id,
+          tenant_key,
+          connector_slug,
+          category_scope,
+          mapping_level,
+          lifecycle_state,
+          connector_definition_id,
+          connector_definition_version,
+          compatibility_state,
+          mapping_rules,
+          fallback_policy,
+          fallback_ack_required,
+          created_by
+        ) VALUES (
+          $1, $2, $3, $4, $5, 'validated', $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12
+        )
+        `,
+        rollbackVersionId,
+        tenantKey,
+        input.connectorSlug,
+        source.categoryScope,
+        source.mappingLevel,
+        source.connectorDefinitionId,
+        source.connectorDefinitionVersion,
+        source.compatibilityState,
+        JSON.stringify(source.mappingRules),
+        JSON.stringify(source.fallbackPolicy),
+        source.fallbackAckRequired,
+        input.actorId ?? null,
+      );
+
+      const supersededRows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `
+        UPDATE connector_mapping_versions
+        SET lifecycle_state = 'superseded',
+            superseded_by = $1,
+            updated_at = NOW()
+        WHERE tenant_key = $2
+          AND connector_slug = $3
+          AND category_scope = $4
+          AND lifecycle_state = 'published'
+          AND id <> $5
+        RETURNING id::text AS id
+        `,
+        rollbackVersionId,
+        tenantKey,
+        input.connectorSlug,
+        source.categoryScope,
+        source.id,
+      );
+
+      const rollbackRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `
+        UPDATE connector_mapping_versions
+        SET lifecycle_state = 'published',
+            published_at = NOW(),
+            updated_at = NOW()
+        WHERE tenant_key = $1
+          AND connector_slug = $2
+          AND id = $3
+        RETURNING *
+        `,
+        tenantKey,
+        input.connectorSlug,
+        rollbackVersionId,
+      );
+      const published = toVersion(rollbackRows[0]!);
+      const supersededIds = supersededRows.map((row) => String(row.id));
+
+      for (const currentPublished of currentlyPublishedRows.map(toVersion)) {
+        if (currentPublished.id === source.id) {
+          continue;
+        }
+        await tx.$executeRawUnsafe(
+          `
+          INSERT INTO connector_mapping_events (
+            id, tenant_key, mapping_version_id, event_type, actor_id, metadata
+          ) VALUES ($1, $2, $3, 'superseded', $4, $5::jsonb)
+          `,
+          randomUUID(),
+          tenantKey,
+          currentPublished.id,
+          input.actorId ?? null,
+          JSON.stringify({
+            superseded_by: published.id,
+            rollback_source_version_id: source.id,
+          }),
+        );
+      }
+
+      await tx.$executeRawUnsafe(
+        `
+        INSERT INTO connector_mapping_events (
+          id, tenant_key, mapping_version_id, event_type, actor_id, metadata
+        ) VALUES ($1, $2, $3, 'created', $4, $5::jsonb)
+        `,
+        randomUUID(),
+        tenantKey,
+        published.id,
+        input.actorId ?? null,
+        JSON.stringify({
+          rollback: true,
+          rollback_source_version_id: source.id,
+          rollback_source_lifecycle_state: source.lifecycleState,
+          reason: input.reason,
+        }),
+      );
+      await tx.$executeRawUnsafe(
+        `
+        INSERT INTO connector_mapping_events (
+          id, tenant_key, mapping_version_id, event_type, actor_id, metadata
+        ) VALUES ($1, $2, $3, 'published', $4, $5::jsonb)
+        `,
+        randomUUID(),
+        tenantKey,
+        published.id,
+        input.actorId ?? null,
+        JSON.stringify({
+          rollback: true,
+          rollback_source_version_id: source.id,
+          rollback_reason: input.reason,
+          superseded_count: supersededIds.length,
+        }),
+      );
+
+      return {
+        published,
+        superseded: supersededIds,
+        rollbackSourceVersionId: source.id,
+      };
+    });
+    await this.emitMappingCompletionMetric(tenantKey, input.connectorSlug);
+    return result;
+  }
+
   async archiveVersion(input: {
     connectorSlug: string;
     versionId: string;

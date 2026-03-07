@@ -15,6 +15,7 @@ import {
   ListConnectorMappingVersionsQueryDto,
   PublishConnectorMappingVersionDto,
   ResolveConnectorMappingQueryDto,
+  RollbackConnectorMappingVersionDto,
 } from "./dto/connector-mapping.dto";
 import { CreateExportJobAliasDto } from "./dto/create-export-job-alias.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
@@ -95,6 +96,23 @@ export class MarketplaceController {
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       versionId: String(versionId ?? "").trim(),
       confirm: dto.confirm,
+      actorId: request.pimUserId,
+    });
+  }
+
+  @Post("connectors/:connectorSlug/mappings/versions/:versionId/rollback")
+  @Roles("admin", "editor")
+  rollbackConnectorMappingVersion(
+    @Param("connectorSlug") connectorSlug: string,
+    @Param("versionId") versionId: string,
+    @Body() dto: RollbackConnectorMappingVersionDto,
+    @Req() request: { pimUserId?: string },
+  ) {
+    return this.connectorMappingService.rollbackVersion({
+      connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
+      versionId: String(versionId ?? "").trim(),
+      confirm: dto.confirm,
+      reason: dto.reason,
       actorId: request.pimUserId,
     });
   }

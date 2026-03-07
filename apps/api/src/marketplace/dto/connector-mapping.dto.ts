@@ -67,6 +67,17 @@ export class PublishConnectorMappingVersionDto {
   confirm!: boolean;
 }
 
+export class RollbackConnectorMappingVersionDto {
+  @Type(() => Boolean)
+  @IsBoolean()
+  confirm!: boolean;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class ArchiveConnectorMappingVersionDto {
   @IsString()
   @MinLength(3)
