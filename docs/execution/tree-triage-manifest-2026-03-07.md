@@ -35,9 +35,12 @@
 | `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | Issue inbox product status filter now accepts workflow states (`in_review`, `approved`, `rejected`) and was validated in `9554865` with integration coverage. | `commit-now` |
 | `apps/api/test/integration/issue-inbox.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `9554865` to verify `productStatus=in_review` filter behavior after workflow status expansion. | `commit-now` |
 | `apps/api/src/dashboard/dashboard.service.ts` | `+297/-186` | `active-new-development` | Active runtime service under `DashboardModule`; validated with API build + dashboard integration suite and committed as dashboard-specific work in `c7e66c8`. | `commit-now` |
-| `apps/api/src/marketplace/connector-mapping.service.ts` | `+46/-1` | `active-new-development` | Mapping lifecycle now emits `mapping.completion_percent` metrics after publish/archive so connector KPI trends reflect actual published category coverage; committed in `5539682`. | `commit-now` |
+| `apps/api/src/marketplace/dto/connector-mapping.dto.ts` | `+9/-0` | `active-new-development` | Added explicit rollback DTO contract with confirmation and reason fields so rollback is a first-class lifecycle action, not an overloaded publish path; committed in `27f612f`. | `commit-now` |
+| `apps/api/src/marketplace/marketplace.controller.ts` | `+17/-0` | `active-new-development` | Marketplace mapping controller now exposes `POST /marketplace/connectors/:connectorSlug/mappings/versions/:versionId/rollback` for bounded rollback semantics under the existing mapping domain; committed in `27f612f`. | `commit-now` |
+| `apps/api/src/marketplace/connector-mapping.service.ts` | `+46/-1`, later `+177/-0` bounded reopen | `active-new-development` | Mapping lifecycle now emits `mapping.completion_percent` metrics after publish/archive and supports bounded rollback by cloning a prior non-draft version into a new published version while preserving one-published-per-scope; committed in `5539682` and `27f612f`. | `commit-now` |
 | `apps/api/src/metrics/metrics.service.ts` | `+177/-0` | `active-new-development` | KPI trends endpoint now exposes mapping completion, first publish success, setup time to first publish, blocker resolution rate, and median blocker resolution hours with verified physical table naming and UTC-safe timestamp comparison; committed in `5539682`. | `commit-now` |
 | `apps/api/test/integration/metrics-kpi-trends.test.cjs` | `+110/-1` | `active-new-development` | Expanded in `5539682` to prove connector mapping/publish KPI series are emitted and returned tenant-scoped for flipkart after lifecycle publish + export processing. | `commit-now` |
+| `apps/api/test/integration/connector-mapping-rollback.test.cjs` | `new` | `active-new-development` | Added bounded rollback regression coverage for confirmation enforcement, one-published invariant, source compatibility preservation, and cross-tenant denial; committed in `27f612f`. | `commit-now` |
 | `apps/api/src/ondc/ondc.controller.ts` | `+2/-0` | `active-new-development` | ONDC controller now requires `admin` role and remains feature-gated runtime code; validated in `d02839b` with viewer `403` and admin `200` checks. | `commit-now` |
 | `apps/api/test/integration/ondc-feature-gating.test.cjs` | `new` | `active-new-development` | Targeted regression coverage for ONDC gating semantics: feature off -> `404`, feature on + viewer -> `403`, feature on + admin -> `200`. Added and committed in `d02839b`. | `commit-now` |
 | `apps/api/test/integration/webhook-dedupe-scope.test.cjs` | `+8/-0` | `active-new-development` | Webhook dedupe regression now upgrades the tenant to `ENTERPRISE` before connector installation so the test reflects current entitlement rules; committed in `0ff5b02`. | `commit-now` |
@@ -62,7 +65,7 @@
 
 ## Summary by Proposed Action
 - `keep-open`: 0 files
-- `commit-now`: 30 paths
+- `commit-now`: 33 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass

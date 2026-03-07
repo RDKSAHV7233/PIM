@@ -408,10 +408,12 @@
                            "evidence":  [
                                             "apps/api/src/marketplace/connector-mapping.service.ts",
                                             "apps/api/src/marketplace/marketplace.controller.ts",
+                                            "apps/api/src/marketplace/dto/connector-mapping.dto.ts",
                                             "apps/api/src/metrics/metrics.service.ts",
                                             "apps/web/src/app/channels/mappings/page.tsx",
                                             "apps/web/src/app/products/[id]/page.tsx",
                                             "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
+                                            "apps/api/test/integration/connector-mapping-rollback.test.cjs",
                                             "apps/api/test/integration/metrics-kpi-trends.test.cjs",
                                             "packages/db/prisma/migrations/20260306171000_connector_mapping_lifecycle_v1/migration.sql",
                                             "docs/product/PRD.md",
@@ -484,6 +486,25 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "",
                                                "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-CON-ROLLBACK-001",
+                                               "title":  "Bounded INC-09 reopen: add rollback to prior mapping version",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "27f612f",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "node apps/api/test/integration/connector-mapping-rollback.test.cjs",
+                                                                    "node apps/api/test/integration/connector-mapping-precedence.test.cjs",
+                                                                    "npm run test:integration:connector-mapping-lifecycle",
+                                                                    "npm run test:integration:metrics-kpi-trends"
+                                                                ],
+                                               "reopened_by":  "user",
+                                               "reopened_reason":  "Reopen INC-09 for rollback instead of MFA to complete the mapping lifecycle inside the existing connector domain.",
+                                               "regression_evidence":  "Missing explicit rollback/revert semantics in the verified connector mapping lifecycle. Existing operations supported create/validate/publish/supersede/archive only."
                                            }
                                        ]
                        }
