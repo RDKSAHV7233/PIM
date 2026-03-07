@@ -2,7 +2,7 @@
     "meta":  {
                  "project":  "PIM1",
                  "purpose":  "Prevent execution loops and track delivery by functional increments",
-                 "lastUpdated":  "2026-03-06",
+                 "lastUpdated":  "2026-03-07",
                  "schemaVersion":  "1.1",
                  "executionPack":  "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
              },
@@ -78,7 +78,21 @@
                                             "docs/execution/E5_PARTIAL_ST-CON-005_EXECUTION_2026-03-03.md"
                                         ],
                            "stories":  [
-
+                                           {
+                                               "storyId":  "ST-REPO-CLEANUP-002",
+                                               "title":  "Archive inactive post-baseline generated and reference files",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "f4d6b36",
+                                               "tests_passed":  [
+                                                                    "npm run build",
+                                                                    "npm test"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           }
                                        ]
                        },
                        {
