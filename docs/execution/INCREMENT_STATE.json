@@ -409,10 +409,19 @@
                                             "apps/api/src/marketplace/connector-mapping.service.ts",
                                             "apps/api/src/marketplace/marketplace.controller.ts",
                                             "apps/api/src/marketplace/dto/connector-mapping.dto.ts",
+                                            "apps/api/src/auth/auth.controller.ts",
+                                            "apps/api/src/auth/auth.service.ts",
+                                            "apps/api/src/auth/auth.module.ts",
+                                            "apps/api/src/auth/jwt.ts",
+                                            "apps/api/src/auth/jwt-auth.guard.ts",
+                                            "apps/api/src/auth/dto/step-up.dto.ts",
+                                            "apps/api/src/auth/step-up.decorator.ts",
+                                            "apps/api/src/auth/step-up.guard.ts",
                                             "apps/api/src/metrics/metrics.service.ts",
                                             "apps/web/src/app/channels/mappings/page.tsx",
                                             "apps/web/src/app/products/[id]/page.tsx",
                                             "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
+                                            "apps/api/test/integration/connector-mapping-step-up.test.cjs",
                                             "apps/api/test/integration/connector-mapping-rollback.test.cjs",
                                             "apps/api/test/integration/metrics-kpi-trends.test.cjs",
                                             "packages/db/prisma/migrations/20260306171000_connector_mapping_lifecycle_v1/migration.sql",
@@ -505,6 +514,28 @@
                                                "reopened_by":  "user",
                                                "reopened_reason":  "Reopen INC-09 for rollback instead of MFA to complete the mapping lifecycle inside the existing connector domain.",
                                                "regression_evidence":  "Missing explicit rollback/revert semantics in the verified connector mapping lifecycle. Existing operations supported create/validate/publish/supersede/archive only."
+                                           },
+                                           {
+                                               "storyId":  "ST-CON-STEPUP-001",
+                                               "title":  "Bounded INC-09 reopen: add step-up re-auth for high-risk mapping actions",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "0a64ca8",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "node apps/api/test/integration/connector-mapping-step-up.test.cjs",
+                                                                    "npm run test:integration:connector-mapping-lifecycle",
+                                                                    "node apps/api/test/integration/connector-mapping-precedence.test.cjs",
+                                                                    "node apps/api/test/integration/connector-mapping-rollback.test.cjs",
+                                                                    "npm run test:integration:metrics-kpi-trends",
+                                                                    "npm run test:integration:auth-revocation",
+                                                                    "npm run test:integration:auth-login-lockout"
+                                                                ],
+                                               "reopened_by":  "user",
+                                               "reopened_reason":  "Reopen INC-09 for MFA because mapping-domain work is closed and the remaining connector-domain gap is bounded security step-up only.",
+                                               "regression_evidence":  "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active PIM1."
                                            }
                                        ]
                        }
