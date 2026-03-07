@@ -107,6 +107,20 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "User requested restoration of UI and connector work moved to unused.",
                                                "regression_evidence":  "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-pim1-transfer-2026-03-06"
+                                           },
+                                           {
+                                               "storyId":  "ST-REPO-MERGE-001",
+                                               "title":  "Merge active docs and execution evidence into tracked tree",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "4f01d23",
+                                               "tests_passed":  [
+                                                                    "npm run build"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  "Untracked active execution docs and gate files, plus tracked tsbuildinfo build artifact, kept the tree dirty after restore."
                                            }
                                        ]
                        },
