@@ -449,6 +449,21 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "",
                                                "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-CON-TEST-001",
+                                               "title":  "Add connector mapping precedence and compatibility integration coverage",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "82e98b3",
+                                               "tests_passed":  [
+                                                                    "node apps/api/test/integration/connector-mapping-precedence.test.cjs",
+                                                                    "npm run test:integration:connector-mapping-lifecycle"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
                                            }
                                        ]
                        }
