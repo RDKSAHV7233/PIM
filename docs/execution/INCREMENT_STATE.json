@@ -92,6 +92,21 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "",
                                                "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-REPO-RESTORE-001",
+                                               "title":  "Restore UI and connector working material from archive",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "c0488be",
+                                               "tests_passed":  [
+                                                                    "npm run build",
+                                                                    "npm test"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "User requested restoration of UI and connector work moved to unused.",
+                                               "regression_evidence":  "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-pim1-transfer-2026-03-06"
                                            }
                                        ]
                        },
