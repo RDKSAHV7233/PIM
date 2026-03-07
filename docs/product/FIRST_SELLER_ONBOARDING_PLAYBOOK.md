@@ -66,11 +66,10 @@ Provide a repeatable onboarding flow for the first pilot sellers (India-first, 5
 ## Escalation Rules
 - `P0 incident`: stop onboarding immediately; rollback or hotfix before continuing.
 - `P1 issue`: continue session with workaround, open tracked bug before EOD.
-- `P2 issue`: log for sprint planning, do not block pilot flow.
+- `P2 issue`: log for increment planning, do not block pilot flow.
 
 ## Weekly Pilot KPI Snapshot
 - Time to first successful import (target: <= 30 min).
 - Session completion rate (target: >= 80%).
 - 7-day return rate (target: >= 60%).
 - Number of blockers per session (target trending down week-over-week).
-

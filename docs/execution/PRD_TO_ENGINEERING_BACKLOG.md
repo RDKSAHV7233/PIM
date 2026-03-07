@@ -49,7 +49,7 @@
 #### ST-UI-004: Internal links isolated from seller workflow
 - PRD: FR-008
 - Acceptance:
-1. Internal phase links are visible only in Developer tab.
+1. Internal developer links are visible only in Developer tab.
 2. Products tab contains no developer scaffold sections.
 
 ### E2. Catalog and Compliance Core
@@ -188,7 +188,7 @@
 #### ST-OPS-005: Staging-only gate sign-off
 - PRD: NFR-007
 - Acceptance:
-1. Sprint gate evidence records environment=`staging` and tenant id.
+1. Increment gate evidence records environment=`staging` and tenant id.
 2. Gate check artifacts include run URL and git tag.
 
 ### E8. Dashboard Aggregations
@@ -233,10 +233,10 @@
 
 ### E10. Quality Gates and Release Readiness
 
-#### ST-QA-001: Sprint gate automation
+#### ST-QA-001: Increment gate automation
 - PRD: section 12
 - Acceptance:
-1. Lint/build/test gates run per sprint slice.
+1. Lint/build/test gates run per increment slice.
 2. Named suites for idempotency, webhook dedupe, isolation, notification pass.
 
 #### ST-QA-002: Metrics instrumentation
@@ -280,3 +280,15 @@ Each story is complete only when:
 - E8 completion evidence: `docs/execution/E8_STORIES_EXECUTION_2026-03-03.md`
 - E9 completion evidence: `docs/execution/E9_STORIES_EXECUTION_2026-03-03.md`
 - E10 completion evidence: `docs/execution/E10_STORIES_EXECUTION_2026-03-03.md`
+
+## 6. Increment Mapping (Current Source of Truth)
+- `INC-01 Seller Workflow Core` -> `E1`, `E2`
+- `INC-02 Catalog Throughput` -> `E3`, `E4`
+- `INC-03 Connector Reliability` -> `E5`
+- `INC-04 Security and Isolation` -> `E6`
+- `INC-05 Ops and Observability` -> `E7`
+- `INC-06 Decision Dashboards` -> `E8`
+- `INC-07 Governance and Compliance` -> `E9`
+- `INC-08 Release Readiness` -> `E10`
+
+Execution and status tracking must reference increment IDs, not phases.

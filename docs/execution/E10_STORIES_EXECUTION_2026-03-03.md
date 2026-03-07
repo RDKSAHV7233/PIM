@@ -3,15 +3,15 @@
 - Date: 2026-03-03
 - Scope: `E10 Quality Gates and Release Readiness`
 - Stories completed:
-  - `ST-QA-001 Sprint gate automation`
+  - `ST-QA-001 Increment gate automation`
   - `ST-QA-002 Metrics instrumentation`
   - `ST-QA-003 Controlled-release checklist`
 - Source backlog: `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md`
 
-## ST-QA-001: Sprint gate automation
+## ST-QA-001: Increment gate automation
 - Status: Complete
 - Evidence:
-1. Core gate runner implemented in [run-sprint-gates.cjs](C:\Users\Om Computers\PIM1\scripts\run-sprint-gates.cjs).
+1. Core gate runner implemented in [run-increment-gates.cjs](C:\Users\Om Computers\PIM1\scripts\run-increment-gates.cjs) and exposed as increment gate runner command.
 2. Named integration suites wired and documented in [README.md](C:\Users\Om Computers\PIM1\docs\execution\gates\README.md).
 3. Startup flake tolerance added for integration steps via one automatic retry in gate runner.
 
@@ -38,7 +38,7 @@
 3. Controlled and broad rollout criteria are separated, with rollback triggers defined.
 
 ## Gate Checks (this pass)
-- `npm run gate:run:sprint` -> Pass
+- `npm run gate:run:increment` -> Pass
 - Includes:
   - `npm run lint --workspace @pim1/api`
   - `npm run build --workspace @pim1/api`

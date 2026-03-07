@@ -17,12 +17,12 @@ npm run gate:signoff -- --suite E7-ST-OPS-005 --tenantId SMOKE_TENANT --runUrl "
 
 Artifacts are written to this directory as timestamped JSON files.
 
-## Sprint Core Gate Runner
+## Increment Core Gate Runner
 
 Run the named core suites and lint/build gates with one command:
 
 ```powershell
-npm run gate:run:sprint
+npm run gate:run:increment
 ```
 
 Integration suites in this runner have one automatic retry to absorb transient startup flake.

@@ -20,7 +20,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - Provide reliable compliance and channel readiness signals before publish.
 - Enable fast bulk import/edit with traceability and row-level repair.
 - Isolate channel integrations through a connector contract for extensibility.
-- Support launch operations with clear sprint gates and evidence-driven checks.
+- Support launch operations with clear increment gates and evidence-driven checks.
 
 ## 4. Users and Roles
 - Admin: taxonomy, compliance, and platform controls.
@@ -39,7 +39,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 
 ### Out of scope (current cycle)
 - OMS/order lifecycle replacement.
-- Full DAM intelligence automation beyond defined Phase 5 scope.
+- Full DAM intelligence automation beyond defined INC-03/INC-05 scope.
 - AI-led autonomous optimization as a launch dependency.
 
 ## 6. Architecture Principles
@@ -47,7 +47,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - Tenant safety first: no cross-tenant data access under any route or background job.
 - Idempotent external operations: retries must not create duplicate submissions.
 - Structured errors end-to-end: issues remain machine-usable for analytics and repair UX.
-- Evidence gates over assumptions: sprint progression requires passing gate checks.
+- Evidence gates over assumptions: increment progression requires passing gate checks.
 
 ## 7. Functional Requirements
 - FR-001: Products page is primary operational surface with tabbed navigation.
@@ -57,7 +57,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - FR-005: Bulk Import supports CSV/XLSX/JSON, mapping templates, retries, row repair, and error export.
 - FR-006: Bulk Edit supports scoped filtering, preview, apply, and immutable operation history.
 - FR-007: Categories are visible to all authorized roles; category creation is admin-only.
-- FR-008: Internal phase/developer links are isolated from seller-first workflows.
+- FR-008: Internal developer/internal links are isolated from seller-first workflows.
 - FR-009: Connector orchestration branches by connector capability (publish vs export-only).
 - FR-010: Connector submissions retain payload snapshots with size cap and overflow storage link.
 - FR-011: Dashboard readiness, catalog health, and usage endpoints provide cached aggregate views.
@@ -69,7 +69,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - NFR-004: Queue workers enforce backpressure and connector-specific rate limits.
 - NFR-005: Web/API list endpoints are paginated (cursor-based defaults and limits).
 - NFR-006: Startup fails fast on invalid/missing required environment variables.
-- NFR-007: Staging is mandatory for sprint gate sign-off from P5 onward.
+- NFR-007: Staging is mandatory for increment gate sign-off from INC-05 onward.
 
 ## 9. Connector Contract Requirements
 - CR-001: Idempotency key must be stable per logical operation (`{jobId}:PUBLISH` pattern).
@@ -84,14 +84,14 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - DG-003: Test data is hidden by default in seller views and isolated from production workflows.
 - DG-004: Pre-growth compliance tasks include consent records, export, and erasure APIs.
 
-## 11. Milestones and Phasing
-- Phase 1-4: Catalog/compliance/intelligence/bulk operations foundations complete.
-- Phase 5: Connector foundation, media baseline, installation, publish/export worker hardening.
-- Phase 6: Rejection intelligence confidence modeling and workflow maturation.
-- Phase 7: ONDC architecture and adapter path after connector baseline stabilizes.
+## 11. Milestones and Increments
+- INC-01 + INC-02: Catalog/compliance/intelligence/bulk operations foundations complete.
+- INC-03 + INC-05: Connector foundation, media baseline, installation, publish/export worker hardening.
+- INC-06 + INC-07: Rejection intelligence confidence modeling and workflow maturation.
+- INC-08+: ONDC architecture and adapter path after connector baseline stabilizes.
 
 ## 12. Gate Criteria (Execution-Control)
-- Mandatory lint/build/test gates per sprint with evidence artifacts.
+- Mandatory lint/build/test gates per increment with evidence artifacts.
 - Staging run metadata required for sign-off: environment, tenantId, date, gitTag, runUrl.
 - Named integration suites for idempotency, webhook dedupe, isolation, and notification safety.
 
@@ -112,7 +112,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - Mitigation: template hash verification and scheduled validation scripts.
 
 ## 15. Release Readiness
-PIM1 is ready for controlled progression when sprint gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
+PIM1 is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
 
 ## 16. Source Inputs Used
 This PRD is consolidated from imported March 2026 architecture/execution documents, redesign notes, UI review, and in-repo product scope/backlog artifacts.
