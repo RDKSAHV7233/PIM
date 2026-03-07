@@ -30,6 +30,26 @@
                                                "reopened_by":  "codex",
                                                "reopened_reason":  "CTO governance repair for missing immutable commit and test evidence on a locked story.",
                                                "regression_evidence":  "Locked story had blank commit/test fields in docs/execution/INCREMENT_STATE.json despite execution evidence in docs/execution/E1_STORIES_EXECUTION_2026-03-03.md and git history at db09908."
+                                           },
+                                           {
+                                               "storyId":  "ST-UI-SELLER-CLARITY-001",
+                                               "title":  "Remove seller-facing UX ambiguity in approvals, internal surfaces, and mapping flow",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "323973f",
+                                               "tests_passed":  [
+                                                                    "npm run lint --workspace @pim1/web",
+                                                                    "npm run build --workspace @pim1/web",
+                                                                    "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
+                                                                    "node apps/web/test/integration/internal-surface-gating.test.cjs",
+                                                                    "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+                                                                    "npm run test:integration:marketplace-capability-ui-gating",
+                                                                    "npm run test:integration:connector-action-matrix-ui-gating"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
                                            }
                                        ]
                        },
