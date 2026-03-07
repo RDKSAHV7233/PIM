@@ -16,8 +16,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const sessionClaims = await getServerSessionClaims();
   const actorRole = await getServerActorRole();
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3 md:px-8">
             <div className="flex items-center gap-4">
