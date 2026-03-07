@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `fed86c4`
+- Current HEAD: `d02839b`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -20,7 +20,7 @@
 | `.env-templates/.env.example` | `+3/-0` | `active-new-development` | Adds active feature/config flags used by runtime: `DASHBOARD_CACHE_REDIS_DISABLED` is read in `apps/api/src/dashboard/dashboard.service.ts`; `FEATURE_ONDC_ENABLED` is consumed in `apps/api/src/app.module.ts`. | `commit-now` |
 | `.env.example` | `+3/-0` | `active-new-development` | Root local env example carries the same active runtime flags as above; not safe to archive. | `commit-now` |
 | `.env.staging.example` | `+3/-0` | `active-new-development` | Staging env example now aligns with runtime feature flags and dashboard cache control; this affects deploy/config posture. | `commit-now` |
-| `apps/api/src/app.module.ts` | `+4/-1` | `active-new-development` | Root Nest module imports active runtime modules: `DashboardModule`, `BulkImportModule`, `BulkEditModule`, `CatalogModule`, `OndcModule`. Any cleanup here risks breaking app boot. | `keep-open` |
+| `apps/api/src/app.module.ts` | `+4/-1` | `active-new-development` | Root Nest module imports active runtime modules and now gates `OndcModule` behind `FEATURE_ONDC_ENABLED`; validated in `d02839b` with ONDC feature-gating integration coverage. | `commit-now` |
 | `apps/api/src/bulk-edit/bulk-edit.service.ts` | `+39/-3` | `active-new-development` | Active service under `BulkEditModule`, loaded by `apps/api/src/app.module.ts`. Runtime source, not cleanup material. | `keep-open` |
 | `apps/api/src/bulk-edit/dto/bulk-edit-scope.dto.ts` | `+1/-1` | `active-new-development` | DTO used by bulk-edit API surface; runtime contract file, not archive candidate. | `keep-open` |
 | `apps/api/src/bulk-import/bulk-import.service.ts` | `+60/-4` | `active-new-development` | Active service under `BulkImportModule`, loaded by `apps/api/src/app.module.ts`. Large diff indicates ongoing feature work. | `keep-open` |
@@ -29,10 +29,11 @@
 | `apps/api/src/catalog/dto/create-product.dto.ts` | `+3/-2` | `active-new-development` | DTO contract for product creation; tied to catalog controller/service behavior. | `keep-open` |
 | `apps/api/src/catalog/dto/update-product.dto.ts` | `+1/-1` | `active-new-development` | DTO contract for update path; active API contract surface. | `keep-open` |
 | `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Global interceptor path, provided in the app runtime. Touching/removing without grouped validation is unsafe. | `keep-open` |
-| `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation is a release-critical path; modifications belong to active runtime governance. | `keep-open` |
+| `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation now includes `FEATURE_ONDC_ENABLED`; validated in `d02839b` with env-validation and ONDC feature-gating integration coverage. | `commit-now` |
 | `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | DTO used in compliance/issues query path; active API surface. | `keep-open` |
 | `apps/api/src/dashboard/dashboard.service.ts` | `+297/-186` | `active-new-development` | Active runtime service under `DashboardModule`; validated with API build + dashboard integration suite and committed as dashboard-specific work in `c7e66c8`. | `commit-now` |
-| `apps/api/src/ondc/ondc.controller.ts` | `+2/-0` | `active-new-development` | ONDC controller remains feature-gated runtime code, loaded when `FEATURE_ONDC_ENABLED` is true. | `keep-open` |
+| `apps/api/src/ondc/ondc.controller.ts` | `+2/-0` | `active-new-development` | ONDC controller now requires `admin` role and remains feature-gated runtime code; validated in `d02839b` with viewer `403` and admin `200` checks. | `commit-now` |
+| `apps/api/test/integration/ondc-feature-gating.test.cjs` | `new` | `active-new-development` | Targeted regression coverage for ONDC gating semantics: feature off -> `404`, feature on + viewer -> `403`, feature on + admin -> `200`. Added and committed in `d02839b`. | `commit-now` |
 | `apps/api/test/integration/webhook-dedupe-scope.test.cjs` | `+8/-0` | `active-new-development` | Explicitly wired in `package.json` as `test:integration:webhook-dedupe-scope`; active regression test, not archive material. | `keep-open` |
 
 ## Governance and Product Docs
@@ -54,13 +55,13 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 18 files
-- `commit-now`: 5 paths
+- `keep-open`: 15 files
+- `commit-now`: 9 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
 1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Group `keep-open` runtime files into coherent feature commits instead of tree-cleanup commits.
+2. Group the remaining `keep-open` runtime files into coherent feature commits instead of tree-cleanup commits.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.

@@ -269,6 +269,23 @@
                                                 "reopened_by":  "",
                                                 "reopened_reason":  "",
                                                 "regression_evidence":  ""
+                                            },
+                                            {
+                                                "storyId":  "ST-ONDC-GATE-001",
+                                                "title":  "Gate ONDC module behind feature flag and admin access",
+                                                "status":  "completed",
+                                                "locked":  true,
+                                                "owner":  "codex",
+                                                "commit":  "d02839b",
+                                                "tests_passed":  [
+                                                                     "npm run build --workspace @pim1/api",
+                                                                     "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                     "npm run test:integration:env-validation",
+                                                                     "npm run test:integration:ondc-feature-gating"
+                                                                 ],
+                                                "reopened_by":  "",
+                                                "reopened_reason":  "",
+                                                "regression_evidence":  ""
                                             }
                                         ]
                        },
