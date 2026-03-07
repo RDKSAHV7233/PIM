@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `0ff5b02`
+- Current HEAD: `6331d11`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -29,7 +29,8 @@
 | `apps/api/src/catalog/dto/create-product.dto.ts` | `+3/-2` | `active-new-development` | Product create DTO now accepts optional workflow status input while enforcing draft-only entry in service logic; committed in `6326749`. | `commit-now` |
 | `apps/api/src/catalog/dto/update-product.dto.ts` | `+1/-1` | `active-new-development` | Product update DTO now recognizes workflow status values used by the lifecycle transition rules in `6326749`. | `commit-now` |
 | `apps/api/test/integration/product-workflow-transitions.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `6326749` to verify pending approval stats and bulk-edit workflow transition failure recording. | `commit-now` |
-| `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Global interceptor path, provided in the app runtime. Touching/removing without grouped validation is unsafe. | `keep-open` |
+| `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Audit interceptor now ignores spoofable `x-pim-actor` input and derives actor identity strictly from authenticated request context; validated in `6331d11`. | `commit-now` |
+| `apps/api/test/integration/audit-actor-context.test.cjs` | `scope expansion` | `active-new-development` | Added in `6331d11` to verify spoofed actor headers do not influence audit attribution on authenticated writes. | `commit-now` |
 | `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation now includes `FEATURE_ONDC_ENABLED`; validated in `d02839b` with env-validation and ONDC feature-gating integration coverage. | `commit-now` |
 | `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | Issue inbox product status filter now accepts workflow states (`in_review`, `approved`, `rejected`) and was validated in `9554865` with integration coverage. | `commit-now` |
 | `apps/api/test/integration/issue-inbox.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `9554865` to verify `productStatus=in_review` filter behavior after workflow status expansion. | `commit-now` |
@@ -57,13 +58,13 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 5 files
-- `commit-now`: 20 paths
+- `keep-open`: 3 files
+- `commit-now`: 22 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
 1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Resolve the remaining audit hardening file, then the docs cluster.
+2. Resolve the remaining docs cluster, then decide whether `unused/*` needs any further archive bookkeeping.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.

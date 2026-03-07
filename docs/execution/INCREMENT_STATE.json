@@ -147,7 +147,22 @@
                                             "docs/execution/E6_STORIES_EXECUTION_2026-03-03.md"
                                         ],
                            "stories":  [
-
+                                           {
+                                               "storyId":  "ST-AUDIT-ACTOR-001",
+                                               "title":  "Ignore spoofable actor headers in audit interceptor",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "6331d11",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "node apps/api/test/integration/audit-actor-context.test.cjs"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           }
                                        ]
                        },
                        {
