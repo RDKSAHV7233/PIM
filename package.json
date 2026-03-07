@@ -48,6 +48,7 @@
     "test:integration:connector-payload-snapshot-cap": "dotenv -o -e .env -- node apps/api/test/integration/connector-payload-snapshot-cap.test.cjs",
     "test:integration:create-product-pricing-normalization": "dotenv -o -e .env -- node apps/api/test/integration/create-product-pricing-normalization.test.cjs",
     "test:integration:dashboard-aggregations": "dotenv -o -e .env -- node apps/api/test/integration/dashboard-aggregations.test.cjs",
+    "test:integration:ondc-feature-gating": "dotenv -o -e .env -- node apps/api/test/integration/ondc-feature-gating.test.cjs",
     "test:integration:metrics-kpi-trends": "dotenv -o -e .env -- node apps/api/test/integration/metrics-kpi-trends.test.cjs",
     "test:integration:payload-governance-policy": "dotenv -o -e .env -- node apps/api/test/integration/payload-governance-policy.test.cjs",
     "test:integration:marketplace-worker-failure-visibility": "dotenv -o -e .env -- node apps/api/test/integration/marketplace-worker-failure-visibility.test.cjs",

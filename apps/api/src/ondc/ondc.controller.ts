@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Roles } from "../common/rbac/roles";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
 import { OndcService } from "./ondc.service";
 
 @Controller("ondc")
+@Roles("admin")
 export class OndcController {
   constructor(private readonly ondcService: OndcService) {}
 

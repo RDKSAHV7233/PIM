@@ -27,6 +27,9 @@ import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
 
+const FEATURE_ONDC_ENABLED =
+  String(process.env.FEATURE_ONDC_ENABLED ?? "false").trim().toLowerCase() === "true";
+
 @Module({
   controllers: [AppController],
   imports: [
@@ -49,7 +52,7 @@ import { TaxonomyModule } from "./taxonomy/taxonomy.module";
     MediaModule,
     MetricsModule,
     RejectionIntelligenceModule,
-    OndcModule,
+    ...(FEATURE_ONDC_ENABLED ? [OndcModule] : []),
     AutoSuggestionsModule,
   ],
   providers: [
