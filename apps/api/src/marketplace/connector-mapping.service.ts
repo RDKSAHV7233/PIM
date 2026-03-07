@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { MetricsService } from "../metrics/metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 export type MappingLevel =
@@ -185,7 +186,10 @@ function toVersion(row: Record<string, unknown>): ConnectorMappingVersion {
 
 @Injectable()
 export class ConnectorMappingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metricsService: MetricsService,
+  ) {}
 
   private getTenantKey(): string {
     return getTenantKeyFromContext();
@@ -437,7 +441,7 @@ export class ConnectorMappingService {
       throw new BadRequestException("publish_confirmation_required");
     }
     const tenantKey = this.getTenantKey();
-    return this.prisma.tenant(tenantKey).$transaction(async (tx) => {
+    const result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
       const selectedRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
         `
         SELECT *
@@ -524,6 +528,8 @@ export class ConnectorMappingService {
       );
       return { published, superseded: supersededIds };
     });
+    await this.emitMappingCompletionMetric(tenantKey, input.connectorSlug);
+    return result;
   }
 
   async archiveVersion(input: {
@@ -563,6 +569,7 @@ export class ConnectorMappingService {
       actorId: input.actorId,
       metadata: { reason: input.reason, previous_state: current.lifecycleState },
     });
+    await this.emitMappingCompletionMetric(tenantKey, input.connectorSlug);
     return archived;
   }
 
@@ -928,6 +935,41 @@ export class ConnectorMappingService {
         blockers: readiness.blockers,
         warnings: readiness.warnings,
       });
+    }
+  }
+
+  private async emitMappingCompletionMetric(tenantKey: string, connectorSlug: string): Promise<void> {
+    try {
+      const [totalCategories, mappedCategoryRows] = await Promise.all([
+        this.prisma.tenant(tenantKey).category.count(),
+        this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ category_scope: string }>>(
+          `
+          SELECT DISTINCT category_scope
+          FROM connector_mapping_versions
+          WHERE tenant_key = $1
+            AND connector_slug = $2
+            AND lifecycle_state = 'published'
+            AND mapping_level = 'tenant_connector_category_mapping'
+          `,
+          tenantKey,
+          connectorSlug,
+        ),
+      ]);
+      const mappedCategories = mappedCategoryRows.filter((row) => String(row.category_scope ?? "").trim() !== "*").length;
+      const completionPercent = totalCategories > 0 ? (mappedCategories / totalCategories) * 100 : 100;
+      await this.metricsService.emit({
+        tenantKey,
+        connectorSlug,
+        metricKey: "mapping.completion_percent",
+        metricValue: completionPercent,
+        unit: "percent",
+        tags: {
+          totalCategories,
+          mappedCategories,
+        },
+      });
+    } catch {
+      // Metrics emission must not block mapping lifecycle operations.
     }
   }
 }

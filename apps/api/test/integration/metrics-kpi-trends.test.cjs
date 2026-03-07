@@ -183,7 +183,60 @@ async function run() {
     });
     assertStatus(category, 201, "create category");
 
-    const product = await tracedRequest("create product", baseUrl, "POST", "/catalog/products", token, {
+    const mappingDraft = await tracedRequest(
+      "create mapping draft",
+      baseUrl,
+      "POST",
+      `/marketplace/connectors/flipkart/mappings/versions`,
+      token,
+      {
+        categoryScope: category.payload.id,
+        mappingLevel: "tenant_connector_category_mapping",
+        connectorDefinitionId: "flipkart",
+        connectorDefinitionVersion: "1.0.0",
+        compatibilityState: "compatible",
+        mappingRules: {
+          field_mappings: {
+            title: "product_title",
+            brand: "brand",
+            description: "description",
+            hsnCode: "hsn_code",
+            gstRate: "gst_rate",
+            "attributes.size": "size",
+            "attributes.color": "color",
+          },
+          category: {
+            source: category.payload.id,
+            target: category.payload.id,
+          },
+        },
+        fallbackPolicy: {},
+        fallbackAckRequired: false,
+      },
+    );
+    assertStatus(mappingDraft, 201, "create mapping draft");
+
+    const mappingValidated = await tracedRequest(
+      "validate mapping draft",
+      baseUrl,
+      "POST",
+      `/marketplace/connectors/flipkart/mappings/versions/${mappingDraft.payload.id}/validate`,
+      token,
+      {},
+    );
+    assertStatus(mappingValidated, 201, "validate mapping draft");
+
+    const mappingPublished = await tracedRequest(
+      "publish mapping draft",
+      baseUrl,
+      "POST",
+      `/marketplace/connectors/flipkart/mappings/versions/${mappingDraft.payload.id}/publish`,
+      token,
+      { confirm: true },
+    );
+    assertStatus(mappingPublished, 201, "publish mapping draft");
+
+    const product = await tracedRequest("create rejected product", baseUrl, "POST", "/catalog/products", token, {
       title: `Metrics KPI Product ${runId}`,
       brand: "PIM1",
       description: "Intentionally incomplete for rejection metrics",
@@ -226,6 +279,40 @@ async function run() {
     );
     assertStatus(processSecond, 201, "process export job second attempt");
 
+    const successProduct = await tracedRequest("create successful product", baseUrl, "POST", "/catalog/products", token, {
+      title: `Metrics KPI Success Product ${runId}`,
+      brand: "PIM1",
+      description: "Connector metrics success path",
+      categoryId: category.payload.id,
+      status: "draft",
+      attributes: {
+        size: "M",
+        color: "black",
+      },
+      hsnCode: "62046200",
+      gstRate: 12,
+    });
+    assertStatus(successProduct, 201, "create successful product");
+
+    const successJob = await tracedRequest(
+      "create successful export job",
+      baseUrl,
+      "POST",
+      `/marketplace/products/${successProduct.payload.id}/export-jobs`,
+      token,
+      { channel: "flipkart", maxRetries: 2 },
+    );
+    assertStatus(successJob, 201, "create successful export job");
+
+    const processSuccess = await tracedRequest(
+      "process successful export job",
+      baseUrl,
+      "POST",
+      `/marketplace/export-jobs/${successJob.payload.id}/process`,
+      token,
+    );
+    assertStatus(processSuccess, 201, "process successful export job");
+
     const readiness = await tracedRequest("dashboard readiness", baseUrl, "GET", "/dashboard/readiness", token);
     assertStatus(readiness, 200, "dashboard readiness");
 
@@ -240,6 +327,14 @@ async function run() {
       Array.isArray(payload.reliabilityDuplicatePreventionRate),
       "kpi trends missing reliabilityDuplicatePreventionRate array",
     );
+    assert(Array.isArray(payload.mappingCompletionRate), "kpi trends missing mappingCompletionRate array");
+    assert(Array.isArray(payload.firstPublishSuccessRate), "kpi trends missing firstPublishSuccessRate array");
+    assert(Array.isArray(payload.setupTimeToFirstPublishHours), "kpi trends missing setupTimeToFirstPublishHours array");
+    assert(Array.isArray(payload.blockerResolutionRate), "kpi trends missing blockerResolutionRate array");
+    assert(
+      Array.isArray(payload.medianBlockerResolutionHours),
+      "kpi trends missing medianBlockerResolutionHours array",
+    );
     assert(
       payload.rejectionRate.some((point) => point.connectorSlug === "flipkart"),
       `expected rejection rate point for flipkart, payload=${JSON.stringify(payload)}`,
@@ -250,6 +345,18 @@ async function run() {
       ),
       `expected reliability duplicate-prevention point for flipkart, payload=${JSON.stringify(payload)}`,
     );
+    assert(
+      payload.mappingCompletionRate.some((point) => point.connectorSlug === "flipkart" && Number(point.value) >= 100),
+      `expected mapping completion point for flipkart, payload=${JSON.stringify(payload)}`,
+    );
+    assert(
+      payload.firstPublishSuccessRate.some((point) => point.connectorSlug === "flipkart" && Number(point.value) > 0),
+      `expected first publish success rate point for flipkart, payload=${JSON.stringify(payload)}`,
+    );
+    assert(
+      payload.setupTimeToFirstPublishHours.some((point) => point.connectorSlug === "flipkart"),
+      `expected setup time to first publish point for flipkart, payload=${JSON.stringify(payload)}`,
+    );
 
     console.log(
       JSON.stringify(
@@ -259,6 +366,7 @@ async function run() {
           jobId,
           validated: [
             "metrics_emitted_for_readiness_throughput_rejection_reliability",
+            "mapping_completion_and_first_publish_metrics_are_exposed",
             "kpi_trends_endpoint_returns_tenant_scoped_connector_series",
           ],
           checkedAt: new Date().toISOString(),
