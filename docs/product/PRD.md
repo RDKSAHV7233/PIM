@@ -77,6 +77,11 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - CR-003: `normaliseError` returns structured `ConnectorIssue` (not plain string).
 - CR-004: Capability checks are runtime-based (`installation.capabilities.includes(...)`).
 - CR-005: Export-only connectors complete via explicit export return path.
+- CR-006: Connector mapping lifecycle is tenant-scoped and versioned with `draft -> validated -> published -> superseded -> archived`.
+- CR-007: Public mapping writes support only `tenant_connector_default` and `tenant_connector_category_mapping`; connector default templates remain internal system defaults in the current cycle.
+- CR-008: Category alignment is modeled through mapping `categoryScope` plus taxonomy search/unmapped flows, not a separate category-mapping subsystem in the current cycle.
+- CR-009: Export job creation must hard-block on publish readiness, including connector installation/capability, credential status, required attribute mappings, fallback acknowledgement, and product scope checks.
+- CR-010: Connector discovery is hybrid in the current cycle: database definitions activate only statically compiled runtime connectors; manifest/plugin discovery is future scope.
 
 ## 10. Data Governance and Compliance
 - DG-001: Raw payload fields require explicit retention, redaction, and purge policy.
@@ -100,6 +105,7 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - Operational throughput: bulk workflows handle benchmark volumes within target latency.
 - Rejection reduction: lower channel reject rate after readiness correction and repair flow.
 - Reliability: retry paths do not create duplicate channel submissions.
+- Connector phase expansion metrics such as mapping completion rate, first publish success rate, setup time to first publish, and blocker resolution rate remain planned instrumentation, not current launch-gate metrics.
 
 ## 14. Risks and Mitigations
 - Risk: connector API/schema drift.

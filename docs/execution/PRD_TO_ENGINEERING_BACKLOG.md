@@ -13,7 +13,7 @@
 | E2 | Catalog and Compliance Core | FR-002, FR-003, FR-007 | Complete (2026-03-03) |
 | E3 | Bulk Import and Row Repair | FR-005 | Complete (2026-03-03) |
 | E4 | Bulk Edit and History | FR-006 | Complete (2026-03-03) |
-| E5 | Connector Framework and Submission | FR-009, FR-010, CR-001..CR-005 | Complete (2026-03-03) |
+| E5 | Connector Framework and Submission | FR-009, FR-010, CR-001..CR-010 | Complete baseline + mapping lifecycle/readiness verified |
 | E6 | Tenant Safety and Auth Hardening | NFR-001, NFR-002, DG-002 | Complete (2026-03-03) |
 | E7 | Runtime Reliability and Ops Gates | NFR-003..NFR-007, DG-001 | Complete (2026-03-03) |
 | E8 | Dashboard Aggregations | FR-011 | Complete (2026-03-03) |
@@ -136,6 +136,27 @@
 - Acceptance:
 1. Snapshot size cap enforced at application layer.
 2. Oversize payloads are stored out-of-row with URL pointer and truncation marker.
+
+#### ST-CON-006: Public mapping lifecycle contract alignment
+- PRD: CR-006, CR-007
+- Acceptance:
+1. Public mapping version APIs create only `tenant_connector_default` and `tenant_connector_category_mapping`.
+2. Only `published` mapping versions participate in effective resolution and export readiness.
+3. Connector default templates remain internal/system defaults until a separate authoring surface is introduced.
+
+#### ST-CON-007: Category-scoped taxonomy alignment and readiness gate
+- PRD: CR-008, CR-009
+- Acceptance:
+1. Category alignment is expressed through `categoryScope` plus taxonomy search/unmapped flows.
+2. Export job creation blocks on missing installation/capability, expired credentials, required attribute mapping gaps, product/category mismatch, and fallback acknowledgement requirements.
+3. Legacy template flow is treated as transitional and not the canonical lifecycle mapping path.
+
+#### ST-CON-008: Hybrid connector discovery is explicit
+- PRD: CR-010
+- Acceptance:
+1. Connector registry activates runtime connectors from database definitions only when a compiled implementation exists.
+2. Missing runtime implementation is reported deterministically and skipped.
+3. Manifest/plugin discovery is explicitly tracked as future scope, not assumed by current connector sprints.
 
 ### E6. Tenant Safety and Auth Hardening
 
@@ -271,6 +292,7 @@ Each story is complete only when:
 - E5 partial evidence (ST-CON-003): `docs/execution/E5_PARTIAL_ST-CON-003_EXECUTION_2026-03-03.md`
 - E5 partial evidence (ST-CON-004): `docs/execution/E5_PARTIAL_ST-CON-004_EXECUTION_2026-03-03.md`
 - E5 partial evidence (ST-CON-005): `docs/execution/E5_PARTIAL_ST-CON-005_EXECUTION_2026-03-03.md`
+- E5/INC-09 connector mapping lifecycle + publish-readiness evidence: `docs/execution/INCREMENT_STATE.json` (`INC-09`, `ST-CON-MAP-CTOPO-001`)
 - E6 completion evidence: `docs/execution/E6_STORIES_EXECUTION_2026-03-03.md`
 - E7 partial evidence (ST-OPS-004): `docs/execution/E7_PARTIAL_ST-OPS-004_EXECUTION_2026-03-03.md`
 - E7 partial evidence (ST-OPS-003): `docs/execution/E7_PARTIAL_ST-OPS-003_EXECUTION_2026-03-03.md`
