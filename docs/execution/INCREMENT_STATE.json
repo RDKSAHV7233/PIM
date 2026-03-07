@@ -221,6 +221,23 @@
                                                 "reopened_by":  "",
                                                 "reopened_reason":  "",
                                                 "regression_evidence":  ""
+                                            },
+                                            {
+                                                "storyId":  "ST-REPO-TRIAGE-001",
+                                                "title":  "Create preserve-first dirty tree triage manifest",
+                                                "status":  "completed",
+                                                "locked":  true,
+                                                "owner":  "codex",
+                                                "commit":  "pending",
+                                                "tests_passed":  [
+                                                                     "git status --short",
+                                                                     "git diff --stat",
+                                                                     "git diff --numstat",
+                                                                     "rg usage/reference scans for runtime, tests, and governance docs"
+                                                                 ],
+                                                "reopened_by":  "",
+                                                "reopened_reason":  "",
+                                                "regression_evidence":  ""
                                             }
                                         ]
                        },
