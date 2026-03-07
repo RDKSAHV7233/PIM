@@ -167,7 +167,22 @@
                                             "docs/execution/E8_STORIES_EXECUTION_2026-03-03.md"
                                         ],
                            "stories":  [
-
+                                           {
+                                               "storyId":  "ST-DASH-CACHE-001",
+                                               "title":  "Move dashboard cache to redis-backed reads with bounded fallback",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "c7e66c8",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npm run test:integration:dashboard-aggregations",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           }
                                        ]
                        },
                        {

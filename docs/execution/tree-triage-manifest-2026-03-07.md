@@ -31,7 +31,7 @@
 | `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Global interceptor path, provided in the app runtime. Touching/removing without grouped validation is unsafe. | `keep-open` |
 | `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation is a release-critical path; modifications belong to active runtime governance. | `keep-open` |
 | `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | DTO used in compliance/issues query path; active API surface. | `keep-open` |
-| `apps/api/src/dashboard/dashboard.service.ts` | `+297/-186` | `active-new-development` | Active runtime service under `DashboardModule`; large diff and direct dependency on new cache/env behavior make this non-cleanup work. | `keep-open` |
+| `apps/api/src/dashboard/dashboard.service.ts` | `+297/-186` | `active-new-development` | Active runtime service under `DashboardModule`; validated with API build + dashboard integration suite and committed as dashboard-specific work in `c7e66c8`. | `commit-now` |
 | `apps/api/src/ondc/ondc.controller.ts` | `+2/-0` | `active-new-development` | ONDC controller remains feature-gated runtime code, loaded when `FEATURE_ONDC_ENABLED` is true. | `keep-open` |
 | `apps/api/test/integration/webhook-dedupe-scope.test.cjs` | `+8/-0` | `active-new-development` | Explicitly wired in `package.json` as `test:integration:webhook-dedupe-scope`; active regression test, not archive material. | `keep-open` |
 
@@ -54,8 +54,8 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 19 files
-- `commit-now`: 4 paths
+- `keep-open`: 18 files
+- `commit-now`: 5 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
