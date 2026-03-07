@@ -316,11 +316,11 @@
                                                 "reopened_reason":  "",
                                                 "regression_evidence":  ""
                                             },
-                                            {
-                                                "storyId":  "ST-REPO-OWNER-REVIEW-001",
-                                                "title":  "Resolve owner-review set for env examples and repo guardrails",
-                                                "status":  "completed",
-                                                "locked":  true,
+                                           {
+                                               "storyId":  "ST-REPO-OWNER-REVIEW-001",
+                                               "title":  "Resolve owner-review set for env examples and repo guardrails",
+                                               "status":  "completed",
+                                               "locked":  true,
                                                 "owner":  "codex",
                                                 "commit":  "743a42c",
                                                 "tests_passed":  [
@@ -328,13 +328,28 @@
                                                                      "rg -n \\\"DASHBOARD_CACHE_REDIS_DISABLED|FEATURE_ONDC_ENABLED|NEXT_PUBLIC_FEATURE_ONDC_ENABLED\\\" apps docs package.json .env-templates .env.example .env.staging.example -S",
                                                                      "Get-Content AGENTS.md"
                                                                  ],
-                                                "reopened_by":  "",
-                                                "reopened_reason":  "",
-                                                "regression_evidence":  ""
-                                            },
-                                            {
-                                                "storyId":  "ST-ONDC-GATE-001",
-                                                "title":  "Gate ONDC module behind feature flag and admin access",
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-DOC-INCREMENT-ALIGN-001",
+                                               "title":  "Align canonical execution and product docs to increment terminology",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "262e795",
+                                               "tests_passed":  [
+                                                                    "rg -n \"run-sprint-gates|gate:run:sprint|Sprint gate|sprint gate|sprint progression|sprint planning\" docs/execution docs/product -S",
+                                                                    "rg -n \"gate:run:increment|Increment gate|increment gates|increment planning|INC-0|increments\" docs/execution docs/product -S"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-ONDC-GATE-001",
+                                               "title":  "Gate ONDC module behind feature flag and admin access",
                                                 "status":  "completed",
                                                 "locked":  true,
                                                 "owner":  "codex",

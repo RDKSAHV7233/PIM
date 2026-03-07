@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `6331d11`
+- Current HEAD: `262e795`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -43,11 +43,11 @@
 
 | File | Diff | Bucket | Evidence | Proposed action |
 |---|---:|---|---|---|
-| `docs/execution/E10_STORIES_EXECUTION_2026-03-03.md` | `+4/-4` | `release/governance-fix` | Referenced by `docs/execution/INCREMENT_STATE.json` under `INC-08` and by release-readiness tracking; canonical execution evidence. | `keep-open` |
-| `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md` | `+16/-4` | `release/governance-fix` | Referenced by multiple execution records (`E1`, `E2/E4`, `E5`, `E6`, `E7`, `E8`, `E9`, `E10`) and by `docs/STRUCTURE.md`; canonical backlog source. | `keep-open` |
-| `docs/execution/gates/README.md` | `+2/-2` | `release/governance-fix` | Referenced by execution evidence and documents gate artifact schema; not safe to archive. | `keep-open` |
-| `docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md` | `+1/-2` | `active-product-doc` | Referenced by `docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md`, `docs/product/PRD_SOURCES.md`, and enterprise doc indexes. | `keep-open` |
-| `docs/product/PRD.md` | `+12/-12` | `active-product-doc` | Canonical product source referenced by `CONTROLLED_RELEASE_CHECKLIST.md`, `PRD_SOURCES.md`, enterprise documentation index, and transfer docs. | `keep-open` |
+| `docs/execution/E10_STORIES_EXECUTION_2026-03-03.md` | `+4/-4` | `release/governance-fix` | Canonical execution evidence now aligned to increment terminology and `run-increment-gates.cjs`; committed in `262e795`. | `commit-now` |
+| `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md` | `+16/-4` | `release/governance-fix` | Canonical backlog now maps execution work to increment IDs instead of sprint/phase language; committed in `262e795`. | `commit-now` |
+| `docs/execution/gates/README.md` | `+2/-2` | `release/governance-fix` | Gate runner reference now points to `npm run gate:run:increment`; committed in `262e795`. | `commit-now` |
+| `docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md` | `+1/-2` | `active-product-doc` | Pilot playbook terminology aligned from sprint planning to increment planning in `262e795`. | `commit-now` |
+| `docs/product/PRD.md` | `+12/-12` | `active-product-doc` | PRD now consistently uses increment-based release/governance language and milestone naming in `262e795`. | `commit-now` |
 
 ## Untracked Local / Archive Paths
 
@@ -58,13 +58,13 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 3 files
-- `commit-now`: 22 paths
+- `keep-open`: 0 files
+- `commit-now`: 27 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
 1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Resolve the remaining docs cluster, then decide whether `unused/*` needs any further archive bookkeeping.
+2. Only `unused/*` archive paths remain outside the active tracked tree; decide whether they need further bookkeeping or can stay untracked archive material.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.
