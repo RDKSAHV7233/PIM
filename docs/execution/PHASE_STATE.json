@@ -1,0 +1,6 @@
+{
+  "deprecated": true,
+  "message": "Legacy tracker file is retired. Use increment-based tracking.",
+  "redirect": "docs/execution/INCREMENT_STATE.json",
+  "lastUpdated": "2026-03-05"
+}

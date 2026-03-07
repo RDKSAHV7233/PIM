@@ -1,0 +1,143 @@
+﻿# PIM1 Production Readiness Risk Register
+
+Last updated: 2026-03-05 (execution pass)
+
+## P0 (Must close before production)
+
+### RISK-P0-001: Rollout gates incomplete
+- Severity: P0
+- Status: In Progress
+- Owner: Engineering Lead + DevOps
+- Description: Controlled rollout signoff is incomplete.
+- Evidence:
+  - Completed: 2 consecutive E10 signoff artifacts recorded (`E10-ST-QA-001-RUN3`, `E10-ST-QA-001-RUN4`).
+  - Completed: local staging-format signoff artifact recorded (`INC08-STAGING-SIGNOFF-LOCAL`).
+  - Completed: rollout snapshot logic now preserves E10 continuity even when non-E10 signoff suites are recorded.
+  - Remaining: staging health response from live staging URL still pending explicit CI run evidence.
+  - Remaining: controlled rollout broad window not complete (14-day/SLO evidence).
+- Exit criteria:
+  1. Two consecutive E10 signoff artifacts recorded.
+  2. `/api/v1/health` reports `env=staging` in staging.
+  3. Updated rollout snapshot has no controlled gate blockers.
+- Validation commands:
+  - `node scripts/record-gate-signoff.cjs --suite E10-... --tenantId SMOKE_TENANT_LOCAL --runUrl ...`
+  - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
+  - Latest snapshot: `docs/execution/rollout/2026-03-05T17-27-33.754Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest signoff: `docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json`
+
+### RISK-P0-002: Non-local auth hardening drift risk
+- Severity: P0
+- Status: Closed
+- Owner: Backend Lead
+- Description: Local-auth fallback paths remain dangerous if env config drifts outside strict staging/prod settings.
+- Exit criteria:
+  1. Non-local environments enforce `AUTH_MODE=db`.
+  2. Startup fails if non-local env attempts local/demo auth mode.
+  3. Integration test proves legacy/local fallback is rejected in staging config.
+- Validation commands:
+  - `npm run test:integration:auth-revocation`
+  - `npm run test:integration:env-validation`
+- Validation evidence (2026-03-05):
+  - `test:integration:auth-revocation` -> pass
+  - `test:integration:env-validation` -> pass
+  - Env validation enforces `AUTH_MODE=db` when `APP_ENV` is `staging`/`production`.
+
+### RISK-P0-003: Post-deploy verification too shallow
+- Severity: P0
+- Status: In Progress
+- Owner: DevOps
+- Description: Staging deployment currently verifies health only; it should verify critical trust/isolation/reliability suites.
+- Exit criteria:
+  1. Deploy workflow runs critical integration suite post-deploy.
+  2. Pipeline fails on integration regression.
+  3. Gate artifact includes environment, tenantId, date, gitTag, runUrl.
+- Validation commands:
+  - CI job execution proof in `.github/workflows/deploy-staging.yml` logs.
+- Implementation update (2026-03-05):
+  - Added `scripts/staging-postdeploy-check.cjs`.
+  - Updated `.github/workflows/deploy-staging.yml`:
+    - runs post-deploy auth/trust-boundary verification
+    - records gate artifact via `record-gate-signoff.cjs`
+  - Updated `package.json` gate script so `APP_ENV=staging` can be passed at runtime (no dotenv override).
+  - Remaining: verify on next GitHub Actions staging deployment run.
+
+## P1 (Before scale / broad pilot)
+
+### RISK-P1-001: ONDC domain drift
+- Severity: P1
+- Status: Closed
+- Owner: Platform Architect
+- Description: ONDC remains exposed as core-path behavior and can confuse product scope.
+- Exit criteria:
+  1. ONDC isolated behind connector abstraction and/or feature flag.
+  2. `/ondc` removed from normal user-facing nav.
+  3. Internal-only visibility policy documented.
+- Validation evidence (2026-03-05):
+  - `FEATURE_ONDC_ENABLED` and `NEXT_PUBLIC_FEATURE_ONDC_ENABLED` added with default `false` in env templates.
+  - ONDC link removed from seller nav and shown only in internal/labs surfaces when feature flag is enabled.
+  - `/ondc` route is hard-gated to admin + non-production + enabled flag.
+  - Connector reliability suites pass after gating changes.
+
+### RISK-P1-002: Dashboard cache multi-instance risk
+- Severity: P1
+- Status: Closed
+- Owner: Backend Lead
+- Description: Process-local cache can cause cold-start stampede under multi-instance deployment.
+- Exit criteria:
+  1. Replace with shared cache (Redis) or authoritative snapshot read strategy.
+  2. Load test confirms stable latency after rolling restart.
+- Validation evidence (2026-03-05):
+  - Dashboard cache moved to Redis with bounded TTL keys.
+  - Deterministic in-memory fallback retained for Redis-unavailable scenarios.
+  - `test:integration:dashboard-aggregations` passes with cache hit behavior validation (`asOf` stable within TTL).
+
+### RISK-P1-003: Onboarding experience incomplete
+- Severity: P1
+- Status: Closed
+- Owner: Product + Web Lead
+- Description: First-seller onboarding loop not fully guided in UI.
+- Exit criteria:
+  1. Onboarding checklist implemented.
+  2. Action-oriented empty states on key pages.
+  3. Import-complete success guidance links to fix/publish flow.
+- Validation evidence (2026-03-05):
+  - Dashboard includes `First Seller Onboarding` checklist with progress and linked actions (import, completeness, quality, channels, jobs).
+  - Operations Imports page empty state upgraded to action-oriented remediation paths.
+  - Existing Products and Issue Inbox empty states already provide direct next-step actions.
+
+### RISK-P1-004: Workflow states maturity gap
+- Severity: P1
+- Status: Closed
+- Owner: Product + Backend + Web
+- Description: Full Draft/Review/Approved flow and approvals UX not complete.
+- Exit criteria:
+  1. Workflow states available and visible across list/detail.
+  2. Approval queue actions and audit trail complete.
+- Validation evidence (2026-03-05):
+  - Added explicit workflow statuses: `in_review`, `approved`, `rejected` (plus legacy compatibility for `active`).
+  - Enforced product status transition rules in API update flow and bulk edit flow.
+  - Enforced workflow entry rules on create/import: non-draft entry now rejected with `WORKFLOW_ENTRY_INVALID`.
+  - Approval Queue page now renders live `in_review` work items with approve/reject/send-to-draft actions.
+  - Product status transitions now emit audit rows (`STATUS_TRANSITION`) with from/to metadata.
+  - Integration test `test:integration:product-workflow-transitions` verifies invalid transition rejection, workflow-entry rejection, valid path, and audit logging.
+
+## P2 (Next increment window)
+
+### RISK-P2-001: Public API and outbound webhooks program
+- Severity: P2
+- Status: Planned
+- Owner: Platform Team
+
+### RISK-P2-002: Admin user lifecycle completeness
+- Severity: P2
+- Status: Planned
+- Owner: Admin UX + Backend
+
+### RISK-P2-003: Catalog health query scaling optimization
+- Severity: P2
+- Status: Planned
+- Owner: Backend
+
+## Governance
+- This file is the product/engineering shared risk source for production declaration.
+- Any production readiness claim must include status update for all P0 items.

@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "date": "2026-03-05T15:06:46.228Z",
+  "gitTag": "sha-db09908",
+  "runUrl": "local://pim1/e10-run4-2026-03-05",
+  "suite": "E10-ST-QA-001-RUN4"
+}

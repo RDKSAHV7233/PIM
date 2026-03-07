@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "SMOKE_TENANT_LOCAL",
+  "date": "2026-03-05T11:17:14.453Z",
+  "gitTag": "sha-db09908",
+  "runUrl": "local://pim1/sprint-core-gates-2026-03-05",
+  "suite": "SPRINT_CORE_GATES"
+}

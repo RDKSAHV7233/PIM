@@ -7,6 +7,7 @@
 - `docs/architecture/`
   - `PIM1_Final_Architecture_March2026_v3.docx`
   - `PIM1_Connector_First_Redesign_March2026.docx`
+  - `enterprise-docs/` (generated reference bundle; active working material, not canonical source-of-truth)
 - `docs/execution/`
   - `PIM1_Execution_Plan_March2026_v2_(1)_tracked.docx`
   - `PRD_TO_ENGINEERING_BACKLOG.md`
@@ -32,6 +33,9 @@
   - `PIM1_Enhanced_CTO_PO_Plan_March2026.docx`
 - `docs/design/`
   - `PIM1_UI_Design_Review.html`
+- `docs/product/user-guide/` (generated operational guide bundle for current web routes)
+- `docs/ports/`
+  - `orbit-pim1-transfer-2026-03-06/` (reference transfer pack retained for traceability)
 - `docs/runbooks/`
   - `credential-key-rotation.md`
   - `test-data-governance.md`
