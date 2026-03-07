@@ -15,3 +15,5 @@ coverage/
 *.tsbuildinfo
 storage/
 .runlogs/
+unused/temp/
+unused/pim1-files-*/
