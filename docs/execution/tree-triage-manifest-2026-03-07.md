@@ -1,7 +1,7 @@
 # PIM1 Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
-- Current HEAD: `6326749`
+- Current HEAD: `9554865`
 - `origin/main` baseline: `c577216`
 - Method: preserve-first triage; no move/delete/revert in this pass.
 - Rule: dirty source is keep-by-default unless proven generated/noise or superseded.
@@ -31,7 +31,8 @@
 | `apps/api/test/integration/product-workflow-transitions.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `6326749` to verify pending approval stats and bulk-edit workflow transition failure recording. | `commit-now` |
 | `apps/api/src/common/audit/audit-log.interceptor.ts` | `+3/-6` | `active-new-development` | Global interceptor path, provided in the app runtime. Touching/removing without grouped validation is unsafe. | `keep-open` |
 | `apps/api/src/common/env-validation.ts` | `+2/-0` | `active-new-development` | Startup env validation now includes `FEATURE_ONDC_ENABLED`; validated in `d02839b` with env-validation and ONDC feature-gating integration coverage. | `commit-now` |
-| `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | DTO used in compliance/issues query path; active API surface. | `keep-open` |
+| `apps/api/src/compliance/dto/issue-inbox-query.dto.ts` | `+2/-2` | `active-new-development` | Issue inbox product status filter now accepts workflow states (`in_review`, `approved`, `rejected`) and was validated in `9554865` with integration coverage. | `commit-now` |
+| `apps/api/test/integration/issue-inbox.test.cjs` | `scope expansion` | `active-new-development` | Expanded in `9554865` to verify `productStatus=in_review` filter behavior after workflow status expansion. | `commit-now` |
 | `apps/api/src/dashboard/dashboard.service.ts` | `+297/-186` | `active-new-development` | Active runtime service under `DashboardModule`; validated with API build + dashboard integration suite and committed as dashboard-specific work in `c7e66c8`. | `commit-now` |
 | `apps/api/src/ondc/ondc.controller.ts` | `+2/-0` | `active-new-development` | ONDC controller now requires `admin` role and remains feature-gated runtime code; validated in `d02839b` with viewer `403` and admin `200` checks. | `commit-now` |
 | `apps/api/test/integration/ondc-feature-gating.test.cjs` | `new` | `active-new-development` | Targeted regression coverage for ONDC gating semantics: feature off -> `404`, feature on + viewer -> `403`, feature on + admin -> `200`. Added and committed in `d02839b`. | `commit-now` |
@@ -56,13 +57,13 @@
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
-- `keep-open`: 8 files
-- `commit-now`: 17 paths
+- `keep-open`: 6 files
+- `commit-now`: 19 paths
 - `archive-to-unused`: 2 paths
 - `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
 1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
-2. Group the remaining `keep-open` runtime files into the audit/compliance/webhook test cluster, then the docs cluster.
+2. Resolve the remaining audit hardening and webhook dedupe test-alignment files, then the docs cluster.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.

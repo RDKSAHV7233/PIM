@@ -215,6 +215,22 @@
                                                "reopened_by":  "",
                                                "reopened_reason":  "",
                                                "regression_evidence":  ""
+                                           },
+                                           {
+                                               "storyId":  "ST-ISSUE-INBOX-WORKFLOW-001",
+                                               "title":  "Support workflow-status filters in compliance issue inbox",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "9554865",
+                                               "tests_passed":  [
+                                                                    "npm run build --workspace @pim1/api",
+                                                                    "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+                                                                    "npm run test:integration:issue-inbox"
+                                                                ],
+                                               "reopened_by":  "",
+                                               "reopened_reason":  "",
+                                               "regression_evidence":  ""
                                            }
                                        ]
                        },
