@@ -418,8 +418,11 @@
                                             "apps/api/src/auth/step-up.decorator.ts",
                                             "apps/api/src/auth/step-up.guard.ts",
                                             "apps/api/src/metrics/metrics.service.ts",
+                                            "apps/web/src/app/actions.ts",
                                             "apps/web/src/app/channels/mappings/page.tsx",
+                                            "apps/web/src/lib/api.ts",
                                             "apps/web/src/app/products/[id]/page.tsx",
+                                            "apps/web/test/integration/mapping-step-up-ui.test.cjs",
                                             "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
                                             "apps/api/test/integration/connector-mapping-step-up.test.cjs",
                                             "apps/api/test/integration/connector-mapping-rollback.test.cjs",
@@ -536,6 +539,26 @@
                                                "reopened_by":  "user",
                                                "reopened_reason":  "Reopen INC-09 for MFA because mapping-domain work is closed and the remaining connector-domain gap is bounded security step-up only.",
                                                "regression_evidence":  "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active PIM1."
+                                           },
+                                           {
+                                               "storyId":  "ST-CON-STEPUP-WEB-001",
+                                               "title":  "Bounded INC-09 reopen: align web mapping actions with step-up re-auth contract",
+                                               "status":  "completed",
+                                               "locked":  true,
+                                               "owner":  "codex",
+                                               "commit":  "c99e38a",
+                                               "tests_passed":  [
+                                                                    "npm run lint --workspace @pim1/web",
+                                                                    "npx tsc -p apps/web/tsconfig.json --noEmit",
+                                                                    "npm run build --workspace @pim1/web",
+                                                                    "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
+                                                                    "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+                                                                    "npm run test:integration:marketplace-capability-ui-gating",
+                                                                    "npm run test:integration:connector-action-matrix-ui-gating"
+                                                                ],
+                                               "reopened_by":  "user",
+                                               "reopened_reason":  "Frontend mapping flows needed to catch up to the backend step-up contract so protected mapping actions remained seller-usable.",
+                                               "regression_evidence":  "Exact failing command: node -e \"const fs=require('fs'); const a=fs.readFileSync('apps/web/src/app/actions.ts','utf8'); const api=fs.readFileSync('apps/web/src/lib/api.ts','utf8'); const p=fs.readFileSync('apps/web/src/app/channels/mappings/page.tsx','utf8'); const ok = a.includes('/auth/step-up') || api.includes('x-pim-step-up-token') || p.includes('step-up re-auth'); if(!ok){ console.error('FAIL: web mapping flow has no step-up integration for protected mapping actions'); process.exit(1);} console.log('ok');\". Failing output snippet: FAIL: web mapping flow has no step-up integration for protected mapping actions. Likely files: apps/web/src/app/actions.ts, apps/web/src/lib/api.ts, apps/web/src/app/channels/mappings/page.tsx."
                                            }
                                        ]
                        }
