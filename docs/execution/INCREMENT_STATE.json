@@ -245,7 +245,7 @@
                                                 "status":  "completed",
                                                 "locked":  true,
                                                 "owner":  "codex",
-                                                "commit":  "pending",
+                                                "commit":  "743a42c",
                                                 "tests_passed":  [
                                                                      "git diff -- .env-templates/.env.example .env.example .env.staging.example",
                                                                      "rg -n \\\"DASHBOARD_CACHE_REDIS_DISABLED|FEATURE_ONDC_ENABLED|NEXT_PUBLIC_FEATURE_ONDC_ENABLED\\\" apps docs package.json .env-templates .env.example .env.staging.example -S",
