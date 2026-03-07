@@ -128,16 +128,11 @@ function loadAllArtifactsInWindow(sinceUtcMs) {
 }
 
 function extractConsecutiveE10Runs(artifacts) {
-  let count = 0;
-  for (const entry of artifacts) {
+  const e10Runs = artifacts.filter((entry) => {
     const suite = String(entry.artifact.suite || "");
-    if (suite.startsWith("E10-ST-QA-001")) {
-      count += 1;
-      continue;
-    }
-    break;
-  }
-  return count;
+    return suite.startsWith("E10-ST-QA-001");
+  });
+  return e10Runs.slice(0, 2).length;
 }
 
 function hasArtifact(artifacts, pattern) {
@@ -190,6 +185,8 @@ async function main() {
   const allArtifacts = loadAllArtifactsInWindow(since.getTime());
   const consecutiveE10 = extractConsecutiveE10Runs(signoffArtifacts);
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
+  const reportedEnv = String(health?.body?.env || "").trim().toLowerCase();
+  const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
 
   const snapshot = {
     capturedAt: now.toISOString(),
@@ -209,6 +206,7 @@ async function main() {
         twoConsecutiveGates: consecutiveE10 >= 2,
         pilotWorkflowEvidencePresent: hasArtifact(allArtifacts, "PILOT_WORKFLOW_VALIDATION"),
         governanceEvidencePresent: hasArtifact(allArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
+        healthEndpointHealthy,
       },
       pending: [],
     },
@@ -229,13 +227,21 @@ async function main() {
   if (!snapshot.controlledRollout.criteria.governanceEvidencePresent) {
     snapshot.controlledRollout.pending.push("Payload governance enforcement artifact missing in current window.");
   }
-  const reportedEnv = String(snapshot.health?.body?.env || "").trim().toLowerCase();
-  if (reportedEnv && reportedEnv !== snapshot.environment) {
-    snapshot.controlledRollout.pending.push(
-      `Health endpoint env mismatch: expected '${snapshot.environment}', got '${reportedEnv}'.`,
-    );
+  if (!snapshot.controlledRollout.criteria.healthEndpointHealthy) {
+    if (!health.ok) {
+      snapshot.controlledRollout.pending.push(
+        `Health endpoint unavailable or non-200 for '${snapshot.environment}' rollout snapshot.`,
+      );
+    } else if (reportedEnv !== snapshot.environment) {
+      snapshot.controlledRollout.pending.push(
+        `Health endpoint env mismatch: expected '${snapshot.environment}', got '${reportedEnv || "unset"}'.`,
+      );
+    } else {
+      snapshot.controlledRollout.pending.push(
+        `Health endpoint did not provide a valid '${snapshot.environment}' environment marker.`,
+      );
+    }
   }
-
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const stamp = now.toISOString().replace(/[:]/g, "-");
   const outputPath = path.join(OUTPUT_DIR, `${stamp}_CONTROLLED_ROLLOUT_SNAPSHOT.json`);

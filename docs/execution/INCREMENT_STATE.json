@@ -21,14 +21,15 @@
                                                "title":  "Products tab default landing and bookmarkable",
                                                "status":  "completed",
                                                "locked":  true,
-                                               "owner":  "",
-                                               "commit":  "",
+                                               "owner":  "codex",
+                                               "commit":  "db09908",
                                                "tests_passed":  [
-
+                                                                    "npm run lint --workspace @pim1/web",
+                                                                    "npm run build --workspace @pim1/web"
                                                                 ],
-                                               "reopened_by":  "",
-                                               "reopened_reason":  "",
-                                               "regression_evidence":  ""
+                                               "reopened_by":  "codex",
+                                               "reopened_reason":  "CTO governance repair for missing immutable commit and test evidence on a locked story.",
+                                               "regression_evidence":  "Locked story had blank commit/test fields in docs/execution/INCREMENT_STATE.json despite execution evidence in docs/execution/E1_STORIES_EXECUTION_2026-03-03.md and git history at db09908."
                                            }
                                        ]
                        },
@@ -224,7 +225,7 @@
                                                "status":  "completed",
                                                "locked":  true,
                                                "owner":  "codex",
-                                               "commit":  "working-tree",
+                                               "commit":  "c577216",
                                                "tests_passed":  [
                                                                     "npm run prisma:migrate:deploy",
                                                                     "npx tsc -p apps/api/tsconfig.build.json --noEmit",
@@ -232,9 +233,9 @@
                                                                     "npm run build",
                                                                     "npm test"
                                                                 ],
-                                               "reopened_by":  "",
-                                               "reopened_reason":  "",
-                                               "regression_evidence":  ""
+                                               "reopened_by":  "codex",
+                                               "reopened_reason":  "CTO governance repair for non-immutable commit evidence on a locked story.",
+                                               "regression_evidence":  "Locked story referenced 'working-tree' instead of an immutable commit despite matching git provenance at c577216 for mapping lifecycle, taxonomy, and publish-readiness activation."
                                            }
                                        ]
                        }

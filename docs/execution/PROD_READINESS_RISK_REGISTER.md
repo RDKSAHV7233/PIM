@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-05 (execution pass)
+Last updated: 2026-03-07 (release-governance hardening)
 
 ## P0 (Must close before production)
 
@@ -12,7 +12,7 @@ Last updated: 2026-03-05 (execution pass)
 - Evidence:
   - Completed: 2 consecutive E10 signoff artifacts recorded (`E10-ST-QA-001-RUN3`, `E10-ST-QA-001-RUN4`).
   - Completed: local staging-format signoff artifact recorded (`INC08-STAGING-SIGNOFF-LOCAL`).
-  - Completed: rollout snapshot logic now preserves E10 continuity even when non-E10 signoff suites are recorded.
+  - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
   - Remaining: staging health response from live staging URL still pending explicit CI run evidence.
   - Remaining: controlled rollout broad window not complete (14-day/SLO evidence).
 - Exit criteria:
@@ -22,7 +22,7 @@ Last updated: 2026-03-05 (execution pass)
 - Validation commands:
   - `node scripts/record-gate-signoff.cjs --suite E10-... --tenantId SMOKE_TENANT_LOCAL --runUrl ...`
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
-  - Latest snapshot: `docs/execution/rollout/2026-03-05T17-27-33.754Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest snapshot: `docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: `docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json`
 
 ### RISK-P0-002: Non-local auth hardening drift risk

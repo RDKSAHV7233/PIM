@@ -10,12 +10,6 @@ const nextConfig: NextConfig = {
     webpackBuildWorker: false,
     devtoolSegmentExplorer: false,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   outputFileTracingRoot: path.join(__dirname, "../../"),
 };
 
