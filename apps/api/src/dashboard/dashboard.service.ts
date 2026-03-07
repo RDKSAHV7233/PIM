@@ -1,7 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { AppliesTo } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { createClient } from "redis";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { MetricsService } from "../metrics/metrics.service";
@@ -50,14 +50,10 @@ type DashboardHealthResponse = {
   asOf: string;
 };
 
-type CacheEntry = {
-  expiresAt: number;
-  value: ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse;
-};
-
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_SECONDS = 5 * 60;
 const SNAPSHOT_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SNAPSHOT_TREND_DAYS = 30;
+const REDIS_RETRY_BACKOFF_MS = 30_000;
 const DISTRIBUTION_BUCKETS = [
   "0-10",
   "10-20",
@@ -71,9 +67,27 @@ const DISTRIBUTION_BUCKETS = [
   "90-100",
 ] as const;
 
+function isProductionAppEnv(): boolean {
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development")
+    .trim()
+    .toLowerCase();
+  return appEnv === "production";
+}
+
 @Injectable()
-export class DashboardService {
-  private readonly cache = new Map<string, CacheEntry>();
+export class DashboardService implements OnModuleDestroy {
+  private readonly redisDisabled =
+    String(process.env.DASHBOARD_CACHE_REDIS_DISABLED ?? "").trim().toLowerCase() === "true";
+  private readonly redisUrl = String(process.env.REDIS_URL ?? "redis://localhost:6379").trim();
+  private redisClient: ReturnType<typeof createClient> | null = null;
+  private redisConnecting: Promise<void> | null = null;
+  private redisAvailable = false;
+  private redisRetryAfterMs = 0;
+  private readonly allowInMemoryFallbackCache = !isProductionAppEnv();
+  private readonly fallbackCache = new Map<
+    string,
+    { value: ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse; expiresAt: number }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -102,34 +116,167 @@ export class DashboardService {
     key: string,
     producer: () => Promise<T>,
   ): Promise<T> {
-    const cached = this.cache.get(key);
-    const now = Date.now();
-    if (cached && cached.expiresAt > now) {
-      return cached.value as T;
+    const cached = await this.readCache<T>(key);
+    if (cached) {
+      return cached;
     }
     const value = await producer();
-    this.cache.set(key, {
-      expiresAt: now + CACHE_TTL_MS,
-      value,
-    });
+    await this.writeCache(key, value);
     return value;
+  }
+
+  private async readCache<T>(key: string): Promise<T | null> {
+    if (this.allowInMemoryFallbackCache) {
+      const fallback = this.readFallbackCache<T>(key);
+      if (fallback) {
+        return fallback;
+      }
+    }
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return null;
+    }
+    try {
+      const raw = await this.redisClient.get(key);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as T;
+      if (this.allowInMemoryFallbackCache) {
+        this.writeFallbackCache(
+          key,
+          parsed as ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+        );
+      }
+      return parsed;
+    } catch {
+      this.markRedisUnavailable();
+      return null;
+    }
+  }
+
+  private async writeCache<T>(key: string, value: T): Promise<void> {
+    if (this.allowInMemoryFallbackCache) {
+      this.writeFallbackCache(
+        key,
+        value as ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+      );
+    }
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.setEx(key, CACHE_TTL_SECONDS, JSON.stringify(value));
+    } catch {
+      this.markRedisUnavailable();
+    }
+  }
+
+  private readFallbackCache<T>(key: string): T | null {
+    const cached = this.fallbackCache.get(key);
+    if (!cached) {
+      return null;
+    }
+    if (Date.now() >= cached.expiresAt) {
+      this.fallbackCache.delete(key);
+      return null;
+    }
+    return cached.value as T;
+  }
+
+  private writeFallbackCache(
+    key: string,
+    value: ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+  ): void {
+    this.fallbackCache.set(key, {
+      value,
+      expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000,
+    });
+  }
+
+  private async ensureRedisAvailable(): Promise<boolean> {
+    if (this.redisDisabled) {
+      this.redisAvailable = false;
+      return false;
+    }
+    if (this.redisAvailable) {
+      return true;
+    }
+    const nowMs = Date.now();
+    if (nowMs < this.redisRetryAfterMs) {
+      return false;
+    }
+    if (this.redisConnecting) {
+      await this.redisConnecting;
+      return this.redisAvailable;
+    }
+
+    this.redisConnecting = (async () => {
+      try {
+        const client = createClient({
+          url: this.redisUrl,
+          socket: {
+            connectTimeout: 2_000,
+            reconnectStrategy: () => false,
+          },
+        });
+        client.on("error", () => {
+          this.markRedisUnavailable();
+        });
+        await client.connect();
+        this.redisClient = client;
+        this.redisAvailable = true;
+        this.redisRetryAfterMs = 0;
+      } catch {
+        this.markRedisUnavailable();
+      } finally {
+        this.redisConnecting = null;
+      }
+    })();
+
+    await this.redisConnecting;
+    return this.redisAvailable;
+  }
+
+  private markRedisUnavailable(): void {
+    this.redisAvailable = false;
+    this.redisRetryAfterMs = Date.now() + REDIS_RETRY_BACKOFF_MS;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.redisClient) {
+      await this.redisClient.quit().catch(() => undefined);
+      this.redisClient = null;
+    }
+    this.redisAvailable = false;
   }
 
   private async computeReadiness(tenantKey: string): Promise<ReadinessResponse> {
     // RLS-BYPASS: manual tenant filter
-    const connectors = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ slug: string; displayName: string; installationCount: number }>
+    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
+      Array<{
+        slug: string;
+        displayName: string;
+        installationCount: number;
+        ready: number;
+        blocked: number;
+        pending: number;
+      }>
     >(
       `
       SELECT
         cd.slug AS slug,
         cd.display_name AS "displayName",
-        COUNT(ci.id)::int AS "installationCount"
+        COUNT(DISTINCT ci.id)::int AS "installationCount",
+        COUNT(*) FILTER (WHERE UPPER(cs.status) = 'SUCCESS')::int AS ready,
+        COUNT(*) FILTER (WHERE UPPER(cs.status) = 'PENDING')::int AS pending,
+        COUNT(*) FILTER (WHERE UPPER(cs.status) IN ('REJECTED', 'SUPPRESSED', 'ERROR'))::int AS blocked
       FROM connector_definitions cd
       LEFT JOIN connector_installations ci
         ON ci.connector_id = cd.id
        AND ci.tenant_key = $1
        AND ci.status <> 'DISABLED'
+      LEFT JOIN connector_submissions cs
+        ON cs.installation_id = ci.id
       WHERE cd.is_active = TRUE
       GROUP BY cd.slug, cd.display_name
       ORDER BY cd.display_name ASC
@@ -137,64 +284,25 @@ export class DashboardService {
       tenantKey,
     );
 
-    const results: ReadinessConnector[] = [];
-    for (const connector of connectors) {
-      if (connector.installationCount === 0) {
-        results.push({
-          slug: connector.slug,
-          displayName: connector.displayName,
+    const results: ReadinessConnector[] = rows.map((row) => {
+      if (row.installationCount === 0) {
+        return {
+          slug: row.slug,
+          displayName: row.displayName,
           ready: 0,
           blocked: 0,
           pending: 0,
           notConnected: true,
-        });
-        continue;
+        };
       }
-
-      // RLS-BYPASS: manual tenant filter
-      const statusRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-        Array<{ status: string; count: number }>
-      >(
-        `
-        SELECT
-          cs.status AS status,
-          COUNT(*)::int AS count
-        FROM connector_submissions cs
-        JOIN connector_installations ci ON ci.id = cs.installation_id
-        JOIN connector_definitions cd ON cd.id = ci.connector_id
-        WHERE ci.tenant_key = $1 AND cd.slug = $2
-        GROUP BY cs.status
-        `,
-        tenantKey,
-        connector.slug,
-      );
-
-      let ready = 0;
-      let blocked = 0;
-      let pending = 0;
-      for (const row of statusRows) {
-        const status = String(row.status).toUpperCase();
-        if (status === "SUCCESS") {
-          ready += Number(row.count);
-          continue;
-        }
-        if (status === "PENDING") {
-          pending += Number(row.count);
-          continue;
-        }
-        if (status === "REJECTED" || status === "SUPPRESSED" || status === "ERROR") {
-          blocked += Number(row.count);
-        }
-      }
-
-      results.push({
-        slug: connector.slug,
-        displayName: connector.displayName,
-        ready,
-        blocked,
-        pending,
-      });
-    }
+      return {
+        slug: row.slug,
+        displayName: row.displayName,
+        ready: Number(row.ready),
+        blocked: Number(row.blocked),
+        pending: Number(row.pending),
+      };
+    });
 
     const response: ReadinessResponse = {
       connectors: results,
@@ -205,96 +313,132 @@ export class DashboardService {
   }
 
   private async computeCatalogHealth(tenantKey: string): Promise<CatalogHealthResponse> {
-    const products = await this.prisma.tenant(tenantKey).product.findMany({
-      select: {
-        id: true,
-        categoryId: true,
-        title: true,
-        brand: true,
-        description: true,
-        hsnCode: true,
-        gstRate: true,
-        attributes: true,
-      },
-    });
-
-    const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));
-    const requiredAttributes = await this.prisma.tenant(tenantKey).attributeDefinition.findMany({
-      where: {
-        categoryId: { in: categoryIds },
-        appliesTo: AppliesTo.product,
-        required: true,
-      },
-      select: {
-        categoryId: true,
-        key: true,
-      },
-    });
-
-    const requiredByCategory = new Map<string, string[]>();
-    for (const attribute of requiredAttributes) {
-      const current = requiredByCategory.get(attribute.categoryId) ?? [];
-      current.push(attribute.key);
-      requiredByCategory.set(attribute.categoryId, current);
-    }
-
     // RLS-BYPASS: manual tenant filter
-    const mediaRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ productId: string }>>(
+    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
+      Array<{
+        averageCompleteness: number | string;
+        belowThreshold: number;
+        completeSkus: number;
+        incompleteSkus: number;
+        missingMainImage: number;
+        missingRequiredAttrs: number;
+        bucket0_10: number;
+        bucket10_20: number;
+        bucket20_30: number;
+        bucket30_40: number;
+        bucket40_50: number;
+        bucket50_60: number;
+        bucket60_70: number;
+        bucket70_80: number;
+        bucket80_90: number;
+        bucket90_100: number;
+      }>
+    >(
       `
-      SELECT DISTINCT product_id AS "productId"
-      FROM media_assets
-      WHERE tenant_key = $1
-        AND product_id IS NOT NULL
+      WITH required_by_category AS (
+        SELECT
+          ad."categoryId" AS category_id,
+          COUNT(*) FILTER (WHERE ad.required = TRUE AND ad."appliesTo" = 'product')::int AS required_count,
+          COALESCE(
+            ARRAY_AGG(ad.key) FILTER (WHERE ad.required = TRUE AND ad."appliesTo" = 'product'),
+            ARRAY[]::text[]
+          ) AS required_keys
+        FROM "AttributeDefinition" ad
+        WHERE ad."tenantKey" = $1
+        GROUP BY ad."categoryId"
+      ),
+      product_base AS (
+        SELECT
+          p.id,
+          p.attributes::jsonb AS attrs,
+          (
+            CASE WHEN COALESCE(BTRIM(p.title), '') <> '' THEN 1 ELSE 0 END +
+            CASE WHEN COALESCE(BTRIM(p.brand), '') <> '' THEN 1 ELSE 0 END +
+            CASE WHEN COALESCE(BTRIM(p.description), '') <> '' THEN 1 ELSE 0 END +
+            CASE WHEN COALESCE(BTRIM(p."hsnCode"), '') <> '' THEN 1 ELSE 0 END +
+            CASE WHEN p."gstRate" IS NOT NULL THEN 1 ELSE 0 END
+          )::int AS core_filled,
+          COALESCE(r.required_count, 0)::int AS required_count,
+          COALESCE(r.required_keys, ARRAY[]::text[]) AS required_keys
+        FROM "Product" p
+        LEFT JOIN required_by_category r ON r.category_id = p."categoryId"
+        WHERE p."tenantKey" = $1
+          AND p."deletedAt" IS NULL
+      ),
+      scored AS (
+        SELECT
+          pb.id,
+          pb.required_count,
+          (
+            SELECT COUNT(*)
+            FROM UNNEST(pb.required_keys) AS key_name
+            WHERE COALESCE(NULLIF(BTRIM(pb.attrs ->> key_name), ''), NULL) IS NOT NULL
+          )::int AS filled_required_attrs,
+          (
+            CASE
+              WHEN (5 + pb.required_count) = 0 THEN 100
+              ELSE ROUND(((pb.core_filled + (
+                SELECT COUNT(*)
+                FROM UNNEST(pb.required_keys) AS key_name
+                WHERE COALESCE(NULLIF(BTRIM(pb.attrs ->> key_name), ''), NULL) IS NOT NULL
+              ))::numeric * 100) / (5 + pb.required_count))
+            END
+          )::int AS score
+        FROM product_base pb
+      ),
+      media_products AS (
+        SELECT DISTINCT product_id
+        FROM media_assets
+        WHERE tenant_key = $1
+          AND product_id IS NOT NULL
+      )
+      SELECT
+        COALESCE(ROUND(AVG(sc.score)::numeric, 2), 0) AS "averageCompleteness",
+        COUNT(*) FILTER (WHERE sc.score < 50)::int AS "belowThreshold",
+        COUNT(*) FILTER (WHERE sc.score >= 100)::int AS "completeSkus",
+        COUNT(*) FILTER (WHERE sc.score < 100)::int AS "incompleteSkus",
+        COUNT(*) FILTER (WHERE mp.product_id IS NULL)::int AS "missingMainImage",
+        COUNT(*) FILTER (WHERE sc.required_count > sc.filled_required_attrs)::int AS "missingRequiredAttrs",
+        COUNT(*) FILTER (WHERE sc.score >= 0  AND sc.score < 10)::int AS "bucket0_10",
+        COUNT(*) FILTER (WHERE sc.score >= 10 AND sc.score < 20)::int AS "bucket10_20",
+        COUNT(*) FILTER (WHERE sc.score >= 20 AND sc.score < 30)::int AS "bucket20_30",
+        COUNT(*) FILTER (WHERE sc.score >= 30 AND sc.score < 40)::int AS "bucket30_40",
+        COUNT(*) FILTER (WHERE sc.score >= 40 AND sc.score < 50)::int AS "bucket40_50",
+        COUNT(*) FILTER (WHERE sc.score >= 50 AND sc.score < 60)::int AS "bucket50_60",
+        COUNT(*) FILTER (WHERE sc.score >= 60 AND sc.score < 70)::int AS "bucket60_70",
+        COUNT(*) FILTER (WHERE sc.score >= 70 AND sc.score < 80)::int AS "bucket70_80",
+        COUNT(*) FILTER (WHERE sc.score >= 80 AND sc.score < 90)::int AS "bucket80_90",
+        COUNT(*) FILTER (WHERE sc.score >= 90)::int AS "bucket90_100"
+      FROM scored sc
+      LEFT JOIN media_products mp ON mp.product_id = sc.id
       `,
       tenantKey,
     );
-    const productIdsWithMedia = new Set(mediaRows.map((row) => row.productId));
 
-    let scoreSum = 0;
-    let belowThreshold = 0;
-    let completeSkus = 0;
-    let missingMainImage = 0;
-    let missingRequiredAttrs = 0;
-    const distributionCounts = Array.from({ length: DISTRIBUTION_BUCKETS.length }, () => 0);
-
-    for (const product of products) {
-      const requiredAttributeKeys = requiredByCategory.get(product.categoryId) ?? [];
-      const score = this.calculateCompletenessScore(product, requiredAttributeKeys);
-      scoreSum += score;
-      if (score >= 100) {
-        completeSkus += 1;
-      }
-      if (score < 50) {
-        belowThreshold += 1;
-      }
-
-      if (!productIdsWithMedia.has(product.id)) {
-        missingMainImage += 1;
-      }
-
-      const attributes = this.asRecord(product.attributes);
-      const hasMissingRequiredAttrs = requiredAttributeKeys.some((key) => this.isEmpty(attributes[key]));
-      if (hasMissingRequiredAttrs) {
-        missingRequiredAttrs += 1;
-      }
-
-      const bucketIndex = Math.min(Math.floor(score / 10), DISTRIBUTION_BUCKETS.length - 1);
-      distributionCounts[bucketIndex] += 1;
-    }
-
-    const averageCompleteness =
-      products.length === 0 ? 0 : Number((scoreSum / products.length).toFixed(2));
+    const row = rows[0];
+    const distributionCounts = [
+      row?.bucket0_10 ?? 0,
+      row?.bucket10_20 ?? 0,
+      row?.bucket20_30 ?? 0,
+      row?.bucket30_40 ?? 0,
+      row?.bucket40_50 ?? 0,
+      row?.bucket50_60 ?? 0,
+      row?.bucket60_70 ?? 0,
+      row?.bucket70_80 ?? 0,
+      row?.bucket80_90 ?? 0,
+      row?.bucket90_100 ?? 0,
+    ];
 
     return {
-      averageCompleteness,
-      belowThreshold,
-      completeSkus,
-      incompleteSkus: Math.max(0, products.length - completeSkus),
-      missingMainImage,
-      missingRequiredAttrs,
+      averageCompleteness: Number(row?.averageCompleteness ?? 0),
+      belowThreshold: Number(row?.belowThreshold ?? 0),
+      completeSkus: Number(row?.completeSkus ?? 0),
+      incompleteSkus: Number(row?.incompleteSkus ?? 0),
+      missingMainImage: Number(row?.missingMainImage ?? 0),
+      missingRequiredAttrs: Number(row?.missingRequiredAttrs ?? 0),
       distribution: DISTRIBUTION_BUCKETS.map((bucket, index) => ({
         bucket,
-        count: distributionCounts[index],
+        count: Number(distributionCounts[index] ?? 0),
       })),
       asOf: new Date().toISOString(),
     };
@@ -522,39 +666,6 @@ export class DashboardService {
       result[key] = Number.isFinite(num) ? num : 0;
     }
     return result;
-  }
-
-  private calculateCompletenessScore(
-    product: {
-      title: string;
-      brand: string;
-      description: string;
-      hsnCode: string | null;
-      gstRate: number | null;
-      attributes: unknown;
-    },
-    requiredAttributeKeys: string[],
-  ) {
-    const coreValues = [product.title, product.brand, product.description, product.hsnCode, product.gstRate];
-    const filledCore = coreValues.filter((value) => !this.isEmpty(value)).length;
-    const requiredTotal = coreValues.length + requiredAttributeKeys.length;
-    if (requiredTotal === 0) {
-      return 100;
-    }
-    const attributes = this.asRecord(product.attributes);
-    const filledAttributes = requiredAttributeKeys.filter((key) => !this.isEmpty(attributes[key])).length;
-    return Math.round(((filledCore + filledAttributes) / requiredTotal) * 100);
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return {};
-  }
-
-  private isEmpty(value: unknown): boolean {
-    return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 
   private async emitReadinessAccuracyMetric(
