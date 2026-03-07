@@ -17,9 +17,9 @@
 
 | File | Diff | Bucket | Evidence | Proposed action |
 |---|---:|---|---|---|
-| `.env-templates/.env.example` | `+3/-0` | `active-new-development` | Adds active feature/config flags used by runtime: `DASHBOARD_CACHE_REDIS_DISABLED` is read in `apps/api/src/dashboard/dashboard.service.ts`; `FEATURE_ONDC_ENABLED` is consumed in `apps/api/src/app.module.ts`. | `owner-review` |
-| `.env.example` | `+3/-0` | `active-new-development` | Root local env example carries the same active runtime flags as above; not safe to archive. | `owner-review` |
-| `.env.staging.example` | `+3/-0` | `active-new-development` | Staging env example now aligns with runtime feature flags and dashboard cache control; this affects deploy/config posture. | `owner-review` |
+| `.env-templates/.env.example` | `+3/-0` | `active-new-development` | Adds active feature/config flags used by runtime: `DASHBOARD_CACHE_REDIS_DISABLED` is read in `apps/api/src/dashboard/dashboard.service.ts`; `FEATURE_ONDC_ENABLED` is consumed in `apps/api/src/app.module.ts`. | `commit-now` |
+| `.env.example` | `+3/-0` | `active-new-development` | Root local env example carries the same active runtime flags as above; not safe to archive. | `commit-now` |
+| `.env.staging.example` | `+3/-0` | `active-new-development` | Staging env example now aligns with runtime feature flags and dashboard cache control; this affects deploy/config posture. | `commit-now` |
 | `apps/api/src/app.module.ts` | `+4/-1` | `active-new-development` | Root Nest module imports active runtime modules: `DashboardModule`, `BulkImportModule`, `BulkEditModule`, `CatalogModule`, `OndcModule`. Any cleanup here risks breaking app boot. | `keep-open` |
 | `apps/api/src/bulk-edit/bulk-edit.service.ts` | `+39/-3` | `active-new-development` | Active service under `BulkEditModule`, loaded by `apps/api/src/app.module.ts`. Runtime source, not cleanup material. | `keep-open` |
 | `apps/api/src/bulk-edit/dto/bulk-edit-scope.dto.ts` | `+1/-1` | `active-new-development` | DTO used by bulk-edit API surface; runtime contract file, not archive candidate. | `keep-open` |
@@ -49,18 +49,18 @@
 
 | File | Diff | Bucket | Evidence | Proposed action |
 |---|---:|---|---|---|
-| `AGENTS.md` | `untracked` | `local-workflow-governance` | Repo-local guardrails file is present and actively used in current workflow, but not part of committed product/runtime yet. | `owner-review` |
+| `AGENTS.md` | `untracked` | `local-workflow-governance` | Repo-local guardrails file is present and actively used in current workflow; keeping it untracked would make the guardrails non-reproducible for future repo-local sessions. | `commit-now` |
 | `unused/pim1-files-20260306_145759/` | `untracked` | `generated/noise` | Already under `unused/`; contains archive snapshot material (`.runlogs`, `docs`, `tools`, `.pim1-web.log`) rather than active runtime paths. | `archive-to-unused` |
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action
 - `keep-open`: 19 files
-- `owner-review`: 4 paths
+- `commit-now`: 4 paths
 - `archive-to-unused`: 2 paths
-- `commit-now`: 0 files in this pass
+- `owner-review`: 0 paths
 - `revert`: 0 files in this pass
 
 ## Immediate Next Step
-1. Review the `owner-review` items first (`.env*` examples and `AGENTS.md`).
+1. Commit the now-approved env examples and `AGENTS.md` as a governance/config hygiene change.
 2. Group `keep-open` runtime files into coherent feature commits instead of tree-cleanup commits.
 3. Leave `unused/*` paths in archive state; no restore/delete needed unless explicitly requested.

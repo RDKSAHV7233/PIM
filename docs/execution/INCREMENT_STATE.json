@@ -238,6 +238,22 @@
                                                 "reopened_by":  "",
                                                 "reopened_reason":  "",
                                                 "regression_evidence":  ""
+                                            },
+                                            {
+                                                "storyId":  "ST-REPO-OWNER-REVIEW-001",
+                                                "title":  "Resolve owner-review set for env examples and repo guardrails",
+                                                "status":  "completed",
+                                                "locked":  true,
+                                                "owner":  "codex",
+                                                "commit":  "pending",
+                                                "tests_passed":  [
+                                                                     "git diff -- .env-templates/.env.example .env.example .env.staging.example",
+                                                                     "rg -n \\\"DASHBOARD_CACHE_REDIS_DISABLED|FEATURE_ONDC_ENABLED|NEXT_PUBLIC_FEATURE_ONDC_ENABLED\\\" apps docs package.json .env-templates .env.example .env.staging.example -S",
+                                                                     "Get-Content AGENTS.md"
+                                                                 ],
+                                                "reopened_by":  "",
+                                                "reopened_reason":  "",
+                                                "regression_evidence":  ""
                                             }
                                         ]
                        },
