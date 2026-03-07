@@ -194,17 +194,35 @@
                            "pendingReleaseItems":  [
                                                        "RISK-P0-001 live staging health proof and 14-day broad rollout observation pending"
                                                    ],
-                           "evidence":  [
-                                            "docs/execution/E10_STORIES_EXECUTION_2026-03-03.md",
-                                            "docs/execution/CONTROLLED_RELEASE_CHECKLIST.md",
-                                            "docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json",
-                                            "docs/execution/rollout/2026-03-05T17-27-33.754Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
-                                            "docs/execution/gates/2026-03-06T10-34-28.391Z_E10-ST-QA-001-RUN5.json",
-                                            "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
-                                        ],
-                           "stories":  [
-
-                                       ]
+                            "evidence":  [
+                                             "docs/execution/E10_STORIES_EXECUTION_2026-03-03.md",
+                                             "docs/execution/CONTROLLED_RELEASE_CHECKLIST.md",
+                                             "docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json",
+                                             "docs/execution/rollout/2026-03-05T17-27-33.754Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
+                                             "docs/execution/gates/2026-03-06T10-34-28.391Z_E10-ST-QA-001-RUN5.json",
+                                             "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
+                                             "docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
+                                         ],
+                            "stories":  [
+                                            {
+                                                "storyId":  "ST-REL-HARDEN-001",
+                                                "title":  "Restore hard web build gates and release snapshot health blocking",
+                                                "status":  "completed",
+                                                "locked":  true,
+                                                "owner":  "codex",
+                                                "commit":  "2f5db5c",
+                                                "tests_passed":  [
+                                                                     "npm run lint --workspace @pim1/web",
+                                                                     "npm run build --workspace @pim1/web",
+                                                                     "node --check scripts/capture-controlled-rollout-snapshot.cjs",
+                                                                     "node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL --apiBase http://127.0.0.1:65535/api/v1 --timeoutMs 200",
+                                                                     "node -e \\\"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\\\""
+                                                                 ],
+                                                "reopened_by":  "",
+                                                "reopened_reason":  "",
+                                                "regression_evidence":  ""
+                                            }
+                                        ]
                        },
                        {
                            "incrementId":  "INC-09",
