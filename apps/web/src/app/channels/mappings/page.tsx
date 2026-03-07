@@ -536,10 +536,10 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         </section>
 
         <Card>
-          <CardTitle>Legacy Mapping Templates (Backward Compatible)</CardTitle>
+          <CardTitle>Legacy Template Compatibility (Transition Only)</CardTitle>
           <div className="mt-2 space-y-3 text-sm text-slate-700">
             <p>
-              Existing template APIs remain active for backward compatibility while lifecycle mapping versions are rolled out.
+              Existing template APIs remain active only for transition support. New seller-facing mapping work should use lifecycle mapping versions on this page and the lifecycle manager from product detail.
             </p>
             <div className="flex flex-wrap gap-2">
               <Link href="/catalog/products" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

@@ -1,4 +1,4 @@
-export type CatalogStatus = "draft" | "active" | "archived";
+export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
 export type MarketplaceChannel = "amazon" | "flipkart" | "meesho";
 export type AppRole = "admin" | "editor" | "viewer";
@@ -124,6 +124,7 @@ export interface CatalogStats {
   categories: number;
   products: number;
   variants: number;
+  pendingApprovals: number;
 }
 
 export interface ConnectorInstallation {

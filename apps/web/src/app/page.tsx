@@ -11,7 +11,6 @@ const TAB_ROUTE_MAP: Record<string, string> = {
   categories: "/catalog/categories",
   import: "/operations/imports",
   "bulk-edit": "/operations/bulk-edit",
-  developer: "/internal/developer",
 };
 
 function normalizeQueryValue(value: string | string[] | undefined): string {

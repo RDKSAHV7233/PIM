@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createOndcMappingAction, runOndcSimulationAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -39,6 +39,11 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const ondcEnabled =
+    String(process.env.FEATURE_ONDC_ENABLED ?? "false").trim().toLowerCase() === "true";
+  if (actorRole !== "admin" || process.env.APP_ENV === "production" || !ondcEnabled) {
+    notFound();
+  }
   const nodeType = String(query.nodeType ?? "seller_app").trim();
   const version = String(query.version ?? "1.2.0").trim();
   const categoryId = String(query.categoryId ?? "").trim();

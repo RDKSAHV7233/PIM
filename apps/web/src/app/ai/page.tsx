@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { applyAiRepairAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -33,7 +33,9 @@ export default async function AiPage({ searchParams }: AiPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  if (actorRole !== "admin" || process.env.APP_ENV === "production") {
+    notFound();
+  }
   const productId = String(query.productId ?? "").trim();
   const repairStatus = String(query.repairStatus ?? "").trim();
 
@@ -143,15 +145,11 @@ export default async function AiPage({ searchParams }: AiPageProps) {
 
           <Card>
             <CardTitle>Catalog Repair Automation</CardTitle>
-            {canWrite ? (
-              <form action={applyAiRepairAction} className="space-y-2">
-                <RoleHiddenInput role={actorRole} />
-                <input type="hidden" name="productId" value={productId} />
-                <Button type="submit">Apply AI repair</Button>
-              </form>
-            ) : (
-              <p className="text-sm text-slate-600">Viewer role is read-only.</p>
-            )}
+            <form action={applyAiRepairAction} className="space-y-2">
+              <RoleHiddenInput role={actorRole} />
+              <input type="hidden" name="productId" value={productId} />
+              <Button type="submit">Apply AI repair</Button>
+            </form>
           </Card>
         </>
       )}

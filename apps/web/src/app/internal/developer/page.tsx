@@ -1,7 +1,14 @@
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
+import { getServerActorRole } from "@/lib/server-session";
 
-export default function DeveloperPage() {
+export default async function DeveloperPage() {
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin" || process.env.APP_ENV === "production") {
+    notFound();
+  }
+
   return (
     <div className="space-y-5">
       <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

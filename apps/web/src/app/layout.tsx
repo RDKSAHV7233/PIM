@@ -15,7 +15,6 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const sessionClaims = await getServerSessionClaims();
   const actorRole = await getServerActorRole();
-  const showInternalNav = actorRole === "admin" && process.env.APP_ENV !== "production";
   return (
     <html lang="en">
       <body>
@@ -34,7 +33,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </header>
         {sessionClaims ? (
           <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[250px_minmax(0,1fr)]">
-            <AppSidebar showInternal={showInternalNav} />
+            <AppSidebar showInternal={false} />
             <main>{children}</main>
           </div>
         ) : (

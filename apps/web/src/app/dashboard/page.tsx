@@ -60,6 +60,7 @@ export default async function DashboardPage() {
     );
     const completeness =
       stats.products > 0 ? (health.snapshot.completeSkus / stats.products) * 100 : 0;
+    const pendingApprovals = Number(stats.pendingApprovals ?? 0);
     const failedImportJobs = imports.filter((job) => job.status === "failed" || job.status === "dead_letter").length;
     const failedSubmissionJobs = submissions.filter((submission) => {
       const status = String(submission.status ?? "").toUpperCase();
@@ -135,7 +136,7 @@ export default async function DashboardPage() {
               </li>
               <li className="flex items-center justify-between">
                 <span>Pending Approvals</span>
-                <StatusChip label="0" />
+                <StatusChip label={String(pendingApprovals)} tone={pendingApprovals > 0 ? "warning" : "neutral"} />
               </li>
               <li className="flex items-center justify-between">
                 <span>Imports Needing Repair</span>
@@ -155,6 +156,9 @@ export default async function DashboardPage() {
             <div className="mt-4 flex gap-2">
               <Link href="/quality/issues" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Issue Inbox
+              </Link>
+              <Link href="/quality/approvals" className="text-sm font-medium text-blue-700 hover:underline">
+                Open Approval Queue
               </Link>
               <Link href="/operations/jobs" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Failed Jobs
