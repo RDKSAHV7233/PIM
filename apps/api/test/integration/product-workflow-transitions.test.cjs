@@ -228,6 +228,13 @@ async function run() {
     });
     assertStatus(toReview, 200, "draft->in_review transition");
 
+    const statsInReview = await apiRequest(baseUrl, "GET", "/catalog/stats", token);
+    assertStatus(statsInReview, 200, "catalog stats after in_review transition");
+    assert(
+      Number(statsInReview.payload?.pendingApprovals ?? 0) === 1,
+      `expected pendingApprovals=1 after in_review, got ${JSON.stringify(statsInReview.payload)}`,
+    );
+
     const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, token, {
       expectedVersion: toReview.payload.version,
       title: toReview.payload.title,
@@ -240,6 +247,44 @@ async function run() {
       status: "approved",
     });
     assertStatus(toApproved, 200, "in_review->approved transition");
+
+    const statsApproved = await apiRequest(baseUrl, "GET", "/catalog/stats", token);
+    assertStatus(statsApproved, 200, "catalog stats after approval transition");
+    assert(
+      Number(statsApproved.payload?.pendingApprovals ?? 0) === 0,
+      `expected pendingApprovals=0 after approval, got ${JSON.stringify(statsApproved.payload)}`,
+    );
+
+    const invalidBulkEdit = await apiRequest(baseUrl, "POST", "/bulk-edit/apply", token, {
+      scope: {
+        productIds: [product.payload.id],
+      },
+      updates: {
+        status: "rejected",
+      },
+    });
+    assert(
+      invalidBulkEdit.status === 200 || invalidBulkEdit.status === 201,
+      `bulk edit invalid approved->rejected transition recorded failed: expected 200/201, got ${invalidBulkEdit.status}; payload=${JSON.stringify(invalidBulkEdit.payload)}`,
+    );
+    assert(
+      Number(invalidBulkEdit.payload?.failedCount ?? -1) === 1,
+      `expected failedCount=1 for invalid bulk edit transition, got ${JSON.stringify(invalidBulkEdit.payload)}`,
+    );
+    assert(
+      Number(invalidBulkEdit.payload?.appliedCount ?? -1) === 0,
+      `expected appliedCount=0 for invalid bulk edit transition, got ${JSON.stringify(invalidBulkEdit.payload)}`,
+    );
+    const invalidBulkItems = Array.isArray(invalidBulkEdit.payload?.items) ? invalidBulkEdit.payload.items : [];
+    assert(invalidBulkItems.length === 1, `expected one bulk edit item, got ${invalidBulkItems.length}`);
+    assert(
+      String(invalidBulkItems[0].status ?? "").toLowerCase() === "failed",
+      `expected failed bulk edit item, got ${JSON.stringify(invalidBulkItems[0])}`,
+    );
+    assert(
+      String(invalidBulkItems[0].errorMessage ?? "").includes("Invalid workflow transition"),
+      `expected workflow transition error in bulk edit item, got ${JSON.stringify(invalidBulkItems[0])}`,
+    );
 
     const importJob = await apiRequest(baseUrl, "POST", "/bulk-import/jobs", token, {
       categoryId: category.payload.id,
@@ -302,6 +347,8 @@ async function run() {
             "workflow_transition_invalid_direct_draft_to_approved_rejected",
             "workflow_transition_draft_to_in_review_allowed",
             "workflow_transition_in_review_to_approved_allowed",
+            "catalog_stats_pending_approvals_tracks_in_review_products",
+            "bulk_edit_invalid_workflow_transition_recorded_as_failed_item",
             "create_product_rejects_non_draft_workflow_entry",
             "bulk_import_rejects_non_draft_workflow_entry",
             "workflow_transition_audit_rows_recorded",

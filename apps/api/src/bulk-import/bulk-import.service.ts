@@ -683,6 +683,8 @@ export class BulkImportService {
       if (!title) {
         throw new BadRequestException("title is required");
       }
+      const rowStatus = this.normalizeRecordStatus(payload.status);
+      this.assertDraftWorkflowEntry(rowStatus);
 
       const product = await this.prisma.tenant().product.create({
         data: {
@@ -693,7 +695,7 @@ export class BulkImportService {
           hsnCode: payload.hsnCode ? payload.hsnCode.trim() : null,
           gstRate: payload.gstRate ?? null,
           attributes: (payload.attributes ?? {}) as Prisma.JsonObject,
-          status: this.normalizeRecordStatus(payload.status),
+          status: RecordStatus.draft,
         },
       });
       await this.complianceService.validateAndPersistProduct(product.id);
@@ -708,7 +710,8 @@ export class BulkImportService {
         },
       });
     } catch (error: unknown) {
-      const nextRetry = row.retryCount + 1;
+      const isWorkflowEntryInvalid = this.isWorkflowEntryInvalidError(error);
+      const nextRetry = isWorkflowEntryInvalid ? row.retryCount : row.retryCount + 1;
       const message = this.extractErrorMessage(error);
 
       await this.prisma.tenant().bulkImportRow.update({
@@ -716,8 +719,11 @@ export class BulkImportService {
         data: {
           retryCount: nextRetry,
           errorMessage: message,
-          status:
-            nextRetry >= job.maxRetries ? BulkImportRowStatus.dead_letter : BulkImportRowStatus.retrying,
+          status: isWorkflowEntryInvalid
+            ? BulkImportRowStatus.failed
+            : nextRetry >= job.maxRetries
+              ? BulkImportRowStatus.dead_letter
+              : BulkImportRowStatus.retrying,
         },
       });
     }
@@ -1003,6 +1009,15 @@ export class BulkImportService {
 
   private normalizeRecordStatus(value?: string) {
     const normalized = (value ?? "").trim().toLowerCase();
+    if (normalized === "in_review") {
+      return RecordStatus.in_review;
+    }
+    if (normalized === "approved") {
+      return RecordStatus.approved;
+    }
+    if (normalized === "rejected") {
+      return RecordStatus.rejected;
+    }
     if (normalized === "active") {
       return RecordStatus.active;
     }
@@ -1010,6 +1025,18 @@ export class BulkImportService {
       return RecordStatus.archived;
     }
     return RecordStatus.draft;
+  }
+
+  private assertDraftWorkflowEntry(status: RecordStatus) {
+    if (status === RecordStatus.draft) {
+      return;
+    }
+    throw new BadRequestException({
+      code: "WORKFLOW_ENTRY_INVALID",
+      message: "Imported rows must enter workflow in draft status.",
+      allowedStatus: RecordStatus.draft,
+      receivedStatus: status,
+    });
   }
 
   private asRowPayload(value: Prisma.JsonValue): CanonicalRowPayload {
@@ -1053,12 +1080,41 @@ export class BulkImportService {
 
   private extractErrorMessage(error: unknown) {
     if (error instanceof BadRequestException) {
+      const response = error.getResponse();
+      if (typeof response === "string") {
+        return response;
+      }
+      if (response && typeof response === "object" && !Array.isArray(response)) {
+        const responseRecord = response as { code?: unknown; message?: unknown };
+        const code = typeof responseRecord.code === "string" ? responseRecord.code.trim() : "";
+        const messageValue = responseRecord.message;
+        const message = Array.isArray(messageValue)
+          ? messageValue.map((value) => String(value)).join(", ")
+          : typeof messageValue === "string"
+            ? messageValue
+            : "Bulk import row processing failed.";
+        return code ? `${code}: ${message}` : message;
+      }
       return String(error.message);
     }
     if (error instanceof Error) {
       return error.message;
     }
     return "Bulk import row processing failed.";
+  }
+
+  private isWorkflowEntryInvalidError(error: unknown) {
+    if (!(error instanceof BadRequestException)) {
+      return false;
+    }
+    const response = error.getResponse();
+    if (response && typeof response === "object" && !Array.isArray(response)) {
+      const code = (response as { code?: unknown }).code;
+      if (typeof code === "string" && code.trim().toUpperCase() === "WORKFLOW_ENTRY_INVALID") {
+        return true;
+      }
+    }
+    return String(error.message).toUpperCase().includes("WORKFLOW_ENTRY_INVALID");
   }
 
   private toCsvCell(value: string) {

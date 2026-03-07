@@ -17,6 +17,21 @@ import { CreateVariantDto } from "./dto/create-variant.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
 
+type ActorContext = {
+  id: string;
+  role: "admin" | "editor" | "viewer";
+};
+
+type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
+
+const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
+  draft: ["in_review", "archived"],
+  in_review: ["approved", "rejected", "draft", "archived"],
+  approved: ["archived"],
+  rejected: ["draft", "in_review", "archived"],
+  archived: ["draft", "in_review"],
+};
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -27,12 +42,13 @@ export class CatalogService {
   ) {}
 
   async stats() {
-    const [categories, products, variants] = await Promise.all([
+    const [categories, products, variants, pendingApprovals] = await Promise.all([
       this.prisma.tenant().category.count(),
       this.prisma.tenant().product.count(),
       this.prisma.tenant().variant.count(),
+      this.prisma.tenant().product.count({ where: { status: RecordStatus.in_review } }),
     ]);
-    return { categories, products, variants };
+    return { categories, products, variants, pendingApprovals };
   }
 
   async listProducts(
@@ -113,6 +129,8 @@ export class CatalogService {
 
   async createProduct(dto: CreateProductDto) {
     await this.requireCategory(dto.categoryId);
+    const requestedStatus = (dto.status ?? RecordStatus.draft) as RecordStatus;
+    this.assertDraftWorkflowEntry(requestedStatus, "create_product");
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
     const product = await this.prisma.tenant().product.create({
       data: {
@@ -123,7 +141,7 @@ export class CatalogService {
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
         attributes: attributes as Prisma.JsonObject,
-        status: dto.status as RecordStatus,
+        status: RecordStatus.draft,
       },
       include: { category: true, variants: true },
     });
@@ -132,12 +150,16 @@ export class CatalogService {
     return product;
   }
 
-  async updateProduct(productId: string, dto: UpdateProductDto) {
+  async updateProduct(productId: string, dto: UpdateProductDto, actor?: ActorContext) {
     const current = await this.requireProduct(productId);
     if (dto.expectedVersion !== current.version) {
       this.throwVersionConflict(dto.expectedVersion, current.version);
     }
     await this.requireCategory(dto.categoryId);
+    const nextStatus = dto.status as RecordStatus;
+    if (!this.isValidWorkflowTransition(current.status, nextStatus)) {
+      throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
+    }
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
     const updateResult = await this.prisma.tenant().product.updateMany({
       where: {
@@ -152,7 +174,7 @@ export class CatalogService {
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
         attributes: attributes as Prisma.JsonObject,
-        status: dto.status as RecordStatus,
+        status: nextStatus,
         version: { increment: 1 },
       },
     });
@@ -165,6 +187,20 @@ export class CatalogService {
       include: { category: true, variants: true },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
+    if (current.status !== nextStatus) {
+      await this.auditService.record({
+        actorId: actor?.id ?? "system",
+        actorRole: actor?.role ?? "admin",
+        action: "STATUS_TRANSITION",
+        resource: "/api/v1/catalog/products/:id",
+        resourceId: product.id,
+        metadata: {
+          model: "Product",
+          fromStatus: current.status,
+          toStatus: nextStatus,
+        },
+      });
+    }
     return product;
   }
 
@@ -407,6 +443,39 @@ export class CatalogService {
       message: "Product has been updated by another operation. Reload and retry.",
       expectedVersion,
       currentVersion,
+    });
+  }
+
+  private canonicalWorkflowStatus(status: RecordStatus): WorkflowStatus {
+    if (status === RecordStatus.active) {
+      return "approved";
+    }
+    return status as WorkflowStatus;
+  }
+
+  private isValidWorkflowTransition(currentStatus: RecordStatus, nextStatus: RecordStatus): boolean {
+    if (currentStatus === nextStatus) {
+      return true;
+    }
+    const currentCanonical = this.canonicalWorkflowStatus(currentStatus);
+    const nextCanonical = this.canonicalWorkflowStatus(nextStatus);
+    if (currentCanonical === nextCanonical) {
+      return true;
+    }
+    const allowed = WORKFLOW_TRANSITIONS[currentCanonical] ?? [];
+    return allowed.includes(nextCanonical);
+  }
+
+  private assertDraftWorkflowEntry(status: RecordStatus, source: "create_product") {
+    if (status === RecordStatus.draft) {
+      return;
+    }
+    throw new BadRequestException({
+      code: "WORKFLOW_ENTRY_INVALID",
+      message: "New products must enter workflow in draft status.",
+      source,
+      allowedStatus: RecordStatus.draft,
+      receivedStatus: status,
     });
   }
 

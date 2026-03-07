@@ -48,8 +48,19 @@ export class CatalogController {
   @Patch("products/:id")
   @ApiOperation({ summary: "Update product" })
   @ApiResponse({ status: 200, description: "Product updated" })
-  updateProduct(@Param("id") id: string, @Body() dto: UpdateProductDto) {
-    return this.catalogService.updateProduct(id, dto);
+  updateProduct(
+    @Param("id") id: string,
+    @Body() dto: UpdateProductDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
+      ? request.pimUserId.trim()
+      : "system";
+    const actorRole = request.pimRole ?? "admin";
+    return this.catalogService.updateProduct(id, dto, {
+      id: actorId,
+      role: actorRole,
+    });
   }
 
   @Delete("products/:id")

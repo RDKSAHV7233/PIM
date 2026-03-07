@@ -11,9 +11,38 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkEditScopeDto } from "./dto/bulk-edit-scope.dto";
 
-const RECORD_STATUSES = ["draft", "active", "archived"] as const;
+const RECORD_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 const EDITABLE_FIELDS = ["title", "description", "brand", "status", "hsnCode", "gstRate"] as const;
 type EditableField = (typeof EDITABLE_FIELDS)[number];
+type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
+
+const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
+  draft: ["in_review", "archived"],
+  in_review: ["approved", "rejected", "draft", "archived"],
+  approved: ["archived"],
+  rejected: ["draft", "in_review", "archived"],
+  archived: ["draft", "in_review"],
+};
+
+function canonicalWorkflowStatus(status: RecordStatus): WorkflowStatus {
+  if (status === RecordStatus.active) {
+    return "approved";
+  }
+  return status as WorkflowStatus;
+}
+
+function isValidStatusTransition(currentStatus: RecordStatus, nextStatus: RecordStatus): boolean {
+  if (currentStatus === nextStatus) {
+    return true;
+  }
+  const currentCanonical = canonicalWorkflowStatus(currentStatus);
+  const nextCanonical = canonicalWorkflowStatus(nextStatus);
+  if (currentCanonical === nextCanonical) {
+    return true;
+  }
+  const allowed = WORKFLOW_TRANSITIONS[currentCanonical] ?? [];
+  return allowed.includes(nextCanonical);
+}
 
 type ProductSnapshot = {
   id: string;
@@ -93,8 +122,13 @@ export class BulkEditService {
     let failedCount = 0;
 
     for (const product of products) {
-      const before = this.toSnapshot(product);
+        const before = this.toSnapshot(product);
       try {
+        if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
+          throw new BadRequestException(
+            `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
+          );
+        }
         const updated = await this.prisma.tenant().product.update({
           where: { id: product.id },
           data: updateData,
@@ -316,7 +350,9 @@ export class BulkEditService {
         case "status": {
           const value = String(rawValue ?? "").trim();
           if (!RECORD_STATUSES.includes(value as RecordStatus)) {
-            throw new BadRequestException("status must be draft, active, or archived.");
+            throw new BadRequestException(
+              "status must be one of draft, in_review, approved, rejected, active, or archived.",
+            );
           }
           updates.status = value as RecordStatus;
           break;

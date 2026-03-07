@@ -1,6 +1,6 @@
 import { IsArray, IsIn, IsOptional, IsString } from "class-validator";
 
-const RECORD_STATUSES = ["draft", "active", "archived"] as const;
+const RECORD_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 
 export class BulkEditScopeDto {
   @IsOptional()

@@ -1,7 +1,7 @@
 import { Transform } from "class-transformer";
 import { IsIn, IsNumber, IsObject, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
 
-const PRODUCT_STATUSES = ["draft", "active", "archived"] as const;
+const PRODUCT_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 
 export class CreateProductDto {
   @IsString()
@@ -35,6 +35,7 @@ export class CreateProductDto {
   @IsObject()
   attributes?: Record<string, unknown>;
 
+  @IsOptional()
   @IsIn(PRODUCT_STATUSES)
-  status!: (typeof PRODUCT_STATUSES)[number];
+  status?: (typeof PRODUCT_STATUSES)[number];
 }

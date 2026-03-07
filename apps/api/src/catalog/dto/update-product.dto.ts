@@ -12,7 +12,7 @@ import {
   MinLength,
 } from "class-validator";
 
-const PRODUCT_STATUSES = ["draft", "active", "archived"] as const;
+const PRODUCT_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 
 export class UpdateProductDto {
   @Transform(({ value }) => Number(value))
