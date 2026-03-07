@@ -18,13 +18,18 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     title: "Dashboard",
     items: [
-      { label: "Executive Overview", href: "/dashboard" },
+      { label: "Overview", href: "/dashboard" },
+    ],
+  },
+  {
+    title: "Products",
+    items: [
+      { label: "Product Workbench", href: "/catalog/products" },
     ],
   },
   {
     title: "Catalog",
     items: [
-      { label: "Products", href: "/catalog/products" },
       { label: "Categories", href: "/catalog/categories" },
       { label: "Attributes", href: "/catalog/attributes" },
       { label: "Media", href: "/catalog/media" },
@@ -41,15 +46,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    title: "Operations",
-    items: [
-      { label: "Imports", href: "/operations/imports" },
-      { label: "Bulk Edit", href: "/operations/bulk-edit" },
-      { label: "Jobs", href: "/operations/jobs" },
-      { label: "Repair Center", href: "/operations/repair" },
-    ],
-  },
-  {
     title: "Quality",
     items: [
       { label: "Issue Inbox", href: "/quality/issues" },
@@ -60,7 +56,16 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    title: "Admin",
+    title: "Operations",
+    items: [
+      { label: "Imports", href: "/operations/imports" },
+      { label: "Bulk Edit", href: "/operations/bulk-edit" },
+      { label: "Jobs", href: "/operations/jobs" },
+      { label: "Repair Center", href: "/operations/repair" },
+    ],
+  },
+  {
+    title: "Settings",
     items: [
       { label: "Workspace Settings", href: "/admin/workspace" },
       { label: "Plan & Usage", href: "/admin/plan" },

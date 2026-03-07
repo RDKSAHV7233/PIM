@@ -67,13 +67,12 @@ export default async function DashboardPage() {
       return status === "REJECTED" || status === "ERROR";
     }).length;
     const jobsNeedingRetry = failedSubmissionJobs + deadLetterJobs.length;
-    const failedJobsTotal = failedImportJobs + jobsNeedingRetry;
 
     return (
       <div className="space-y-5">
         <PageHeader
           title="Dashboard"
-          description="What needs attention now across catalog, channels, and operations."
+          description="Start with catalog health, then review channel readiness and operational follow-up."
           actions={
             <>
               <Link
@@ -83,131 +82,183 @@ export default async function DashboardPage() {
                 New Product
               </Link>
               <Link
-                href="/operations/imports"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Import Catalog
-              </Link>
-              <Link
                 href="/quality/issues"
                 className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
               >
                 Fix Issues
               </Link>
+              <Link
+                href="/operations/imports"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Import Catalog
+              </Link>
             </>
           }
         />
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <KpiCard label="Total SKUs" value={stats.products} helper={`Variants: ${stats.variants}`} />
-          <KpiCard
-            label="Incomplete Products"
-            value={health.snapshot.incompleteSkus}
-            helper={`${formatPercent(completeness)} completeness`}
-            tone={health.snapshot.incompleteSkus > 0 ? "warning" : "success"}
-          />
-          <KpiCard
-            label="Blocked Listings"
-            value={blockedListings}
-            helper="Listing-level channel BLOCK"
-            tone={blockedListings > 0 ? "danger" : "success"}
-          />
-          <KpiCard
-            label="Failed Jobs (Recent)"
-            value={failedJobsTotal}
-            helper={`${failedImportJobs} import + ${jobsNeedingRetry} submission retries`}
-            tone={failedJobsTotal > 0 ? "danger" : "default"}
-          />
-          <KpiCard
-            label="Active Channels"
-            value={activeConnectors}
-            helper={`${connectors.length} installed`}
-            tone={activeConnectors > 0 ? "info" : "warning"}
-          />
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Catalog Health</h2>
+              <p className="text-sm text-slate-500">
+                Focus on missing data, review queues, and products ready to publish.
+              </p>
+            </div>
+            <Link href="/catalog/products" className="text-sm font-medium text-blue-700 hover:underline">
+              Open product workbench
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard
+              label="Products Needing Enrichment"
+              value={health.snapshot.incompleteSkus}
+              helper={`${formatPercent(completeness)} completeness`}
+              tone={health.snapshot.incompleteSkus > 0 ? "warning" : "success"}
+            />
+            <KpiCard
+              label="Blocking Issues"
+              value={blockingIssues}
+              helper={`${warningIssues} warnings to review`}
+              tone={blockingIssues > 0 ? "danger" : "success"}
+            />
+            <KpiCard
+              label="Pending Approvals"
+              value={pendingApprovals}
+              helper="Products waiting for review"
+              tone={pendingApprovals > 0 ? "warning" : "default"}
+            />
+            <KpiCard
+              label="Ready to Publish"
+              value={readinessTotal}
+              helper={`${stats.products} total products`}
+              tone={readinessTotal > 0 ? "success" : "info"}
+            />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Publishing Health</h2>
+            <p className="text-sm text-slate-500">
+              Review channel availability and publish blockers after the catalog is in shape.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <KpiCard
+              label="Blocked Listings"
+              value={blockedListings}
+              helper="Publish-ready products currently blocked by channel rules"
+              tone={blockedListings > 0 ? "danger" : "success"}
+            />
+            <KpiCard
+              label="Active Channels"
+              value={activeConnectors}
+              helper={`${connectors.length} installed`}
+              tone={activeConnectors > 0 ? "info" : "warning"}
+            />
+            <KpiCard
+              label="Warnings to Review"
+              value={warningIssues}
+              helper="Non-blocking quality issues worth resolving"
+              tone={warningIssues > 0 ? "warning" : "default"}
+            />
+          </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Work Queue</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Catalog Work Queue</h2>
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               <li className="flex items-center justify-between">
-                <span>Assigned Issues</span>
-                <StatusChip label={String(blockingIssues)} tone={blockingIssues > 0 ? "danger" : "neutral"} />
+                <span>Products needing enrichment</span>
+                <StatusChip label={String(health.snapshot.incompleteSkus)} tone={health.snapshot.incompleteSkus > 0 ? "warning" : "neutral"} />
               </li>
               <li className="flex items-center justify-between">
-                <span>Pending Approvals</span>
+                <span>Pending approvals</span>
                 <StatusChip label={String(pendingApprovals)} tone={pendingApprovals > 0 ? "warning" : "neutral"} />
               </li>
               <li className="flex items-center justify-between">
-                <span>Imports Needing Repair</span>
-                <StatusChip
-                  label={String(failedImportJobs)}
-                  tone={failedImportJobs > 0 ? "warning" : "neutral"}
-                />
+                <span>Blocking issues</span>
+                <StatusChip label={String(blockingIssues)} tone={blockingIssues > 0 ? "danger" : "neutral"} />
               </li>
               <li className="flex items-center justify-between">
-                <span>Jobs Needing Retry</span>
-                <StatusChip
-                  label={String(jobsNeedingRetry)}
-                  tone={jobsNeedingRetry > 0 ? "warning" : "neutral"}
-                />
+                <span>Warnings to review</span>
+                <StatusChip label={String(warningIssues)} tone={warningIssues > 0 ? "warning" : "neutral"} />
               </li>
             </ul>
             <div className="mt-4 flex gap-2">
+              <Link href="/catalog/products" className="text-sm font-medium text-blue-700 hover:underline">
+                Open Products
+              </Link>
               <Link href="/quality/issues" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Issue Inbox
               </Link>
               <Link href="/quality/approvals" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Approval Queue
               </Link>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Publishing Health</h2>
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              <li className="flex items-center justify-between">
+                <span>Ready to publish</span>
+                <StatusChip label={String(readinessTotal)} tone={readinessTotal > 0 ? "success" : "neutral"} />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Blocked listings</span>
+                <StatusChip label={String(blockedListings)} tone={blockedListings > 0 ? "danger" : "neutral"} />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Active channels</span>
+                <StatusChip label={String(activeConnectors)} tone={activeConnectors > 0 ? "info" : "neutral"} />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Connector coverage</span>
+                <StatusChip label={`${connectors.length} installed`} tone="neutral" />
+              </li>
+            </ul>
+            <div className="mt-4">
+              <Link href="/channels/mappings" className="text-sm font-medium text-blue-700 hover:underline">
+                Open channel mappings
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Operations &amp; Usage</h2>
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              <li className="flex items-center justify-between">
+                <span>Imports needing repair</span>
+                <StatusChip
+                  label={String(failedImportJobs)}
+                  tone={failedImportJobs > 0 ? "warning" : "neutral"}
+                />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Jobs needing retry</span>
+                <StatusChip
+                  label={String(jobsNeedingRetry)}
+                  tone={jobsNeedingRetry > 0 ? "warning" : "neutral"}
+                />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Plan tier</span>
+                <StatusChip label={usage.planTier} tone="info" />
+              </li>
+              <li className="flex items-center justify-between">
+                <span>SKU usage</span>
+                <StatusChip label={`${usage.skus.current}/${usage.skus.limit}`} tone="neutral" />
+              </li>
+            </ul>
+            <div className="mt-4 flex gap-2">
               <Link href="/operations/jobs" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Failed Jobs
               </Link>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Health Snapshot</h2>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
-              <li className="flex items-center justify-between">
-                <span>Catalog Health</span>
-                <StatusChip
-                  label={blockingIssues > 0 ? "Attention" : "Healthy"}
-                  tone={blockingIssues > 0 ? "warning" : "success"}
-                />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Channel Readiness</span>
-                <StatusChip label={`${readinessTotal} ready`} tone="info" />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Operations Health</span>
-                <StatusChip
-                  label={failedJobsTotal > 0 ? "Retry needed" : "Stable"}
-                  tone={failedJobsTotal > 0 ? "warning" : "success"}
-                />
-              </li>
-            </ul>
-            <div className="mt-4">
-              <Link href="/channels" className="text-sm font-medium text-blue-700 hover:underline">
-                Configure Channel
-              </Link>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Plan & Usage</h2>
-            <p className="mt-3 text-sm text-slate-700">
-              Plan <span className="font-semibold">{usage.planTier}</span>
-            </p>
-            <ul className="mt-2 space-y-2 text-sm text-slate-700">
-              <li>SKUs: {usage.skus.current}/{usage.skus.limit}</li>
-              <li>Submissions: {usage.submissions.current}/{usage.submissions.limit}</li>
-              <li>Storage: {usage.storageGb.current.toFixed(2)}/{usage.storageGb.limit} GB</li>
-            </ul>
-            <div className="mt-4">
               <Link href="/admin/plan" className="text-sm font-medium text-blue-700 hover:underline">
-                Open Plan & Usage
+                Open Plan &amp; Usage
               </Link>
             </div>
           </div>

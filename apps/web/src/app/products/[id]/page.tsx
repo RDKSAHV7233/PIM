@@ -664,16 +664,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <p className="font-medium text-slate-900">
                 Lifecycle mapping manager is the canonical edit path for this connector.
               </p>
-              <p className="text-xs text-slate-500">
-                Legacy templates remain visible below for transition support, but new seller-facing mapping changes should use the lifecycle manager.
-              </p>
-              <Link
-                href={`/connectors/${encodeURIComponent(mappingManagerInstallation.id)}/mapping?productId=${encodeURIComponent(id)}&channel=${encodeURIComponent(selectedChannel)}${selectedTemplateId ? `&templateId=${encodeURIComponent(selectedTemplateId)}` : ""}`}
-                className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Open lifecycle mapping manager
-              </Link>
-            </div>
+                <p className="text-xs text-slate-500">
+                  Use the channel mapping workspace to fix live mapping blockers. Legacy templates remain below as reference-only transition inventory.
+                </p>
+                <Link
+                  href={`/channels/mappings?categoryId=${encodeURIComponent(product.categoryId)}&channel=${encodeURIComponent(selectedChannel)}&productId=${encodeURIComponent(id)}`}
+                  className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Open channel mapping workspace
+                </Link>
+              </div>
           ) : null}
           {!mappingManagerInstallation && canWrite ? (
             <form action={createMappingTemplateAction} className="grid gap-3 md:grid-cols-2">

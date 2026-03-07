@@ -91,6 +91,48 @@ function requiredAttributesFromTaxonomy(items: ConnectorTaxonomyItem[]): string[
   return Array.from(values).sort();
 }
 
+function presentMappingLevel(level: string): string {
+  if (level === "tenant_connector_default") {
+    return "Default mapping";
+  }
+  if (level === "tenant_connector_category_mapping") {
+    return "Category mapping";
+  }
+  return level;
+}
+
+function presentCompatibilityState(state: string | null | undefined): string {
+  switch (state) {
+    case "compatible":
+      return "Compatible";
+    case "deprecated":
+      return "Needs review";
+    case "remap_required":
+      return "Needs remap";
+    case "blocked":
+      return "Blocked";
+    default:
+      return state ?? "n/a";
+  }
+}
+
+function presentLifecycleState(state: string): string {
+  switch (state) {
+    case "draft":
+      return "Draft";
+    case "validated":
+      return "Ready to publish";
+    case "published":
+      return "Live";
+    case "superseded":
+      return "Replaced";
+    case "archived":
+      return "Archived";
+    default:
+      return state;
+  }
+}
+
 type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 
 function protectedActionLabel(action: ProtectedMappingActionKind): string {
@@ -387,9 +429,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 Connector slug: <span className="font-medium">{connectorSlug}</span>
               </p>
               <p>
-                Compatibility:{" "}
+                Channel compatibility:{" "}
                 <StatusChip
-                  label={resolved?.compatibilityState ?? "n/a"}
+                  label={presentCompatibilityState(resolved?.compatibilityState)}
                   tone={
                     resolved?.compatibilityState === "blocked"
                       ? "danger"
@@ -411,17 +453,17 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           </Card>
 
           <Card>
-            <CardTitle>Create Mapping Version (Lifecycle)</CardTitle>
+            <CardTitle>Create Mapping Draft</CardTitle>
             {canWrite ? (
               <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
                 <RoleHiddenInput role={actorRole} />
                 <div className="space-y-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-level">
-                    Mapping Level
+                    Mapping type
                   </label>
                   <Select id="mapping-level" name="mappingLevel" defaultValue="tenant_connector_category_mapping">
-                    <option value="tenant_connector_default">tenant_connector_default</option>
-                    <option value="tenant_connector_category_mapping">tenant_connector_category_mapping</option>
+                    <option value="tenant_connector_default">Default mapping</option>
+                    <option value="tenant_connector_category_mapping">Category mapping</option>
                   </Select>
                 </div>
                 <div className="space-y-1">
@@ -431,17 +473,17 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                   <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} required />
                 </div>
                 <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced mapping fields</summary>
+                  <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced JSON fields (temporary)</summary>
                   <div className="mt-3 grid gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-rules">
-                        Mapping Rules (JSON object)
+                        Advanced mapping rules (JSON)
                       </label>
                       <Textarea id="mapping-rules" name="mappingRules" rows={8} defaultValue={mappingDraftRulesDefault} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-policy">
-                        Fallback Policy (JSON object)
+                        Fallback behavior (JSON)
                       </label>
                       <Textarea id="fallback-policy" name="fallbackPolicy" rows={5} defaultValue={fallbackPolicyDefault} />
                     </div>
@@ -449,22 +491,22 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 </details>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-compatibility">
-                    Compatibility
+                    Channel compatibility
                   </label>
                   <Select id="mapping-compatibility" name="compatibilityState" defaultValue="compatible">
-                    <option value="compatible">compatible</option>
-                    <option value="deprecated">deprecated</option>
-                    <option value="remap_required">remap_required</option>
-                    <option value="blocked">blocked</option>
+                    <option value="compatible">Compatible</option>
+                    <option value="deprecated">Needs review</option>
+                    <option value="remap_required">Needs remap</option>
+                    <option value="blocked">Blocked</option>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-fallback-ack-required">
-                    Fallback Ack Required
+                    Fallback confirmation
                   </label>
                   <Select id="mapping-fallback-ack-required" name="fallbackAckRequired" defaultValue="true">
-                    <option value="true">true</option>
-                    <option value="false">false</option>
+                    <option value="true">Required</option>
+                    <option value="false">Not required</option>
                   </Select>
                 </div>
                 <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -486,7 +528,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         </section>
 
         <Card>
-          <CardTitle>Lifecycle Versions</CardTitle>
+          <CardTitle>Mapping History</CardTitle>
           <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -506,11 +548,12 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                       <td className="px-3 py-2.5">
                         <p className="font-medium text-slate-900">{version.connectorDefinitionVersion}</p>
                         <p className="text-xs text-slate-500">{version.id}</p>
+                        <p className="text-xs text-slate-500">{presentMappingLevel(version.mappingLevel)}</p>
                       </td>
                       <td className="px-3 py-2.5">{version.categoryScope}</td>
                       <td className="px-3 py-2.5">
                         <StatusChip
-                          label={version.lifecycleState}
+                          label={presentLifecycleState(version.lifecycleState)}
                           tone={
                             version.lifecycleState === "published"
                               ? "success"
@@ -522,7 +565,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                       </td>
                       <td className="px-3 py-2.5">
                         <StatusChip
-                          label={version.compatibilityState}
+                          label={presentCompatibilityState(version.compatibilityState)}
                           tone={
                             version.compatibilityState === "blocked"
                               ? "danger"
@@ -718,11 +761,11 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         </section>
 
         <Card>
-          <CardTitle>Legacy Template Compatibility (Transition Only)</CardTitle>
-          <div className="mt-2 space-y-3 text-sm text-slate-700">
-            <p>
-              Existing template APIs remain active only for transition support. New seller-facing mapping work should use lifecycle mapping versions on this page and the lifecycle manager from product detail.
-            </p>
+            <CardTitle>Legacy Template Compatibility (Transition Only)</CardTitle>
+            <div className="mt-2 space-y-3 text-sm text-slate-700">
+              <p>
+                Existing template APIs remain available only for transition support. Edit live channel mappings on this page; the older connector template route now redirects here.
+              </p>
             <div className="flex flex-wrap gap-2">
               <Link href="/catalog/products" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 Open product simulator
