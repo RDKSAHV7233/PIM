@@ -228,7 +228,7 @@
                                                 "status":  "completed",
                                                 "locked":  true,
                                                 "owner":  "codex",
-                                                "commit":  "pending",
+                                                "commit":  "f299fd1",
                                                 "tests_passed":  [
                                                                      "git status --short",
                                                                      "git diff --stat",
