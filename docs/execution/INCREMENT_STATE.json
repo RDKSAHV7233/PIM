@@ -37,7 +37,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "323973f",
+          "commit": "62953eb",
           "tests_passed": [
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
@@ -45,11 +45,14 @@
             "node apps/web/test/integration/internal-surface-gating.test.cjs",
             "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
             "npm run test:integration:marketplace-capability-ui-gating",
-            "npm run test:integration:connector-action-matrix-ui-gating"
+            "npm run test:integration:connector-action-matrix-ui-gating",
+            "Get-Content apps/web/src/app/internal/developer/page.tsx -Raw | Select-String 'export const dynamic = \\\"force-dynamic\\\";'",
+            "node -e \\\"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\\\"",
+            "git status --short"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "Formalize the local internal developer route fix under repo governance because the route reintroduced a frontend startup/build regression after the story had already been locked.",
+          "regression_evidence": "Exact failing command: npm run build --workspace @pim1/web. Failing output snippet: Error occurred prerendering page \"/internal/developer\" ... Cannot find module '../../../webpack-runtime.js' ... Export encountered an error on /internal/developer/page: /internal/developer. Likely file responsible: apps/web/src/app/internal/developer/page.tsx."
         },
         {
           "storyId": "ST-UI-CATALOG-FIRST-002",
