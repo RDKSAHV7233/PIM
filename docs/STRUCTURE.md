@@ -6,7 +6,9 @@
 ## Active canonical structure
 - `docs/connectors/`
   - `README.md` (canonical connector-documentation entry point)
-  - `PIM1_CONNECTOR_DEVELOPER_GUIDE.md` (active connector implementation guide and current-state baseline)
+  - `PIM1_CONNECTOR_DEVELOPER_GUIDE.md` (developer-facing connector guide)
+  - `PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md` (repo-first connector implementation guide)
+  - `PIM1_CONNECTOR_RECIPES.md` (connector workflow examples)
   - `PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md` (compatibility pointer retained to avoid broken links)
 - `docs/product/`
   - `PRD.md`

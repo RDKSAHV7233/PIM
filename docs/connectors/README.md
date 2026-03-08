@@ -17,17 +17,38 @@ Use this page first to determine:
 - `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
 
 Use this for:
-- current connector architecture
-- day-to-day connector implementation work
+- connector API and workflow understanding
+- day-to-day connector integration work
 - mapping lifecycle and rollback behavior
 - step-up re-authentication requirements
 - release-state connector interpretation
+
+## Internal implementation guide
+
+- `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+
+Use this for:
+- repo paths
+- implementation ownership surfaces
+- internal validation rules
+- code-first connector changes
+
+## Recipes
+
+- `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+
+Use this for:
+- export-only connector flow
+- publish-capable connector flow
+- mapping publish/rollback flow
+- category alignment workflow
+- step-up protected action flow
 
 ## Compatibility pointer
 
 - `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 
-This is retained as a thin compatibility pointer only. The guide above is the human-readable SSOT.
+This is retained as a thin compatibility pointer only. The developer guide above is the human-readable SSOT.
 
 ## Historical / superseded external artifacts
 
@@ -85,3 +106,5 @@ As of 2026-03-08:
 
 For implementation and current-state guidance, use:
 - `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+- `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- `docs/connectors/PIM1_CONNECTOR_RECIPES.md`

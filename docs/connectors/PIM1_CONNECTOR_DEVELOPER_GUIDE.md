@@ -1,293 +1,255 @@
 # PIM1 Connector Developer Guide
 
-Status: Active connector implementation guide  
+Status: Active developer-facing connector guide  
 Date: 2026-03-08  
-Scope: Current PIM1 repository only
+Audience: Connector engineers integrating with the current PIM1 platform
 
-## 1. Purpose
+## 1. Start Here
 
-This is the practical developer guide for building or extending connectors in PIM1.
+Use this guide if you need to:
+- understand the connector API surface
+- integrate a channel with current PIM1 mapping/readiness behavior
+- choose the right connector flow for export-only vs publish-capable channels
+- understand step-up re-authentication on high-risk mapping actions
 
-Use this document for:
-- connector implementation planning
-- connector lifecycle changes
-- mapping/readiness integration work
-- connector UX integration work
-- code review against the current PIM1 connector model
+This guide is intentionally API-first and task-first.
 
-Do not use older external artifacts as implementation authority. They are historical only.
+If you need repo implementation details, use:
+- `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 
-## 2. Source of Truth
+If you need workflow examples, use:
+- `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
 
-For connector work, trust these sources in this order:
+If you need rollout/gate truth, use:
+- `docs/execution/INCREMENT_STATE.json`
 
+## 2. Connector Model at a Glance
+
+Current PIM1 connector behavior:
+- connectors run inside a hybrid compiled registry
+- mapping lifecycle is versioned
+- publish-readiness is evaluated before high-risk actions
+- rollback is supported
+- high-risk mapping actions require step-up re-authentication
+
+Current connector truths:
+- canonical editable mapping path is `/channels/mappings`
+- legacy `/connectors/[installationId]/mapping` is transition-only
+- runtime discovery is hybrid, not plugin-dynamic
+- broad rollout is still blocked by open release gates
+
+## 3. Choose the Right Connector Flow
+
+### Export-only connector
+
+Use this model when a channel produces an export artifact instead of direct publish confirmation.
+
+Expected shape:
+1. prepare mapping
+2. run publish-readiness
+3. create export job
+4. process/export artifact
+5. expose status to the user as export, not publish
+
+### Publish-capable connector
+
+Use this model when a channel supports direct submission/publish attempts.
+
+Expected shape:
+1. prepare mapping
+2. run publish-readiness
+3. create publish/export job
+4. process queued work
+5. surface completed or failed status with a visible reason
+
+## 4. API Conventions
+
+### Base path
+
+Current API base path:
+- `/api/v1`
+
+### Authentication
+
+Normal authenticated requests use Bearer auth.
+
+High-risk mapping actions also require:
+- `x-pim-step-up-token`
+
+Current step-up endpoint:
+- `POST /api/v1/auth/step-up`
+
+Do not describe this as MFA.
+The correct term is:
+- `step-up re-authentication`
+
+### Source of truth order
+
+When documentation and code disagree, trust this order:
 1. `docs/product/PRD.md`
 2. `docs/execution/INCREMENT_STATE.json`
-3. Current code:
-   - `apps/api/src/marketplace/**`
-   - `apps/api/src/auth/**`
-   - `apps/api/src/connector-framework/**`
-   - `apps/web/src/app/channels/mappings/**`
-   - `packages/db/prisma/**`
+3. current code
+4. generated supporting docs
 
-Supporting references:
-- `docs/openapi.json`
-- `docs/openapi.yaml`
-- `docs/product/user-guide/**`
+## 5. Core API Surface
 
-Historical context only:
-- `docs/archive/connectors/` once archived
-- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md` as a compatibility pointer
+### Mapping lifecycle
 
-## 3. Current Connector Model
-
-### Current-state summary
-
-As of 2026-03-08:
-- mapping lifecycle exists
-- rollback exists
-- step-up re-authentication exists for high-risk mapping actions
-- canonical editable mapping path is `/channels/mappings`
-- legacy connector mapping path is transition-only
-- runtime discovery is hybrid, not plugin-dynamic
-- broad rollout readiness is still blocked by open release gates
-
-### Runtime model
-
-PIM1 uses a hybrid connector runtime.
-
-Current behavior:
-- connector implementations are compiled into the Nest app
-- database connector definitions decide which compiled connectors are active
-- registry fallback uses local compiled implementations if DB discovery fails
-
-Primary file:
-- `apps/api/src/connector-framework/connector.registry.ts`
-
-Not current capability:
-- manifest/plugin hot-loading
-- arbitrary third-party runtime loading
-
-### Capability model
-
-Connector behavior branches by capability.
-
-Examples:
-- export-only channels complete through export artifact flow
-- publish-capable channels allow direct submission/publish attempts
-
-Current capability enforcement is expected in:
-- backend service/controller checks
-- seller-facing UI gating
-
-### Current capability status
-
-| Capability | Current status | Evidence |
-|---|---|---|
-| Connector runtime registry | Exists (hybrid) | `apps/api/src/connector-framework/connector.registry.ts` |
-| Mapping lifecycle | Exists | `apps/api/src/marketplace/connector-mapping.service.ts` |
-| Mapping rollback | Exists | `apps/api/src/marketplace/marketplace.controller.ts`, `apps/api/src/marketplace/connector-mapping.service.ts` |
-| Step-up re-auth for mapping publish/archive/rollback | Exists | `apps/api/src/auth/auth.controller.ts`, `apps/api/src/auth/step-up.guard.ts` |
-| Publish-readiness hard gate | Exists | `apps/api/src/marketplace/marketplace.controller.ts`, `apps/api/src/marketplace/connector-mapping.service.ts` |
-| Canonical mapping UI | Exists | `apps/web/src/app/channels/mappings/page.tsx` |
-| Legacy mapping editor demotion | Exists | `apps/web/src/app/connectors/[installationId]/mapping/page.tsx` |
-| Structured mapping editor | Exists | `apps/web/src/app/channels/mappings/page.tsx` |
-| Plugin-style connector discovery | Missing / future scope | `docs/product/PRD.md` |
-| Broad rollout evidence | Missing / incomplete | `docs/execution/INCREMENT_STATE.json` |
-
-## 4. Canonical Connector UX Paths
-
-Canonical editable mapping route:
-- `/channels/mappings`
-
-Transition-only legacy route:
-- `/connectors/[installationId]/mapping`
-
-Current behavior:
-- legacy route redirects to the canonical lifecycle mapping flow
-- product detail should send users to `/channels/mappings` for mapping fixes
-
-Primary files:
-- `apps/web/src/app/channels/mappings/page.tsx`
-- `apps/web/src/app/connectors/[installationId]/mapping/page.tsx`
-- `apps/web/src/app/products/[id]/page.tsx`
-
-Rule:
-- do not introduce a second editable mapping surface
-
-## 5. Mapping Lifecycle
-
-Current lifecycle:
-
-`draft -> validated -> published -> superseded -> archived`
-
-Current behavior includes:
-- versioned mapping rows
-- one published mapping per `(tenant, connector, categoryScope)`
-- compatibility states
-- explicit archive
-- explicit rollback through clone-and-publish semantics
-
-Primary files:
-- `apps/api/src/marketplace/connector-mapping.service.ts`
-- `apps/api/src/marketplace/marketplace.controller.ts`
-- `packages/db/prisma/migrations/20260306171000_connector_mapping_lifecycle_v1/migration.sql`
-
-## 6. Security Model for Connector Actions
-
-High-risk mapping actions require **step-up re-authentication**.
-
-Protected actions:
-- publish mapping version
-- rollback mapping version
-- archive mapping version
-
-Primary files:
-- `apps/api/src/auth/auth.controller.ts`
-- `apps/api/src/auth/step-up.guard.ts`
-- `apps/api/src/auth/jwt.ts`
-- `apps/web/src/app/actions.ts`
-
-Important terminology:
-- use `step-up re-authentication`
-- do not describe the current implementation as `MFA`
-
-## 7. Current API Surfaces
-
-Use the OpenAPI files as reference, but verify behavior against controller/service code.
-
-Primary current endpoints:
-- `POST /api/v1/auth/step-up`
 - `GET /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/validate`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/publish`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/rollback`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/archive`
+
+### Mapping evaluation
+
 - `GET /api/v1/marketplace/connectors/{connectorSlug}/mappings/resolve`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/mappings/preflight`
-- `GET /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/search`
-- `GET /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/unmapped`
 - `POST /api/v1/marketplace/connectors/{connectorSlug}/publish-readiness`
 
-Primary files:
-- `apps/api/src/marketplace/marketplace.controller.ts`
-- `apps/api/src/auth/auth.controller.ts`
+### Taxonomy support
+
+- `GET /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/search`
+- `GET /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/unmapped`
+
+### Export / publish jobs
+
+- `POST /api/v1/marketplace/products/{id}/export-jobs`
+- `GET /api/v1/marketplace/export-jobs`
+- `GET /api/v1/marketplace/export-jobs/{id}`
+- `POST /api/v1/marketplace/export-jobs/{id}/process`
+- `POST /api/v1/marketplace/export-jobs/{id}/requeue`
+
+Use:
 - `docs/openapi.yaml`
 - `docs/openapi.json`
 
-## 8. Current UI Expectations
+for the latest generated request/response shapes.
 
-Connector UX should reflect the product-first PIM workflow:
+## 6. Mapping Lifecycle Rules
 
-`Product -> Fix blockers -> Check readiness -> Publish/Export`
+Current lifecycle:
 
-What connector UX should do:
-- support readiness correction
-- support lifecycle mapping changes
-- expose connector capability truthfully
-- keep diagnostics secondary to product work
+`draft -> validated -> published -> superseded -> archived`
 
-What connector UX should not do:
-- surface internal runtime concepts as primary user language
-- reintroduce legacy template-first mapping editing
-- show `Publish` for export-only capability paths
+Operational rules:
+- one published mapping per `(tenant, connector, categoryScope)`
+- rollback creates a new published clone from an earlier valid version
+- archive is explicit
+- readiness checks can block publish flows
 
-Primary files:
-- `apps/web/src/app/channels/mappings/page.tsx`
-- `apps/web/src/app/catalog/products/page.tsx`
-- `apps/web/src/app/products/[id]/page.tsx`
+Current seller-facing meaning:
+- `draft` = not live
+- `published` = live mapping
+- `superseded` = replaced by a newer live mapping
+- `archived` = retained for history, no longer active
 
-## 9. Implementation Rules
+## 7. Step-Up Re-Authentication
 
-When building connector features:
+Protected mapping actions:
+- publish mapping version
+- rollback mapping version
+- archive mapping version
 
-1. Use current PIM1 paths only.
-2. Treat `/channels/mappings` as the only editable mapping surface.
-3. Treat old template routes/surfaces as transition-only unless explicitly retired.
-4. Keep capability truth aligned across backend and UI.
-5. Use step-up re-authentication for high-risk mapping actions.
-6. Do not design against plugin-style connector discovery unless that work is explicitly reopened.
+Expected developer flow:
+1. obtain normal bearer token
+2. request `POST /api/v1/auth/step-up`
+3. use returned step-up token in `x-pim-step-up-token`
+4. perform protected mapping action
 
-Do not target these old surfaces:
-- `db/01-schema.sql`
-- `src/auth/protected-routes.ts`
-- `src/connectors/runtime/loader.ts`
-- `admin-ui`
+This is bounded privileged-action re-confirmation.
+It is not a general MFA platform.
 
-## 10. Development Checklist
+## 8. Connector UX Expectations
 
-For a connector-related change, verify:
+PIM1 is product-first.
 
-- backend contract updated in `apps/api/src/marketplace/**` if needed
-- auth/step-up integration updated in `apps/api/src/auth/**` if needed
-- registry/runtime impact checked in `apps/api/src/connector-framework/**`
-- Prisma schema/migration updated in `packages/db/prisma/**` if needed
-- canonical mapping UI updated in `apps/web/src/app/channels/mappings/**` if needed
-- product/workbench integration updated if seller workflow changes
-- OpenAPI regenerated
-- user-guide regenerated when route/action behavior changes
-- `docs/execution/INCREMENT_STATE.json` updated if a connector story is completed
+Connector UX should support:
+- product readiness correction
+- structured mapping changes
+- truthful publish vs export labeling
+- diagnostics as secondary surfaces
+
+Connector UX should avoid:
+- exposing internal runtime language as the primary user vocabulary
+- reintroducing legacy template-first mapping workflows
+- showing `Publish` on export-only flows
+
+Canonical mapping UX:
+- `/channels/mappings`
+
+## 9. Quickstart Paths
+
+### Path A: Add or adjust mapping
+
+1. Open `/channels/mappings`
+2. Create or edit a draft mapping version
+3. Validate the mapping
+4. Review publish-readiness
+5. Step up if publishing/archive/rollback is required
+6. Publish the mapping version
+
+### Path B: Handle a failed or incorrect live mapping
+
+1. List mapping versions
+2. Identify the prior known-good version
+3. Request step-up re-authentication
+4. Roll back via the rollback endpoint
+5. Re-run publish-readiness if needed
+
+### Path C: Work on taxonomy/category alignment
+
+1. Search channel taxonomy
+2. Review unmapped categories
+3. update category-scoped mapping
+4. validate and publish when ready
+
+## 10. What Is Not Current Capability
+
+Do not plan against these as live features:
+- plugin-style connector discovery
+- arbitrary third-party runtime loading
+- hot-loaded manifest runtime
+- legacy template manager as the primary mapping editor
+- MFA terminology for the current step-up implementation
 
 ## 11. Validation Checklist
 
-Minimum repo checks after connector changes:
-
+After connector-facing doc or contract changes, verify:
 - `npm run openapi:generate`
 - `python scripts/generate_page_action_playbooks.py`
-- relevant API build/test commands for the touched area
-- relevant web build/test commands for the touched area
+- relevant API tests for mapping lifecycle, rollback, step-up, and capability gating
+- relevant web tests for mapping path, step-up UI, and structured editor
 - `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"`
-
-If connector lifecycle behavior changes, also verify:
-- mapping lifecycle tests
-- precedence/compatibility tests
-- rollback tests
-- step-up tests
-- capability gating tests
 
 ## 12. Release Reality
 
-Connector implementation maturity is ahead of broad rollout readiness.
+Connector functionality is materially implemented.
+Broad rollout is still not complete.
 
-Current release gate reality:
-- `INC-05` is still open
-- `INC-08` is still open
+Current open gates:
+- `INC-05`
+- `INC-08`
 
 That means:
-- connector development can continue in controlled/internal mode
-- broad production rollout is still blocked by release evidence outside this guide
+- internal and controlled connector work can proceed
+- broad production readiness still depends on operational gate evidence
 
-Primary gate file:
-- `docs/execution/INCREMENT_STATE.json`
+## 13. Historical Notes
 
-## 13. Historical Artifacts
-
-Historical connector artifacts should be retained for traceability, but never used as current implementation plans.
-
-Archive location:
-- `docs/archive/connectors/`
-
-Current active docs supersede those artifacts.
-
-### Superseded external artifacts
-
-These older documents are historical only and should not drive current implementation:
+Older external connector artifacts are historical only:
 - `PIM1_connector_plan_review_2026-03-04.docx`
 - `PIM1_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
 
-They are stale because they reference older paths and predate:
-- lifecycle mapping in `apps/api/src/marketplace/**`
+They predate:
+- mapping lifecycle completion
 - rollback support
 - step-up re-authentication
-- canonical `/channels/mappings` UI
+- canonical `/channels/mappings` guidance
 
-## 14. Final Rule
+## 14. Next Docs
 
-If connector docs, OpenAPI, user-guide, and code disagree:
-
-1. `PRD.md`
-2. `INCREMENT_STATE.json`
-3. current code
-
-win over everything else.
+For deeper detail:
+- internal implementation detail: `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- workflow examples: `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
