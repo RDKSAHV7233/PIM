@@ -637,6 +637,21 @@
             "git status --short",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
+        },
+        {
+          "storyId": "ST-CON-DOC-DERIVED-003",
+          "title": "Regenerate OpenAPI and user-guide artifacts for the current mapping lifecycle",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "ad142c2",
+          "tests_passed": [
+            "npm run openapi:generate",
+            "python scripts/generate_page_action_playbooks.py",
+            "rg -n \"/api/v1/auth/step-up|/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions|rollback|publish-readiness\" docs/openapi.json docs/openapi.yaml",
+            "rg -n \"canonical lifecycle mapping workspace|transition-only|createConnectorMappingVersionAction|publishConnectorMappingVersionAction|rollbackConnectorMappingVersionAction\" docs/product/user-guide -S",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
         }
       ]
     }
