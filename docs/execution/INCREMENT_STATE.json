@@ -57,21 +57,23 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "d70fe63",
+          "commit": "7c5ad6c",
           "tests_passed": [
             "npm run lint --workspace @pim1/web",
-            "npm run build --workspace @pim1/web",
-            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
             "node apps/web/test/integration/catalog-first-shell.test.cjs",
+            "node apps/web/test/integration/product-workbench-ui.test.cjs",
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
             "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
-            "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
             "node apps/web/test/integration/internal-surface-gating.test.cjs",
+            "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
             "npm run test:integration:marketplace-capability-ui-gating",
-            "npm run test:integration:connector-action-matrix-ui-gating"
+            "npm run test:integration:connector-action-matrix-ui-gating",
+            "npm run build --workspace @pim1/web"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "user",
+          "reopened_reason": "Phase 3 UX slice needs dashboard and product workbench refinement because the shell still behaves like a reporting surface instead of a merchandiser workbench.",
+          "regression_evidence": "Exact failing command: node -e \"const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/dashboard/page.tsx','utf8'); const hits=(s.match(/Publishing Health/g)||[]).length; if(hits<2){console.error('Expected duplicate Publishing Health sections for regression proof, found '+hits); process.exit(1);} console.error('FAIL: dashboard still duplicates Publishing Health sections ('+hits+') and remains report-shaped.'); process.exit(1);\". Failing output snippet: FAIL: dashboard still duplicates Publishing Health sections (2) and remains report-shaped. Likely file: apps/web/src/app/dashboard/page.tsx. Exact failing command: node -e \"const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/catalog/products/page.tsx','utf8'); const hasLegacy=s.includes('const mappingManagerHref =') && s.includes('/connectors/') && s.includes('/mapping?productId='); if(!hasLegacy){console.error('Expected legacy mappingManagerHref redirect pattern not found'); process.exit(1);} console.error('FAIL: product workbench still computes mappingManagerHref through legacy /connectors/.../mapping redirect path.'); process.exit(1);\". Failing output snippet: FAIL: product workbench still computes mappingManagerHref through legacy /connectors/.../mapping redirect path. Likely file: apps/web/src/app/catalog/products/page.tsx."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
