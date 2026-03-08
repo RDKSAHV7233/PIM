@@ -28,14 +28,16 @@ This document explains how to perform core workflows across pages.
 2. Install a connector (`installConnectorAction`) with account alias/external ref.
 3. Use installed rows to `Reconnect` (`reconnectConnectorAction`) or `Disable` (`uninstallConnectorAction`).
 4. For disabled installations, admin can permanently delete (`deleteConnectorInstallationAction`).
-5. Open `/channels/connectors/[installationId]` for details and `/connectors/[installationId]/mapping` for mapping work.
+5. Open `/channels/connectors/[installationId]` for connector details.
+6. If mapping changes are needed, continue to `/channels/mappings` (the canonical lifecycle mapping workspace).
 
-## 5. Build/maintain mapping templates
-1. Open `/channels/mappings` or `/connectors/[installationId]/mapping`.
-2. Create template (`createMappingTemplateAction`).
-3. Update mapping (`updateMappingTemplateAction`).
-4. Clone or delete templates when required (`cloneMappingTemplateAction`, `deleteMappingTemplateAction`).
-5. Use payload preview and simulation helpers before submission/export jobs.
+## 5. Build and maintain channel mappings
+1. Open `/channels/mappings`.
+2. Create a mapping version (`createConnectorMappingVersionAction`).
+3. Validate the version (`validateConnectorMappingVersionAction`).
+4. Publish the version (`publishConnectorMappingVersionAction`) after step-up re-authentication.
+5. Archive or rollback versions when required (`archiveConnectorMappingVersionAction`, `rollbackConnectorMappingVersionAction`).
+6. Treat `/connectors/[installationId]/mapping` as a transition-only redirect, not a separate editor.
 
 ## 6. Run imports and bulk edits
 1. Open `/operations/imports` to monitor import jobs and rows.
@@ -55,7 +57,8 @@ This document explains how to perform core workflows across pages.
 1. From product detail, create export job (`createExportJobAction`).
 2. Process queued job (`processExportJobAction`).
 3. Requeue failed job (`requeueExportJobAction`) when needed.
-4. Track outcomes in `/channels/submissions` and `/operations/jobs`.
+4. Use `/channels/mappings` for mapping corrections if publish readiness blocks the product.
+5. Track outcomes in `/channels/submissions` and `/operations/jobs`.
 
 ## 9. Admin governance workflows
 1. Open `/admin/plan` to set plan tier (`setPlanTierAction`).

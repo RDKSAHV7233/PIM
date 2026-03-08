@@ -11,20 +11,20 @@
 ## How to use this page (step-by-step)
 1. Open the route from left navigation or direct URL.
 2. Wait for data to load from: `getCategories`, `getInstalledConnectors`, `getProducts`, `getStats`.
-3. Configure filters/form inputs using labels: `Hide test data`, `Page size value=> ))}`.
+3. Configure filters/form inputs using labels: `Hide test data`.
 4. Use row-level actions/links where available.
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
 - Buttons: Information not available in PIM1 project.
-- Visible labels: `Hide test data`, `Page size value=> ))}`
+- Visible labels: `Hide test data`
 - Field names (technical): Information not available in PIM1 project.
 - Select names: Information not available in PIM1 project.
-- Placeholders: `Search by title, brand, HSN, category, or product id`
-- Links: `/admin/plan`
+- Placeholders: Information not available in PIM1 project.
+- Links: `/operations/bulk-edit`, `/quality/issues`, `/quality/approvals`, `/admin/plan`
 
 ## Related components
-- `product/products-tab`, `ui/page-header`, `ui/button`, `channel/product-channel-readiness-cell`, `product/CreateProductForm`, `ui/empty-state`, `ui/input`, `ui/status-chip`
+- `product/products-tab`, `ui/page-header`, `ui/button`, `channel/product-channel-readiness-cell`, `product/CreateProductForm`, `ui/empty-state`, `ui/status-chip`
 
 ## Validation source
 - Derived from route source + first-level component source imports.

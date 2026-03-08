@@ -10,7 +10,7 @@
 
 ## How to use this page (step-by-step)
 1. Open the route from left navigation or direct URL.
-2. Wait for data to load from: `getBillingUsage`, `getBulkImportJobs`, `getDashboardHealth`, `getDeadLetterSubmissions`, `getInstalledConnectors`, `getStats`, `getSubmissions`.
+2. Wait for data to load from: `getBillingUsage`, `getBulkImportJobs`, `getDashboardHealth`, `getDeadLetterSubmissions`, `getInstalledConnectors`, `getProducts`, `getStats`, `getSubmissions`.
 3. Use available cards/tables/links to inspect state.
 4. Use row-level actions/links where available.
 5. Confirm success by checking updated status, table rows, and/or history sections.
@@ -21,10 +21,10 @@
 - Field names (technical): Information not available in PIM1 project.
 - Select names: Information not available in PIM1 project.
 - Placeholders: Information not available in PIM1 project.
-- Links: `/catalog/products`, `/operations/imports`, `/quality/issues`, `/operations/jobs`, `/channels/connectors`, `/channels`, `/admin/plan`
+- Links: `/catalog/products`, `/quality/issues`, `/operations/imports`, `/catalog/products?view=needs_attention`, `/quality/approvals`, `/channels/mappings`, `/operations/jobs`, `/admin/plan`
 
 ## Related components
-- `dashboard/onboarding-checklist`, `ui/empty-state`, `ui/kpi-card`, `ui/page-header`, `ui/status-chip`, `ui/button`
+- `ui/kpi-card`, `ui/page-header`, `ui/status-chip`
 
 ## Validation source
 - Derived from route source + first-level component source imports.

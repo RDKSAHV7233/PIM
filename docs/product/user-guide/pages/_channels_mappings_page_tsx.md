@@ -10,29 +10,43 @@
 - Mappings
 
 ## Purpose
-- Page renders 'Mappings' UI in route /channels/mappings.
+- Canonical lifecycle mapping workspace for channel publishing.
+- Use this page to create, validate, publish, archive, and rollback mapping versions.
+- This is the only editable mapping surface in the current PIM1 UX.
 
 ## Functionality (Validated from Page Imports/Actions)
 - Data retrieval/API helpers used on this page:
   - ApiHttpError
   - type AppRole
+  - type AttributeDefinition
+  - type ConnectorTaxonomyItem
   - type MarketplaceChannel
+  - evaluateConnectorMappingPreflight
+  - evaluateConnectorPublishReadiness
+  - getCategoryAttributes
+  - getConnectorDefinitions
+  - getConnectorMappingVersions
   - getCategories
   - getMarketplaceChannelMapping
   - getMarketplaceChannels
-  - getMarketplaceTemplates
+  - getUnmappedConnectorTaxonomy
+  - resolveConnectorMapping
+  - searchConnectorTaxonomy
 - Mutation actions used on this page:
-  - cloneMappingTemplateAction
-  - createMappingTemplateAction
-  - deleteMappingTemplateAction
-  - updateMappingTemplateAction
+  - archiveConnectorMappingVersionAction
+  - createConnectorMappingVersionAction
+  - publishConnectorMappingVersionAction
+  - rollbackConnectorMappingVersionAction
+  - validateConnectorMappingVersionAction
 
 ## User Actions
-- cloneMappingTemplateAction
-- createMappingTemplateAction
-- deleteMappingTemplateAction
-- updateMappingTemplateAction
+- createConnectorMappingVersionAction
+- validateConnectorMappingVersionAction
+- publishConnectorMappingVersionAction
+- archiveConnectorMappingVersionAction
+- rollbackConnectorMappingVersionAction
 
 ## Notes
 - This document is generated from current route source and only contains validated references.
+- `/connectors/[installationId]/mapping` is transition-only and redirects here.
 - For exact API endpoint mapping, refer to docs/openapi.yaml and apps/web/src/lib/api.ts.

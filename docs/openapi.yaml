@@ -111,6 +111,20 @@ paths:
         "204":
           description: ""
       tags: *a1
+  /api/v1/auth/step-up:
+    post:
+      operationId: AuthController_issueStepUp
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepUpChallengeDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a1
   /api/v1/audit/logs:
     get:
       operationId: AuditController_listLogs
@@ -138,8 +152,32 @@ paths:
         "200":
           description: Plan usage fetched
       summary: Get current tenant plan usage
-      tags:
+      tags: &a2
         - Billing
+  /api/v1/billing/plan-profile:
+    get:
+      operationId: BillingController_planProfile
+      parameters: []
+      responses:
+        "200":
+          description: Tenant plan profile fetched
+      summary: Get current tenant plan profile
+      tags: *a2
+  /api/v1/billing/plan-tier:
+    post:
+      operationId: BillingController_setPlanTier
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetTenantPlanTierDto"
+      responses:
+        "200":
+          description: Tenant plan tier updated
+      summary: Set tenant plan tier
+      tags: *a2
   /api/v1/taxonomy/categories:
     get:
       operationId: TaxonomyController_listCategories
@@ -147,7 +185,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a2
+      tags: &a3
         - Taxonomy
     post:
       operationId: TaxonomyController_createCategory
@@ -161,7 +199,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a2
+      tags: *a3
   /api/v1/taxonomy/categories/{id}:
     get:
       operationId: TaxonomyController_getCategory
@@ -174,7 +212,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
     patch:
       operationId: TaxonomyController_updateCategory
       parameters:
@@ -192,7 +230,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
     delete:
       operationId: TaxonomyController_deleteCategory
       parameters:
@@ -204,7 +242,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
   /api/v1/taxonomy/categories/{id}/attributes:
     get:
       operationId: TaxonomyController_listAttributeDefinitions
@@ -217,7 +255,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
     post:
       operationId: TaxonomyController_createAttributeDefinition
       parameters:
@@ -235,7 +273,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a2
+      tags: *a3
   /api/v1/taxonomy/categories/attributes/{attributeId}:
     patch:
       operationId: TaxonomyController_updateAttributeDefinition
@@ -254,7 +292,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
     delete:
       operationId: TaxonomyController_deleteAttributeDefinition
       parameters:
@@ -266,7 +304,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a2
+      tags: *a3
   /api/v1/compliance/rules:
     get:
       operationId: ComplianceController_listRules
@@ -279,7 +317,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a3
+      tags: &a4
         - Compliance
     post:
       operationId: ComplianceController_createRule
@@ -293,7 +331,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/compliance/rules/{id}:
     patch:
       operationId: ComplianceController_updateRule
@@ -312,7 +350,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
     delete:
       operationId: ComplianceController_deleteRule
       parameters:
@@ -324,7 +362,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/compliance/products/{id}/validate:
     post:
       operationId: ComplianceController_validateProduct
@@ -337,7 +375,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/compliance/products/{id}/issues:
     get:
       operationId: ComplianceController_getProductIssues
@@ -350,7 +388,32 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
+  /api/v1/issues/inbox:
+    get:
+      operationId: IssuesController_listInbox
+      parameters: []
+      responses:
+        "200":
+          description: Issue inbox fetched
+      summary: List tenant-wide open compliance issues
+      tags: &a5
+        - Compliance
+  /api/v1/issues/inbox/resolve:
+    post:
+      operationId: IssuesController_resolveWarnings
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveIssueInboxDto"
+      responses:
+        "201":
+          description: Issue resolution applied
+      summary: Resolve warning-level issues in bulk
+      tags: *a5
   /api/v1/dashboard/readiness:
     get:
       operationId: DashboardController_getReadiness
@@ -359,7 +422,7 @@ paths:
         "200":
           description: Readiness summary fetched
       summary: Per-connector readiness summary for current tenant
-      tags: &a4
+      tags: &a6
         - Dashboard
   /api/v1/dashboard/catalog-health:
     get:
@@ -369,7 +432,16 @@ paths:
         "200":
           description: Catalog health fetched
       summary: Catalog health and completeness summary for current tenant
-      tags: *a4
+      tags: *a6
+  /api/v1/dashboard/health:
+    get:
+      operationId: DashboardController_getHealth
+      parameters: []
+      responses:
+        "200":
+          description: Dashboard health snapshot fetched
+      summary: Catalog health snapshot with 30-day trend
+      tags: *a6
   /api/v1/metrics/kpi-trends:
     get:
       operationId: MetricsController_getKpiTrends
@@ -393,7 +465,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a5
+      tags: &a7
         - Connectors
   /api/v1/connectors/{slug}/install:
     post:
@@ -414,7 +486,7 @@ paths:
         "201":
           description: Connector installed
       summary: Install connector for tenant
-      tags: *a5
+      tags: *a7
   /api/v1/connectors/installed:
     get:
       operationId: ConnectorInstallerController_listInstalled
@@ -423,7 +495,7 @@ paths:
         "200":
           description: Installed connectors fetched
       summary: List installed connectors
-      tags: *a5
+      tags: *a7
   /api/v1/connectors/{id}/uninstall:
     post:
       operationId: ConnectorInstallerController_uninstall
@@ -436,7 +508,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a5
+      tags: *a7
   /api/v1/connectors/{slug}/install/{id}:
     delete:
       operationId: ConnectorInstallerController_uninstallBySlugAndId
@@ -453,9 +525,9 @@ paths:
             type: string
       responses:
         "200":
-          description: Connector uninstalled
-      summary: Uninstall connector by slug + installation id
-      tags: *a5
+          description: Connector installation deleted
+      summary: Delete connector installation record by slug + installation id
+      tags: *a7
   /api/v1/connectors/{id}/reconnect:
     post:
       operationId: ConnectorInstallerController_reconnect
@@ -468,7 +540,598 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a5
+      tags: *a7
+  /api/v1/connectors/{id}/payload-preview:
+    post:
+      operationId: ConnectorInstallerController_payloadPreview
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorPayloadPreviewDto"
+      responses:
+        "200":
+          description: Payload preview generated
+      summary: Generate payload preview for connector installation + product
+      tags: *a7
+  /api/v1/connectors/permissions:
+    get:
+      operationId: ConnectorInstallerController_listPermissions
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a7
+    post:
+      operationId: ConnectorInstallerController_grantPermission
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantConnectorPermissionDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a7
+  /api/v1/connectors/permissions/{id}:
+    delete:
+      operationId: ConnectorInstallerController_revokePermission
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a7
+  /api/v1/marketplace/channels:
+    get:
+      operationId: MarketplaceController_listChannels
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: &a8
+        - Marketplace
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions:
+    get:
+      operationId: MarketplaceController_listConnectorMappingVersions
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+    post:
+      operationId: MarketplaceController_createConnectorMappingVersion
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConnectorMappingVersionDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/validate:
+    post:
+      operationId: MarketplaceController_validateConnectorMappingVersion
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: versionId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/publish:
+    post:
+      operationId: MarketplaceController_publishConnectorMappingVersion
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: versionId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishConnectorMappingVersionDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/rollback:
+    post:
+      operationId: MarketplaceController_rollbackConnectorMappingVersion
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: versionId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RollbackConnectorMappingVersionDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/archive:
+    post:
+      operationId: MarketplaceController_archiveConnectorMappingVersion
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: versionId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveConnectorMappingVersionDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/resolve:
+    get:
+      operationId: MarketplaceController_resolveConnectorMapping
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/mappings/preflight:
+    post:
+      operationId: MarketplaceController_preflightConnectorMapping
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorMappingPreflightDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/search:
+    get:
+      operationId: MarketplaceController_searchConnectorTaxonomy
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/unmapped:
+    get:
+      operationId: MarketplaceController_listUnmappedConnectorTaxonomy
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/connectors/{connectorSlug}/publish-readiness:
+    post:
+      operationId: MarketplaceController_evaluateConnectorPublishReadiness
+      parameters:
+        - name: connectorSlug
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorPublishReadinessDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/channels/{channel}/mapping:
+    get:
+      operationId: MarketplaceController_getChannelMapping
+      parameters:
+        - name: channel
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: categoryId
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: templateId
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/categories/{id}/templates:
+    get:
+      operationId: MarketplaceController_listTemplates
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+    post:
+      operationId: MarketplaceController_createTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMappingTemplateDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/templates/{id}:
+    get:
+      operationId: MarketplaceController_getTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+    patch:
+      operationId: MarketplaceController_updateTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMappingTemplateDto"
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+    delete:
+      operationId: MarketplaceController_deleteTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/templates/{id}/clone:
+    post:
+      operationId: MarketplaceController_cloneTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloneMappingTemplateDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/products/{id}/simulate:
+    get:
+      operationId: MarketplaceController_simulateProductQuery
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: templateId
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+    post:
+      operationId: MarketplaceController_simulateProductBody
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateMarketplaceDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/products/{id}/export-jobs:
+    post:
+      operationId: MarketplaceController_createExportJob
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportJobDto"
+      responses:
+        "201":
+          description: Export job queued
+        "402":
+          description: Plan limit exceeded
+      summary: Create marketplace export job
+      tags: *a8
+  /api/v1/marketplace/export-jobs:
+    get:
+      operationId: MarketplaceController_listExportJobs
+      parameters:
+        - name: productId
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Export jobs fetched
+      summary: List export jobs
+      tags: *a8
+  /api/v1/marketplace/export-job:
+    post:
+      operationId: MarketplaceController_createExportJobAlias
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportJobAliasDto"
+      responses:
+        "201":
+          description: Export job queued
+        "402":
+          description: Plan limit exceeded
+      summary: Create export job (alias endpoint)
+      tags: *a8
+  /api/v1/marketplace/export-jobs/{id}:
+    get:
+      operationId: MarketplaceController_getExportJob
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/export-jobs/{id}/process:
+    post:
+      operationId: MarketplaceController_processExportJob
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/marketplace/export-jobs/{id}/requeue:
+    post:
+      operationId: MarketplaceController_requeueExportJob
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags: *a8
+  /api/v1/submissions:
+    get:
+      operationId: SubmissionsController_listSubmissions
+      parameters:
+        - name: productId
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: connectorSlug
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: status
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: minAttempt
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submissions fetched
+      summary: List submissions
+      tags: &a9
+        - Marketplace
+  /api/v1/submissions/dead-letter:
+    get:
+      operationId: SubmissionsController_listDeadLetterSubmissions
+      parameters: []
+      responses:
+        "200":
+          description: Dead-letter submissions fetched
+      summary: List dead-letter submissions/jobs
+      tags: *a9
+  /api/v1/submissions/{id}:
+    get:
+      operationId: SubmissionsController_getSubmission
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submission detail fetched
+      summary: Get submission detail
+      tags: *a9
+  /api/v1/submissions/{id}/issues:
+    get:
+      operationId: SubmissionsController_getSubmissionIssues
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submission issues fetched
+      summary: List normalized issues for a submission
+      tags: *a9
+  /api/v1/submissions/{id}/retry:
+    post:
+      operationId: SubmissionsController_retrySubmission
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Submission retry queued
+      summary: Retry submission by requeuing underlying export job
+      tags: *a9
   /api/v1/bulk-import/jobs:
     post:
       operationId: BulkImportController_createJob
@@ -482,7 +1145,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a6
+      tags: &a10
         - BulkImport
     get:
       operationId: BulkImportController_listJobs
@@ -495,7 +1158,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/templates:
     post:
       operationId: BulkImportController_createTemplate
@@ -509,7 +1172,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
     get:
       operationId: BulkImportController_listTemplates
       parameters:
@@ -526,7 +1189,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/templates/{id}:
     get:
       operationId: BulkImportController_getTemplate
@@ -544,7 +1207,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/mapping-suggestions:
     post:
       operationId: BulkImportController_suggestMapping
@@ -558,7 +1221,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}:
     get:
       operationId: BulkImportController_getJob
@@ -571,7 +1234,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/rows:
     get:
       operationId: BulkImportController_listRows
@@ -594,7 +1257,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/error-report:
     get:
       operationId: BulkImportController_getErrorReport
@@ -607,7 +1270,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/process:
     post:
       operationId: BulkImportController_processJob
@@ -626,7 +1289,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/requeue-dlq:
     post:
       operationId: BulkImportController_requeueDlq
@@ -645,7 +1308,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/process:
     post:
       operationId: BulkImportController_processRow
@@ -663,7 +1326,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/repair:
     post:
       operationId: BulkImportController_repairRow
@@ -687,7 +1350,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a6
+      tags: *a10
   /api/v1/bulk-edit/preview:
     post:
       operationId: BulkEditController_preview
@@ -701,7 +1364,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a7
+      tags: &a11
         - BulkEdit
   /api/v1/bulk-edit/apply:
     post:
@@ -716,7 +1379,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a7
+      tags: *a11
   /api/v1/bulk-edit/operations:
     get:
       operationId: BulkEditController_listOperations
@@ -729,7 +1392,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a7
+      tags: *a11
   /api/v1/bulk-edit/operations/{id}:
     get:
       operationId: BulkEditController_getOperation
@@ -742,7 +1405,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a7
+      tags: *a11
   /api/v1/catalog/stats:
     get:
       operationId: CatalogController_stats
@@ -750,7 +1413,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a8
+      tags: &a12
         - Catalog
   /api/v1/catalog/products:
     get:
@@ -760,7 +1423,7 @@ paths:
         "200":
           description: Products fetched
       summary: List products
-      tags: *a8
+      tags: *a12
     post:
       operationId: CatalogController_createProduct
       parameters: []
@@ -776,7 +1439,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a8
+      tags: *a12
   /api/v1/catalog/products/{id}:
     get:
       operationId: CatalogController_getProduct
@@ -790,7 +1453,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a8
+      tags: *a12
     patch:
       operationId: CatalogController_updateProduct
       parameters:
@@ -809,7 +1472,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a8
+      tags: *a12
     delete:
       operationId: CatalogController_deleteProduct
       parameters:
@@ -821,7 +1484,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a12
   /api/v1/catalog/products/{id}/purge:
     delete:
       operationId: CatalogController_purgeProduct
@@ -834,7 +1497,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a12
   /api/v1/catalog/products/{id}/variants:
     get:
       operationId: CatalogController_listVariants
@@ -847,7 +1510,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a12
     post:
       operationId: CatalogController_createVariant
       parameters:
@@ -865,7 +1528,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a12
   /api/v1/catalog/variants/{id}:
     patch:
       operationId: CatalogController_updateVariant
@@ -884,7 +1547,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a12
     delete:
       operationId: CatalogController_deleteVariant
       parameters:
@@ -896,7 +1559,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a12
   /api/v1/products:
     get:
       operationId: ProductsController_listProducts
@@ -905,7 +1568,7 @@ paths:
         "200":
           description: Products fetched
       summary: List products
-      tags: &a9
+      tags: &a13
         - Products
     post:
       operationId: ProductsController_createProduct
@@ -922,7 +1585,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a9
+      tags: *a13
   /api/v1/products/{id}:
     get:
       operationId: ProductsController_getProduct
@@ -936,7 +1599,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a9
+      tags: *a13
     patch:
       operationId: ProductsController_updateProduct
       parameters:
@@ -955,218 +1618,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a9
-  /api/v1/marketplace/channels:
-    get:
-      operationId: MarketplaceController_listChannels
-      parameters: []
-      responses:
-        "200":
-          description: ""
-      tags: &a10
-        - Marketplace
-  /api/v1/marketplace/channels/{channel}/mapping:
-    get:
-      operationId: MarketplaceController_getChannelMapping
-      parameters:
-        - name: channel
-          required: true
-          in: path
-          schema:
-            type: string
-        - name: categoryId
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: templateId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a10
-  /api/v1/marketplace/categories/{id}/templates:
-    get:
-      operationId: MarketplaceController_listTemplates
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-        - name: channel
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a10
-    post:
-      operationId: MarketplaceController_createTemplate
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateMappingTemplateDto"
-      responses:
-        "201":
-          description: ""
-      tags: *a10
-  /api/v1/marketplace/products/{id}/simulate:
-    get:
-      operationId: MarketplaceController_simulateProductQuery
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-        - name: templateId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a10
-    post:
-      operationId: MarketplaceController_simulateProductBody
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SimulateMarketplaceDto"
-      responses:
-        "201":
-          description: ""
-      tags: *a10
-  /api/v1/marketplace/products/{id}/export-jobs:
-    post:
-      operationId: MarketplaceController_createExportJob
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateExportJobDto"
-      responses:
-        "201":
-          description: Export job queued
-        "402":
-          description: Plan limit exceeded
-      summary: Create marketplace export job
-      tags: *a10
-  /api/v1/marketplace/export-jobs:
-    get:
-      operationId: MarketplaceController_listExportJobs
-      parameters:
-        - name: productId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Export jobs fetched
-      summary: List export jobs
-      tags: *a10
-  /api/v1/marketplace/export-job:
-    post:
-      operationId: MarketplaceController_createExportJobAlias
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateExportJobAliasDto"
-      responses:
-        "201":
-          description: Export job queued
-        "402":
-          description: Plan limit exceeded
-      summary: Create export job (alias endpoint)
-      tags: *a10
-  /api/v1/marketplace/export-jobs/{id}:
-    get:
-      operationId: MarketplaceController_getExportJob
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a10
-  /api/v1/marketplace/export-jobs/{id}/process:
-    post:
-      operationId: MarketplaceController_processExportJob
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: ""
-      tags: *a10
-  /api/v1/marketplace/export-jobs/{id}/requeue:
-    post:
-      operationId: MarketplaceController_requeueExportJob
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: ""
-      tags: *a10
-  /api/v1/submissions:
-    get:
-      operationId: SubmissionsController_listSubmissions
-      parameters:
-        - name: productId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Submissions fetched
-      summary: List submissions
-      tags:
-        - Marketplace
+      tags: *a13
   /api/v1/media/assets:
     post:
       operationId: MediaController_createAsset
@@ -1180,7 +1632,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a11
+      tags: &a14
         - Media
     get:
       operationId: MediaController_listAssets
@@ -1198,7 +1650,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a11
+      tags: *a14
   /api/v1/media/assets/{id}:
     get:
       operationId: MediaController_getAsset
@@ -1211,7 +1663,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a11
+      tags: *a14
   /api/v1/media/assets/{id}/validation:
     get:
       operationId: MediaController_validateAsset
@@ -1224,7 +1676,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a11
+      tags: *a14
   /api/v1/media/bulk-associations:
     post:
       operationId: MediaController_bulkAssociate
@@ -1238,7 +1690,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a11
+      tags: *a14
   /api/v1/rejection-intelligence/products/{id}/score:
     get:
       operationId: RejectionIntelligenceController_scoreProduct
@@ -1253,104 +1705,6 @@ paths:
           description: ""
       tags:
         - RejectionIntelligence
-  /api/v1/ondc/versions:
-    get:
-      operationId: OndcController_listVersions
-      parameters: []
-      responses:
-        "200":
-          description: ""
-      tags: &a12
-        - Ondc
-  /api/v1/ondc/mappings:
-    post:
-      operationId: OndcController_createMapping
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateOndcMappingDto"
-      responses:
-        "201":
-          description: ""
-      tags: *a12
-    get:
-      operationId: OndcController_listMappings
-      parameters:
-        - name: nodeType
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: version
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: categoryId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a12
-  /api/v1/ondc/mappings/{id}:
-    get:
-      operationId: OndcController_getMapping
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a12
-  /api/v1/ondc/products/{id}/simulate:
-    post:
-      operationId: OndcController_simulateProduct
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: ""
-      tags: *a12
-    get:
-      operationId: OndcController_simulateProductGet
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-        - name: nodeType
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: version
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: mappingId
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-      tags: *a12
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -1363,7 +1717,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a13
+      tags: &a15
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -1377,7 +1731,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a13
+      tags: *a15
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -1390,7 +1744,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a13
+      tags: *a15
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -1403,7 +1757,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a13
+      tags: *a15
 info:
   title: PIM1 API
   description: PIM1 API OpenAPI specification
@@ -1436,6 +1790,12 @@ components:
     DeleteAccountDto:
       type: object
       properties: {}
+    StepUpChallengeDto:
+      type: object
+      properties: {}
+    SetTenantPlanTierDto:
+      type: object
+      properties: {}
     CreateCategoryDto:
       type: object
       properties: {}
@@ -1454,7 +1814,52 @@ components:
     UpdateComplianceRuleDto:
       type: object
       properties: {}
+    ResolveIssueInboxDto:
+      type: object
+      properties: {}
     InstallConnectorDto:
+      type: object
+      properties: {}
+    ConnectorPayloadPreviewDto:
+      type: object
+      properties: {}
+    GrantConnectorPermissionDto:
+      type: object
+      properties: {}
+    CreateConnectorMappingVersionDto:
+      type: object
+      properties: {}
+    PublishConnectorMappingVersionDto:
+      type: object
+      properties: {}
+    RollbackConnectorMappingVersionDto:
+      type: object
+      properties: {}
+    ArchiveConnectorMappingVersionDto:
+      type: object
+      properties: {}
+    ConnectorMappingPreflightDto:
+      type: object
+      properties: {}
+    ConnectorPublishReadinessDto:
+      type: object
+      properties: {}
+    CreateMappingTemplateDto:
+      type: object
+      properties: {}
+    UpdateMappingTemplateDto:
+      type: object
+      properties: {}
+    CloneMappingTemplateDto:
+      type: object
+      properties: {}
+    SimulateMarketplaceDto:
+      type: object
+      properties: {}
+    CreateExportJobDto:
+      type: object
+      properties: {}
+    CreateExportJobAliasDto:
       type: object
       properties: {}
     CreateBulkImportJobDto:
@@ -1493,24 +1898,9 @@ components:
     UpdateVariantDto:
       type: object
       properties: {}
-    CreateMappingTemplateDto:
-      type: object
-      properties: {}
-    SimulateMarketplaceDto:
-      type: object
-      properties: {}
-    CreateExportJobDto:
-      type: object
-      properties: {}
-    CreateExportJobAliasDto:
-      type: object
-      properties: {}
     CreateMediaAssetDto:
       type: object
       properties: {}
     BulkMediaAssociationDto:
-      type: object
-      properties: {}
-    CreateOndcMappingDto:
       type: object
       properties: {}

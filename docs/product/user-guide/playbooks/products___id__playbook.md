@@ -6,12 +6,13 @@
 - Title: No issues found
 
 ## What this page is used for
-- Execute operational workflows and mutations listed below.
+- Edit product data, fix blockers, review channel readiness, and create export/publish attempts.
+- Mapping edits should be completed in `/channels/mappings`; any template controls here are transition-only helpers.
 
 ## How to use this page (step-by-step)
 1. Open the route from left navigation or direct URL.
 2. Wait for data to load from: `getMarketplaceChannelMapping`, `getMarketplaceChannels`, `getMarketplaceExportJobs`, `getInstalledConnectors`, `getMarketplaceSimulation`, `getMarketplaceTemplates`, `getCategoryAttributes`, `getProduct`, `getProductVariants`.
-3. Configure filters/form inputs using labels: `Product Title`, `Brand`, `Description`, `HSN Code`, `GST Rate`, `Status`, `Additional Attributes`, `Channel`, `Template`, `Template Name`; selects: `status`, `channel`, `templateId`, `isDefault`.
+3. Configure filters/form inputs using labels: `Product Title`, `Brand`, `Description`, `HSN Code`, `GST Rate`, `Status`, `Additional Attributes`, `Channel`, `Mapping`, `Max Retries`; selects: `status`, `channel`, `templateId`, `fallbackAcknowledged`, `isDefault`.
 4. Use row-level actions/links where available.
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
@@ -88,9 +89,9 @@ Failure handling:
 
 ## Input and control reference
 - Buttons: Information not available in PIM1 project.
-- Visible labels: `Product Title`, `Brand`, `Description`, `HSN Code`, `GST Rate`, `Status`, `Additional Attributes`, `Channel`, `Template`, `Template Name`, `Required Fields`, `Field Mapping`, `Default Template`, `Max Retries`, `SKU Code`, `Inventory Quantity`, `MRP`, `Selling Price`, `Variant Attributes`
-- Field names (technical): `productId`, `categoryId`, `expectedVersion`, `attributesBase`, `jobId`, `description`, `requiredFields`, `fieldMap`, `attributes`, `title`, `brand`, `hsnCode`, `gstRate`, `name`, `maxRetries`, `skuCode`, `inventoryQty`, `mrp`, `sellingPrice`
-- Select names: `status`, `channel`, `templateId`, `isDefault`
+- Visible labels: `Product Title`, `Brand`, `Description`, `HSN Code`, `GST Rate`, `Status`, `Additional Attributes`, `Channel`, `Mapping`, `Max Retries`, `Fallback confirmation`, `Template Name`, `Required Fields`, `Field Mapping`, `Default Template`, `SKU Code`, `Inventory Quantity`, `MRP`, `Selling Price`, `Variant Attributes`
+- Field names (technical): `productId`, `categoryId`, `expectedVersion`, `attributesBase`, `jobId`, `description`, `requiredFields`, `fieldMap`, `attributes`, `title`, `brand`, `hsnCode`, `gstRate`, `maxRetries`, `name`, `skuCode`, `inventoryQty`, `mrp`, `sellingPrice`
+- Select names: `status`, `channel`, `templateId`, `fallbackAcknowledged`, `isDefault`
 - Placeholders: Information not available in PIM1 project.
 - Links: `/dashboard`, `/catalog/products`, `/channels/health`
 
@@ -100,3 +101,4 @@ Failure handling:
 ## Validation source
 - Derived from route source + first-level component source imports.
 - No behavior is added beyond validated code references.
+- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current PIM1 UX.

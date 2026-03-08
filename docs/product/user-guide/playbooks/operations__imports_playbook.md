@@ -3,7 +3,7 @@
 ## Page
 - Route: `/operations/imports`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/operations/imports/page.tsx`
-- Title: No import jobs found
+- Title: Operations Imports
 
 ## What this page is used for
 - Read/monitor data and navigate to downstream workflow pages.
@@ -24,7 +24,7 @@
 - Links: Information not available in PIM1 project.
 
 ## Related components
-- `ui/row-repair-form`, `ui/card`, `ui/empty-state`, `ui/button`, `ui/input`
+- `ui/row-repair-form`, `ui/card`, `ui/button`, `ui/input`
 
 ## Validation source
 - Derived from route source + first-level component source imports.

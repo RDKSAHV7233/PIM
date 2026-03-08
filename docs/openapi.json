@@ -188,6 +188,30 @@
         ]
       }
     },
+    "/api/v1/auth/step-up": {
+      "post": {
+        "operationId": "AuthController_issueStepUp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepUpChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/v1/audit/logs": {
       "get": {
         "operationId": "AuditController_listLogs",
@@ -229,6 +253,46 @@
           }
         },
         "summary": "Get current tenant plan usage",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/api/v1/billing/plan-profile": {
+      "get": {
+        "operationId": "BillingController_planProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Tenant plan profile fetched"
+          }
+        },
+        "summary": "Get current tenant plan profile",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/api/v1/billing/plan-tier": {
+      "post": {
+        "operationId": "BillingController_setPlanTier",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTenantPlanTierDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant plan tier updated"
+          }
+        },
+        "summary": "Set tenant plan tier",
         "tags": [
           "Billing"
         ]
@@ -598,6 +662,46 @@
         ]
       }
     },
+    "/api/v1/issues/inbox": {
+      "get": {
+        "operationId": "IssuesController_listInbox",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Issue inbox fetched"
+          }
+        },
+        "summary": "List tenant-wide open compliance issues",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
+    "/api/v1/issues/inbox/resolve": {
+      "post": {
+        "operationId": "IssuesController_resolveWarnings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIssueInboxDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Issue resolution applied"
+          }
+        },
+        "summary": "Resolve warning-level issues in bulk",
+        "tags": [
+          "Compliance"
+        ]
+      }
+    },
     "/api/v1/dashboard/readiness": {
       "get": {
         "operationId": "DashboardController_getReadiness",
@@ -623,6 +727,21 @@
           }
         },
         "summary": "Catalog health and completeness summary for current tenant",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dashboard/health": {
+      "get": {
+        "operationId": "DashboardController_getHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Dashboard health snapshot fetched"
+          }
+        },
+        "summary": "Catalog health snapshot with 30-day trend",
         "tags": [
           "Dashboard"
         ]
@@ -762,10 +881,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Connector uninstalled"
+            "description": "Connector installation deleted"
           }
         },
-        "summary": "Uninstall connector by slug + installation id",
+        "summary": "Delete connector installation record by slug + installation id",
         "tags": [
           "Connectors"
         ]
@@ -791,6 +910,1020 @@
         },
         "tags": [
           "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{id}/payload-preview": {
+      "post": {
+        "operationId": "ConnectorInstallerController_payloadPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorPayloadPreviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payload preview generated"
+          }
+        },
+        "summary": "Generate payload preview for connector installation + product",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/permissions": {
+      "get": {
+        "operationId": "ConnectorInstallerController_listPermissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      },
+      "post": {
+        "operationId": "ConnectorInstallerController_grantPermission",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantConnectorPermissionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/permissions/{id}": {
+      "delete": {
+        "operationId": "ConnectorInstallerController_revokePermission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/marketplace/channels": {
+      "get": {
+        "operationId": "MarketplaceController_listChannels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions": {
+      "get": {
+        "operationId": "MarketplaceController_listConnectorMappingVersions",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_createConnectorMappingVersion",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectorMappingVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/validate": {
+      "post": {
+        "operationId": "MarketplaceController_validateConnectorMappingVersion",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/publish": {
+      "post": {
+        "operationId": "MarketplaceController_publishConnectorMappingVersion",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishConnectorMappingVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/rollback": {
+      "post": {
+        "operationId": "MarketplaceController_rollbackConnectorMappingVersion",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackConnectorMappingVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/archive": {
+      "post": {
+        "operationId": "MarketplaceController_archiveConnectorMappingVersion",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveConnectorMappingVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/resolve": {
+      "get": {
+        "operationId": "MarketplaceController_resolveConnectorMapping",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/mappings/preflight": {
+      "post": {
+        "operationId": "MarketplaceController_preflightConnectorMapping",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorMappingPreflightDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/taxonomy/search": {
+      "get": {
+        "operationId": "MarketplaceController_searchConnectorTaxonomy",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/taxonomy/unmapped": {
+      "get": {
+        "operationId": "MarketplaceController_listUnmappedConnectorTaxonomy",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/{connectorSlug}/publish-readiness": {
+      "post": {
+        "operationId": "MarketplaceController_evaluateConnectorPublishReadiness",
+        "parameters": [
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorPublishReadinessDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/channels/{channel}/mapping": {
+      "get": {
+        "operationId": "MarketplaceController_getChannelMapping",
+        "parameters": [
+          {
+            "name": "channel",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/categories/{id}/templates": {
+      "get": {
+        "operationId": "MarketplaceController_listTemplates",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_createTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMappingTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/templates/{id}": {
+      "get": {
+        "operationId": "MarketplaceController_getTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "patch": {
+        "operationId": "MarketplaceController_updateTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMappingTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "delete": {
+        "operationId": "MarketplaceController_deleteTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/templates/{id}/clone": {
+      "post": {
+        "operationId": "MarketplaceController_cloneTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneMappingTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/products/{id}/simulate": {
+      "get": {
+        "operationId": "MarketplaceController_simulateProductQuery",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_simulateProductBody",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateMarketplaceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/products/{id}/export-jobs": {
+      "post": {
+        "operationId": "MarketplaceController_createExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Export job queued"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create marketplace export job",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs": {
+      "get": {
+        "operationId": "MarketplaceController_listExportJobs",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export jobs fetched"
+          }
+        },
+        "summary": "List export jobs",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-job": {
+      "post": {
+        "operationId": "MarketplaceController_createExportJobAlias",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobAliasDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Export job queued"
+          },
+          "402": {
+            "description": "Plan limit exceeded"
+          }
+        },
+        "summary": "Create export job (alias endpoint)",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}": {
+      "get": {
+        "operationId": "MarketplaceController_getExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}/process": {
+      "post": {
+        "operationId": "MarketplaceController_processExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/export-jobs/{id}/requeue": {
+      "post": {
+        "operationId": "MarketplaceController_requeueExportJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions": {
+      "get": {
+        "operationId": "SubmissionsController_listSubmissions",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minAttempt",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submissions fetched"
+          }
+        },
+        "summary": "List submissions",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions/dead-letter": {
+      "get": {
+        "operationId": "SubmissionsController_listDeadLetterSubmissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Dead-letter submissions fetched"
+          }
+        },
+        "summary": "List dead-letter submissions/jobs",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions/{id}": {
+      "get": {
+        "operationId": "SubmissionsController_getSubmission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submission detail fetched"
+          }
+        },
+        "summary": "Get submission detail",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions/{id}/issues": {
+      "get": {
+        "operationId": "SubmissionsController_getSubmissionIssues",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submission issues fetched"
+          }
+        },
+        "summary": "List normalized issues for a submission",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions/{id}/retry": {
+      "post": {
+        "operationId": "SubmissionsController_retrySubmission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Submission retry queued"
+          }
+        },
+        "summary": "Retry submission by requeuing underlying export job",
+        "tags": [
+          "Marketplace"
         ]
       }
     },
@@ -1624,365 +2757,6 @@
         ]
       }
     },
-    "/api/v1/marketplace/channels": {
-      "get": {
-        "operationId": "MarketplaceController_listChannels",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/channels/{channel}/mapping": {
-      "get": {
-        "operationId": "MarketplaceController_getChannelMapping",
-        "parameters": [
-          {
-            "name": "channel",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "categoryId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "templateId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/categories/{id}/templates": {
-      "get": {
-        "operationId": "MarketplaceController_listTemplates",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      },
-      "post": {
-        "operationId": "MarketplaceController_createTemplate",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMappingTemplateDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/products/{id}/simulate": {
-      "get": {
-        "operationId": "MarketplaceController_simulateProductQuery",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "templateId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      },
-      "post": {
-        "operationId": "MarketplaceController_simulateProductBody",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SimulateMarketplaceDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/products/{id}/export-jobs": {
-      "post": {
-        "operationId": "MarketplaceController_createExportJob",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateExportJobDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Export job queued"
-          },
-          "402": {
-            "description": "Plan limit exceeded"
-          }
-        },
-        "summary": "Create marketplace export job",
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/export-jobs": {
-      "get": {
-        "operationId": "MarketplaceController_listExportJobs",
-        "parameters": [
-          {
-            "name": "productId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Export jobs fetched"
-          }
-        },
-        "summary": "List export jobs",
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/export-job": {
-      "post": {
-        "operationId": "MarketplaceController_createExportJobAlias",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateExportJobAliasDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Export job queued"
-          },
-          "402": {
-            "description": "Plan limit exceeded"
-          }
-        },
-        "summary": "Create export job (alias endpoint)",
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/export-jobs/{id}": {
-      "get": {
-        "operationId": "MarketplaceController_getExportJob",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/export-jobs/{id}/process": {
-      "post": {
-        "operationId": "MarketplaceController_processExportJob",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/marketplace/export-jobs/{id}/requeue": {
-      "post": {
-        "operationId": "MarketplaceController_requeueExportJob",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
-    "/api/v1/submissions": {
-      "get": {
-        "operationId": "SubmissionsController_listSubmissions",
-        "parameters": [
-          {
-            "name": "productId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Submissions fetched"
-          }
-        },
-        "summary": "List submissions",
-        "tags": [
-          "Marketplace"
-        ]
-      }
-    },
     "/api/v1/media/assets": {
       "post": {
         "operationId": "MediaController_createAsset",
@@ -2129,172 +2903,6 @@
         ]
       }
     },
-    "/api/v1/ondc/versions": {
-      "get": {
-        "operationId": "OndcController_listVersions",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      }
-    },
-    "/api/v1/ondc/mappings": {
-      "post": {
-        "operationId": "OndcController_createMapping",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOndcMappingDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      },
-      "get": {
-        "operationId": "OndcController_listMappings",
-        "parameters": [
-          {
-            "name": "nodeType",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "categoryId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      }
-    },
-    "/api/v1/ondc/mappings/{id}": {
-      "get": {
-        "operationId": "OndcController_getMapping",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      }
-    },
-    "/api/v1/ondc/products/{id}/simulate": {
-      "post": {
-        "operationId": "OndcController_simulateProduct",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      },
-      "get": {
-        "operationId": "OndcController_simulateProductGet",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "nodeType",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "mappingId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Ondc"
-        ]
-      }
-    },
     "/api/v1/auto-suggestions/products/{id}/title-suggestion": {
       "get": {
         "operationId": "AutoSuggestionsController_getTitleSuggestion",
@@ -2429,6 +3037,14 @@
         "type": "object",
         "properties": {}
       },
+      "StepUpChallengeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SetTenantPlanTierDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateCategoryDto": {
         "type": "object",
         "properties": {}
@@ -2453,7 +3069,67 @@
         "type": "object",
         "properties": {}
       },
+      "ResolveIssueInboxDto": {
+        "type": "object",
+        "properties": {}
+      },
       "InstallConnectorDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConnectorPayloadPreviewDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "GrantConnectorPermissionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateConnectorMappingVersionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PublishConnectorMappingVersionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RollbackConnectorMappingVersionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ArchiveConnectorMappingVersionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConnectorMappingPreflightDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConnectorPublishReadinessDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateMappingTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMappingTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CloneMappingTemplateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SimulateMarketplaceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateExportJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateExportJobAliasDto": {
         "type": "object",
         "properties": {}
       },
@@ -2505,31 +3181,11 @@
         "type": "object",
         "properties": {}
       },
-      "CreateMappingTemplateDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "SimulateMarketplaceDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreateExportJobDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreateExportJobAliasDto": {
-        "type": "object",
-        "properties": {}
-      },
       "CreateMediaAssetDto": {
         "type": "object",
         "properties": {}
       },
       "BulkMediaAssociationDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreateOndcMappingDto": {
         "type": "object",
         "properties": {}
       }

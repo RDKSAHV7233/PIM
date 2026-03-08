@@ -45,7 +45,7 @@ Failure handling:
 - Links: `/catalog/products`, `/channels/health`
 
 ## Related components
-- `ui/button`, `ui/card`, `ui/empty-state`, `ui/input`, `ui/page-header`, `ui/plan-limit-modal`, `ui/select`, `ui/status-chip`, `ui/textarea`
+- `ui/button`, `ui/card`, `ui/input`, `ui/page-header`, `ui/plan-limit-modal`, `ui/select`, `ui/textarea`
 
 ## Validation source
 - Derived from route source + first-level component source imports.

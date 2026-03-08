@@ -3,7 +3,7 @@
 ## Page
 - Route: `/catalog/categories`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/catalog/categories/page.tsx`
-- Title: No categories found
+- Title: Catalog Categories
 
 ## What this page is used for
 - Execute operational workflows and mutations listed below.
@@ -35,7 +35,7 @@ Failure handling:
 - Links: Information not available in PIM1 project.
 
 ## Related components
-- `ui/button`, `ui/card`, `category/category-tree-table`, `ui/empty-state`, `ui/input`, `ui/select`
+- `ui/button`, `ui/card`, `ui/input`, `ui/select`
 
 ## Validation source
 - Derived from route source + first-level component source imports.

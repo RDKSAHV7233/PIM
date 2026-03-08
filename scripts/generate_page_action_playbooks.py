@@ -83,7 +83,8 @@ def extract_from_text(content: str) -> Interaction:
 
     # forms/actions
     for a in re.findall(r"<form[^>]*action=\{([A-Za-z0-9_]+)\}", content):
-        interaction.action_names.append(a)
+        if a != "action":
+            interaction.action_names.append(a)
 
     # input/select names & placeholders
     interaction.input_names.extend(re.findall(r"<input[^>]*name=\"([^\"]+)\"", content))
@@ -206,7 +207,16 @@ def make_playbook(route: str, page_path: Path, interaction: Interaction, title: 
     lines.append("")
 
     lines.append("## What this page is used for")
-    if interaction.action_names:
+    if route == "/channels/mappings":
+        lines.append("- Maintain the canonical lifecycle mapping workspace for channel publishing.")
+        lines.append("- This is the only editable mapping surface; legacy connector mapping routes redirect here.")
+    elif route == "/connectors/[installationId]/mapping":
+        lines.append("- Transition-only connector mapping route that redirects to the canonical lifecycle mapping workspace.")
+        lines.append("- Do not use this route for editing; use `/channels/mappings` instead.")
+    elif route == "/products/[id]":
+        lines.append("- Edit product data, fix blockers, review channel readiness, and create export/publish attempts.")
+        lines.append("- Mapping edits should be completed in `/channels/mappings`; any template controls here are transition-only helpers.")
+    elif interaction.action_names:
         lines.append("- Execute operational workflows and mutations listed below.")
     else:
         lines.append("- Read/monitor data and navigate to downstream workflow pages.")
@@ -265,6 +275,8 @@ def make_playbook(route: str, page_path: Path, interaction: Interaction, title: 
     lines.append("## Validation source")
     lines.append("- Derived from route source + first-level component source imports.")
     lines.append("- No behavior is added beyond validated code references.")
+    if route in {"/channels/mappings", "/connectors/[installationId]/mapping", "/products/[id]"}:
+        lines.append("- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current PIM1 UX.")
     lines.append("")
     return "\n".join(lines)
 
@@ -364,15 +376,17 @@ def build():
     func_lines.append("2. Install a connector (`installConnectorAction`) with account alias/external ref.")
     func_lines.append("3. Use installed rows to `Reconnect` (`reconnectConnectorAction`) or `Disable` (`uninstallConnectorAction`).")
     func_lines.append("4. For disabled installations, admin can permanently delete (`deleteConnectorInstallationAction`).")
-    func_lines.append("5. Open `/channels/connectors/[installationId]` for details and `/connectors/[installationId]/mapping` for mapping work.")
+    func_lines.append("5. Open `/channels/connectors/[installationId]` for connector details.")
+    func_lines.append("6. If mapping changes are needed, continue to `/channels/mappings` (the canonical lifecycle mapping workspace).")
     func_lines.append("")
 
-    func_lines.append("## 5. Build/maintain mapping templates")
-    func_lines.append("1. Open `/channels/mappings` or `/connectors/[installationId]/mapping`.")
-    func_lines.append("2. Create template (`createMappingTemplateAction`).")
-    func_lines.append("3. Update mapping (`updateMappingTemplateAction`).")
-    func_lines.append("4. Clone or delete templates when required (`cloneMappingTemplateAction`, `deleteMappingTemplateAction`).")
-    func_lines.append("5. Use payload preview and simulation helpers before submission/export jobs.")
+    func_lines.append("## 5. Build and maintain channel mappings")
+    func_lines.append("1. Open `/channels/mappings`.")
+    func_lines.append("2. Create a mapping version (`createConnectorMappingVersionAction`).")
+    func_lines.append("3. Validate the version (`validateConnectorMappingVersionAction`).")
+    func_lines.append("4. Publish the version (`publishConnectorMappingVersionAction`) after step-up re-authentication.")
+    func_lines.append("5. Archive or rollback versions when required (`archiveConnectorMappingVersionAction`, `rollbackConnectorMappingVersionAction`).")
+    func_lines.append("6. Treat `/connectors/[installationId]/mapping` as a transition-only redirect, not a separate editor.")
     func_lines.append("")
 
     func_lines.append("## 6. Run imports and bulk edits")
@@ -395,7 +409,8 @@ def build():
     func_lines.append("1. From product detail, create export job (`createExportJobAction`).")
     func_lines.append("2. Process queued job (`processExportJobAction`).")
     func_lines.append("3. Requeue failed job (`requeueExportJobAction`) when needed.")
-    func_lines.append("4. Track outcomes in `/channels/submissions` and `/operations/jobs`.")
+    func_lines.append("4. Use `/channels/mappings` for mapping corrections if publish readiness blocks the product.")
+    func_lines.append("5. Track outcomes in `/channels/submissions` and `/operations/jobs`.")
     func_lines.append("")
 
     func_lines.append("## 9. Admin governance workflows")
@@ -427,7 +442,7 @@ def build():
     readme.append("- `PAGE_ACTION_PLAYBOOK_INDEX.md` (page-by-page how-to index)")
     readme.append("- `playbooks/*.md` (one step-by-step playbook per route)")
     readme.append("- `FUNCTIONALITY_WISE_GUIDE.md` (workflow runbook by module)")
-    readme.append("- `PAGE_GUIDE_INDEX.md` and `pages/*.md` (reference inventory, kept for traceability)")
+    readme.append("- `PAGE_GUIDE_INDEX.md` and `pages/*.md` (reference inventory, kept for traceability; connector-critical routes are manually aligned to the current lifecycle mapping flow)")
     readme.append("")
     readme.append("## Coverage")
     readme.append(f"- Route playbooks: {len(summary_items)}")

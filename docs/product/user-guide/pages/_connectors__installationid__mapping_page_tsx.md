@@ -7,34 +7,22 @@
 - C:/Users/Om Computers/PIM1/apps/web/src/app/connectors/[installationId]/mapping
 
 ## Page Title (Validated)
-- Mapping manager title is context-driven by selected installation and product/channel selection.
+- Transition-only connector mapping route.
 
 ## Purpose
-- Mapping manager page for a connector installation, including template create/update/clone/delete and payload preview.
+- Transitional route that redirects users into the canonical lifecycle mapping workspace.
+- Do not treat this page as a second editable mapping surface.
 
 ## Functionality (Validated from Page Imports/Actions)
 - Data retrieval/API helpers used on this page:
-  - ApiHttpError
-  - AppRole
-  - ChannelMappingTemplate
-  - MarketplaceChannel
-  - getConnectorPayloadPreview
   - getInstalledConnectors
-  - getMarketplaceChannelMapping
-  - getMarketplaceTemplates
-  - getProducts
-- Mutation actions used on this page:
-  - cloneMappingTemplateAction
-  - createMappingTemplateAction
-  - deleteMappingTemplateAction
-  - updateMappingTemplateAction
+  - getProduct
 
 ## User Actions
-- cloneMappingTemplateAction
-- createMappingTemplateAction
-- deleteMappingTemplateAction
-- updateMappingTemplateAction
+- Follow the redirect into `/channels/mappings`
+- Review connector/product context passed into the canonical mapping workspace
 
 ## Notes
 - This document is generated from current route source and only contains validated references.
+- Editing happens in `/channels/mappings`, not here.
 - For exact API endpoint mapping, refer to docs/openapi.yaml and apps/web/src/lib/api.ts.

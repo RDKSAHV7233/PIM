@@ -24,7 +24,7 @@
 - Links: `/channels/connectors`, `/channels/mappings`, `/channels/submissions`, `/channels/health`, `/admin/connectors`
 
 ## Related components
-- `ui/card`, `ui/empty-state`, `ui/kpi-card`, `ui/page-header`, `ui/status-chip`, `ui/button`
+- `ui/card`, `ui/kpi-card`, `ui/page-header`, `ui/status-chip`
 
 ## Validation source
 - Derived from route source + first-level component source imports.
