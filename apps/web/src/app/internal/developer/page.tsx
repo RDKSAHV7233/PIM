@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
 import { getServerActorRole } from "@/lib/server-session";
 
+export const dynamic = "force-dynamic";
+
 export default async function DeveloperPage() {
   const actorRole = await getServerActorRole();
   if (actorRole !== "admin" || process.env.APP_ENV === "production") {
