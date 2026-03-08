@@ -37,9 +37,18 @@ function run() {
     "Dashboard must be grouped into catalog-first, publishing, and operations sections.",
   );
   assert(
+    (dashboardSource.match(/Publishing Health/g) || []).length === 1,
+    "Dashboard must not duplicate Publishing Health sections once the workbench home is introduced.",
+  );
+  assert(
     dashboardSource.includes("Products Needing Enrichment") &&
       dashboardSource.includes("Ready to Publish"),
     "Dashboard top metrics must prioritize catalog work and publish readiness over raw ops counters.",
+  );
+  assert(
+    dashboardSource.includes("Top products to fix now") &&
+      dashboardSource.includes("Next best actions"),
+    "Dashboard must surface task-first workbench sections instead of only status summaries.",
   );
 
   console.log(

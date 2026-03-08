@@ -10,6 +10,7 @@ import {
   getDashboardHealth,
   getDeadLetterSubmissions,
   getInstalledConnectors,
+  getProducts,
   getStats,
   getSubmissions,
 } from "@/lib/api";
@@ -26,12 +27,20 @@ function formatPercent(value: number): string {
   return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 }
 
+function formatUpdatedAt(value: string): string {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "-";
+  }
+  return timestamp.toLocaleString();
+}
+
 export default async function DashboardPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
 
   try {
-    const [stats, health, usage, connectors, submissionsResponse, deadLetterResponse, imports] = await Promise.all([
+    const [stats, health, usage, connectors, submissionsResponse, deadLetterResponse, imports, products] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getDashboardHealth({ role: actorRole, authHeader }),
       getBillingUsage({ role: actorRole, authHeader }),
@@ -39,6 +48,7 @@ export default async function DashboardPage() {
       getSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
       getDeadLetterSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
       getBulkImportJobs({ role: actorRole, authHeader }),
+      getProducts({ role: actorRole, authHeader }),
     ]);
     const submissions = Array.isArray(submissionsResponse)
       ? submissionsResponse
@@ -67,6 +77,47 @@ export default async function DashboardPage() {
       return status === "REJECTED" || status === "ERROR";
     }).length;
     const jobsNeedingRetry = failedSubmissionJobs + deadLetterJobs.length;
+    const priorityProducts = products
+      .map((product) => {
+        const blockingCount = (product.validationIssues ?? []).filter((issue) => issue.severity === "error").length;
+        const warningCount = (product.validationIssues ?? []).filter((issue) => issue.severity === "warning").length;
+        const completenessScore = product.completenessScore ?? 0;
+        const priorityReason =
+          product.status === "in_review"
+            ? "Awaiting review"
+            : blockingCount > 0
+              ? `${blockingCount} blocking issue${blockingCount === 1 ? "" : "s"}`
+              : completenessScore < 100
+                ? "Missing product data"
+                : warningCount > 0
+                  ? `${warningCount} warning${warningCount === 1 ? "" : "s"}`
+                  : "Ready for publish review";
+        return {
+          ...product,
+          blockingCount,
+          warningCount,
+          completenessScore,
+          priorityReason,
+        };
+      })
+      .sort((left, right) => {
+        const leftNeedsApproval = left.status === "in_review" ? 1 : 0;
+        const rightNeedsApproval = right.status === "in_review" ? 1 : 0;
+        if (leftNeedsApproval !== rightNeedsApproval) {
+          return rightNeedsApproval - leftNeedsApproval;
+        }
+        if (left.blockingCount !== right.blockingCount) {
+          return right.blockingCount - left.blockingCount;
+        }
+        if (left.completenessScore !== right.completenessScore) {
+          return left.completenessScore - right.completenessScore;
+        }
+        if (left.warningCount !== right.warningCount) {
+          return right.warningCount - left.warningCount;
+        }
+        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+      })
+      .slice(0, 5);
 
     return (
       <div className="space-y-5">
@@ -105,7 +156,10 @@ export default async function DashboardPage() {
                 Focus on missing data, review queues, and products ready to publish.
               </p>
             </div>
-            <Link href="/catalog/products" className="text-sm font-medium text-blue-700 hover:underline">
+            <Link
+              href="/catalog/products"
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
               Open product workbench
             </Link>
           </div>
@@ -166,7 +220,104 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Top products to fix now</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Start here instead of hunting through separate channel and operations screens.
+            </p>
+            {priorityProducts.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-600">No products need immediate attention.</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[680px] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Why now</th>
+                      <th className="px-3 py-2">Complete %</th>
+                      <th className="px-3 py-2">Updated</th>
+                      <th className="px-3 py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priorityProducts.map((product) => (
+                      <tr key={product.id} className="border-t border-slate-200 hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5">
+                          <div className="space-y-1">
+                            <p className="font-medium text-slate-900">{product.title}</p>
+                            <p className="text-xs text-slate-500">{product.category?.path ?? product.categoryId}</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="space-y-1">
+                            <StatusChip
+                              label={product.priorityReason}
+                              tone={
+                                product.blockingCount > 0
+                                  ? "danger"
+                                  : product.status === "in_review"
+                                    ? "warning"
+                                    : product.warningCount > 0
+                                      ? "warning"
+                                      : "info"
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">{product.completenessScore}%</td>
+                        <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>
+                        <td className="px-3 py-2.5">
+                          <Link
+                            href={`/products/${encodeURIComponent(product.id)}`}
+                            className="text-sm font-medium text-blue-700 hover:underline"
+                          >
+                            Open product
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Next best actions</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Move from fixing data to reviewing readiness, then publish.
+            </p>
+            <div className="mt-4 grid gap-3">
+              <Link
+                href="/catalog/products?view=needs_attention"
+                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Review products needing attention
+              </Link>
+              <Link
+                href="/quality/issues"
+                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Open issue inbox
+              </Link>
+              <Link
+                href="/quality/approvals"
+                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Review approval queue
+              </Link>
+              <Link
+                href="/channels/mappings"
+                className="rounded-md border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Review channel mappings
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Catalog Work Queue</h2>
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -196,33 +347,6 @@ export default async function DashboardPage() {
               </Link>
               <Link href="/quality/approvals" className="text-sm font-medium text-blue-700 hover:underline">
                 Open Approval Queue
-              </Link>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Publishing Health</h2>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
-              <li className="flex items-center justify-between">
-                <span>Ready to publish</span>
-                <StatusChip label={String(readinessTotal)} tone={readinessTotal > 0 ? "success" : "neutral"} />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Blocked listings</span>
-                <StatusChip label={String(blockedListings)} tone={blockedListings > 0 ? "danger" : "neutral"} />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Active channels</span>
-                <StatusChip label={String(activeConnectors)} tone={activeConnectors > 0 ? "info" : "neutral"} />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Connector coverage</span>
-                <StatusChip label={`${connectors.length} installed`} tone="neutral" />
-              </li>
-            </ul>
-            <div className="mt-4">
-              <Link href="/channels/mappings" className="text-sm font-medium text-blue-700 hover:underline">
-                Open channel mappings
               </Link>
             </div>
           </div>

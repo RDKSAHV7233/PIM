@@ -35,6 +35,17 @@ function resolveProductView(value: string | undefined): "all" | "needs_attention
   return "all";
 }
 
+function mapConnectorSlugToChannel(slugInput: string): "amazon" | "flipkart" | "meesho" | null {
+  const slug = String(slugInput ?? "").trim().toLowerCase();
+  if (slug === "amazon-in") {
+    return "amazon";
+  }
+  if (slug === "flipkart" || slug === "meesho") {
+    return slug;
+  }
+  return null;
+}
+
 export default async function CatalogProductsPage({ searchParams }: CatalogProductsPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -62,10 +73,15 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
       : stats;
     const installedConnectorCount = installedConnectors.length;
     const firstProduct = filteredProducts[0];
-    const firstActiveConnector = installedConnectors.find((item) => item.status === "ACTIVE");
+    const firstActiveConnector = installedConnectors.find(
+      (item) => item.status === "ACTIVE" && mapConnectorSlugToChannel(item.slug),
+    );
+    const firstActiveChannel = firstActiveConnector
+      ? mapConnectorSlugToChannel(firstActiveConnector.slug)
+      : null;
     const mappingManagerHref =
-      firstProduct && firstActiveConnector
-        ? `/connectors/${encodeURIComponent(firstActiveConnector.id)}/mapping?productId=${encodeURIComponent(firstProduct.id)}`
+      firstProduct && firstActiveChannel
+        ? `/channels/mappings?channel=${encodeURIComponent(firstActiveChannel)}&categoryId=${encodeURIComponent(firstProduct.categoryId)}&productId=${encodeURIComponent(firstProduct.id)}`
         : null;
 
     return (
