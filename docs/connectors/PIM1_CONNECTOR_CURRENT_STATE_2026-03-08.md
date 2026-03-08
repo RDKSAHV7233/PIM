@@ -16,6 +16,9 @@ Use this file for:
 - documentation cleanup
 - identifying which external connector documents are stale
 
+For implementation guidance, use:
+- `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+
 Do not use the superseded external artifacts above as current engineering plans. They reference older file paths, older route surfaces, and pre-redesign UI assumptions.
 
 ## 2. Current Source of Truth

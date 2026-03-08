@@ -18,6 +18,12 @@ Use this page first to determine:
 
 This is the current connector planning baseline for PIM1.
 
+## Canonical developer guide
+
+- `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+
+Use this for day-to-day connector implementation work.
+
 ## Historical / superseded external artifacts
 
 These documents are retained as historical reference only. Do not use them as current sprint-planning or implementation authority.
@@ -74,3 +80,6 @@ As of 2026-03-08:
 
 For the full current-state detail, use:
 - `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+
+For implementation guidance, use:
+- `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
