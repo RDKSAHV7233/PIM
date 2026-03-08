@@ -143,6 +143,14 @@ function getAllowedValues(value: unknown): string[] {
   return [];
 }
 
+function formatDateTime(value: string): string {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "-";
+  }
+  return timestamp.toLocaleString();
+}
+
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
@@ -369,25 +377,91 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       )}
 
       {activeTab === "overview" ? (
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardTitle>Completeness</CardTitle>
-            <p className="text-2xl font-semibold text-slate-900">{product.completenessScore ?? 0}%</p>
-          </Card>
-          <Card>
-            <CardTitle>Quality</CardTitle>
-            <p className="text-sm text-slate-700">
-              {blockingIssueCount} blocking | {warningIssueCount} warnings
-            </p>
-          </Card>
-          <Card>
-            <CardTitle>Variants</CardTitle>
-            <p className="text-2xl font-semibold text-slate-900">{variants.length}</p>
-          </Card>
-          <Card>
-            <CardTitle>Submission Jobs</CardTitle>
-            <p className="text-2xl font-semibold text-slate-900">{exportJobs.length}</p>
-          </Card>
+        <section className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+            <Card>
+              <CardTitle>Product overview</CardTitle>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Brand</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{product.brand || "Not set"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{product.category?.path ?? product.categoryId}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</dt>
+                  <dd className="mt-1">
+                    <StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last updated</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{formatDateTime(product.updatedAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completeness</dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900">{product.completenessScore ?? 0}% complete</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Variants</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{variants.length}</dd>
+                </div>
+              </dl>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href={tabHref("content")}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Edit content
+                </Link>
+                <Link
+                  href={tabHref("attributes")}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Edit attributes
+                </Link>
+                <Link
+                  href={tabHref("media")}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Review media
+                </Link>
+              </div>
+            </Card>
+            <Card>
+              <CardTitle>Fix blockers before publish</CardTitle>
+              <div className="mt-4 space-y-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+                  <span>Blocking issues</span>
+                  <StatusChip label={`${blockingIssueCount}`} tone={blockingIssueCount > 0 ? "danger" : "success"} />
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+                  <span>Warnings to review</span>
+                  <StatusChip label={`${warningIssueCount}`} tone={warningIssueCount > 0 ? "warning" : "neutral"} />
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+                  <span>Publish blockers</span>
+                  <StatusChip label={`${readinessBlockers.length}`} tone={readinessBlockers.length > 0 ? "danger" : "success"} />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Link
+                    href={tabHref("quality")}
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  >
+                    Fix issues
+                  </Link>
+                  <Link
+                    href={tabHref("channels")}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Open channel readiness
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          </div>
         </section>
       ) : null}
 
@@ -571,92 +645,195 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         )}
       </Card>
 
-      <section id="channel-simulator-section" hidden={activeTab !== "channels"}>
       <Card hidden={activeTab !== "channels"}>
-        <CardTitle>Marketplace Rejection Simulator</CardTitle>
-        <div className="space-y-3">
-          <form method="get" className="flex max-w-xl items-end gap-3">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs uppercase text-slate-500" htmlFor="simulator-channel">
-                Channel
-              </label>
-              <Select id="simulator-channel" name="channel" defaultValue={selectedChannel}>
-                {channels.map((channel) => (
-                  <option key={channel.channel} value={channel.channel}>
-                    {channel.displayName}
-                  </option>
+        <CardTitle>Channel readiness and publish</CardTitle>
+        <div className="space-y-4">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <p className="font-medium text-slate-900">Publish readiness</p>
+            <p className="mt-1">
+              <span className={readiness.ok ? "text-emerald-700" : "text-red-700"}>
+                {readiness.ok ? "Ready to publish" : "Blocked until fixes are complete"}
+              </span>
+            </p>
+            {readinessBlockers.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5">
+                {readinessBlockers.map((blocker) => (
+                  <li key={`readiness-blocker-${blocker}`}>{blocker}</li>
                 ))}
-              </Select>
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-xs uppercase text-slate-500" htmlFor="simulator-template-id">
-                Template
-              </label>
-              <Select id="simulator-template-id" name="templateId" defaultValue={selectedTemplateId ?? ""}>
-                <option value="">System default mapping</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                    {template.isDefault ? " (default)" : ""}
-                  </option>
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">No preflight blockers.</p>
+            )}
+            {readinessWarnings.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
+                {readinessWarnings.map((warning) => (
+                  <li key={`readiness-warning-${warning}`}>{warning}</li>
                 ))}
-              </Select>
-            </div>
-            <Button type="submit">Run simulator</Button>
-          </form>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-slate-500">Export Ready</p>
-              <p className="text-lg font-semibold">{simulation.exportReady ? "Yes" : "No"}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-slate-500">Risk Score</p>
-              <p className="text-lg font-semibold">
-                {simulation.riskScore} ({simulation.riskBand})
-              </p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-slate-500">Missing Required Fields</p>
-              <p className="text-lg font-semibold">{simulation.missingFields.length}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-slate-500">Compliance (Errors/Warnings)</p>
-              <p className="text-lg font-semibold">
-                {simulation.complianceSummary.errorCount}/{simulation.complianceSummary.warningCount}
-              </p>
+              </ul>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={`/channels/mappings?categoryId=${encodeURIComponent(product.categoryId)}&channel=${encodeURIComponent(selectedChannel)}&productId=${encodeURIComponent(id)}`}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Fix mapping
+              </Link>
+              <Link
+                href={tabHref("quality")}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Review quality blockers
+              </Link>
             </div>
           </div>
-          <p className="text-sm text-slate-600">
-            Mapping source: {simulation.mappingSource}
-            {simulation.templateName ? ` (${simulation.templateName})` : ""}
-          </p>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs uppercase text-slate-500">Missing Fields</p>
-              {simulation.missingFields.length > 0 ? (
-                <ul className="list-disc space-y-1 pl-5 text-sm">
-                  {simulation.missingFields.map((field) => (
-                    <li key={field}>{field}</li>
+          {canWrite && publishableChannels.length > 0 ? (
+            <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
+              <RoleHiddenInput role={actorRole} />
+              <input type="hidden" name="productId" value={id} />
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-channel">
+                  Channel
+                </label>
+                <Select id="export-channel" name="channel" defaultValue={defaultExportChannel}>
+                  {publishableChannels.map((channel) => (
+                    <option key={channel.channel} value={channel.channel}>
+                      {channel.displayName}
+                    </option>
                   ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-slate-600">No required field gaps for this channel.</p>
-              )}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-template-id">
+                  Mapping
+                </label>
+                <Select id="export-template-id" name="templateId" defaultValue={selectedTemplateId ?? ""}>
+                  <option value="">Live mapping</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                      {template.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-max-retries">
+                  Max Retries
+                </label>
+                <Input id="export-max-retries" name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-fallback-ack">
+                  Fallback confirmation
+                </label>
+                <Select
+                  id="export-fallback-ack"
+                  name="fallbackAcknowledged"
+                  defaultValue={fallbackAckRequired ? "false" : "true"}
+                >
+                  <option value="false">Not acknowledged</option>
+                  <option value="true">Acknowledge fallback usage</option>
+                </Select>
+              </div>
+              <Button type="submit" disabled={!canQueueExportWithAck}>
+                Publish to a channel
+              </Button>
+            </form>
+          ) : canWrite ? (
+            <p className="text-sm text-slate-600">
+              No installed connector with publish capability is available for this tenant.
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600">Viewer role cannot queue publish actions.</p>
+          )}
+          <details className="rounded-lg border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
+              Advanced channel diagnostics
+            </summary>
+            <div className="space-y-3 border-t border-slate-200 px-4 py-4">
+              <form method="get" className="flex max-w-xl items-end gap-3">
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs uppercase text-slate-500" htmlFor="simulator-channel">
+                    Channel
+                  </label>
+                  <Select id="simulator-channel" name="channel" defaultValue={selectedChannel}>
+                    {channels.map((channel) => (
+                      <option key={channel.channel} value={channel.channel}>
+                        {channel.displayName}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs uppercase text-slate-500" htmlFor="simulator-template-id">
+                    Mapping
+                  </label>
+                  <Select id="simulator-template-id" name="templateId" defaultValue={selectedTemplateId ?? ""}>
+                    <option value="">Live mapping</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                        {template.isDefault ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <Button type="submit">Run simulator</Button>
+              </form>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs uppercase text-slate-500">Export Ready</p>
+                  <p className="text-lg font-semibold">{simulation.exportReady ? "Yes" : "No"}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs uppercase text-slate-500">Risk Score</p>
+                  <p className="text-lg font-semibold">
+                    {simulation.riskScore} ({simulation.riskBand})
+                  </p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs uppercase text-slate-500">Missing Required Fields</p>
+                  <p className="text-lg font-semibold">{simulation.missingFields.length}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs uppercase text-slate-500">Compliance (Errors/Warnings)</p>
+                  <p className="text-lg font-semibold">
+                    {simulation.complianceSummary.errorCount}/{simulation.complianceSummary.warningCount}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600">
+                Mapping source: {simulation.mappingSource}
+                {simulation.templateName ? ` (${simulation.templateName})` : ""}
+              </p>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs uppercase text-slate-500">Missing Fields</p>
+                  {simulation.missingFields.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {simulation.missingFields.map((field) => (
+                        <li key={field}>{field}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-600">No required field gaps for this channel.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="mb-2 text-xs uppercase text-slate-500">Mapped Payload Preview</p>
+                  <pre className="max-h-64 overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
+                    {JSON.stringify(simulation.mappedPayload, null, 2)}
+                  </pre>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="mb-2 text-xs uppercase text-slate-500">Mapped Payload Preview</p>
-              <pre className="max-h-64 overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
-                {JSON.stringify(simulation.mappedPayload, null, 2)}
-              </pre>
-            </div>
-          </div>
+          </details>
         </div>
       </Card>
-      </section>
 
-      <Card hidden={!(activeTab === "channels" || activeTab === "activity")}>
+      <Card hidden={activeTab !== "channels"}>
         <CardTitle>{mappingManagerInstallation ? "Channel Mapping" : "Channel Mapping Templates"}</CardTitle>
         <div className="space-y-3">
           {mappingManagerInstallation ? (
@@ -728,12 +905,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <p className="text-sm text-slate-600">Viewer role cannot save mapping templates.</p>
           ) : null}
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            {mappingManagerInstallation ? (
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Legacy template inventory (transition only)
-              </div>
-            ) : null}
+          <details className="rounded-lg border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
+              Legacy template inventory (transition only)
+            </summary>
+            <div className="overflow-x-auto border-t border-slate-200 rounded-b-lg">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -769,99 +945,19 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </details>
         </div>
       </Card>
 
-      <Card hidden={!(activeTab === "channels" || activeTab === "activity")}>
-        <CardTitle>Pre-Export Jobs</CardTitle>
+      <Card hidden={activeTab !== "channels"}>
+        <CardTitle>Publish attempts and recovery</CardTitle>
         <div className="space-y-3">
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            <p className="font-medium">
-              Publish Readiness:{" "}
-              <span className={readiness.ok ? "text-emerald-700" : "text-red-700"}>
-                {readiness.ok ? "Ready" : "Blocked"}
-              </span>
-            </p>
-            {readinessBlockers.length > 0 ? (
-              <ul className="mt-1 list-disc pl-5">
-                {readinessBlockers.map((blocker) => (
-                  <li key={`readiness-blocker-${blocker}`}>{blocker}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-1 text-xs text-slate-500">No preflight blockers.</p>
-            )}
-            {readinessWarnings.length > 0 ? (
-              <ul className="mt-1 list-disc pl-5 text-xs text-slate-600">
-                {readinessWarnings.map((warning) => (
-                  <li key={`readiness-warning-${warning}`}>{warning}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-          {canWrite && publishableChannels.length > 0 ? (
-            <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
-              <RoleHiddenInput role={actorRole} />
-              <input type="hidden" name="productId" value={id} />
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-channel">
-                  Channel
-                </label>
-                <Select id="export-channel" name="channel" defaultValue={defaultExportChannel}>
-                  {publishableChannels.map((channel) => (
-                    <option key={channel.channel} value={channel.channel}>
-                      {channel.displayName}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-template-id">
-                  Template
-                </label>
-                <Select id="export-template-id" name="templateId" defaultValue={selectedTemplateId ?? ""}>
-                  <option value="">System mapping</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                      {template.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-max-retries">
-                  Max Retries
-                </label>
-                <Input id="export-max-retries" name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-fallback-ack">
-                  Fallback Acknowledgement
-                </label>
-                <Select
-                  id="export-fallback-ack"
-                  name="fallbackAcknowledged"
-                  defaultValue={fallbackAckRequired ? "false" : "true"}
-                >
-                  <option value="false">Not acknowledged</option>
-                  <option value="true">Acknowledge fallback usage</option>
-                </Select>
-              </div>
-              <Button type="submit" disabled={!canQueueExportWithAck}>
-                Queue export job
-              </Button>
-            </form>
-          ) : canWrite ? (
-            <p className="text-sm text-slate-600">
-              No installed connector with publish capability is available for this tenant.
-            </p>
-          ) : (
-            <p className="text-sm text-slate-600">Viewer role cannot queue or process export jobs.</p>
-          )}
-
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <details className="rounded-lg border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
+              View publish attempts and recovery actions
+            </summary>
+            <div className="overflow-x-auto border-t border-slate-200 rounded-b-lg">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -926,7 +1022,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </details>
         </div>
       </Card>
 
@@ -1111,9 +1208,18 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             <StatusChip label={simulation.exportReady ? "Ready" : "Blocked"} tone={simulation.exportReady ? "success" : "danger"} />
             <p className="text-xs text-slate-500">{simulation.missingFields.length} required fields missing</p>
           </SideRailCard>
-          <SideRailCard title="Workflow">
-            <p className="text-xs text-slate-600">Role: {actorRole}</p>
-            <p className="text-xs text-slate-600">Version: {product.version}</p>
+          <SideRailCard title="Next actions">
+            <div className="space-y-2 text-sm">
+              <Link href={tabHref("content")} className="block font-medium text-blue-700 hover:underline">
+                Update product content
+              </Link>
+              <Link href={tabHref("quality")} className="block font-medium text-blue-700 hover:underline">
+                Fix quality blockers
+              </Link>
+              <Link href={tabHref("channels")} className="block font-medium text-blue-700 hover:underline">
+                Review channel readiness
+              </Link>
+            </div>
           </SideRailCard>
         </aside>
       </div>
