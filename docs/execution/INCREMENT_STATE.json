@@ -681,6 +681,22 @@
             "rg -n \"PIM1_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
+        },
+        {
+          "storyId": "ST-CON-DOC-CONSOLIDATE-007",
+          "title": "Fold current-state connector baseline into the canonical developer guide",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "54f2c5d",
+          "tests_passed": [
+            "Get-Content docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/connectors/README.md",
+            "Get-Content docs/STRUCTURE.md",
+            "rg -n \"PIM1_CONNECTOR_CURRENT_STATE_2026-03-08|PIM1_CONNECTOR_DEVELOPER_GUIDE\" docs -S",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
         }
       ]
     }
