@@ -96,6 +96,27 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-UI-PRODUCT-DETAIL-004",
+          "title": "Simplify product detail into a merchandiser-first workflow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "6467c62",
+          "tests_passed": [
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "node apps/web/test/integration/catalog-first-shell.test.cjs",
+            "node apps/web/test/integration/product-workbench-ui.test.cjs",
+            "node apps/web/test/integration/mapping-step-up-ui.test.cjs"
+          ],
+          "reopened_by": "user",
+          "reopened_reason": "Phase 3 redesign still left product detail overloaded even after shell, mapping, dashboard, and workbench corrections.",
+          "regression_evidence": "Exact failing command: $script = @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/app/products/[id]/page.tsx','utf8'); const missing = []; if (!s.includes('Legacy template inventory (transition only)')) missing.push('legacy template inventory'); if (!s.includes('Pre-Export Jobs')) missing.push('pre-export jobs'); if (!s.includes('SideRailCard title=\"Workflow\"')) missing.push('workflow side-rail'); if (missing.length) { console.error('Expected overload markers not found: ' + missing.join(', ')); process.exit(1); } console.error('FAIL: product detail still exposes legacy template inventory, pre-export jobs, and workflow side-rail in the main merchandiser surface.'); process.exit(1); '@; $script | node -. Failing output snippet: FAIL: product detail still exposes legacy template inventory, pre-export jobs, and workflow side-rail in the main merchandiser surface. Likely file: apps/web/src/app/products/[id]/page.tsx."
         }
       ]
     },
