@@ -623,6 +623,20 @@
           "reopened_by": "user",
           "reopened_reason": "Frontend mapping flows needed to catch up to the backend step-up contract so protected mapping actions remained seller-usable.",
           "regression_evidence": "Exact failing command: node -e \"const fs=require('fs'); const a=fs.readFileSync('apps/web/src/app/actions.ts','utf8'); const api=fs.readFileSync('apps/web/src/lib/api.ts','utf8'); const p=fs.readFileSync('apps/web/src/app/channels/mappings/page.tsx','utf8'); const ok = a.includes('/auth/step-up') || api.includes('x-pim-step-up-token') || p.includes('step-up re-auth'); if(!ok){ console.error('FAIL: web mapping flow has no step-up integration for protected mapping actions'); process.exit(1);} console.log('ok');\". Failing output snippet: FAIL: web mapping flow has no step-up integration for protected mapping actions. Likely files: apps/web/src/app/actions.ts, apps/web/src/lib/api.ts, apps/web/src/app/channels/mappings/page.tsx."
+        },
+        {
+          "storyId": "ST-CON-DOC-SSOT-002",
+          "title": "Create connector documentation SSOT index and current-state baseline",
+          "status": "completed",
+          "locked": true,
+          "commit": "63c3036",
+          "tests_passed": [
+            "Get-Content docs/connectors/README.md",
+            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/STRUCTURE.md",
+            "git status --short",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
         }
       ]
     }
