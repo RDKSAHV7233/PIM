@@ -6,6 +6,17 @@ Index all separate documentation artifacts generated from validated PIM1 project
 Scope:
 Lists document files, validated source inputs, and missing-information policy used for this repository.
 
+Current Validation Status:
+- Generated reference bundle retained in repo for reviewer convenience.
+- Canonical current-state sources are:
+  - docs/product/PRD.md
+  - docs/product/PRD_SOURCES.md
+  - docs/execution/CURRENT_STATE.md
+  - docs/execution/INCREMENT_STATE.json
+  - docs/openapi.yaml
+- Repo head at last index alignment: 5a64683
+- This index reflects the current live repo/documentation baseline as of 2026-03-08.
+
 Content:
 Artifact Files:
 1. DOCUMENT_01_Product_Overview.txt
@@ -22,6 +33,9 @@ Artifact Files:
 
 Validated Source Inputs:
 - docs/product/PRD.md
+- docs/product/PRD_SOURCES.md
+- docs/execution/CURRENT_STATE.md
+- docs/execution/INCREMENT_STATE.json
 - docs/openapi.yaml
 - packages/db/prisma/schema.prisma
 - packages/db/prisma/migrations/*
@@ -38,4 +52,3 @@ Validated Source Inputs:
 Missing Information Rule Applied:
 If data is not present in validated PIM1 sources, the exact phrase is used:
 "Information not available in PIM1 project."
-

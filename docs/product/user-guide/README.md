@@ -2,6 +2,11 @@
 
 This folder now includes procedural, action-oriented documentation.
 
+- Current route baseline source: `apps/web/src/app/**/page.tsx`
+- Current shell baseline source: `apps/web/src/components/nav/app-sidebar.tsx`
+- Current execution snapshot: `docs/execution/CURRENT_STATE.md`
+- Current repo head at last guide alignment: `5a64683`
+
 ## Primary documents
 - `PAGE_ACTION_PLAYBOOK_INDEX.md` (page-by-page how-to index)
 - `playbooks/*.md` (one step-by-step playbook per route)

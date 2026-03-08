@@ -1,8 +1,9 @@
 # PIM1 Controlled Release Checklist
 
 - Source: `docs/product/PRD.md` (sections 12, 13, 15)
+- Execution source of truth: `docs/execution/INCREMENT_STATE.json`
 - Purpose: Explicit launch blockers and promotion criteria for controlled and broad rollout.
-- Last updated: 2026-03-07
+- Last updated: 2026-03-08
 
 ## 1. Blockers (Must Be Closed Before Broad Rollout)
 
@@ -64,7 +65,7 @@ Any trigger below moves release status back to controlled mode until mitigated:
 3. Credential handling regression (decryption/rotation failures).
 4. Sustained queue failure spikes with dead-letter growth and no recovery.
 
-## 5. Current Status Snapshot (2026-03-07)
+## 5. Current Status Snapshot (2026-03-08)
 
 ### Completed now
 1. Historical E10 gate runs have recorded consecutive pass artifacts (`RUN1` through `RUN5`) with staging-format metadata.
@@ -76,7 +77,9 @@ Any trigger below moves release status back to controlled mode until mitigated:
 
 ### Remaining for controlled rollout
 1. Live staging `/api/v1/health` proof is still pending; latest rollout snapshot must show a healthy staging response with no controlled gate blocker.
+2. `INCREMENT_STATE.json` still carries a pending release item under `INC-05`.
 
 ### Remaining for broad rollout
 1. Controlled rollout observation window of 14 consecutive days is not complete yet.
 2. Production SLO trend window requirements are pending live observation data.
+3. `INCREMENT_STATE.json` still carries a pending release item under `INC-08`.

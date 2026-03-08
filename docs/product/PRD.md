@@ -4,6 +4,8 @@
 - Version: 1.0 (March 2026 consolidation)
 - Owner: Product + Engineering
 - Status: Active baseline
+- Current implementation snapshot: `docs/execution/CURRENT_STATE.md`
+- Current repo head at last PRD alignment: `5a64683`
 
 ## 1. Product Summary
 PIM1 is an India-first, multi-tenant Product Information Management platform with a connector-first integration architecture. Core catalog and compliance live in PIM1; marketplace-specific execution lives in connectors (Amazon, Flipkart, Meesho, ONDC later).
@@ -21,6 +23,23 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - Enable fast bulk import/edit with traceability and row-level repair.
 - Isolate channel integrations through a connector contract for extensibility.
 - Support launch operations with clear increment gates and evidence-driven checks.
+
+## 3A. Current Implemented Product Shell
+Source: `apps/web/src/components/nav/app-sidebar.tsx`
+
+### Current seller-facing sections
+- Dashboard
+- Products
+- Catalog
+- Channels
+- Quality
+- Operations
+- Settings
+
+### Current hidden/internal section
+- Labs / Internal
+
+Note: this reflects the current implemented shell, not earlier target IA proposals that used `Admin` as the primary governance label.
 
 ## 4. Users and Roles
 - Admin: taxonomy, compliance, and platform controls.
@@ -95,6 +114,11 @@ Sellers and catalog teams currently manage fragmented product data across spread
 - INC-06 + INC-07: Rejection intelligence confidence modeling and workflow maturation.
 - INC-08+: ONDC architecture and adapter path after connector baseline stabilizes.
 
+### Current execution status snapshot (2026-03-08)
+- Completed: `INC-01`, `INC-02`, `INC-03`, `INC-04`, `INC-06`, `INC-07`, `INC-09`
+- In progress with pending release items: `INC-05`, `INC-08`
+- Source of truth: `docs/execution/INCREMENT_STATE.json`
+
 ## 12. Gate Criteria (Execution-Control)
 - Mandatory lint/build/test gates per increment with evidence artifacts.
 - Staging run metadata required for sign-off: environment, tenantId, date, gitTag, runUrl.
@@ -119,6 +143,10 @@ Sellers and catalog teams currently manage fragmented product data across spread
 
 ## 15. Release Readiness
 PIM1 is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
+
+Current state on 2026-03-08:
+- controlled-release execution evidence exists in `docs/execution/gates/` and `docs/execution/rollout/`
+- release closure is not complete because `INC-05` and `INC-08` still carry pending release items in `docs/execution/INCREMENT_STATE.json`
 
 ## 16. Source Inputs Used
 This PRD is consolidated from imported March 2026 architecture/execution documents, redesign notes, UI review, and in-repo product scope/backlog artifacts.

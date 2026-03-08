@@ -86,6 +86,17 @@ Scope: Replace legacy stage-driven execution language with functional increments
 - Primary stories:
   - `ST-QA-*`
 
+## INC-09 Connector Mapping Lifecycle + Publish Readiness
+- Goal: Connector mapping governance and publish-readiness checks are lifecycle-driven and tenant-safe.
+- Includes:
+  - Mapping lifecycle state model
+  - Published-only effective resolution
+  - Taxonomy/category-scope alignment
+  - Publish readiness hard-blocks
+  - Mapping rollback and step-up protection
+- Primary stories:
+  - `ST-CON-*`
+
 ## Tracking Files
 - Active state file: `docs/execution/INCREMENT_STATE.json`
 - Legacy alias: `docs/execution/PHASE_STATE.json` (redirect only)

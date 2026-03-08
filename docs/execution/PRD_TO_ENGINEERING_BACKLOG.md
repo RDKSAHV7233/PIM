@@ -1,9 +1,10 @@
 # PIM1 PRD to Engineering Backlog
 
 - Source: `docs/product/PRD.md`
+- Current execution source of truth: `docs/execution/INCREMENT_STATE.json`
 - Purpose: Convert PRD requirements into execution-ready engineering backlog.
 - Format: `Epic -> Story -> Acceptance Criteria`
-- Date: 2026-03-03
+- Date: 2026-03-08
 
 ## 1. Epic Overview
 
@@ -15,10 +16,10 @@
 | E4 | Bulk Edit and History | FR-006 | Complete (2026-03-03) |
 | E5 | Connector Framework and Submission | FR-009, FR-010, CR-001..CR-010 | Complete baseline + mapping lifecycle/readiness verified |
 | E6 | Tenant Safety and Auth Hardening | NFR-001, NFR-002, DG-002 | Complete (2026-03-03) |
-| E7 | Runtime Reliability and Ops Gates | NFR-003..NFR-007, DG-001 | Complete (2026-03-03) |
+| E7 | Runtime Reliability and Ops Gates | NFR-003..NFR-007, DG-001 | Implemented; release evidence still open via INC-05 pending item |
 | E8 | Dashboard Aggregations | FR-011 | Complete (2026-03-03) |
 | E9 | Data Governance and Compliance | DG-001..DG-004 | Complete (2026-03-03) |
-| E10 | Quality Gates and Release Readiness | PRD section 12, 13, 15 | Complete (2026-03-03) |
+| E10 | Quality Gates and Release Readiness | PRD section 12, 13, 15 | Implemented; rollout sign-off still open via INC-08 pending item |
 
 ## 2. Backlog
 
