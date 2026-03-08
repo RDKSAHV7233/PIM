@@ -72,6 +72,28 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-UI-STRUCTURED-MAPPING-003",
+          "title": "Replace JSON-first mapping authoring with a structured seller-facing editor",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "dad4aec",
+          "tests_passed": [
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
+            "node apps/web/test/integration/internal-surface-gating.test.cjs",
+            "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
+            "npm run test:integration:marketplace-capability-ui-gating",
+            "npm run test:integration:connector-action-matrix-ui-gating"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         }
       ]
     },
