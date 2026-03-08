@@ -30,11 +30,16 @@ For connector work, trust these sources in this order:
    - `apps/api/src/connector-framework/**`
    - `apps/web/src/app/channels/mappings/**`
 
-Treat these as non-authoritative or stale unless updated:
+Use these as supporting references, not sole planning truth:
 - `docs/openapi.json`
 - `docs/openapi.yaml`
 - `docs/product/user-guide/**`
 - downloaded connector artifacts outside the repo
+
+Current note:
+- `docs/openapi.json` and `docs/openapi.yaml` now include connector mapping rollback and `/api/v1/auth/step-up`
+- `docs/product/user-guide/**` now reflects `/channels/mappings` as the canonical mapping route
+- connector planning should still anchor on `PRD.md`, `INCREMENT_STATE.json`, and current code first
 
 ## 3. Executive Verdict
 
@@ -195,31 +200,24 @@ Current replacements:
 - `apps/api/src/connector-framework/connector.registry.ts`
 - `apps/web/src/app/channels/mappings/page.tsx`
 
-## 7. Current Documentation Drift
+## 7. Current Documentation Usage Notes
 
-These in-repo docs are currently behind the code:
+### Connector planning truth
 
-### High priority
+Use these first:
+- `docs/product/PRD.md`
+- `docs/execution/INCREMENT_STATE.json`
+- current code in `apps/api/src/marketplace/**`, `apps/api/src/auth/**`, `apps/api/src/connector-framework/**`, `apps/web/src/app/channels/mappings/**`
 
-- `docs/openapi.json`
-- `docs/openapi.yaml`
-- `docs/product/user-guide/PAGE_GUIDE_INDEX.md`
-- `docs/product/user-guide/FUNCTIONALITY_WISE_GUIDE.md`
-- `docs/product/user-guide/playbooks/connectors___installationId___mapping_playbook.md`
-- `docs/product/user-guide/playbooks/channels__mappings_playbook.md`
+### Supporting references
 
-Reasons:
-- missing current mapping lifecycle endpoints
-- missing `/auth/step-up`
-- still documenting template-era actions
-- still treating `/connectors/[installationId]/mapping` as an active work surface
-
-### Medium priority
-
-- `README.md`
-  - infrastructure wording should stop implying durable queue readiness
-- `docs/STRUCTURE.md`
-  - should stop presenting stale generated route docs as current route truth
+- `docs/openapi.json` and `docs/openapi.yaml`
+  - useful API contract references
+  - currently include `/api/v1/auth/step-up` and rollback endpoints
+  - still secondary to current code for connector planning
+- `docs/product/user-guide/**`
+  - current route and mapping-workflow guidance is largely aligned
+  - generated guide content should still be treated as secondary when connector behavior changes
 
 ## 8. Current Release Reality for Connector Work
 
@@ -255,14 +253,8 @@ When planning the next connector sprint:
 
 ## 10. Immediate Documentation Actions
 
-### P0
-- regenerate `docs/openapi.json`
-- regenerate `docs/openapi.yaml`
-- rewrite mapping sections in `docs/product/user-guide/**`
-
 ### P1
-- update `README.md` queue/runtime wording
-- update `docs/STRUCTURE.md` to distinguish canonical docs from generated/reference docs
+- regenerate OpenAPI and connector user-guide content when connector endpoints or mapping workflow semantics change
 
 ### P2
 - archive or mark superseded:

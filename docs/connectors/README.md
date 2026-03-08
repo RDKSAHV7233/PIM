@@ -48,13 +48,18 @@ For connector engineering, trust the current repo code in this order:
 - `docs/product/PRD.md`
 - `docs/execution/INCREMENT_STATE.json`
 
-## Important non-authoritative surfaces
+## Important supporting-reference surfaces
 
-These are currently behind the live connector implementation and must not be treated as sole truth:
+These should not be treated as sole connector-planning truth:
 
 - `docs/openapi.json`
 - `docs/openapi.yaml`
 - `docs/product/user-guide/**`
+
+Current note:
+- OpenAPI now includes `/api/v1/auth/step-up` and connector mapping rollback endpoints.
+- Product user-guide docs now point to `/channels/mappings` as the canonical mapping route.
+- For connector planning, use them as supporting references after `PRD.md`, `INCREMENT_STATE.json`, and current code.
 
 ## Current connector state summary
 
