@@ -35,10 +35,22 @@ Supporting references:
 - `docs/openapi.yaml`
 - `docs/product/user-guide/**`
 
-Current connector baseline:
-- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+Historical context only:
+- `docs/archive/connectors/` once archived
+- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md` as a compatibility pointer
 
 ## 3. Current Connector Model
+
+### Current-state summary
+
+As of 2026-03-08:
+- mapping lifecycle exists
+- rollback exists
+- step-up re-authentication exists for high-risk mapping actions
+- canonical editable mapping path is `/channels/mappings`
+- legacy connector mapping path is transition-only
+- runtime discovery is hybrid, not plugin-dynamic
+- broad rollout readiness is still blocked by open release gates
 
 ### Runtime model
 
@@ -67,6 +79,21 @@ Examples:
 Current capability enforcement is expected in:
 - backend service/controller checks
 - seller-facing UI gating
+
+### Current capability status
+
+| Capability | Current status | Evidence |
+|---|---|---|
+| Connector runtime registry | Exists (hybrid) | `apps/api/src/connector-framework/connector.registry.ts` |
+| Mapping lifecycle | Exists | `apps/api/src/marketplace/connector-mapping.service.ts` |
+| Mapping rollback | Exists | `apps/api/src/marketplace/marketplace.controller.ts`, `apps/api/src/marketplace/connector-mapping.service.ts` |
+| Step-up re-auth for mapping publish/archive/rollback | Exists | `apps/api/src/auth/auth.controller.ts`, `apps/api/src/auth/step-up.guard.ts` |
+| Publish-readiness hard gate | Exists | `apps/api/src/marketplace/marketplace.controller.ts`, `apps/api/src/marketplace/connector-mapping.service.ts` |
+| Canonical mapping UI | Exists | `apps/web/src/app/channels/mappings/page.tsx` |
+| Legacy mapping editor demotion | Exists | `apps/web/src/app/connectors/[installationId]/mapping/page.tsx` |
+| Structured mapping editor | Exists | `apps/web/src/app/channels/mappings/page.tsx` |
+| Plugin-style connector discovery | Missing / future scope | `docs/product/PRD.md` |
+| Broad rollout evidence | Missing / incomplete | `docs/execution/INCREMENT_STATE.json` |
 
 ## 4. Canonical Connector UX Paths
 
@@ -242,6 +269,18 @@ Archive location:
 - `docs/archive/connectors/`
 
 Current active docs supersede those artifacts.
+
+### Superseded external artifacts
+
+These older documents are historical only and should not drive current implementation:
+- `PIM1_connector_plan_review_2026-03-04.docx`
+- `PIM1_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
+
+They are stale because they reference older paths and predate:
+- lifecycle mapping in `apps/api/src/marketplace/**`
+- rollback support
+- step-up re-authentication
+- canonical `/channels/mappings` UI
 
 ## 14. Final Rule
 

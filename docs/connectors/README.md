@@ -12,17 +12,22 @@ Use this page first to determine:
 - which documents are historical only
 - which code surfaces are the live implementation truth
 
-## Canonical current-state document
-
-- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
-
-This is the current connector planning baseline for PIM1.
-
 ## Canonical developer guide
 
 - `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
 
-Use this for day-to-day connector implementation work.
+Use this for:
+- current connector architecture
+- day-to-day connector implementation work
+- mapping lifecycle and rollback behavior
+- step-up re-authentication requirements
+- release-state connector interpretation
+
+## Compatibility pointer
+
+- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+
+This is retained as a thin compatibility pointer only. The guide above is the human-readable SSOT.
 
 ## Historical / superseded external artifacts
 
@@ -78,8 +83,5 @@ As of 2026-03-08:
 - runtime discovery is hybrid, not plugin-dynamic
 - broad rollout readiness is still blocked by open release gates
 
-For the full current-state detail, use:
-- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
-
-For implementation guidance, use:
+For implementation and current-state guidance, use:
 - `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
