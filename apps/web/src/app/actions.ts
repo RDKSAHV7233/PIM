@@ -55,6 +55,61 @@ function parseJsonObject(value: FormDataEntryValue | null, label: string): Recor
   }
 }
 
+function parseStructuredConnectorMappingRules(formData: FormData, categoryScope: string): Record<string, unknown> {
+  const fieldMappings: Record<string, string> = {};
+  for (const [key, rawValue] of formData.entries()) {
+    if (!key.startsWith("mapTarget::")) {
+      continue;
+    }
+    const targetField = String(key.slice("mapTarget::".length)).trim();
+    const sourceField = String(rawValue ?? "").trim();
+    if (targetField && sourceField) {
+      fieldMappings[sourceField] = targetField;
+    }
+  }
+
+  const requiredFields = formData
+    .getAll("requiredField")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const taxonomyRequiredAttributes = formData
+    .getAll("taxonomyRequiredAttribute")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const targetCategory = String(formData.get("targetCategory") ?? "").trim();
+
+  return {
+    field_mappings: fieldMappings,
+    required_fields: requiredFields,
+    category: {
+      source: categoryScope,
+      target: targetCategory,
+    },
+    taxonomy_required_attributes: taxonomyRequiredAttributes,
+  };
+}
+
+function parseStructuredConnectorFallbackPolicy(formData: FormData): Record<string, unknown> {
+  const enabled = String(formData.get("fallbackEnabled") ?? "true").trim() === "true";
+  const warningTag = String(formData.get("fallbackWarningTag") ?? "").trim();
+  const ackMessage = String(formData.get("fallbackAckMessage") ?? "").trim();
+  const defaultCategory = String(formData.get("fallbackDefaultCategory") ?? "").trim();
+
+  const fallbackPolicy: Record<string, unknown> = {
+    enabled,
+  };
+  if (warningTag) {
+    fallbackPolicy.warning_tag = warningTag;
+  }
+  if (ackMessage) {
+    fallbackPolicy.ack_message = ackMessage;
+  }
+  if (defaultCategory) {
+    fallbackPolicy.default_category = defaultCategory;
+  }
+  return fallbackPolicy;
+}
+
 function parseJsonArray(value: FormDataEntryValue | null, label: string): string[] {
   const text = String(value ?? "").trim();
   if (!text) {
@@ -772,8 +827,14 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
     throw new Error("Connector slug, category scope, mapping level and connector definition are required.");
   }
 
-  const mappingRules = parseJsonObject(formData.get("mappingRules"), "Mapping rules");
-  const fallbackPolicy = parseJsonObject(formData.get("fallbackPolicy"), "Fallback policy");
+  const mappingRulesRaw = String(formData.get("mappingRules") ?? "").trim();
+  const fallbackPolicyRaw = String(formData.get("fallbackPolicy") ?? "").trim();
+  const mappingRules = mappingRulesRaw
+    ? parseJsonObject(formData.get("mappingRules"), "Mapping rules")
+    : parseStructuredConnectorMappingRules(formData, categoryScope);
+  const fallbackPolicy = fallbackPolicyRaw
+    ? parseJsonObject(formData.get("fallbackPolicy"), "Fallback policy")
+    : parseStructuredConnectorFallbackPolicy(formData);
   const fallbackAckRequired = String(formData.get("fallbackAckRequired") ?? "").trim() === "true";
   const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
 

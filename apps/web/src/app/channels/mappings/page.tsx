@@ -19,10 +19,12 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
   type AppRole,
+  type AttributeDefinition,
   type ConnectorTaxonomyItem,
   type MarketplaceChannel,
   evaluateConnectorMappingPreflight,
   evaluateConnectorPublishReadiness,
+  getCategoryAttributes,
   getConnectorDefinitions,
   getConnectorMappingVersions,
   getCategories,
@@ -89,6 +91,63 @@ function requiredAttributesFromTaxonomy(items: ConnectorTaxonomyItem[]): string[
     }
   }
   return Array.from(values).sort();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function extractResolvedCategoryTarget(resolvedMapping: Record<string, unknown> | null): string {
+  const category = resolvedMapping?.category;
+  if (!category || typeof category !== "object" || Array.isArray(category)) {
+    return "";
+  }
+  const target = (category as Record<string, unknown>).target;
+  return typeof target === "string" ? target.trim() : "";
+}
+
+function invertFieldMap(fieldMap: Record<string, string>): Record<string, string> {
+  const inverted: Record<string, string> = {};
+  for (const [sourceField, targetField] of Object.entries(fieldMap)) {
+    const source = String(sourceField ?? "").trim();
+    const target = String(targetField ?? "").trim();
+    if (source && target) {
+      inverted[target] = source;
+    }
+  }
+  return inverted;
+}
+
+function buildSourceFieldOptions(
+  attributeDefinitions: AttributeDefinition[],
+  currentFieldMap: Record<string, string>,
+): Array<{ value: string; label: string }> {
+  const options = new Map<string, string>();
+  const commonFields: Array<[string, string]> = [
+    ["title", "Title"],
+    ["brand", "Brand"],
+    ["description", "Description"],
+    ["hsnCode", "HSN code"],
+    ["gstRate", "GST rate"],
+    ["status", "Status"],
+    ["mrp", "MRP"],
+    ["sellingPrice", "Selling price"],
+  ];
+  for (const [value, label] of commonFields) {
+    options.set(value, label);
+  }
+  for (const definition of attributeDefinitions) {
+    const appliesLabel = definition.required ? "Required attribute" : "Attribute";
+    options.set(`attributes.${definition.key}`, `${definition.name} (${appliesLabel})`);
+  }
+  for (const sourceField of Object.keys(currentFieldMap)) {
+    if (!options.has(sourceField)) {
+      options.set(sourceField, sourceField);
+    }
+  }
+  return Array.from(options.entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function presentMappingLevel(level: string): string {
@@ -281,7 +340,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const taxonomyQ = String(query.taxonomyQ ?? "").trim();
     const selectedProductId = String(query.productId ?? "").trim();
 
-    const [mapping, versions, resolved, preflight, readiness, taxonomyMatches, unmappedCategories] =
+    const [mapping, versions, resolved, preflight, readiness, taxonomyMatches, unmappedCategories, categoryAttributes] =
       await Promise.all([
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, {
         role: actorRole,
@@ -325,17 +384,40 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         { role: actorRole, authHeader },
       ),
       getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader }),
+      selectedCategoryId
+        ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader })
+        : Promise.resolve([]),
     ]);
 
     const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}${taxonomyQ ? `&taxonomyQ=${encodeURIComponent(taxonomyQ)}` : ""}${selectedProductId ? `&productId=${encodeURIComponent(selectedProductId)}` : ""}`;
     const taxonomyDefaults = requiredAttributesFromTaxonomy(taxonomyMatches);
+    const resolvedCategoryTarget = extractResolvedCategoryTarget(resolved?.resolvedMapping ?? null);
+    const targetCategoryOptions = uniqueStrings([
+      resolvedCategoryTarget,
+      ...taxonomyMatches.map((item) => item.id),
+      ...unmappedCategories.map((item) => item.id),
+    ]);
+    const selectedTargetCategory = resolvedCategoryTarget || targetCategoryOptions[0] || "";
+    const requiredTargetFields = uniqueStrings([...mapping.requiredFields, ...taxonomyDefaults]);
+    const currentFieldMap = Object.fromEntries(
+      Object.entries(mapping.fieldMap).map(([sourceField, targetField]) => [String(sourceField), String(targetField)]),
+    );
+    const mappedTargetToSource = invertFieldMap(currentFieldMap);
+    const targetFieldOptions = uniqueStrings([
+      ...requiredTargetFields,
+      ...Object.values(currentFieldMap),
+    ]);
+    const sourceFieldOptions = buildSourceFieldOptions(
+      categoryAttributes.filter((definition) => definition.appliesTo === "product"),
+      currentFieldMap,
+    );
     const mappingDraftRulesDefault = JSON.stringify(
       {
-        field_mappings: mapping.fieldMap,
-        required_fields: mapping.requiredFields,
+        field_mappings: currentFieldMap,
+        required_fields: requiredTargetFields,
         category: {
           source: selectedCategoryId,
-          target: taxonomyMatches[0]?.id ?? "",
+          target: selectedTargetCategory,
         },
         taxonomy_required_attributes: taxonomyDefaults,
       },
@@ -347,6 +429,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         enabled: true,
         warning_tag: "fallback_category_mapping",
         ack_message: "Fallback category will be used for publish if no explicit mapping exists.",
+        default_category: selectedTargetCategory,
       },
       null,
       2,
@@ -457,58 +540,207 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             {canWrite ? (
               <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
                 <RoleHiddenInput role={actorRole} />
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-level">
-                    Mapping type
-                  </label>
-                  <Select id="mapping-level" name="mappingLevel" defaultValue="tenant_connector_category_mapping">
-                    <option value="tenant_connector_default">Default mapping</option>
-                    <option value="tenant_connector_category_mapping">Category mapping</option>
-                  </Select>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-level">
+                      Mapping type
+                    </label>
+                    <Select id="mapping-level" name="mappingLevel" defaultValue="tenant_connector_category_mapping">
+                      <option value="tenant_connector_default">Default mapping</option>
+                      <option value="tenant_connector_category_mapping">Category mapping</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category-scope">
+                      Category scope
+                    </label>
+                    <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} required />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category-scope">
-                    Category Scope
-                  </label>
-                  <Input id="mapping-category-scope" name="categoryScope" defaultValue={selectedCategoryId || "*"} required />
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-target-category">
+                      Publish category
+                    </label>
+                    {targetCategoryOptions.length > 0 ? (
+                      <Select id="mapping-target-category" name="targetCategory" defaultValue={selectedTargetCategory}>
+                        {targetCategoryOptions.map((itemId) => {
+                          const match = taxonomyMatches.find((entry) => entry.id === itemId) ?? unmappedCategories.find((entry) => entry.id === itemId);
+                          return (
+                            <option key={itemId} value={itemId}>
+                              {match?.path ?? itemId}
+                            </option>
+                          );
+                        })}
+                      </Select>
+                    ) : (
+                      <Input
+                        id="mapping-target-category"
+                        name="targetCategory"
+                        placeholder="Enter target channel category id"
+                        defaultValue={selectedTargetCategory}
+                        required
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-compatibility">
+                      Channel compatibility
+                    </label>
+                    <Select id="mapping-compatibility" name="compatibilityState" defaultValue="compatible">
+                      <option value="compatible">Compatible</option>
+                      <option value="deprecated">Needs review</option>
+                      <option value="remap_required">Needs remap</option>
+                      <option value="blocked">Blocked</option>
+                    </Select>
+                  </div>
                 </div>
+
+                <div className="rounded-lg border border-slate-200">
+                  <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-sm font-medium text-slate-900">Attribute mapping</p>
+                    <p className="text-xs text-slate-500">
+                      Map your PIM fields to the channel fields needed for publish.
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-left text-sm">
+                      <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Channel field</th>
+                          <th className="px-3 py-2">PIM field</th>
+                          <th className="px-3 py-2">Required</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {targetFieldOptions.map((targetField) => {
+                          const selectedSource = mappedTargetToSource[targetField] ?? "";
+                          const required = requiredTargetFields.includes(targetField);
+                          return (
+                            <tr key={targetField} className="border-t border-slate-200">
+                              <td className="px-3 py-2.5 font-medium text-slate-900">{targetField}</td>
+                              <td className="px-3 py-2.5">
+                                <Select name={`mapTarget::${targetField}`} defaultValue={selectedSource}>
+                                  <option value="">Select PIM field</option>
+                                  {sourceFieldOptions.map((option) => (
+                                    <option key={`${targetField}:${option.value}`} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <StatusChip label={required ? "Required" : "Optional"} tone={required ? "warning" : "neutral"} />
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <StatusChip label={selectedSource ? "Mapped" : "Missing"} tone={selectedSource ? "success" : required ? "danger" : "neutral"} />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-medium text-slate-900">Fallback behavior</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Use fallback only when you want a backup category path during publish.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-enabled">
+                        Allow fallback mapping
+                      </label>
+                      <Select id="fallback-enabled" name="fallbackEnabled" defaultValue="true">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-fallback-ack-required">
+                        Fallback confirmation
+                      </label>
+                      <Select id="mapping-fallback-ack-required" name="fallbackAckRequired" defaultValue="true">
+                        <option value="true">Required</option>
+                        <option value="false">Not required</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-default-category">
+                        Default fallback category
+                      </label>
+                      <Input
+                        id="fallback-default-category"
+                        name="fallbackDefaultCategory"
+                        defaultValue={selectedTargetCategory}
+                        placeholder="Optional fallback category id"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-warning-tag">
+                        Fallback label
+                      </label>
+                      <Input
+                        id="fallback-warning-tag"
+                        name="fallbackWarningTag"
+                        defaultValue="fallback_category_mapping"
+                      />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-ack-message">
+                        Confirmation message
+                      </label>
+                      <Textarea
+                        id="fallback-ack-message"
+                        name="fallbackAckMessage"
+                        rows={3}
+                        defaultValue="Fallback category will be used for publish if no explicit mapping exists."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {requiredTargetFields.map((field) => (
+                  <input key={`required-field-${field}`} type="hidden" name="requiredField" value={field} />
+                ))}
+                {taxonomyDefaults.map((field) => (
+                  <input key={`taxonomy-required-${field}`} type="hidden" name="taxonomyRequiredAttribute" value={field} />
+                ))}
+
                 <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced JSON fields (temporary)</summary>
+                  <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced JSON overrides</summary>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Use only for exceptional cases. The structured editor above is the primary authoring path.
+                  </p>
                   <div className="mt-3 grid gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-rules">
-                        Advanced mapping rules (JSON)
+                        Override mapping rules (JSON)
                       </label>
-                      <Textarea id="mapping-rules" name="mappingRules" rows={8} defaultValue={mappingDraftRulesDefault} />
+                      <Textarea
+                        id="mapping-rules"
+                        name="mappingRules"
+                        rows={8}
+                        placeholder={mappingDraftRulesDefault}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-policy">
-                        Fallback behavior (JSON)
+                        Override fallback behavior (JSON)
                       </label>
-                      <Textarea id="fallback-policy" name="fallbackPolicy" rows={5} defaultValue={fallbackPolicyDefault} />
+                      <Textarea
+                        id="fallback-policy"
+                        name="fallbackPolicy"
+                        rows={5}
+                        placeholder={fallbackPolicyDefault}
+                      />
                     </div>
                   </div>
                 </details>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-compatibility">
-                    Channel compatibility
-                  </label>
-                  <Select id="mapping-compatibility" name="compatibilityState" defaultValue="compatible">
-                    <option value="compatible">Compatible</option>
-                    <option value="deprecated">Needs review</option>
-                    <option value="remap_required">Needs remap</option>
-                    <option value="blocked">Blocked</option>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-fallback-ack-required">
-                    Fallback confirmation
-                  </label>
-                  <Select id="mapping-fallback-ack-required" name="fallbackAckRequired" defaultValue="true">
-                    <option value="true">Required</option>
-                    <option value="false">Not required</option>
-                  </Select>
-                </div>
                 <input type="hidden" name="redirectTo" value={redirectTo} />
                 <input type="hidden" name="connectorSlug" value={connectorSlug} />
                 <input type="hidden" name="connectorDefinitionId" value={definition?.id ?? connectorSlug} />
