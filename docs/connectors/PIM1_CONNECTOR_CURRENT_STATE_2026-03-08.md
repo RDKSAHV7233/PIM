@@ -249,7 +249,7 @@ When planning the next connector sprint:
 3. Treat `/channels/mappings` as the only editable mapping surface.
 4. Treat step-up re-authentication as the correct security term.
 5. Treat plugin-style discovery as future scope, not current capability.
-6. Do not use OpenAPI or generated user-guide files as the sole implementation truth until they are regenerated.
+6. Do not use OpenAPI or generated user-guide files as the sole implementation truth; use them as supporting references after PRD, INCREMENT state, and current code.
 
 ## 10. Immediate Documentation Actions
 

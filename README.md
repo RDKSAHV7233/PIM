@@ -9,7 +9,7 @@ Current repo state:
 - Canonical product baseline: `docs/product/PRD.md`
 - Current execution snapshot: `docs/execution/CURRENT_STATE.md`
 - Increment source of truth: `docs/execution/INCREMENT_STATE.json`
-- Current head at last doc alignment: `5a64683`
+- Canonical connector documentation entry point: `docs/connectors/README.md`
 
 ## Workspace Layout
 - `apps/web`: Next.js App Router UI
@@ -65,5 +65,7 @@ Current repo state:
 - Product source index: `docs/product/PRD_SOURCES.md`
 - Current implementation/execution snapshot: `docs/execution/CURRENT_STATE.md`
 - Backlog: `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md`
-- User guides: `docs/product/user-guide/`
-- OpenAPI references: `docs/openapi.yaml`, `docs/openapi.json`
+- Connector docs SSOT: `docs/connectors/README.md`
+- Connector current-state baseline: `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+- User guides: `docs/product/user-guide/` (supporting operational guides, not sole implementation truth)
+- OpenAPI references: `docs/openapi.yaml`, `docs/openapi.json` (supporting contract references, not sole implementation truth)
