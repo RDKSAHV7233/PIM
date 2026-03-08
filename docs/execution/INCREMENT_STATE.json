@@ -652,6 +652,19 @@
             "rg -n \"canonical lifecycle mapping workspace|transition-only|createConnectorMappingVersionAction|publishConnectorMappingVersionAction|rollbackConnectorMappingVersionAction\" docs/product/user-guide -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
+        },
+        {
+          "storyId": "ST-CON-DOC-CONSISTENCY-004",
+          "title": "Align README and live connector doc entry points with the current SSOT",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "aaef365",
+          "tests_passed": [
+            "rg -n \"connector documentation entry point|Connector docs SSOT|supporting reference|canonical lifecycle mapping workspace\" README.md docs/STRUCTURE.md docs/connectors -S",
+            "git diff --stat README.md docs/STRUCTURE.md docs/connectors",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
         }
       ]
     }
