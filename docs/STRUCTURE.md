@@ -4,6 +4,9 @@
 - Current repo head at last doc alignment: `5a64683`
 
 ## Active canonical structure
+- `docs/connectors/`
+  - `README.md` (canonical connector-documentation entry point)
+  - `PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md` (current connector implementation baseline)
 - `docs/product/`
   - `PRD.md`
   - `PRD_SOURCES.md`
@@ -26,7 +29,8 @@
 - `docs/design/`
   - `PIM1_UI_Design_Review.html` (reference design review, not the live route/source contract)
 - `docs/product/user-guide/`
-  - generated operational guide bundle for current web routes and flows
+  - generated operational guide bundle
+  - not canonical for connector route/action truth until regenerated against current mapping lifecycle and canonical route flow
 - `docs/ports/`
   - `orbit-pim1-transfer-2026-03-06/` (historical transfer pack retained for traceability; not current implementation truth)
 - `docs/runbooks/`
