@@ -665,6 +665,22 @@
             "git diff --stat README.md docs/STRUCTURE.md docs/connectors",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
+        },
+        {
+          "storyId": "ST-CON-DOC-GUIDE-006",
+          "title": "Publish final repo-native connector developer guide",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "0657985",
+          "tests_passed": [
+            "Get-Content docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/README.md",
+            "Get-Content docs/STRUCTURE.md",
+            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "rg -n \"PIM1_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
         }
       ]
     }
