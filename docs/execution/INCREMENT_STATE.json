@@ -60,23 +60,17 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "7c5ad6c",
+          "commit": "567f3ff",
           "tests_passed": [
             "npm run lint --workspace @pim1/web",
             "node apps/web/test/integration/catalog-first-shell.test.cjs",
             "node apps/web/test/integration/product-workbench-ui.test.cjs",
-            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
-            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
             "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
-            "node apps/web/test/integration/internal-surface-gating.test.cjs",
-            "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
-            "npm run test:integration:marketplace-capability-ui-gating",
-            "npm run test:integration:connector-action-matrix-ui-gating",
             "npm run build --workspace @pim1/web"
           ],
-          "reopened_by": "user",
-          "reopened_reason": "Phase 3 UX slice needs dashboard and product workbench refinement because the shell still behaves like a reporting surface instead of a merchandiser workbench.",
-          "regression_evidence": "Exact failing command: node -e \"const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/dashboard/page.tsx','utf8'); const hits=(s.match(/Publishing Health/g)||[]).length; if(hits<2){console.error('Expected duplicate Publishing Health sections for regression proof, found '+hits); process.exit(1);} console.error('FAIL: dashboard still duplicates Publishing Health sections ('+hits+') and remains report-shaped.'); process.exit(1);\". Failing output snippet: FAIL: dashboard still duplicates Publishing Health sections (2) and remains report-shaped. Likely file: apps/web/src/app/dashboard/page.tsx. Exact failing command: node -e \"const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/catalog/products/page.tsx','utf8'); const hasLegacy=s.includes('const mappingManagerHref =') && s.includes('/connectors/') && s.includes('/mapping?productId='); if(!hasLegacy){console.error('Expected legacy mappingManagerHref redirect pattern not found'); process.exit(1);} console.error('FAIL: product workbench still computes mappingManagerHref through legacy /connectors/.../mapping redirect path.'); process.exit(1);\". Failing output snippet: FAIL: product workbench still computes mappingManagerHref through legacy /connectors/.../mapping redirect path. Likely file: apps/web/src/app/catalog/products/page.tsx."
+          "reopened_by": "codex",
+          "reopened_reason": "P0 UX execution reopens the catalog-first shell story to add KPI drill-down links, compact the product workbench toolbar, and expose seller-facing urgency counts in the primary navigation.",
+          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/dashboard/page.tsx','utf8'); if (s.includes('href=\\\"/quality/issues?severity=BLOCKING\\\"') || s.includes(\"href='/quality/issues?severity=BLOCKING'\")) { console.error('Expected missing KPI drill-down link, but blocking issues link already exists.'); process.exit(1); } console.error('FAIL: dashboard KPI cards are display-only and do not link directly to filtered drill-down views.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: dashboard KPI cards are display-only and do not link directly to filtered drill-down views. Likely file: apps/web/src/app/dashboard/page.tsx. Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/components/product/products-tab.tsx','utf8'); if (!s.includes('Workbench Actions') || !s.includes('rounded-lg border border-slate-200 bg-white p-4')) { console.error('Expected standalone workbench card markers not found.'); process.exit(1); } console.error('FAIL: product workbench still uses a standalone actions/onboarding card instead of a compact single-row toolbar.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: product workbench still uses a standalone actions/onboarding card instead of a compact single-row toolbar. Likely files: apps/web/src/components/product/products-tab.tsx, apps/web/src/components/nav/app-sidebar.tsx."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
@@ -335,15 +329,15 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "9554865",
+          "commit": "567f3ff",
           "tests_passed": [
-            "npm run build --workspace @pim1/api",
-            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
-            "npm run test:integration:issue-inbox"
+            "npm run lint --workspace @pim1/web",
+            "node apps/web/test/integration/issue-inbox-ui.test.cjs",
+            "npm run build --workspace @pim1/web"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "P0 UX execution reopens the issue inbox workflow story to preserve filtered inbox context when users jump from Fix Now into product detail and need a direct return path.",
+          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/quality/issues/page.tsx','utf8'); if (s.includes('returnTo=') || s.includes('returnTo%3D')) { console.error('Expected missing returnTo link context, but returnTo already appears in Fix Now links.'); process.exit(1); } console.error('FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view. Likely files: apps/web/src/app/quality/issues/page.tsx, apps/web/src/app/products/[id]/page.tsx."
         }
       ]
     },
