@@ -339,6 +339,27 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/channel/product-channel-readiness-cell.tsx','utf8'); const fetchMatches = s.match(/\\/api\\/marketplace\\/readiness\\?productId=/g) || []; if (fetchMatches.length === 0) { console.error('Expected per-row readiness fetch marker not found.'); process.exit(1); } console.error('FAIL: Product Workbench readiness still performs per-row, per-channel fetches instead of a batched readiness request.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench readiness still performs per-row, per-channel fetches instead of a batched readiness request. Likely files: apps/web/src/components/channel/product-channel-readiness-cell.tsx, apps/web/src/components/product/products-tab.tsx."
+        },
+        {
+          "storyId": "ST-OPS-NOTIFICATION-CENTER-003",
+          "title": "Add per-user notification center for async import, publish, and approval events",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "64c8987",
+          "tests_passed": [
+            "npm run prisma:migrate:deploy",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/notifications-center.test.cjs",
+            "node apps/web/test/integration/notification-center-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         }
       ]
     },
