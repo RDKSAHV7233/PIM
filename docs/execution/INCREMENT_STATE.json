@@ -880,6 +880,66 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-11",
+      "name": "Workspace Login and Tenant Discovery",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "packages/db/prisma/migrations/20260310193000_workspace_directory_v1/migration.sql",
+        "apps/api/test/integration/auth-login-lockout.test.cjs",
+        "apps/api/test/integration/platform-tenant-provisioning.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-AUTH-WORKSPACE-LOGIN-001",
+          "title": "Add workspace-scoped login with tenant directory resolution",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "32538a9",
+          "tests_passed": [
+            "npm run prisma:generate",
+            "npm run prisma:migrate:deploy",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/auth-login-lockout.test.cjs",
+            "node apps/api/test/integration/platform-tenant-provisioning.test.cjs",
+            "node apps/web/test/integration/auth-shell-ui.test.cjs",
+            "node apps/web/test/integration/auth-cookie-csrf.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "scope": [
+            "packages/db/prisma/schema.prisma",
+            "packages/db/prisma/migrations/20260310193000_workspace_directory_v1/migration.sql",
+            "apps/api/src/common/tenant/tenant-directory.module.ts",
+            "apps/api/src/common/tenant/tenant-directory.service.ts",
+            "apps/api/src/platform-admin/**",
+            "apps/api/src/auth/**",
+            "apps/web/src/app/api/auth/login/route.ts",
+            "apps/web/src/app/login/page.tsx",
+            "apps/web/src/app/login/locked/page.tsx",
+            "apps/web/src/components/auth/auth-copy.ts",
+            "apps/web/src/components/auth/login-page-client.tsx",
+            "apps/web/src/components/auth/account-locked-page-client.tsx",
+            "apps/api/test/integration/auth-login-lockout.test.cjs",
+            "apps/api/test/integration/platform-tenant-provisioning.test.cjs",
+            "apps/web/test/integration/auth-shell-ui.test.cjs",
+            "apps/web/test/integration/auth-cookie-csrf.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Login requires a workspace slug in addition to user ID and password.",
+            "Workspace slug resolves to tenantId server-side before credentials are validated.",
+            "JWT/session claim shape, cookie names, tenant middleware, and downstream tenant-scoped queries remain unchanged.",
+            "Lockout and resend-unlock flows are scoped by workspaceSlug plus userId.",
+            "Platform admin can provision tenant workspace slugs through an API-only surface."
+          ]
+        }
+      ]
     }
   ]
 }
