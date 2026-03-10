@@ -845,6 +845,34 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-10",
+      "name": "Flipkart Publish Connector v1",
+      "status": "in_progress",
+      "evidence": [
+        "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-FK-CONTRACT-001",
+          "title": "Lock Flipkart v1 connector contract before implementation",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "scope": [
+            "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Flipkart v1 capability is locked as publish-capable.",
+            "Taxonomy strategy is locked to imported or snapshotted provider taxonomy.",
+            "Operation model is locked to one unified seller-facing publish action.",
+            "Installation and credential contract is documented against current PIM1 connector installation surfaces.",
+            "Response normalization and idempotency key contracts are explicitly documented."
+          ]
+        }
+      ]
     }
   ]
 }
