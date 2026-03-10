@@ -60,17 +60,17 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "567f3ff",
+          "commit": "d0c8573",
           "tests_passed": [
-            "npm run lint --workspace @pim1/web",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "node apps/web/test/integration/catalog-first-shell.test.cjs",
             "node apps/web/test/integration/product-workbench-ui.test.cjs",
-            "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
+            "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web"
           ],
           "reopened_by": "codex",
-          "reopened_reason": "P0 UX execution reopens the catalog-first shell story to add KPI drill-down links, compact the product workbench toolbar, and expose seller-facing urgency counts in the primary navigation.",
-          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/dashboard/page.tsx','utf8'); if (s.includes('href=\\\"/quality/issues?severity=BLOCKING\\\"') || s.includes(\"href='/quality/issues?severity=BLOCKING'\")) { console.error('Expected missing KPI drill-down link, but blocking issues link already exists.'); process.exit(1); } console.error('FAIL: dashboard KPI cards are display-only and do not link directly to filtered drill-down views.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: dashboard KPI cards are display-only and do not link directly to filtered drill-down views. Likely file: apps/web/src/app/dashboard/page.tsx. Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/components/product/products-tab.tsx','utf8'); if (!s.includes('Workbench Actions') || !s.includes('rounded-lg border border-slate-200 bg-white p-4')) { console.error('Expected standalone workbench card markers not found.'); process.exit(1); } console.error('FAIL: product workbench still uses a standalone actions/onboarding card instead of a compact single-row toolbar.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: product workbench still uses a standalone actions/onboarding card instead of a compact single-row toolbar. Likely files: apps/web/src/components/product/products-tab.tsx, apps/web/src/components/nav/app-sidebar.tsx."
+          "reopened_reason": "Extend the catalog-first shell story to add Product Workbench SKU/title search and a consistent sidebar icon system as the next seller-facing navigation/discovery slice.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/product/products-tab.tsx','utf8'); if (s.includes('placeholder=\\\"Search products by title or SKU\\\"') || s.includes(\"placeholder='Search products by title or SKU'\")) { console.error('Expected missing Product Workbench search field, but search input marker already exists.'); process.exit(1); } console.error('FAIL: Product Workbench still lacks a SKU/title search input and search-aware filtering.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench still lacks a SKU/title search input and search-aware filtering. Likely file: apps/web/src/components/product/products-tab.tsx. Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/nav/app-sidebar.tsx','utf8'); if (s.includes('function SidebarIcon') || s.includes('const SIDEBAR_ICONS') || s.includes('aria-hidden=\\\"true\\\"')) { console.error('Expected missing sidebar icon system, but icon markers already exist.'); process.exit(1); } console.error('FAIL: sidebar navigation is still text-only and has no consistent icon system.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: sidebar navigation is still text-only and has no consistent icon system. Likely file: apps/web/src/components/nav/app-sidebar.tsx."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
@@ -273,16 +273,16 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "7620869",
+          "commit": "d0c8573",
           "tests_passed": [
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "node apps/web/test/integration/ops-cockpit-ui.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/components/ui/kpi-card.tsx','utf8'); if (s.includes('bg-red-50') || s.includes('bg-amber-50') || s.includes('bg-emerald-50')) { console.error('Expected missing urgency tint styles, but tinted KPI backgrounds already exist.'); process.exit(1); } console.error('FAIL: KpiCard urgency states still rely on border-only styling without tinted backgrounds.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: KpiCard urgency states still rely on border-only styling without tinted backgrounds. Likely file: apps/web/src/components/ui/kpi-card.tsx. Exact failing command: @' const fs=require('fs'); const files=['apps/web/src/app/dashboard/page.tsx','apps/web/src/app/operations/jobs/page.tsx','apps/web/src/app/operations/imports/page.tsx']; const missing=files.filter((file)=>!fs.readFileSync(file,'utf8').includes('RefreshOnInterval')); if (missing.length===0) { console.error('Expected missing mounted refresh markers, but all target pages already include RefreshOnInterval.'); process.exit(1); } console.error('FAIL: operational pages still lack mounted RefreshOnInterval hooks: '+missing.join(', ')); process.exit(1); '@ | node -. Failing output snippet: FAIL: operational pages still lack mounted RefreshOnInterval hooks: apps/web/src/app/dashboard/page.tsx, apps/web/src/app/operations/jobs/page.tsx, apps/web/src/app/operations/imports/page.tsx. Likely files: apps/web/src/app/dashboard/page.tsx, apps/web/src/app/operations/jobs/page.tsx, apps/web/src/app/operations/imports/page.tsx."
+          "reopened_by": "codex",
+          "reopened_reason": "Bundle the remaining Operations overview KPI cleanup into the operational cockpit story so all top-level operational KPI surfaces use the same KpiCard system.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/app/operations/page.tsx','utf8'); if (s.includes('<KpiCard') || s.includes('KpiCard')) { console.error('Expected missing Operations overview KpiCard usage, but KpiCard markers already exist.'); process.exit(1); } console.error('FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard. Likely file: apps/web/src/app/operations/page.tsx."
         }
       ]
     },
