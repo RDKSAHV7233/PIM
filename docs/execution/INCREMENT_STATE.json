@@ -161,6 +161,25 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-CATALOG-GLOBAL-SEARCH-002",
+          "title": "Add tenant-scoped global topbar product search",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "0980970",
+          "tests_passed": [
+            "node apps/web/test/integration/global-search-ui.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/catalog-global-search.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         }
       ]
     },
