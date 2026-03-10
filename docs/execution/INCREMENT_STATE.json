@@ -770,6 +770,23 @@
             "rg -n \"PIM1_CONNECTOR_DEVELOPER_GUIDE|PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE|PIM1_CONNECTOR_RECIPES\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
+        },
+        {
+          "storyId": "ST-CON-WEB-REFACTOR-009",
+          "title": "Extract the channel mappings workspace into isolated frontend components",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "3da03c3",
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "node apps/web/test/integration/mapping-editor-component.test.cjs",
+            "node apps/web/test/integration/taxonomy-search-component.test.cjs",
+            "node apps/web/test/integration/version-manager-component.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ]
         }
       ]
     }
