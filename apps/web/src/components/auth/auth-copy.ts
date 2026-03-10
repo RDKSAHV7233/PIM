@@ -3,11 +3,14 @@ import { PimLocale } from "@/lib/locale";
 export interface AuthCopy {
   loginTitle: string;
   loginSubtitle: string;
+  workspaceLabel: string;
+  workspacePlaceholder: string;
+  workspaceInvalid: string;
+  workspaceNotFound: string;
   emailLabel: string;
   loginReasonSessionExpired: string;
   loginReasonForbidden: string;
   passwordLabel: string;
-  tenantLabel: string;
   roleLabel: string;
   signIn: string;
   signingIn: string;
@@ -38,11 +41,14 @@ export interface AuthCopy {
 const EN_COPY: AuthCopy = {
   loginTitle: "Sign in to PIM1",
   loginSubtitle: "Use your account credentials to continue.",
+  workspaceLabel: "Workspace",
+  workspacePlaceholder: "your-company",
+  workspaceInvalid: "Use lowercase letters, numbers, or hyphens.",
+  workspaceNotFound: "Workspace not found. Check your workspace ID and try again.",
   emailLabel: "User ID",
   loginReasonSessionExpired: "Your session expired. Please sign in again.",
   loginReasonForbidden: "Your account does not have access to that page.",
   passwordLabel: "Password",
-  tenantLabel: "Tenant",
   roleLabel: "Role",
   signIn: "Sign in",
   signingIn: "Signing in...",

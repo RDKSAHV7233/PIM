@@ -121,6 +121,9 @@ async function run() {
   const port = 5100 + Math.floor(Math.random() * 80);
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
   const tenantId = `auth-lockout-tenant-${runId}`;
+  const otherTenantId = `auth-lockout-other-${runId}`;
+  const workspaceSlug = `lock-${runId}`;
+  const otherWorkspaceSlug = `other-${runId}`;
   const userId = `auth-lockout-user-${runId}@example.com`;
 
   const env = {
@@ -128,6 +131,13 @@ async function run() {
     PORT: String(port),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Primary workspace" },
+      [otherWorkspaceSlug]: { tenantId: otherTenantId, displayName: "Secondary workspace" },
+    }),
   };
 
   const stdoutBuffer = [];
@@ -154,12 +164,52 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
 
+    const unknownWorkspace = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      userId,
+      workspaceSlug: "unknown-workspace",
+      password: "wrong-password",
+    });
+    if (unknownWorkspace.status !== 404 || unknownWorkspace.payload?.error !== "WORKSPACE_NOT_FOUND") {
+      throw new Error(
+        `Expected WORKSPACE_NOT_FOUND for unknown workspace. status=${unknownWorkspace.status} payload=${JSON.stringify(
+          unknownWorkspace.payload,
+        )}`,
+      );
+    }
+
+    for (let i = 1; i <= 2; i += 1) {
+      const wrongWorkspace = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+        userId,
+        workspaceSlug: otherWorkspaceSlug,
+        password: "wrong-password",
+      });
+      if (wrongWorkspace.status !== 401) {
+        throw new Error(
+          `Expected isolated secondary workspace invalid credentials on attempt ${i}, got ${wrongWorkspace.status} payload=${JSON.stringify(
+            wrongWorkspace.payload,
+          )}`,
+        );
+      }
+    }
+
+    const primaryStillAccessible = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      userId,
+      workspaceSlug,
+      password: process.env.PIM_AUTH_PASSWORD,
+    });
+    if (primaryStillAccessible.status !== 201) {
+      throw new Error(
+        `Expected primary workspace login to remain accessible after secondary workspace lockout. status=${primaryStillAccessible.status} payload=${JSON.stringify(
+          primaryStillAccessible.payload,
+        )}`,
+      );
+    }
+
     const attemptsRemainingSeen = [];
     for (let i = 1; i <= 4; i += 1) {
       const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
         userId,
-        tenantId,
-        role: "admin",
+        workspaceSlug,
         password: "wrong-password",
       });
       if (login.status !== 401) {
@@ -182,8 +232,7 @@ async function run() {
 
     const locked = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      tenantId,
-      role: "admin",
+      workspaceSlug,
       password: "wrong-password",
     });
     if (locked.status !== 423 || locked.payload?.error !== "ACCOUNT_LOCKED") {
@@ -198,6 +247,7 @@ async function run() {
 
     const resend = await apiRequest(baseUrl, "POST", "/auth/resend-unlock", null, {
       email: userId,
+      workspaceSlug,
     });
     if (resend.status !== 201 && resend.status !== 200) {
       throw new Error(`Expected resend unlock success. status=${resend.status} payload=${JSON.stringify(resend.payload)}`);
@@ -211,8 +261,13 @@ async function run() {
         {
           status: "ok",
           tenantId,
+          otherTenantId,
+          workspaceSlug,
+          otherWorkspaceSlug,
           userId,
           validated: [
+            "unknown_workspace_returns_404",
+            "workspace_lockout_does_not_leak_across_workspaces",
             "wrong_credentials_401_with_attempts_remaining",
             "attempts_remaining_progression_4_3_2_1",
             "fifth_attempt_locks_account_423",

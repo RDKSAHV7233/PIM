@@ -74,6 +74,15 @@ export class AuthController {
       });
     }
 
+    if (result.type === "workspace_not_found") {
+      throw new HttpException(
+        {
+          error: "WORKSPACE_NOT_FOUND",
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
     return result.payload;
   }
 
@@ -83,7 +92,7 @@ export class AuthController {
     @Body() dto: ResendUnlockDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const result = await this.authService.resendUnlock(dto.email);
+    const result = await this.authService.resendUnlock(dto.email, dto.workspaceSlug);
     if (result.retryAfterSeconds > 0) {
       reply.header("X-RateLimit-Retry-After", String(result.retryAfterSeconds));
     }

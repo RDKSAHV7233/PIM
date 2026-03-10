@@ -18,11 +18,18 @@ interface LoginPageClientProps {
   locale: PimLocale;
   reason: string;
   nextPath: string;
+  initialWorkspaceSlug: string;
 }
 
-export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientProps) {
+function isValidWorkspaceSlug(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalized) && normalized.length >= 3 && normalized.length <= 32;
+}
+
+export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug }: LoginPageClientProps) {
   const authCopy = getAuthCopy(locale);
   const router = useRouter();
+  const [workspaceSlug, setWorkspaceSlug] = useState(initialWorkspaceSlug);
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +70,13 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedWorkspaceSlug = workspaceSlug.trim().toLowerCase();
+    if (!isValidWorkspaceSlug(normalizedWorkspaceSlug)) {
+      setErrorMessage(authCopy.workspaceInvalid);
+      setAttemptsRemaining(null);
+      setRateLimitedUntilMs(null);
+      return;
+    }
     setSubmitting(true);
     setErrorMessage("");
 
@@ -73,6 +87,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          workspaceSlug: normalizedWorkspaceSlug,
           userId: userId.trim(),
           password,
         }),
@@ -97,6 +112,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
       if (response.status === 423) {
         const payload = (await response.json()) as { unlockAt?: string; maskedEmail?: string };
         const params = new URLSearchParams({
+          workspace: normalizedWorkspaceSlug,
           email: userId.trim(),
           maskedEmail: String(payload.maskedEmail ?? "yo***@example.com"),
           unlockAt: String(payload.unlockAt ?? ""),
@@ -113,6 +129,15 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
         setAttemptsRemaining(Number.isFinite(remaining) ? Math.max(0, Math.trunc(remaining)) : null);
         setErrorMessage(authCopy.invalidCredentials);
         return;
+      }
+
+      if (response.status === 404) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (payload.error === "WORKSPACE_NOT_FOUND") {
+          setAttemptsRemaining(null);
+          setErrorMessage(authCopy.workspaceNotFound);
+          return;
+        }
       }
 
       setErrorMessage(authCopy.genericLoginFailure);
@@ -150,6 +175,23 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
         </div>
       ) : (
         <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
+          <div className="space-y-1">
+            <label htmlFor="workspace" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              {authCopy.workspaceLabel}
+            </label>
+            <input
+              id="workspace"
+              type="text"
+              value={workspaceSlug}
+              onChange={(event) => setWorkspaceSlug(event.target.value)}
+              autoComplete="organization"
+              required
+              placeholder={authCopy.workspacePlaceholder}
+              suppressHydrationWarning
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+
           <div className="space-y-1">
             <label htmlFor="user-id" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
               {authCopy.emailLabel}
@@ -197,7 +239,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
             <p className="text-xs text-slate-600">
               {authCopy.forgotPasswordPrefix}{" "}
               <Link
-                href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}`}
+                href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
                 className="underline"
               >
                 {authCopy.forgotPasswordSuffix}

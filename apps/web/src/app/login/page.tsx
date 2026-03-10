@@ -22,5 +22,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
   const reason = getString(params.reason).trim().toLowerCase();
   const nextPath = sanitizeNextPath(getString(params.next));
-  return <LoginPageClient locale={locale} reason={reason} nextPath={nextPath} />;
+  const workspaceSlug = getString(params.workspace).trim().toLowerCase();
+  return <LoginPageClient locale={locale} reason={reason} nextPath={nextPath} initialWorkspaceSlug={workspaceSlug} />;
 }

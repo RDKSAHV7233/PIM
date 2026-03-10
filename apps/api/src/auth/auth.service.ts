@@ -5,7 +5,8 @@ import { createClient } from "redis";
 import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeAppRole, resolveDefaultRole } from "../common/rbac/role-utils";
-import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
+import { normalizeTenantKey, normalizeWorkspaceSlug } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
@@ -83,6 +84,9 @@ export type LoginResult =
   | {
       type: "rate_limited";
       retryAfterSeconds: number;
+    }
+  | {
+      type: "workspace_not_found";
     };
 
 export interface ResendUnlockResult {
@@ -187,6 +191,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly jwtBlocklistService: JwtBlocklistService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly tenantDirectoryService: TenantDirectoryService,
   ) {}
 
   async login(dto: LoginDto, ipAddress: string): Promise<LoginResult> {
@@ -199,7 +204,19 @@ export class AuthService implements OnModuleDestroy {
       };
     }
 
-    const userKey = this.normalizeUserKey(dto.userId);
+    const submittedWorkspaceSlug = normalizeWorkspaceSlug(dto.workspaceSlug ?? process.env.PIM_DEFAULT_WORKSPACE_SLUG ?? "");
+    const workspace =
+      (submittedWorkspaceSlug
+        ? await this.tenantDirectoryService.resolveWorkspaceSlug(submittedWorkspaceSlug)
+        : null) ??
+      (dto.tenantId ? await this.tenantDirectoryService.resolveTenantAlias(dto.tenantId) : null);
+    if (!workspace) {
+      return { type: "workspace_not_found" };
+    }
+
+    const normalizedWorkspaceSlug = workspace.workspaceSlug || submittedWorkspaceSlug;
+    const normalizedUserId = this.normalizeUserKey(dto.userId);
+    const userKey = this.composeLoginLockKey(normalizedWorkspaceSlug, normalizedUserId);
     const existingLock = await this.getActiveLock(userKey, dto.userId, now);
     if (existingLock?.lockedUntilMs && existingLock.lockedUntilMs > now) {
       return {
@@ -223,7 +240,7 @@ export class AuthService implements OnModuleDestroy {
       return { type: "invalid_credentials", attemptsRemaining };
     }
 
-    const identity = await this.resolveLoginIdentity(dto.userId);
+    const identity = await this.resolveLoginIdentity(dto.userId, workspace.tenantId);
     if (!identity) {
       const lockState = await this.recordFailedCredential(userKey, dto.userId, now);
       if (lockState.lockedUntilMs && lockState.lockedUntilMs > now) {
@@ -324,8 +341,11 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
-  async resendUnlock(email: string): Promise<ResendUnlockResult> {
-    const userKey = this.normalizeUserKey(email);
+  async resendUnlock(email: string, workspaceSlugInput: string): Promise<ResendUnlockResult> {
+    const userKey = this.composeLoginLockKey(
+      workspaceSlugInput || process.env.PIM_DEFAULT_WORKSPACE_SLUG || process.env.PIM_DEFAULT_TENANT_KEY || "",
+      this.normalizeUserKey(email),
+    );
     const now = Date.now();
     const state = await this.getActiveLock(userKey, email, now);
 
@@ -714,14 +734,21 @@ export class AuthService implements OnModuleDestroy {
     return String(value ?? "").trim().toLowerCase();
   }
 
-  private async resolveLoginIdentity(userIdInput: string): Promise<ResolvedLoginIdentity | null> {
+  private composeLoginLockKey(workspaceSlugInput: string, userIdInput: string): string {
+    const workspaceSlug = normalizeWorkspaceSlug(workspaceSlugInput);
     const normalizedUserId = this.normalizeUserKey(userIdInput);
+    return `${workspaceSlug}:${normalizedUserId}`;
+  }
+
+  private async resolveLoginIdentity(userIdInput: string, tenantIdInput: string): Promise<ResolvedLoginIdentity | null> {
+    const normalizedUserId = this.normalizeUserKey(userIdInput);
+    const tenantId = normalizeTenantKey(tenantIdInput);
     if (!normalizedUserId) {
       return null;
     }
 
     if (this.isDbAuthMode()) {
-      const fromDb = await this.resolveIdentityFromDatabase(normalizedUserId);
+      const fromDb = await this.resolveIdentityFromDatabase(normalizedUserId, tenantId);
       return fromDb;
     }
 
@@ -729,12 +756,15 @@ export class AuthService implements OnModuleDestroy {
     const defaultRole = resolveDefaultRole();
     const fromDirectory = this.identityDirectory.get(normalizedUserId);
     if (fromDirectory) {
-      return fromDirectory;
+      return fromDirectory.tenantId === tenantId ? fromDirectory : null;
     }
     if (this.isLocalAuthMode()) {
+      if (defaultTenantId !== tenantId) {
+        return null;
+      }
       return {
         userId: normalizedUserId,
-        tenantId: defaultTenantId,
+        tenantId,
         role: defaultRole,
       };
     }
@@ -742,7 +772,7 @@ export class AuthService implements OnModuleDestroy {
     return null;
   }
 
-  private async resolveIdentityFromDatabase(normalizedUserId: string): Promise<ResolvedLoginIdentity | null> {
+  private async resolveIdentityFromDatabase(normalizedUserId: string, tenantId: string): Promise<ResolvedLoginIdentity | null> {
     const rows = await this.prisma.tenant().$queryRaw<AuthIdentityRow[]>(Prisma.sql`
       SELECT
         "userId" AS "userId",
@@ -751,6 +781,7 @@ export class AuthService implements OnModuleDestroy {
         "isActive" AS "isActive"
       FROM "AuthIdentity"
       WHERE "userId" = ${normalizedUserId}
+      AND "tenantKey" = ${tenantId}
       LIMIT 1
     `);
     const row = rows[0];

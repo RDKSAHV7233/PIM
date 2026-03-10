@@ -34,13 +34,21 @@ function run() {
     loginSource.includes("window.location.assign(safeNextPath);"),
     "Login client must use a full navigation after successful login so the authenticated shell renders immediately.",
   );
+  assert(
+    loginSource.includes("authCopy.workspaceLabel") &&
+      loginSource.includes("id=\"workspace\"") &&
+      loginSource.includes("workspaceSlug") &&
+      loginSource.includes("workspaceNotFound"),
+    "Login client must collect a workspace slug and handle workspace-specific errors before sign-in succeeds.",
+  );
 
   console.log(JSON.stringify({
     status: "ok",
     validated: [
       "root_layout_uses_auth_token_for_shell",
       "server_auth_exposes_token_presence_helper",
-      "login_redirect_uses_full_navigation"
+      "login_redirect_uses_full_navigation",
+      "login_collects_workspace_slug"
     ],
     checkedAt: new Date().toISOString()
   }, null, 2));

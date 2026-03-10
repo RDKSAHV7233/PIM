@@ -17,11 +17,20 @@ function getString(value: string | string[] | undefined): string {
 
 export default async function LockedPage({ searchParams }: LockedPageProps) {
   const params = await searchParams;
+  const workspaceSlug = getString(params.workspace).trim().toLowerCase();
   const email = getString(params.email).trim();
   const maskedEmail = getString(params.maskedEmail).trim() || "yo***@example.com";
   const unlockAtIso = getString(params.unlockAt).trim();
   const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
 
-  return <AccountLockedPageClient email={email} maskedEmail={maskedEmail} unlockAtIso={unlockAtIso} locale={locale} />;
+  return (
+    <AccountLockedPageClient
+      workspaceSlug={workspaceSlug}
+      email={email}
+      maskedEmail={maskedEmail}
+      unlockAtIso={unlockAtIso}
+      locale={locale}
+    />
+  );
 }

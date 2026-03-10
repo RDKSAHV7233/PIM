@@ -528,6 +528,16 @@ model AuthIdentity {
   @@index([tenantKey, role, isActive])
 }
 
+model WorkspaceDirectory {
+  id            String   @id @default(cuid())
+  tenantKey     String   @unique
+  workspaceSlug String   @unique
+  displayName   String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model UserNotification {
   id         String   @id
   tenantKey  String   @default("default") @map("tenant_key")

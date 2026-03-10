@@ -13,7 +13,10 @@ function useSecureCookies(): boolean {
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
   const parsedExpiry = Number(body?.expiresInMinutes);
+  const workspaceSlug = String(body?.workspaceSlug ?? body?.tenantId ?? "").trim().toLowerCase();
   const loginPayload = {
+    ...(workspaceSlug ? { workspaceSlug } : {}),
+    ...(body?.tenantId ? { tenantId: String(body.tenantId) } : {}),
     userId: String(body?.userId ?? "").trim(),
     password: String(body?.password ?? ""),
     ...(Number.isFinite(parsedExpiry) ? { expiresInMinutes: Math.trunc(parsedExpiry) } : {}),

@@ -6,13 +6,20 @@ import { PimLocale } from "@/lib/locale";
 import { getAuthCopy } from "./auth-copy";
 
 interface AccountLockedPageClientProps {
+  workspaceSlug: string;
   email: string;
   maskedEmail: string;
   unlockAtIso: string;
   locale: PimLocale;
 }
 
-export function AccountLockedPageClient({ email, maskedEmail, unlockAtIso, locale }: AccountLockedPageClientProps) {
+export function AccountLockedPageClient({
+  workspaceSlug,
+  email,
+  maskedEmail,
+  unlockAtIso,
+  locale,
+}: AccountLockedPageClientProps) {
   const authCopy = getAuthCopy(locale);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -30,6 +37,10 @@ export function AccountLockedPageClient({ email, maskedEmail, unlockAtIso, local
       setMessage(authCopy.resendNeedsEmail);
       return;
     }
+    if (!workspaceSlug) {
+      setMessage(authCopy.workspaceInvalid);
+      return;
+    }
     setSubmitting(true);
     setMessage("");
     try {
@@ -38,7 +49,7 @@ export function AccountLockedPageClient({ email, maskedEmail, unlockAtIso, local
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, workspaceSlug }),
       });
       if (!response.ok) {
         setMessage(authCopy.resendFailed);
@@ -78,7 +89,10 @@ export function AccountLockedPageClient({ email, maskedEmail, unlockAtIso, local
         {message && <p className="text-sm text-slate-700">{message}</p>}
       </div>
 
-      <Link href={`/login?lang=${encodeURIComponent(locale)}`} className="inline-flex text-sm font-medium text-slate-700 underline">
+      <Link
+        href={`/login?lang=${encodeURIComponent(locale)}&workspace=${encodeURIComponent(workspaceSlug)}`}
+        className="inline-flex text-sm font-medium text-slate-700 underline"
+      >
         {authCopy.backToLogin}
       </Link>
     </div>

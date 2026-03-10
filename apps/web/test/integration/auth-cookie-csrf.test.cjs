@@ -171,13 +171,20 @@ async function run() {
   const apiBaseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const webBaseUrl = `http://127.0.0.1:${webPort}`;
   const tenantId = `web-auth-${runId}`;
+  const workspaceSlug = `web-${runId}`;
   const userId = `web-user-${runId}@example.com`;
 
   const apiEnv = {
     ...process.env,
     PORT: String(apiPort),
+    AUTH_MODE: "local",
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_DEFAULT_WORKSPACE_SLUG: workspaceSlug,
+    PIM_DEFAULT_ROLE: "admin",
+    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
   };
   const webEnv = {
     ...process.env,
@@ -235,7 +242,7 @@ async function run() {
       jar,
       {
         userId,
-        tenantId,
+        workspaceSlug,
         role: "admin",
         password: process.env.PIM_AUTH_PASSWORD,
         expiresInMinutes: 30,
@@ -312,6 +319,7 @@ async function run() {
         {
           status: "ok",
           tenantId,
+          workspaceSlug,
           userId,
           validated: [
             "login_sets_auth_and_csrf_cookies",

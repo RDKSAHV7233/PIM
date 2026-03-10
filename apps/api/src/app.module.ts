@@ -14,6 +14,7 @@ import { LoggingModule } from "./common/logging/logging.module";
 import { ComplianceModule } from "./compliance/compliance.module";
 import { AppController } from "./common/app.controller";
 import { RbacGuard } from "./common/rbac/rbac.guard";
+import { TenantDirectoryModule } from "./common/tenant/tenant-directory.module";
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ConnectorFrameworkModule } from "./connector-framework/connector-framework.module";
@@ -24,6 +25,7 @@ import { MetricsModule } from "./metrics/metrics.module";
 import { OndcModule } from "./ondc/ondc.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
 import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
@@ -37,6 +39,7 @@ const FEATURE_ONDC_ENABLED =
     ConfigModule.forRoot({ isGlobal: true }),
     LoggingModule,
     QueueModule,
+    TenantDirectoryModule,
     AuthModule,
     PrismaModule,
     AuditModule,
@@ -53,6 +56,7 @@ const FEATURE_ONDC_ENABLED =
     MediaModule,
     MetricsModule,
     NotificationsModule,
+    PlatformAdminModule,
     RejectionIntelligenceModule,
     ...(FEATURE_ONDC_ENABLED ? [OndcModule] : []),
     AutoSuggestionsModule,
