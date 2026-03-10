@@ -976,6 +976,55 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-13",
+      "name": "Connector Access Validation and Admin UX",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "apps/api/src/connector-installer/connector-permission.service.ts",
+        "apps/web/src/app/admin/connectors/page.tsx",
+        "apps/api/test/integration/connector-access-principal-validation.test.cjs",
+        "apps/web/test/integration/connector-access-admin-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-CON-ACCESS-VALIDATION-002",
+          "title": "Validate connector grant principals and clarify admin permission UX",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "e82abd4",
+          "scope": [
+            "apps/api/src/connector-installer/connector-permission.service.ts",
+            "apps/web/src/app/actions.ts",
+            "apps/web/src/app/admin/connectors/page.tsx",
+            "apps/web/src/components/settings/connector-permission-form.tsx",
+            "apps/api/test/integration/connector-access-principal-validation.test.cjs",
+            "apps/api/test/integration/connector-access-entitlements.test.cjs",
+            "apps/web/test/integration/connector-access-admin-form.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Role-based connector grants reject invalid role identifiers server-side.",
+            "User-based connector grants reject user IDs that are not present in the current workspace.",
+            "Connector Access form uses a role dropdown for role grants and explains that one row applies to one role or one user.",
+            "Account alias wildcard behavior is explicit in the admin form and current permissions table.",
+            "Connector access validation and entitlement tests pass with workspace-scoped login."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/connector-access-admin-form.test.cjs",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/connector-access-principal-validation.test.cjs",
+            "node apps/api/test/integration/connector-access-entitlements.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ]
+        }
+      ]
     }
   ]
 }
