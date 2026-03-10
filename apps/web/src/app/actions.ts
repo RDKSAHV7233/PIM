@@ -27,6 +27,7 @@ const STEP_UP_ERROR_CODES = new Set([
   "STEP_UP_SCOPE_MISMATCH",
   "STEP_UP_PASSWORD_REQUIRED",
 ]);
+const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "reviewer", "viewer"]);
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -271,6 +272,22 @@ function appendQueryParams(basePath: string, params: Record<string, string | und
   }
   const nextQuery = search.toString();
   return nextQuery ? `${path}?${nextQuery}` : path;
+}
+function resolveConnectorPermissionGrantStatus(error: unknown): string | null {
+  if (!(error instanceof ApiHttpError) || error.status !== 400 || !error.body || typeof error.body !== "object") {
+    return null;
+  }
+  const payload = error.body as Record<string, unknown>;
+  switch (String(payload.error ?? "").trim()) {
+    case "CONNECTOR_PERMISSION_INVALID_ROLE":
+      return "permission-invalid-role";
+    case "CONNECTOR_PERMISSION_USER_NOT_FOUND":
+      return "permission-user-not-found";
+    case "CONNECTOR_PERMISSION_USER_REQUIRED":
+      return "permission-user-required";
+    default:
+      return "permission-invalid-request";
+  }
 }
 
 function withStepUpErrorQuery(
@@ -807,22 +824,33 @@ export async function grantConnectorPermissionAction(formData: FormData) {
     throw new Error("Connector slug is required.");
   }
   if (!principalId) {
-    throw new Error("Principal ID is required.");
+    throw new Error(principalType === "user" ? "User ID is required." : "Role is required.");
   }
   if (!["user", "role"].includes(principalType)) {
     throw new Error("Principal type must be user or role.");
+  }
+  if (principalType === "role" && !CONNECTOR_PERMISSION_ROLE_IDS.has(principalId.toLowerCase())) {
+    throw new Error("Role must be admin, editor, reviewer, or viewer.");
   }
   if (!["install", "reconnect", "uninstall"].includes(action)) {
     throw new Error("Action must be install, reconnect, or uninstall.");
   }
 
-  await postJsonForAction(formData, "/connectors/permissions", {
-    connectorSlug,
-    principalType,
-    principalId,
-    action,
-    accountAlias: accountAlias || undefined,
-  });
+  try {
+    await postJsonForAction(formData, "/connectors/permissions", {
+      connectorSlug,
+      principalType,
+      principalId,
+      action,
+      accountAlias: accountAlias || undefined,
+    });
+  } catch (error: unknown) {
+    const status = resolveConnectorPermissionGrantStatus(error);
+    if (status) {
+      redirect(`/admin/connectors?status=${status}`);
+    }
+    throw error;
+  }
   revalidatePath("/admin/connectors");
   revalidatePath("/channels/connectors");
   redirect("/admin/connectors?status=permission-granted");
@@ -1371,3 +1399,4 @@ export async function applyAiRepairAction(formData: FormData) {
   revalidatePath(`/products/${productId}`);
   redirect(`/ai?productId=${encodeURIComponent(productId)}&repairStatus=applied`);
 }
+

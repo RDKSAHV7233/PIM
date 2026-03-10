@@ -1,11 +1,12 @@
-﻿import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
+import { normalizeAppRole } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
-import { PlanUsageService } from "../billing/plan-usage.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 export type ConnectorPermissionAction = "install" | "reconnect" | "uninstall";
@@ -50,8 +51,14 @@ interface InstallPlanCheck {
   reason: string | null;
 }
 
+interface LocalIdentityRecord {
+  tenantId: string;
+}
+
 @Injectable()
 export class ConnectorPermissionService {
+  private readonly identityDirectory = this.loadIdentityDirectory();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly planUsageService: PlanUsageService,
@@ -230,7 +237,7 @@ export class ConnectorPermissionService {
     action: ConnectorPermissionAction;
   }): Promise<ConnectorPermissionRow> {
     const tenantKey = this.getTenantKey();
-    const principalId = input.principalId.trim();
+    const { principalId, principalType } = await this.validatePrincipal(input.principalType, input.principalId);
     const connectorSlug = input.connectorSlug.trim().toLowerCase();
     const accountAlias = String(input.accountAlias ?? "*").trim() || "*";
 
@@ -252,7 +259,7 @@ export class ConnectorPermissionService {
         (
           ${randomUUID()},
           ${tenantKey},
-          ${input.principalType},
+          ${principalType},
           ${principalId},
           ${connectorSlug},
           ${accountAlias},
@@ -281,7 +288,7 @@ export class ConnectorPermissionService {
         "updatedAt" AS "updatedAt"
       FROM "ConnectorPermission"
       WHERE "tenantKey" = ${tenantKey}
-        AND "principalType" = ${input.principalType}
+        AND "principalType" = ${principalType}
         AND "principalId" = ${principalId}
         AND "connectorSlug" = ${connectorSlug}
         AND "accountAlias" = ${accountAlias}
@@ -360,6 +367,127 @@ export class ConnectorPermissionService {
     return { id: permissionId, status: "DELETED" };
   }
 
+  private async validatePrincipal(
+    principalType: "user" | "role",
+    principalIdInput: string,
+  ): Promise<{ principalType: "user" | "role"; principalId: string }> {
+    if (principalType === "role") {
+      const normalizedRole = normalizeAppRole(principalIdInput);
+      if (!normalizedRole) {
+        throw new BadRequestException({
+          error: "CONNECTOR_PERMISSION_INVALID_ROLE",
+          message: "Role must be one of admin, editor, reviewer, or viewer.",
+          statusCode: 400,
+        });
+      }
+      return { principalType, principalId: normalizedRole };
+    }
+
+    const principalId = this.normalizeUserKey(principalIdInput);
+    if (!principalId) {
+      throw new BadRequestException({
+        error: "CONNECTOR_PERMISSION_USER_REQUIRED",
+        message: "User ID is required when principal type is user.",
+        statusCode: 400,
+      });
+    }
+
+    const exists = await this.userExistsForTenant(principalId);
+    if (!exists) {
+      throw new BadRequestException({
+        error: "CONNECTOR_PERMISSION_USER_NOT_FOUND",
+        message: "User ID was not found in this workspace.",
+        statusCode: 400,
+      });
+    }
+
+    return { principalType, principalId };
+  }
+
+  private async userExistsForTenant(userId: string): Promise<boolean> {
+    const tenantKey = this.getTenantKey();
+
+    if (this.isDbAuthMode()) {
+      const rows = await this.prisma.tenant().$queryRaw<Array<{ userId: string; isActive: boolean }>>(Prisma.sql`
+        SELECT
+          "userId" AS "userId",
+          "isActive" AS "isActive"
+        FROM "AuthIdentity"
+        WHERE "tenantKey" = ${tenantKey}
+          AND "userId" = ${userId}
+        LIMIT 1
+      `);
+      return Boolean(rows[0]?.userId) && Boolean(rows[0]?.isActive);
+    }
+
+    const localIdentity = this.identityDirectory.get(userId);
+    if (localIdentity) {
+      return localIdentity.tenantId === tenantKey;
+    }
+
+    if (this.isLocalAuthMode()) {
+      if (this.identityDirectory.size > 0) {
+        return false;
+      }
+      return normalizeTenantKey(process.env.PIM_DEFAULT_TENANT_KEY) === tenantKey;
+    }
+
+    return false;
+  }
+
+  private normalizeUserKey(value: string): string {
+    return String(value ?? "").trim().toLowerCase();
+  }
+
+  private loadIdentityDirectory(): Map<string, LocalIdentityRecord> {
+    const directory = new Map<string, LocalIdentityRecord>();
+    if (!this.isLocalAuthMode()) {
+      return directory;
+    }
+
+    const raw = String(process.env.PIM_AUTH_IDENTITIES_JSON ?? "").trim();
+    if (!raw) {
+      return directory;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      for (const [userIdRaw, value] of Object.entries(parsed)) {
+        const normalizedUserId = this.normalizeUserKey(userIdRaw);
+        if (!normalizedUserId || !value || typeof value !== "object" || Array.isArray(value)) {
+          continue;
+        }
+        const candidate = value as Record<string, unknown>;
+        directory.set(normalizedUserId, {
+          tenantId: normalizeTenantKey(candidate.tenantId),
+        });
+      }
+    } catch {
+      return directory;
+    }
+
+    return directory;
+  }
+
+  private isDbAuthMode(): boolean {
+    const authMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase();
+    return authMode === "db";
+  }
+
+  private isLocalAuthMode(): boolean {
+    const authMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase();
+    if (authMode === "db") {
+      return false;
+    }
+    if (authMode === "local") {
+      return true;
+    }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development")
+      .trim()
+      .toLowerCase();
+    return appEnv === "development" || appEnv === "local" || appEnv === "test";
+  }
+
   private async evaluateInstallPlanRule(connectorSlug: string): Promise<InstallPlanCheck> {
     const tenantKey = this.getTenantKey();
     const installCheck = await this.planUsageService.checkLimit(
@@ -393,3 +521,4 @@ export class ConnectorPermissionService {
     };
   }
 }
+

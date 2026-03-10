@@ -125,6 +125,7 @@ async function run() {
   const apiPort = 6000 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `connector-access-${runId}`;
+  const workspaceSlug = `ca-${runId}`;
   const adminUser = `admin-${runId}`;
   const editorUser = `editor-${runId}`;
   const env = {
@@ -133,8 +134,11 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [adminUser]: { tenantId, role: "admin" },
-      [editorUser]: { tenantId, role: "editor" },
+      [adminUser]: { tenantId, role: "admin", workspaceSlug },
+      [editorUser]: { tenantId, role: "editor", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Connector Access" },
     }),
   };
 
@@ -163,6 +167,7 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
 
     const loginAdmin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId: adminUser,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -172,6 +177,7 @@ async function run() {
     assert(adminToken.length > 10, "missing admin token");
 
     const loginEditor = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId: editorUser,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
