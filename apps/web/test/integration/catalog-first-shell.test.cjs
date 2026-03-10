@@ -31,6 +31,12 @@ function run() {
     "Sidebar must place Quality before Operations in the merchandiser workflow.",
   );
   assert(
+    sidebarSource.includes('badgeKey: "quality"') &&
+      sidebarSource.includes('badgeKey: "operations"') &&
+      sidebarSource.includes("/api/navigation/summary"),
+    "Sidebar must expose quality and operations urgency badges from the navigation summary feed.",
+  );
+  assert(
     dashboardSource.includes("Catalog Health") &&
       dashboardSource.includes("Publishing Health") &&
       dashboardSource.includes("Operations &amp; Usage"),
@@ -46,6 +52,11 @@ function run() {
     "Dashboard top metrics must prioritize catalog work and publish readiness over raw ops counters.",
   );
   assert(
+    dashboardSource.includes('href="/quality/issues?severity=BLOCKING"') &&
+      dashboardSource.includes('href="/catalog/products?view=ready"'),
+    "Dashboard KPI cards must link directly to filtered drill-down views.",
+  );
+  assert(
     dashboardSource.includes("Top products to fix now") &&
       dashboardSource.includes("Next best actions"),
     "Dashboard must surface task-first workbench sections instead of only status summaries.",
@@ -58,6 +69,7 @@ function run() {
         validated: [
           "sidebar_promotes_catalog_first_hierarchy",
           "dashboard_groups_catalog_publishing_and_operations",
+          "dashboard_and_sidebar_expose_task_drilldowns",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +8,7 @@ interface KpiCardProps {
   helper?: string;
   tone?: "default" | "success" | "warning" | "danger" | "info";
   action?: ReactNode;
+  href?: string;
 }
 
 const toneStyles: Record<NonNullable<KpiCardProps["tone"]>, string> = {
@@ -17,11 +19,20 @@ const toneStyles: Record<NonNullable<KpiCardProps["tone"]>, string> = {
   info: "border-blue-200",
 };
 
-export function KpiCard({ label, value, helper, tone = "default", action }: KpiCardProps) {
+export function KpiCard({ label, value, helper, tone = "default", action, href }: KpiCardProps) {
   return (
     <article className={cn("rounded-xl border bg-white p-4 shadow-sm", toneStyles[tone])}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      {href ? (
+        <Link
+          href={href}
+          className="mt-2 inline-flex text-2xl font-semibold text-slate-900 underline-offset-4 hover:text-slate-700 hover:underline"
+        >
+          {value}
+        </Link>
+      ) : (
+        <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      )}
       {helper ? <p className="mt-1 text-xs text-slate-600">{helper}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </article>

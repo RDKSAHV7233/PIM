@@ -114,6 +114,9 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
   if (query.productStatus) {
     filterParams.set("productStatus", query.productStatus);
   }
+  if (query.cursor) {
+    filterParams.set("cursor", query.cursor);
+  }
   filterParams.set("limit", String(limit));
   if (query.hideTestData === "false") {
     filterParams.set("hideTestData", "false");
@@ -320,7 +323,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
                         </td>
                         <td className="px-3 py-2.5">
                           <Link
-                            href={`/products/${encodeURIComponent(issue.productId)}`}
+                            href={`/products/${encodeURIComponent(issue.productId)}?returnTo=${encodeURIComponent(returnTo)}`}
                             className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                           >
                             Fix Now

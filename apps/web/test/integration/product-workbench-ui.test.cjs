@@ -23,13 +23,15 @@ function run() {
     "Product workbench must route mapping actions directly to the lifecycle mappings workspace.",
   );
   assert(
-    productsTabSource.includes("Workbench Actions"),
-    "Products tab must promote workbench actions once onboarding is complete.",
+    productsTabSource.includes("Open Issue Inbox") &&
+      productsTabSource.includes("Open channel mappings") &&
+      !productsTabSource.includes("Workbench Actions"),
+    "Products tab must keep primary actions inside the compact toolbar instead of a standalone workbench card.",
   );
   assert(
-    productsTabSource.includes("Open channel mappings") &&
-      productsTabSource.includes("Review channel mappings"),
-    "Products tab must expose direct mapping workspace actions in seller-facing language.",
+    productsTabSource.includes("No products match this view") &&
+      !productsTabSource.includes("No products match your search"),
+    "Products tab empty-state copy must describe the selected view instead of a nonexistent search feature.",
   );
   assert(
     productsTabSource.includes("Last Updated"),
@@ -46,7 +48,7 @@ function run() {
         status: "ok",
         validated: [
           "product_workbench_uses_canonical_mapping_route",
-          "products_tab_promotes_workbench_actions",
+          "products_tab_uses_compact_toolbar_actions",
           "products_table_prioritizes_catalog_workbench_signals",
         ],
         checkedAt: new Date().toISOString(),

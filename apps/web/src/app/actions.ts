@@ -457,6 +457,9 @@ export async function updateProductAction(formData: FormData) {
     ? parseDynamicAttributes(formData, baseAttributes)
     : parseJsonObject(formData.get("attributes"), "Product attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : undefined;
+  const currentTab = String(formData.get("currentTab") ?? "").trim() || undefined;
 
   try {
     await patchJsonForAction(formData, `/catalog/products/${productId}`, {
@@ -471,18 +474,33 @@ export async function updateProductAction(formData: FormData) {
       status: String(formData.get("status") ?? "draft"),
     });
     revalidatePath(`/products/${productId}`);
-    redirect(`${basePath}&updateStatus=updated`);
+    redirect(
+      appendQueryParams(basePath, {
+        tab: currentTab,
+        returnTo,
+        updateStatus: "updated",
+      }),
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error ?? "");
     if (message.includes("VERSION_CONFLICT")) {
       const currentVersion = extractCurrentVersionFromError(message);
-      const conflictPath =
-        currentVersion !== null
-          ? `${basePath}&updateStatus=conflict&currentVersion=${currentVersion}`
-          : `${basePath}&updateStatus=conflict`;
-      redirect(conflictPath);
+      redirect(
+        appendQueryParams(basePath, {
+          tab: currentTab,
+          returnTo,
+          updateStatus: "conflict",
+          currentVersion: currentVersion !== null ? String(currentVersion) : undefined,
+        }),
+      );
     }
-    redirect(`${basePath}&updateStatus=error`);
+    redirect(
+      appendQueryParams(basePath, {
+        tab: currentTab,
+        returnTo,
+        updateStatus: "error",
+      }),
+    );
   }
 }
 

@@ -70,6 +70,7 @@ interface PageProps {
     channel?: string;
     templateId?: string;
     tab?: string;
+    returnTo?: string;
     updateStatus?: string;
     currentVersion?: string;
     planLimit?: string;
@@ -164,6 +165,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
+  const returnTo = String(query.returnTo ?? "").trim().startsWith("/")
+    ? String(query.returnTo ?? "").trim()
+    : "";
   const updateStatus = String(query.updateStatus ?? "").trim();
   const conflictVersion = String(query.currentVersion ?? "").trim();
   const showPlanLimitModal =
@@ -276,6 +280,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     if (selectedTemplateId) {
       params.set("templateId", selectedTemplateId);
     }
+    if (returnTo) {
+      params.set("returnTo", returnTo);
+    }
     return `/products/${encodeURIComponent(id)}?${params.toString()}`;
   };
 
@@ -307,6 +314,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         }
         actions={
           <>
+            {returnTo ? (
+              <Link
+                href={returnTo}
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Back to inbox
+              </Link>
+            ) : null}
             <StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} />
             <StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />
             {canWrite ? (
@@ -475,6 +490,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           <form id="product-edit-form" action={updateProductAction} className="grid gap-3 md:grid-cols-2">
             <RoleHiddenInput role={actorRole} />
             <input type="hidden" name="productId" value={id} />
+            <input type="hidden" name="currentTab" value={activeTab} />
+            <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="categoryId" value={product.categoryId} />
             <input type="hidden" name="expectedVersion" value={product.version} />
             <input type="hidden" name="attributesBase" value={JSON.stringify(productAttributes)} />

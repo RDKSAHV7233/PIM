@@ -169,24 +169,28 @@ export default async function DashboardPage() {
               value={health.snapshot.incompleteSkus}
               helper={`${formatPercent(completeness)} completeness`}
               tone={health.snapshot.incompleteSkus > 0 ? "warning" : "success"}
+              href="/catalog/products?view=needs_attention"
             />
             <KpiCard
               label="Blocking Issues"
               value={blockingIssues}
               helper={`${warningIssues} warnings to review`}
               tone={blockingIssues > 0 ? "danger" : "success"}
+              href="/quality/issues?severity=BLOCKING"
             />
             <KpiCard
               label="Pending Approvals"
               value={pendingApprovals}
               helper="Products waiting for review"
               tone={pendingApprovals > 0 ? "warning" : "default"}
+              href="/quality/approvals"
             />
             <KpiCard
               label="Ready to Publish"
               value={readinessTotal}
               helper={`${stats.products} total products`}
               tone={readinessTotal > 0 ? "success" : "info"}
+              href="/catalog/products?view=ready"
             />
           </div>
         </section>
@@ -204,18 +208,21 @@ export default async function DashboardPage() {
               value={blockedListings}
               helper="Publish-ready products currently blocked by channel rules"
               tone={blockedListings > 0 ? "danger" : "success"}
+              href="/channels/health"
             />
             <KpiCard
               label="Active Channels"
               value={activeConnectors}
               helper={`${connectors.length} installed`}
               tone={activeConnectors > 0 ? "info" : "warning"}
+              href="/channels/connectors"
             />
             <KpiCard
               label="Warnings to Review"
               value={warningIssues}
               helper="Non-blocking quality issues worth resolving"
               tone={warningIssues > 0 ? "warning" : "default"}
+              href="/quality/issues?severity=WARNING"
             />
           </div>
         </section>
