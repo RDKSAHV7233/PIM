@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { RoleBadge } from "@/components/ui/role-badge";
+import { hasServerAuthToken } from "@/lib/server-auth";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 import "./globals.css";
 
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const sessionClaims = await getServerSessionClaims();
+  const hasAuthToken = await hasServerAuthToken();
   const actorRole = await getServerActorRole();
   return (
     <html lang="en" suppressHydrationWarning>
@@ -27,11 +29,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </div>
             <div className="flex items-center gap-3">
               {sessionClaims ? <RoleBadge role={actorRole} /> : null}
-              {sessionClaims ? <LogoutButton /> : null}
+              {hasAuthToken ? <LogoutButton /> : null}
             </div>
           </div>
         </header>
-        {sessionClaims ? (
+        {hasAuthToken ? (
           <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[250px_minmax(0,1fr)]">
             <AppSidebar showInternal={false} />
             <main>{children}</main>

@@ -82,7 +82,7 @@ export function LoginPageClient({ locale, reason, nextPath }: LoginPageClientPro
         await response.json().catch(() => ({}));
         setAttemptsRemaining(null);
         setRateLimitedUntilMs(null);
-        router.push(safeNextPath);
+        window.location.assign(safeNextPath);
         return;
       }
 

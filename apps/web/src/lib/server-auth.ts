@@ -1,5 +1,11 @@
 import { cookies } from "next/headers";
 
+export async function hasServerAuthToken(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
+  return token.length > 0;
+}
+
 export async function getServerAuthHeader(): Promise<string | undefined> {
   const cookieStore = await cookies();
   const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
