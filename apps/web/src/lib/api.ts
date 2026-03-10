@@ -313,6 +313,32 @@ export interface CatalogSearchResult {
   matchedSku: string | null;
 }
 
+export type NotificationEventType =
+  | "import_completed"
+  | "import_failed"
+  | "publish_succeeded"
+  | "publish_failed"
+  | "approval_decision";
+
+export interface NotificationItem {
+  id: string;
+  eventType: NotificationEventType;
+  title: string;
+  message: string;
+  actionUrl: string | null;
+  actionLabel: string | null;
+  metadata: Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  unreadCount: number;
+  limit: number;
+  nextCursor: string | null;
+}
+
 export type ConnectorMappingLevel =
   | "connector_default_template"
   | "tenant_connector_default"
@@ -845,6 +871,30 @@ export async function searchCatalogProducts(
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<CatalogSearchResult[]>(`/catalog/products/search${query}`, undefined, options);
+}
+
+export async function getNotifications(
+  input?: { limit?: number; cursor?: string | null },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  if (input?.cursor) {
+    params.set("cursor", input.cursor);
+    params.set("pagination", "cursor");
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<NotificationListResponse>(`/notifications${query}`, undefined, options);
+}
+
+export async function markNotificationRead(notificationId: string, options?: ApiRequestOptions) {
+  return patchJson<{ id: string; read: true }>(`/notifications/${encodeURIComponent(notificationId)}/read`, {}, options);
+}
+
+export async function markAllNotificationsRead(options?: ApiRequestOptions) {
+  return patchJson<{ updated: number }>("/notifications/read-all", {}, options);
 }
 
 export async function getProductVariants(productId: string, options?: ApiRequestOptions) {

@@ -12,6 +12,7 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
@@ -128,6 +129,7 @@ export class BulkImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   suggestMapping(headers: string[]) {
@@ -730,6 +732,10 @@ export class BulkImportService {
   }
 
   private async refreshJobCounters(jobId: string) {
+    const current = await this.prisma.tenant().bulkImportJob.findUnique({
+      where: { id: jobId },
+      select: { status: true },
+    });
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: { jobId },
       select: { status: true },
@@ -762,7 +768,7 @@ export class BulkImportService {
       status = BulkImportJobStatus.completed;
     }
 
-    await this.prisma.tenant().bulkImportJob.update({
+    const updated = await this.prisma.tenant().bulkImportJob.update({
       where: { id: jobId },
       data: {
         status,
@@ -772,6 +778,14 @@ export class BulkImportService {
         deadLetterRows: counters.deadLetter,
       },
     });
+
+    if (current?.status !== updated.status) {
+      if (updated.status === BulkImportJobStatus.completed) {
+        await this.notificationsService.emitImportStatus(jobId, "completed");
+      } else if (updated.status === BulkImportJobStatus.dead_letter || updated.status === BulkImportJobStatus.failed) {
+        await this.notificationsService.emitImportStatus(jobId, "dead_letter");
+      }
+    }
   }
 
   private suggestMappingFromHeaders(headersInput: string[], provided?: Record<string, string>) {

@@ -11,6 +11,7 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
@@ -39,6 +40,7 @@ export class CatalogService {
     private readonly complianceService: ComplianceService,
     private readonly planUsageService: PlanUsageService,
     private readonly auditService: AuditService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async stats() {
@@ -350,6 +352,8 @@ export class CatalogService {
         decisionNote: dto.note?.trim() || null,
       },
     });
+
+    await this.notificationsService.emitApprovalDecision(product.id, dto.status);
 
     return product;
   }

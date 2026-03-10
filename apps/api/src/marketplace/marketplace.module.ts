@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConnectorFrameworkModule } from "../connector-framework/connector-framework.module";
 import { MetricsModule } from "../metrics/metrics.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { QueueModule } from "../queue/queue.module";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { MarketplaceController } from "./marketplace.controller";
@@ -10,7 +11,7 @@ import { MarketplaceService } from "./marketplace.service";
 import { SubmissionsController } from "./submissions.controller";
 
 @Module({
-  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule],
+  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule],
   controllers: [MarketplaceController, SubmissionsController],
   providers: [MarketplaceService, ConnectorMappingService],
   exports: [MarketplaceService, ConnectorMappingService],

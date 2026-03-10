@@ -22,6 +22,7 @@ import { MarketplaceModule } from "./marketplace/marketplace.module";
 import { MediaModule } from "./media/media.module";
 import { MetricsModule } from "./metrics/metrics.module";
 import { OndcModule } from "./ondc/ondc.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
@@ -51,6 +52,7 @@ const FEATURE_ONDC_ENABLED =
     MarketplaceModule,
     MediaModule,
     MetricsModule,
+    NotificationsModule,
     RejectionIntelligenceModule,
     ...(FEATURE_ONDC_ENABLED ? [OndcModule] : []),
     AutoSuggestionsModule,

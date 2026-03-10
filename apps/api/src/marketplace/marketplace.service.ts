@@ -19,6 +19,7 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoggerService } from "../common/logging/logger.service";
 import { MetricsService } from "../metrics/metrics.service";
@@ -162,6 +163,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly queueService: QueueService,
     private readonly metricsService: MetricsService,
     private readonly connectorMappingService: ConnectorMappingService,
+    private readonly notificationsService: NotificationsService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -399,7 +401,7 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async createExportJob(productId: string, dto: CreateExportJobDto) {
+  async createExportJob(productId: string, dto: CreateExportJobDto, actorId?: string) {
     const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -449,6 +451,13 @@ export class MarketplaceService implements OnModuleInit {
       },
       include: { template: true },
     });
+    if (actorId?.trim()) {
+      await this.prisma.tenant().$executeRawUnsafe(
+        `UPDATE "MarketplaceExportJob" SET created_by = $1 WHERE id = $2`,
+        actorId.trim(),
+        job.id,
+      );
+    }
     this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
@@ -826,6 +835,7 @@ export class MarketplaceService implements OnModuleInit {
           },
           include: { template: true },
         });
+        await this.notificationsService.emitPublishStatus(updated.id, "completed");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;
       }
@@ -844,6 +854,7 @@ export class MarketplaceService implements OnModuleInit {
           },
           include: { template: true },
         });
+        await this.notificationsService.emitPublishStatus(updated.id, "dead_letter");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;
       }
@@ -878,6 +889,7 @@ export class MarketplaceService implements OnModuleInit {
         },
         include: { template: true },
       });
+      await this.notificationsService.emitPublishStatus(updated.id, "failed");
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
       return updated;
     }

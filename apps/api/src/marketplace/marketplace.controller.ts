@@ -267,8 +267,8 @@ export class MarketplaceController {
   @ApiOperation({ summary: "Create marketplace export job" })
   @ApiResponse({ status: 201, description: "Export job queued" })
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
-  createExportJob(@Param("id") productId: string, @Body() dto: CreateExportJobDto) {
-    return this.marketplaceService.createExportJob(productId, dto);
+  createExportJob(@Param("id") productId: string, @Body() dto: CreateExportJobDto, @Req() request: { pimUserId?: string }) {
+    return this.marketplaceService.createExportJob(productId, dto, request.pimUserId);
   }
 
   @Get("export-jobs")
@@ -284,8 +284,8 @@ export class MarketplaceController {
   @ApiOperation({ summary: "Create export job (alias endpoint)" })
   @ApiResponse({ status: 201, description: "Export job queued" })
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
-  createExportJobAlias(@Body() dto: CreateExportJobAliasDto) {
-    return this.marketplaceService.createExportJob(dto.productId, dto);
+  createExportJobAlias(@Body() dto: CreateExportJobAliasDto, @Req() request: { pimUserId?: string }) {
+    return this.marketplaceService.createExportJob(dto.productId, dto, request.pimUserId);
   }
 
   @Get("export-jobs/:id")

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { GlobalSearch } from "@/components/nav/global-search";
+import { NotificationCenter } from "@/components/nav/notification-center";
 import { RoleBadge } from "@/components/ui/role-badge";
 import { hasServerAuthToken } from "@/lib/server-auth";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
@@ -30,6 +31,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               {hasAuthToken ? <GlobalSearch /> : null}
             </div>
             <div className="flex items-center gap-3">
+              {hasAuthToken ? <NotificationCenter /> : null}
               {sessionClaims ? <RoleBadge role={actorRole} /> : null}
               {hasAuthToken ? <LogoutButton /> : null}
             </div>

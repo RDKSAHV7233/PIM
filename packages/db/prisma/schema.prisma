@@ -286,6 +286,7 @@ model ChannelMappingTemplate {
 model MarketplaceExportJob {
   id           String                 @id @default(cuid())
   tenantKey    String                 @default("default")
+  createdBy    String?                @map("created_by")
   productId    String
   product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
   categoryId   String
@@ -307,6 +308,7 @@ model MarketplaceExportJob {
   @@index([status, updatedAt])
   @@index([templateId])
   @@index([tenantKey])
+  @@index([tenantKey, createdBy, updatedAt])
 }
 
 model BulkImportJob {
@@ -524,4 +526,22 @@ model AuthIdentity {
   updatedAt DateTime @updatedAt
 
   @@index([tenantKey, role, isActive])
+}
+
+model UserNotification {
+  id         String   @id
+  tenantKey  String   @default("default") @map("tenant_key")
+  userId     String   @map("user_id")
+  eventType  String   @map("event_type")
+  title      String
+  message    String
+  actionUrl  String?  @map("action_url")
+  actionLabel String? @map("action_label")
+  metadata   Json     @default("{}")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, userId, createdAt(sort: Desc)], map: "idx_user_notifications_tenant_user_created")
+  @@index([tenantKey, userId, readAt, createdAt(sort: Desc)], map: "idx_user_notifications_tenant_user_read_created")
+  @@map("user_notifications")
 }
