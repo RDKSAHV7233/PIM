@@ -266,7 +266,25 @@
         "docs/execution/gates/2026-03-06T10-34-28.391Z_E10-ST-QA-001-RUN5.json",
         "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
       ],
-      "stories": []
+      "stories": [
+        {
+          "storyId": "ST-OPS-COCKPIT-001",
+          "title": "Add urgency tinting and mounted refresh to the operational cockpit",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "7620869",
+          "tests_passed": [
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
+            "node apps/web/test/integration/ops-cockpit-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/components/ui/kpi-card.tsx','utf8'); if (s.includes('bg-red-50') || s.includes('bg-amber-50') || s.includes('bg-emerald-50')) { console.error('Expected missing urgency tint styles, but tinted KPI backgrounds already exist.'); process.exit(1); } console.error('FAIL: KpiCard urgency states still rely on border-only styling without tinted backgrounds.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: KpiCard urgency states still rely on border-only styling without tinted backgrounds. Likely file: apps/web/src/components/ui/kpi-card.tsx. Exact failing command: @' const fs=require('fs'); const files=['apps/web/src/app/dashboard/page.tsx','apps/web/src/app/operations/jobs/page.tsx','apps/web/src/app/operations/imports/page.tsx']; const missing=files.filter((file)=>!fs.readFileSync(file,'utf8').includes('RefreshOnInterval')); if (missing.length===0) { console.error('Expected missing mounted refresh markers, but all target pages already include RefreshOnInterval.'); process.exit(1); } console.error('FAIL: operational pages still lack mounted RefreshOnInterval hooks: '+missing.join(', ')); process.exit(1); '@ | node -. Failing output snippet: FAIL: operational pages still lack mounted RefreshOnInterval hooks: apps/web/src/app/dashboard/page.tsx, apps/web/src/app/operations/jobs/page.tsx, apps/web/src/app/operations/imports/page.tsx. Likely files: apps/web/src/app/dashboard/page.tsx, apps/web/src/app/operations/jobs/page.tsx, apps/web/src/app/operations/imports/page.tsx."
+        }
+      ]
     },
     {
       "incrementId": "INC-06",
