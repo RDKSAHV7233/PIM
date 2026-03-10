@@ -60,7 +60,7 @@ This guide does not invent new pages, new roles, new workflows, or future-state 
   - `Implemented inside another page`
   - `Legacy redirect`
   - `Information not available in current PIM1 project`
-- Hindi locale scaffolding exists technically, but current visible copy remains English-equivalent.
+- Additional locale support is deferred. English is the only supported visible UI language in the current scope.
 
 ### Navigation principles of the product
 PIM1 is organized into seven operating zones:
@@ -551,11 +551,13 @@ For each action:
 
 ## Notifications / alerts center
 ### A. Purpose
-- Information not available as a standalone page in current PIM1.
-- Equivalent alerts are embedded in page banners, status chips, and inline notices.
+- Implemented as a topbar notification center in current PIM1.
+- Used to review recent async import, publish, and approval events without navigating into each operational page first.
 
 ### B-K.
-- Use the local page where the alert appears. Current PIM1 does not implement a global notifications inbox.
+- Use the bell icon in the authenticated header to open the notification panel.
+- The panel supports unread counts, direct action links, and mark-read behavior.
+- Current PIM1 does not implement a separate full-page notifications route.
 
 ## User profile / account settings
 ### A. Purpose
@@ -564,7 +566,7 @@ For each action:
 
 ### B-K.
 - Do not treat `/admin/privacy` as a profile page. It is a separate Data and Privacy workflow for export and deletion requests.
-- Current account-related controls visible in the UI are limited to logout, locale selection, and privacy workflows.
+- Current account-related controls visible in the UI are limited to logout and privacy workflows.
 ## Product list
 ### A. Purpose
 - Main catalog workbench at `/catalog/products`.

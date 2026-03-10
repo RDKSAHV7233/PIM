@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const adminLinks = [
   {
     title: "Workspace Settings",
-    description: "Tenant-level defaults, locale, and workspace configuration.",
+    description: "Tenant-level defaults and workspace configuration.",
     href: "/admin/workspace",
   },
   {
