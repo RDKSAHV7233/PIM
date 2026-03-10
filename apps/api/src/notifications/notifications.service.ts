@@ -268,7 +268,7 @@ export class NotificationsService {
         j."tenantKey" AS "tenantKey",
         j.created_by AS "createdBy",
         j.channel,
-        j.failureReason AS "failureReason",
+        j."failureReason" AS "failureReason",
         j."productId" AS "productId",
         p.title AS "productTitle"
       FROM "MarketplaceExportJob" j

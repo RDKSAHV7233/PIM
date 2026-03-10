@@ -125,6 +125,7 @@ async function run() {
   const apiPort = 6200 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `notifications-tenant-${runId}`;
+  const workspaceSlug = `notify-${runId}`.slice(0, 24);
   const adminUserId = `notifications-admin-${runId}`;
   const editorUserId = `notifications-editor-${runId}`;
   const reviewerUserId = `notifications-reviewer-${runId}`;
@@ -134,9 +135,12 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [adminUserId]: { tenantId, role: "admin" },
-      [editorUserId]: { tenantId, role: "editor" },
-      [reviewerUserId]: { tenantId, role: "reviewer" },
+      [adminUserId]: { tenantId, role: "admin", workspaceSlug },
+      [editorUserId]: { tenantId, role: "editor", workspaceSlug },
+      [reviewerUserId]: { tenantId, role: "reviewer", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Notifications workspace" },
     }),
   };
 
@@ -166,6 +170,7 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
 
     const adminLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId: adminUserId,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -174,6 +179,7 @@ async function run() {
     const adminToken = String(adminLogin.payload?.accessToken ?? "");
 
     const editorLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId: editorUserId,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -182,6 +188,7 @@ async function run() {
     const editorToken = String(editorLogin.payload?.accessToken ?? "");
 
     const reviewerLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId: reviewerUserId,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -253,7 +260,34 @@ async function run() {
     const approvalNotification = decisionNotifications.payload.items.find((item) => item.eventType === "approval_decision");
     assert(approvalNotification, "expected approval_decision notification for submitting editor");
 
-    const unreadBefore = Number(decisionNotifications.payload.unreadCount ?? 0);
+    const installConnector = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
+      accountAlias: `notify-${runId}`,
+    });
+    assertStatus(installConnector, 201, "install flipkart connector");
+
+    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${product.payload.id}/export-jobs`, editorToken, {
+      channel: "flipkart",
+      maxRetries: 1,
+    });
+    assertStatus(exportJob, 201, "create export job");
+
+    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, editorToken);
+    assertStatus(processedExport, 201, "process export job");
+    assert(
+      ["dead_letter", "failed"].includes(String(processedExport.payload?.status ?? "")),
+      `expected failed or dead_letter export job, got ${String(processedExport.payload?.status)}`,
+    );
+
+    const publishNotifications = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
+    assertStatus(publishNotifications, 200, "list notifications after publish failure");
+    const publishNotification = publishNotifications.payload.items.find((item) => item.eventType === "publish_failed");
+    assert(publishNotification, "expected publish_failed notification for export job creator");
+    assert(
+      String(publishNotification.actionUrl || "").includes(`/products/${product.payload.id}?tab=channels`),
+      "publish_failed notification must deep-link to the product channels tab",
+    );
+
+    const unreadBefore = Number(publishNotifications.payload.unreadCount ?? 0);
     const markRead = await apiRequest(baseUrl, "PATCH", `/notifications/${importNotification.id}/read`, editorToken, {});
     assertStatus(markRead, 200, "mark notification read");
     const afterRead = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
@@ -289,6 +323,7 @@ async function run() {
       validated: [
         "import_failure_notifies_triggering_user",
         "approval_decision_notifies_submitting_editor",
+        "publish_failure_notifies_export_job_creator",
         "notification_unread_count_decrements_on_read",
         "reviewer_view_filters_to_approval_notifications",
       ],
