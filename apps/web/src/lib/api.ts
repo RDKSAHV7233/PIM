@@ -825,10 +825,11 @@ async function parseErrorBody(response: Response): Promise<unknown> {
 async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T> {
   const explicitAuthHeader = String(options?.authHeader ?? "").trim();
   const authHeader = explicitAuthHeader;
+  const hasBody = init?.body !== undefined && init?.body !== null;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(authHeader ? { Authorization: authHeader } : {}),
       ...(options?.headers ?? {}),
       ...(init?.headers ?? {}),
