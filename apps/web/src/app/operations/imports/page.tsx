@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Card, CardTitle } from "@/components/ui/card";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
@@ -63,6 +65,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
     return (
       <div className="space-y-5">
+        <RefreshOnInterval intervalMs={30_000} />
         <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -83,24 +86,14 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         </header>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardTitle>Total Jobs</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{filteredByData.length}</p>
-          </Card>
-          <Card>
-            <CardTitle>Needs Attention</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">
-              {(statusCounts.dead_letter ?? 0) + (statusCounts.failed ?? 0)}
-            </p>
-          </Card>
-          <Card>
-            <CardTitle>Retrying</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{statusCounts.retrying ?? 0}</p>
-          </Card>
-          <Card>
-            <CardTitle>Completed</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{statusCounts.completed ?? 0}</p>
-          </Card>
+          <KpiCard label="Total Jobs" value={filteredByData.length} />
+          <KpiCard
+            label="Needs Attention"
+            value={(statusCounts.dead_letter ?? 0) + (statusCounts.failed ?? 0)}
+            tone={(statusCounts.dead_letter ?? 0) + (statusCounts.failed ?? 0) > 0 ? "danger" : "success"}
+          />
+          <KpiCard label="Retrying" value={statusCounts.retrying ?? 0} tone={(statusCounts.retrying ?? 0) > 0 ? "warning" : "default"} />
+          <KpiCard label="Completed" value={statusCounts.completed ?? 0} tone={(statusCounts.completed ?? 0) > 0 ? "success" : "default"} />
         </section>
 
         <Card>

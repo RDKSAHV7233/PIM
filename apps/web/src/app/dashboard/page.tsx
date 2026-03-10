@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
@@ -121,6 +122,7 @@ export default async function DashboardPage() {
 
     return (
       <div className="space-y-5">
+        <RefreshOnInterval intervalMs={30_000} />
         <PageHeader
           title="Dashboard"
           description="Start with catalog health, then review channel readiness and operational follow-up."

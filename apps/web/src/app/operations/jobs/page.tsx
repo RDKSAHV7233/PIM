@@ -6,6 +6,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
@@ -89,6 +90,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
 
     return (
       <div className="space-y-5">
+        <RefreshOnInterval intervalMs={30_000} />
         <PageHeader
           title="Jobs"
           description="Submission jobs, failures, and retries across all channels."

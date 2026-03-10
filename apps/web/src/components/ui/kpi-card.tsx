@@ -12,11 +12,11 @@ interface KpiCardProps {
 }
 
 const toneStyles: Record<NonNullable<KpiCardProps["tone"]>, string> = {
-  default: "border-slate-200",
-  success: "border-emerald-200",
-  warning: "border-amber-200",
-  danger: "border-red-200",
-  info: "border-blue-200",
+  default: "border-slate-200 bg-white",
+  success: "border-emerald-200 bg-emerald-50/70",
+  warning: "border-amber-200 bg-amber-50/80",
+  danger: "border-red-200 bg-red-50/80",
+  info: "border-blue-200 bg-blue-50/80",
 };
 
 export function KpiCard({ label, value, helper, tone = "default", action, href }: KpiCardProps) {
