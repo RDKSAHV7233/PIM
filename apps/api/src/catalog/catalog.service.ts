@@ -111,6 +111,101 @@ export class CatalogService {
     return this.attachCompletenessScores(products);
   }
 
+  async searchProducts(query: string | undefined, limit?: number) {
+    const normalizedQuery = String(query ?? "").trim();
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.trunc(limit as number))) : 8;
+    const loweredQuery = normalizedQuery.toLowerCase();
+    const products = await this.prisma.tenant().product.findMany({
+      where: {
+        OR: [
+          {
+            title: {
+              contains: normalizedQuery,
+              mode: "insensitive",
+            },
+          },
+          {
+            variants: {
+              some: {
+                skuCode: {
+                  contains: normalizedQuery,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        category: {
+          select: {
+            name: true,
+          },
+        },
+        variants: {
+          select: {
+            skuCode: true,
+          },
+          take: 25,
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 25,
+    });
+
+    return products
+      .map((product) => {
+        const matchingSku = product.variants.find((variant) =>
+          String(variant.skuCode ?? "")
+            .trim()
+            .toLowerCase()
+            .includes(loweredQuery),
+        )?.skuCode ?? null;
+        const title = String(product.title ?? "").trim();
+        const loweredTitle = title.toLowerCase();
+        const loweredSku = String(matchingSku ?? "").trim().toLowerCase();
+        let score = 0;
+
+        if (loweredTitle === loweredQuery) {
+          score += 120;
+        } else if (loweredTitle.startsWith(loweredQuery)) {
+          score += 90;
+        } else if (loweredTitle.includes(loweredQuery)) {
+          score += 60;
+        }
+
+        if (loweredSku === loweredQuery) {
+          score += 100;
+        } else if (loweredSku.startsWith(loweredQuery)) {
+          score += 80;
+        } else if (loweredSku.includes(loweredQuery)) {
+          score += 50;
+        }
+
+        return {
+          id: product.id,
+          title,
+          status: product.status,
+          updatedAt: product.updatedAt,
+          categoryName: product.category?.name ?? null,
+          matchedSku: matchingSku,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return right.updatedAt.getTime() - left.updatedAt.getTime();
+      })
+      .slice(0, safeLimit)
+      .map(({ score: _score, ...product }) => product);
+  }
+
   async getProduct(productId: string) {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },

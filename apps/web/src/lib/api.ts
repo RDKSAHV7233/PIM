@@ -304,6 +304,15 @@ export interface ChannelMappingTemplate {
   updatedAt: string;
 }
 
+export interface CatalogSearchResult {
+  id: string;
+  title: string;
+  status: CatalogStatus;
+  updatedAt: string;
+  categoryName: string | null;
+  matchedSku: string | null;
+}
+
 export type ConnectorMappingLevel =
   | "connector_default_template"
   | "tenant_connector_default"
@@ -821,6 +830,21 @@ export async function getProducts(options?: ApiRequestOptions) {
 
 export async function getProduct(productId: string, options?: ApiRequestOptions) {
   return fetchJson<Product>(`/catalog/products/${productId}`, undefined, options);
+}
+
+export async function searchCatalogProducts(
+  input: { q: string; limit?: number },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (input.q.trim()) {
+    params.set("q", input.q.trim());
+  }
+  if (typeof input.limit === "number" && Number.isFinite(input.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<CatalogSearchResult[]>(`/catalog/products/search${query}`, undefined, options);
 }
 
 export async function getProductVariants(productId: string, options?: ApiRequestOptions) {

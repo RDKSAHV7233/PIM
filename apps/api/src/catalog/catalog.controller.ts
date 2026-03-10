@@ -29,6 +29,14 @@ export class CatalogController {
     return this.catalogService.listProducts(pagination);
   }
 
+  @Get("products/search")
+  @ApiOperation({ summary: "Search products by title or SKU" })
+  @ApiResponse({ status: 200, description: "Product search results fetched" })
+  searchProducts(@Query("q") query?: string, @Query("limit") limit?: string) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.catalogService.searchProducts(query, parsedLimit);
+  }
+
   @Get("products/:id")
   @ApiOperation({ summary: "Get product by id" })
   @ApiResponse({ status: 200, description: "Product fetched" })

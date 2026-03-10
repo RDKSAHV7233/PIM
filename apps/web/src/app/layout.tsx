@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+import { GlobalSearch } from "@/components/nav/global-search";
 import { RoleBadge } from "@/components/ui/role-badge";
 import { hasServerAuthToken } from "@/lib/server-auth";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
@@ -26,6 +27,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link href="/dashboard" className="text-sm font-semibold text-slate-900">
                 PIM1
               </Link>
+              {hasAuthToken ? <GlobalSearch /> : null}
             </div>
             <div className="flex items-center gap-3">
               {sessionClaims ? <RoleBadge role={actorRole} /> : null}
