@@ -17,6 +17,7 @@ import {
   MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -45,7 +46,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  const canWrite = canEditWorkspace(actorRole);
   const productId = String(query.productId ?? "").trim();
   const variantId = String(query.variantId ?? "").trim();
   const channel = (query.channel ?? "amazon") as MarketplaceChannel;
@@ -205,7 +206,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-slate-600">Viewer role is read-only.</p>
+          <p className="text-sm text-slate-600">Your role is read-only on media upload.</p>
         )}
       </Card>
 
@@ -239,7 +240,7 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
             )}
           </form>
         ) : (
-          <p className="text-sm text-slate-600">Viewer role is read-only.</p>
+          <p className="text-sm text-slate-600">Your role is read-only on bulk media association.</p>
         )}
       </Card>
 

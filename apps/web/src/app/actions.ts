@@ -7,6 +7,7 @@ import {
   ApiHttpError,
   type ApiRequestOptions,
   applyBulkEdit as applyBulkEditRequest,
+  decideProductReview as decideProductReviewRequest,
   deleteJson,
   getPlanLimitExceededPayload,
   issueStepUp,
@@ -364,6 +365,36 @@ export async function resolveIssueInboxWarningsAction(formData: FormData) {
   const returnToRaw = String(formData.get("returnTo") ?? "").trim();
   const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/quality/issues";
   redirect(returnTo || "/quality/issues");
+}
+
+export async function decideProductReviewAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  if (!productId || (status !== "approved" && status !== "rejected")) {
+    throw new Error("Product review decision requires productId and approved/rejected status.");
+  }
+
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/quality/approvals";
+
+  try {
+    await decideProductReviewRequest(
+      productId,
+      {
+        status,
+        note: note || undefined,
+      },
+      await resolveActionOptions(formData),
+    );
+    revalidatePath("/quality/approvals");
+    revalidatePath(`/products/${productId}`);
+    redirect(appendQueryParams(returnTo, { decisionStatus: status }));
+  } catch (error: unknown) {
+    const message = error instanceof ApiHttpError ? String((error.body as Record<string, unknown> | null)?.error ?? "") : "";
+    const decisionError = message || "decision_failed";
+    redirect(appendQueryParams(returnTo, { decisionError }));
+  }
 }
 
 export async function createProductAction(formData: FormData) {

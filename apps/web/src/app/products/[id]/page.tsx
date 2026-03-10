@@ -40,6 +40,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { translateError, translateExportStatus } from "@/lib/errors";
 import { formatINR } from "@/lib/format";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -161,7 +162,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  const canWrite = canEditWorkspace(actorRole);
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
@@ -761,7 +762,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               No installed connector with publish capability is available for this tenant.
             </p>
           ) : (
-            <p className="text-sm text-slate-600">Viewer role cannot queue publish actions.</p>
+            <p className="text-sm text-slate-600">Your role cannot queue publish actions.</p>
           )}
           <details className="rounded-lg border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
@@ -919,7 +920,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </Button>
             </form>
           ) : !mappingManagerInstallation ? (
-            <p className="text-sm text-slate-600">Viewer role cannot save mapping templates.</p>
+            <p className="text-sm text-slate-600">Your role cannot save mapping templates.</p>
           ) : null}
 
           <details className="rounded-lg border border-slate-200 bg-white">
@@ -1054,7 +1055,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               <Button type="submit">Run validation</Button>
             </form>
           ) : (
-            <p className="text-sm text-slate-600">Viewer role cannot trigger validation.</p>
+            <p className="text-sm text-slate-600">Your role cannot trigger validation.</p>
           )}
           {product.validationIssues && product.validationIssues.length > 0 ? (
             <ValidationIssuePanel issues={product.validationIssues} />
@@ -1121,7 +1122,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-slate-600">Viewer role cannot create variants.</p>
+          <p className="text-sm text-slate-600">Your role cannot create variants.</p>
         )}
       </Card>
 

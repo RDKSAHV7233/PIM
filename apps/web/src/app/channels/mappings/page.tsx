@@ -35,6 +35,7 @@ import {
   searchConnectorTaxonomy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -319,7 +320,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  const canWrite = canEditWorkspace(actorRole);
   const stepUpAction = (String(query.stepUpAction ?? "").trim() as ProtectedMappingActionKind | "") || "";
   const stepUpError = String(query.stepUpError ?? "").trim();
   const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
@@ -754,7 +755,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 </Button>
               </form>
             ) : (
-              <p className="mt-2 text-sm text-slate-600">Viewer role is read-only for mapping version management.</p>
+              <p className="mt-2 text-sm text-slate-600">Your role is read-only for mapping version management.</p>
             )}
           </Card>
         </section>

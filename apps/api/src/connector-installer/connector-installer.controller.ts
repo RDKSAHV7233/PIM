@@ -3,8 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
-import { AppRole } from "../common/rbac/roles";
-import { Roles } from "../common/rbac/roles";
+import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
@@ -32,7 +31,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":slug/install")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @UseGuards(PlanGuard)
   @RequirePlanLimit(["connectors_installations", "connector_accounts"])
   @ApiOperation({ summary: "Install connector for tenant" })
@@ -53,7 +52,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/uninstall")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   uninstall(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.uninstall(installationId, this.resolveActor(request));
   }
@@ -71,7 +70,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/reconnect")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
   }

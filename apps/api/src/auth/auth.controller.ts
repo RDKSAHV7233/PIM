@@ -24,7 +24,7 @@ import { ResendUnlockDto } from "./dto/resend-unlock.dto";
 import { StepUpChallengeDto } from "./dto/step-up.dto";
 import { PimJwtClaims } from "./jwt";
 import { Public } from "./public.decorator";
-import { AppRole, Roles } from "../common/rbac/roles";
+import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 
 interface AuthenticatedRequest extends FastifyRequest {
   pimJwtClaims?: PimJwtClaims;
@@ -104,7 +104,7 @@ export class AuthController {
   }
 
   @Post("consent")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(200)
   async recordConsent(@Body() dto: RecordConsentDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -122,7 +122,7 @@ export class AuthController {
   }
 
   @Get("account/privacy-status")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(200)
   async getPrivacyStatus(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -130,7 +130,7 @@ export class AuthController {
   }
 
   @Post("account/export")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(202)
   async requestAccountExport(@Body() dto: RequestAccountExportDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -143,7 +143,7 @@ export class AuthController {
   }
 
   @Delete("account")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(202)
   async deleteAccount(@Body() dto: DeleteAccountDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -159,7 +159,7 @@ export class AuthController {
   }
 
   @Post("logout")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(204)
   async logout(@Req() request: AuthenticatedRequest): Promise<void> {
     const claims = request.pimJwtClaims;
@@ -170,7 +170,7 @@ export class AuthController {
   }
 
   @Post("step-up")
-  @Roles("admin", "editor", "viewer")
+  @Roles(...APP_ROLES)
   @HttpCode(201)
   async issueStepUp(@Body() dto: StepUpChallengeDto, @Req() request: AuthenticatedRequest) {
     const claims = request.pimJwtClaims;

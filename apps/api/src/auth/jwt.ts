@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
-import { AppRole } from "../common/rbac/roles";
+import { APP_ROLES, AppRole } from "../common/rbac/roles";
 
 const DEFAULT_EXPIRY_SECONDS = 4 * 60 * 60;
 export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
@@ -65,7 +65,7 @@ function signSegment(input: string, secret: string): string {
 }
 
 function isAppRole(value: unknown): value is AppRole {
-  return value === "admin" || value === "editor" || value === "viewer";
+  return APP_ROLES.includes(value as AppRole);
 }
 
 function isTokenType(value: unknown): value is PimJwtTokenType {

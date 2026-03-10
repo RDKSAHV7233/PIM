@@ -1,18 +1,29 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ApiHttpError, getIssueInbox, getStats } from "@/lib/api";
+import { decideProductReviewAction } from "@/app/actions";
+import { ApiHttpError, getIssueInbox, getProducts, getStats } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canDecideApproval } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
-export default async function QualityApprovalsPage() {
+interface QualityApprovalsPageProps {
+  searchParams: Promise<{
+    decisionStatus?: "approved" | "rejected";
+    decisionError?: string;
+  }>;
+}
+
+export default async function QualityApprovalsPage({ searchParams }: QualityApprovalsPageProps) {
+  const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   if (!authHeader) {
@@ -20,7 +31,7 @@ export default async function QualityApprovalsPage() {
   }
 
   try {
-    const [stats, inbox] = await Promise.all([
+    const [stats, inbox, products] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(
         {
@@ -29,6 +40,7 @@ export default async function QualityApprovalsPage() {
         },
         { role: actorRole, authHeader },
       ),
+      getProducts({ role: actorRole, authHeader }),
     ]);
 
     const blockingProducts = new Set(
@@ -39,6 +51,21 @@ export default async function QualityApprovalsPage() {
     ).size;
     const reviewedProductIds = new Set(inbox.items.map((item) => item.productId)).size;
     const cleanForDecision = Math.max(0, stats.pendingApprovals - reviewedProductIds);
+    const decisionEnabled = canDecideApproval(actorRole);
+    const returnTo = "/quality/approvals";
+    const inReviewProducts = products
+      .filter((product) => product.status === "in_review")
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    const issuesByProduct = inbox.items.reduce<Map<string, { blocking: number; warning: number }>>((acc, item) => {
+      const current = acc.get(item.productId) ?? { blocking: 0, warning: 0 };
+      if (item.severity === "BLOCKING") {
+        current.blocking += 1;
+      } else {
+        current.warning += 1;
+      }
+      acc.set(item.productId, current);
+      return acc;
+    }, new Map());
 
     return (
       <div className="space-y-5">
@@ -51,6 +78,21 @@ export default async function QualityApprovalsPage() {
             </>
           }
         />
+
+        {query.decisionStatus ? (
+          <Card>
+            <p className="text-sm font-medium text-emerald-700">
+              Product review decision recorded: {query.decisionStatus}.
+            </p>
+          </Card>
+        ) : null}
+        {query.decisionError ? (
+          <Card>
+            <p className="text-sm font-medium text-rose-700">
+              Review decision could not be applied. Refresh the queue and verify blocking issues are cleared.
+            </p>
+          </Card>
+        ) : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
@@ -95,7 +137,7 @@ export default async function QualityApprovalsPage() {
           <Card>
             <CardTitle>Operator Actions</CardTitle>
             <p className="mt-2 text-sm text-slate-700">
-              Review blockers in Issue Inbox and use product detail publish-readiness before final approval decisions.
+              Review blockers in Issue Inbox, open the product for context, and make final review decisions from this queue.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
@@ -113,6 +155,99 @@ export default async function QualityApprovalsPage() {
             </div>
           </Card>
         </section>
+
+        <Card>
+          <CardTitle>Review Decisions</CardTitle>
+          {inReviewProducts.length === 0 ? (
+            <EmptyState
+              icon="CHECK"
+              title="No products waiting for review decisions"
+              description="Products appear here when their workflow status moves to in_review."
+              action={{ label: "Back to Quality", href: "/quality" }}
+            />
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[960px] text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2">Product</th>
+                    <th className="py-2">Completeness</th>
+                    <th className="py-2">Open Issues</th>
+                    <th className="py-2">Updated</th>
+                    <th className="py-2">Decision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inReviewProducts.map((product) => {
+                    const summary = issuesByProduct.get(product.id) ?? { blocking: 0, warning: 0 };
+                    const canApprove = summary.blocking === 0;
+
+                    return (
+                      <tr key={product.id} className="border-t border-slate-200 align-top">
+                        <td className="py-2.5">
+                          <p className="font-medium text-slate-900">{product.title}</p>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                            <span>{product.category?.name ?? product.categoryId}</span>
+                            <StatusChip label={product.status} tone="warning" />
+                          </div>
+                          <Link
+                            href={`/products/${encodeURIComponent(product.id)}?tab=quality&returnTo=${encodeURIComponent(returnTo)}`}
+                            className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline"
+                          >
+                            Open product
+                          </Link>
+                        </td>
+                        <td className="py-2.5 text-slate-700">{product.completenessScore ?? 0}%</td>
+                        <td className="py-2.5">
+                          <div className="flex flex-wrap gap-2">
+                            <StatusChip
+                              label={summary.blocking > 0 ? `${summary.blocking} blocking` : "No blockers"}
+                              tone={summary.blocking > 0 ? "danger" : "success"}
+                            />
+                            <StatusChip
+                              label={summary.warning > 0 ? `${summary.warning} warnings` : "No warnings"}
+                              tone={summary.warning > 0 ? "warning" : "neutral"}
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-xs text-slate-500">{new Date(product.updatedAt).toLocaleString()}</td>
+                        <td className="py-2.5">
+                          {decisionEnabled ? (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-2">
+                                <form action={decideProductReviewAction}>
+                                  <input type="hidden" name="productId" value={product.id} />
+                                  <input type="hidden" name="status" value="approved" />
+                                  <input type="hidden" name="returnTo" value={returnTo} />
+                                  <Button type="submit" disabled={!canApprove}>
+                                    Approve
+                                  </Button>
+                                </form>
+                                <form action={decideProductReviewAction}>
+                                  <input type="hidden" name="productId" value={product.id} />
+                                  <input type="hidden" name="status" value="rejected" />
+                                  <input type="hidden" name="returnTo" value={returnTo} />
+                                  <Button type="submit" variant="secondary">
+                                    Reject
+                                  </Button>
+                                </form>
+                              </div>
+                              {!canApprove ? (
+                                <p className="text-xs text-slate-500">Clear blocking issues before approving.</p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-600">Your role can review items here, but not record final decisions.</p>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
 
         <Card>
           <CardTitle>Items In Review</CardTitle>

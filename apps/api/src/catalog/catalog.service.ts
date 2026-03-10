@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AppliesTo, Prisma, RecordStatus } from "@prisma/client";
+import { AppliesTo, Prisma, RecordStatus, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { ComplianceService } from "../compliance/compliance.service";
@@ -19,7 +19,7 @@ import { UpdateVariantDto } from "./dto/update-variant.dto";
 
 type ActorContext = {
   id: string;
-  role: "admin" | "editor" | "viewer";
+  role: "admin" | "editor" | "reviewer" | "viewer";
 };
 
 type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
@@ -201,6 +201,61 @@ export class CatalogService {
         },
       });
     }
+    return product;
+  }
+
+  async decideProductReview(
+    productId: string,
+    dto: { status: "approved" | "rejected"; note?: string },
+    actor: ActorContext,
+  ) {
+    const current = await this.requireProduct(productId);
+    if (current.status !== RecordStatus.in_review) {
+      throw new BadRequestException(`Review decision requires product to be in_review. Current status is ${current.status}.`);
+    }
+
+    const nextStatus = dto.status === "approved" ? RecordStatus.approved : RecordStatus.rejected;
+    if (nextStatus === RecordStatus.approved) {
+      await this.complianceService.validateAndPersistProduct(productId);
+      const blockingIssues = await this.prisma.tenant().validationIssue.count({
+        where: {
+          productId,
+          status: ValidationIssueStatus.open,
+          severity: RuleSeverity.error,
+        },
+      });
+      if (blockingIssues > 0) {
+        throw new BadRequestException({
+          code: "APPROVAL_BLOCKED",
+          message: "Product still has blocking issues and cannot be approved.",
+          blockingIssues,
+        });
+      }
+    }
+
+    const product = await this.prisma.tenant().product.update({
+      where: { id: productId },
+      data: {
+        status: nextStatus,
+        version: { increment: 1 },
+      },
+      include: { category: true, variants: true },
+    });
+
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "STATUS_TRANSITION",
+      resource: "/api/v1/catalog/products/:id/review-decision",
+      resourceId: product.id,
+      metadata: {
+        model: "Product",
+        fromStatus: current.status,
+        toStatus: nextStatus,
+        decisionNote: dto.note?.trim() || null,
+      },
+    });
+
     return product;
   }
 

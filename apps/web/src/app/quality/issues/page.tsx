@@ -20,6 +20,7 @@ import {
   getIssueInbox,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canResolveIssueInboxWarnings } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -97,7 +98,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canResolveWarnings = actorRole !== "viewer";
+  const canResolveWarnings = canResolveIssueInboxWarnings(actorRole);
   const hideTestData = resolveHideTestData(query.hideTestData);
   const limit = parseLimit(query.limit, 50);
 

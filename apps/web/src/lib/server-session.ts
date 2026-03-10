@@ -11,7 +11,7 @@ interface PimJwtClaims {
   exp: number;
 }
 
-const APP_ROLES: readonly AppRole[] = ["admin", "editor", "viewer"];
+const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
 
 function toBase64Url(value: Buffer | string): string {
   const source = Buffer.isBuffer(value) ? value : Buffer.from(value);

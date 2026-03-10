@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -60,7 +61,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   const hideTestData = resolveHideTestData(query.hideTestData);
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  const canWrite = canEditWorkspace(actorRole);
 
   const bulkEditCategoryId = String(query.bulkEditCategoryId ?? "").trim();
   const bulkEditStatus = String(query.bulkEditStatus ?? "").trim();
@@ -220,7 +221,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
               </Button>
             </form>
           ) : (
-            <p className="mt-2 text-sm text-slate-600">Viewer role cannot run or apply bulk edits.</p>
+            <p className="mt-2 text-sm text-slate-600">Your role cannot run or apply bulk edits.</p>
           )}
 
           {shouldPreviewBulkEdit ? (

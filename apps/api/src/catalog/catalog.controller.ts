@@ -8,6 +8,7 @@ import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
+import { DecideProductReviewDto } from "./dto/decide-product-review.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
 
@@ -58,6 +59,25 @@ export class CatalogController {
       : "system";
     const actorRole = request.pimRole ?? "admin";
     return this.catalogService.updateProduct(id, dto, {
+      id: actorId,
+      role: actorRole,
+    });
+  }
+
+  @Post("products/:id/review-decision")
+  @Roles("admin", "editor", "reviewer")
+  @ApiOperation({ summary: "Approve or reject an in-review product" })
+  @ApiResponse({ status: 201, description: "Review decision applied" })
+  decideProductReview(
+    @Param("id") id: string,
+    @Body() dto: DecideProductReviewDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
+      ? request.pimUserId.trim()
+      : "system";
+    const actorRole = request.pimRole ?? "viewer";
+    return this.catalogService.decideProductReview(id, dto, {
       id: actorId,
       role: actorRole,
     });

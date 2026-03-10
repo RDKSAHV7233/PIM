@@ -14,8 +14,19 @@ export const dynamic = "force-dynamic";
 const rolePermissions = [
   { role: "Admin", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "full" },
   { role: "Editor", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "limited" },
+  { role: "Reviewer", catalog: "read", channels: "read", ops: "read", quality: "approve", admin: "none" },
   { role: "Viewer", catalog: "read", channels: "read", ops: "read", quality: "read", admin: "none" },
 ];
+
+function toneForCapability(value: string) {
+  if (value === "write") {
+    return "success" as const;
+  }
+  if (value === "approve") {
+    return "info" as const;
+  }
+  return "neutral" as const;
+}
 
 export default async function AdminUsersPage() {
   const authHeader = await getServerAuthHeader();
@@ -81,10 +92,10 @@ export default async function AdminUsersPage() {
                 {rolePermissions.map((entry) => (
                   <tr key={entry.role} className="border-t border-slate-200">
                     <td className="py-2 font-medium text-slate-900">{entry.role}</td>
-                    <td className="py-2"><StatusChip label={entry.catalog} tone={entry.catalog === "write" ? "success" : "neutral"} /></td>
-                    <td className="py-2"><StatusChip label={entry.channels} tone={entry.channels === "write" ? "success" : "neutral"} /></td>
-                    <td className="py-2"><StatusChip label={entry.ops} tone={entry.ops === "write" ? "success" : "neutral"} /></td>
-                    <td className="py-2"><StatusChip label={entry.quality} tone={entry.quality === "write" ? "success" : "neutral"} /></td>
+                    <td className="py-2"><StatusChip label={entry.catalog} tone={toneForCapability(entry.catalog)} /></td>
+                    <td className="py-2"><StatusChip label={entry.channels} tone={toneForCapability(entry.channels)} /></td>
+                    <td className="py-2"><StatusChip label={entry.ops} tone={toneForCapability(entry.ops)} /></td>
+                    <td className="py-2"><StatusChip label={entry.quality} tone={toneForCapability(entry.quality)} /></td>
                     <td className="py-2"><StatusChip label={entry.admin} tone={entry.admin === "full" ? "info" : entry.admin === "none" ? "neutral" : "warning"} /></td>
                   </tr>
                 ))}

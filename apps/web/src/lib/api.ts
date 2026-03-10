@@ -1,9 +1,9 @@
 export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
 export type MarketplaceChannel = "amazon" | "flipkart" | "meesho";
-export type AppRole = "admin" | "editor" | "viewer";
+export type AppRole = "admin" | "editor" | "reviewer" | "viewer";
 
-const APP_ROLES: readonly AppRole[] = ["admin", "editor", "viewer"];
+const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
 
 export function normalizeAppRole(value: FormDataEntryValue | string | null | undefined): AppRole {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -898,6 +898,18 @@ export async function getIssueInbox(
 
 export async function resolveIssueInboxWarnings(issueIds: string[], options?: ApiRequestOptions) {
   return postJson<IssueInboxResolveResult>("/issues/inbox/resolve", { issueIds }, options);
+}
+
+export async function decideProductReview(
+  productId: string,
+  body: { status: "approved" | "rejected"; note?: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<Product>(
+    `/catalog/products/${encodeURIComponent(productId)}/review-decision`,
+    body,
+    options,
+  );
 }
 
 export async function getMarketplaceChannels(options?: ApiRequestOptions) {

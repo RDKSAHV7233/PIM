@@ -19,6 +19,7 @@ import {
   type ProductReadinessBatchResponse,
   type ReadinessStatus,
 } from "@/lib/channel-readiness";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 
 type ProductFilter = "all" | "needs_attention" | "ready";
@@ -156,7 +157,7 @@ export function ProductsTab({
   initialView = "all",
   initialSearch = "",
 }: ProductsTabProps) {
-  const canWrite = role !== "viewer";
+  const canWrite = canEditWorkspace(role);
   const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [searchQuery, setSearchQuery] = useState(initialSearch);

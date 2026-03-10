@@ -7,6 +7,7 @@ import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -39,7 +40,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const selectedBulkJobId = String(query.bulkJobId ?? "").trim();
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = actorRole !== "viewer";
+  const canWrite = canEditWorkspace(actorRole);
 
   try {
     const jobs = await getBulkImportJobs({ role: actorRole, authHeader });
@@ -173,7 +174,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                             <RowRepairForm row={row} jobId={selectedBulkJobId} role={actorRole} />
                           </div>
                         ) : (
-                          <p className="mt-2 text-xs text-slate-500">Read-only in viewer role.</p>
+                          <p className="mt-2 text-xs text-slate-500">This action is read-only for your role.</p>
                         )}
                       </div>
                     );
