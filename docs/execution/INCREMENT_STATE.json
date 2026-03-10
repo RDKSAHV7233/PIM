@@ -283,6 +283,27 @@
           "reopened_by": "codex",
           "reopened_reason": "Bundle the remaining Operations overview KPI cleanup into the operational cockpit story so all top-level operational KPI surfaces use the same KpiCard system.",
           "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/app/operations/page.tsx','utf8'); if (s.includes('<KpiCard') || s.includes('KpiCard')) { console.error('Expected missing Operations overview KpiCard usage, but KpiCard markers already exist.'); process.exit(1); } console.error('FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: operations overview still uses raw Card KPI blocks instead of KpiCard. Likely file: apps/web/src/app/operations/page.tsx."
+        },
+        {
+          "storyId": "ST-OPS-READINESS-BATCH-002",
+          "title": "Batch Product Workbench channel readiness requests into a single API flow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "0bc95a8",
+          "tests_passed": [
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/marketplace-readiness-batch.test.cjs",
+            "node apps/web/test/integration/product-workbench-ui.test.cjs",
+            "node apps/web/test/integration/product-workbench-readiness-batch.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/channel/product-channel-readiness-cell.tsx','utf8'); const fetchMatches = s.match(/\\/api\\/marketplace\\/readiness\\?productId=/g) || []; if (fetchMatches.length === 0) { console.error('Expected per-row readiness fetch marker not found.'); process.exit(1); } console.error('FAIL: Product Workbench readiness still performs per-row, per-channel fetches instead of a batched readiness request.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench readiness still performs per-row, per-channel fetches instead of a batched readiness request. Likely files: apps/web/src/components/channel/product-channel-readiness-cell.tsx, apps/web/src/components/product/products-tab.tsx."
         }
       ]
     },
