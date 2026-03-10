@@ -940,6 +940,42 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-12",
+      "name": "Connector Access Stability",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "apps/web/src/lib/api.ts",
+        "apps/web/test/integration/connector-access-delete-helper.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-CON-ACCESS-DELETE-001",
+          "title": "Prevent empty-body connector revoke requests from sending JSON content-type",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "33d8bd6",
+          "tests_passed": [
+            "node apps/web/test/integration/connector-access-delete-helper.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "scope": [
+            "apps/web/src/lib/api.ts",
+            "apps/web/test/integration/connector-access-delete-helper.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "DELETE requests without a body do not send a default application/json content type.",
+            "Connector permission revoke no longer fails with Body cannot be empty when content-type is set to application/json.",
+            "The shared deleteJson helper remains available to connector access and template delete flows."
+          ]
+        }
+      ]
     }
   ]
 }
