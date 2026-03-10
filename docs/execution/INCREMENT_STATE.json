@@ -857,9 +857,16 @@
         {
           "storyId": "ST-FK-CONTRACT-001",
           "title": "Lock Flipkart v1 connector contract before implementation",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
+          "commit": "dd07f73",
+          "tests_passed": [
+            "Get-Content docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "rg -n \"publish-capable|imported/snapshotted taxonomy|Publish to Flipkart|installation and credential contract|Response normalization contract|Idempotency Contract|connector-installer|connector-framework|connector-mapping.service|product detail\" docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "git diff --stat -- docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md docs/execution/INCREMENT_STATE.json",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
           "scope": [
             "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
             "docs/execution/INCREMENT_STATE.json"
