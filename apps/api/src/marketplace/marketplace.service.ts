@@ -61,6 +61,21 @@ type AmazonValidationResult = {
   warnings: string[];
 };
 
+type SimulationProduct = Prisma.ProductGetPayload<{
+  include: {
+    validationIssues: true;
+  };
+}>;
+
+type MarketplaceReadinessStatus = "ready" | "warnings" | "errors" | "unknown";
+
+type MarketplaceReadinessSummary = {
+  channel: MarketplaceChannel;
+  status: MarketplaceReadinessStatus;
+  errorCount: number;
+  warningCount: number;
+};
+
 type SubmissionFilters = {
   productId?: string;
   connectorSlug?: string;
@@ -944,7 +959,72 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async simulateProduct(productId: string, channelInput: string, templateId?: string) {
-    const product = await this.prisma.tenant().product.findUnique({
+    const product = await this.getProductForSimulation(productId);
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+    return this.buildSimulationFromProduct(product, channelInput, templateId);
+  }
+
+  async getBatchReadiness(productIdsInput: string[], channelsInput?: string[]) {
+    const productIds = this.uniqueStrings(productIdsInput).slice(0, 250);
+    if (productIds.length === 0) {
+      throw new BadRequestException("At least one productId is required.");
+    }
+
+    const channels = this.resolveBatchChannels(channelsInput);
+    const products = await this.getProductsForSimulation(productIds);
+    const productsById = new Map(products.map((product) => [product.id, product]));
+    const mappingCache = new Map<string, EffectiveMapping>();
+    const maxConcurrentTasks = 12;
+    const tasks: Array<() => Promise<{ productId: string; readiness: MarketplaceReadinessSummary[] }>> = [];
+
+    for (const productId of productIds) {
+      tasks.push(async () => {
+        const product = productsById.get(productId);
+        if (!product) {
+          return {
+            productId,
+            readiness: channels.map((channel) => ({
+              channel,
+              status: "unknown" as const,
+              errorCount: 0,
+              warningCount: 0,
+            })),
+          };
+        }
+
+        const readiness = await Promise.all(
+          channels.map(async (channel) => {
+            try {
+              const simulation = await this.buildSimulationFromProduct(
+                product,
+                channel,
+                undefined,
+                mappingCache,
+              );
+              return this.summarizeReadiness(channel, simulation);
+            } catch {
+              return {
+                channel,
+                status: "unknown" as const,
+                errorCount: 0,
+                warningCount: 0,
+              };
+            }
+          }),
+        );
+
+        return { productId, readiness };
+      });
+    }
+
+    const items = await this.runWithConcurrency(tasks, maxConcurrentTasks);
+    return { items };
+  }
+
+  private async getProductForSimulation(productId: string) {
+    return this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
         validationIssues: {
@@ -953,11 +1033,62 @@ export class MarketplaceService implements OnModuleInit {
         },
       },
     });
-    if (!product) {
-      throw new NotFoundException("Product not found");
+  }
+
+  private async getProductsForSimulation(productIds: string[]) {
+    return this.prisma.tenant().product.findMany({
+      where: { id: { in: productIds } },
+      include: {
+        validationIssues: {
+          where: { status: ValidationIssueStatus.open },
+          orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+        },
+      },
+    });
+  }
+
+  private resolveBatchChannels(channelsInput?: string[]): MarketplaceChannel[] {
+    const requested = Array.isArray(channelsInput) ? channelsInput : [];
+    if (requested.length === 0) {
+      return [...MARKETPLACE_CHANNELS];
     }
 
-    const mapping = await this.getEffectiveMapping(channelInput, product.categoryId, templateId);
+    const normalized = this.uniqueStrings(requested).map((channelInput) => this.parseChannel(channelInput));
+    return normalized;
+  }
+
+  private summarizeReadiness(
+    channel: MarketplaceChannel,
+    simulation: Awaited<ReturnType<MarketplaceService["buildSimulationFromProduct"]>>,
+  ): MarketplaceReadinessSummary {
+    const channelErrorCount = simulation.channelIssues.filter((issue) => issue.severity === "error").length;
+    const channelWarningCount = simulation.channelIssues.filter((issue) => issue.severity === "warning").length;
+    const errorCount =
+      simulation.missingFields.length + simulation.complianceSummary.errorCount + channelErrorCount;
+    const warningCount = simulation.complianceSummary.warningCount + channelWarningCount;
+    const status: MarketplaceReadinessStatus =
+      errorCount > 0 ? "errors" : warningCount > 0 ? "warnings" : "ready";
+
+    return {
+      channel,
+      status,
+      errorCount,
+      warningCount,
+    };
+  }
+
+  private async buildSimulationFromProduct(
+    product: SimulationProduct,
+    channelInput: string,
+    templateId?: string,
+    mappingCache?: Map<string, EffectiveMapping>,
+  ) {
+    const mapping = await this.getEffectiveMappingCached(
+      channelInput,
+      product.categoryId,
+      templateId,
+      mappingCache,
+    );
     const attributes = this.asRecord(product.attributes);
     const mappedPayload: Record<string, unknown> = {};
     for (const [sourceField, targetField] of Object.entries(mapping.fieldMap)) {
@@ -985,7 +1116,7 @@ export class MarketplaceService implements OnModuleInit {
 
     if (mapping.channel === "amazon") {
       const amazonValidation = await this.runAmazonValidation({
-        productId,
+        productId: product.id,
         displayName: mapping.displayName,
         requiredFields: mapping.requiredFields,
         localMissingFields,
@@ -1016,7 +1147,7 @@ export class MarketplaceService implements OnModuleInit {
     const riskBand = riskScore >= 60 ? "high" : riskScore >= 30 ? "medium" : "low";
 
     return {
-      productId,
+      productId: product.id,
       channel: mapping.channel,
       displayName: mapping.displayName,
       exportReady: channelIssues.length === 0 && complianceErrors === 0,
@@ -1232,6 +1363,52 @@ export class MarketplaceService implements OnModuleInit {
       templateName: null,
       source: "system_pack",
     };
+  }
+
+  private async getEffectiveMappingCached(
+    channelInput: string,
+    categoryId?: string,
+    templateId?: string,
+    cache?: Map<string, EffectiveMapping>,
+  ): Promise<EffectiveMapping> {
+    if (!cache) {
+      return this.getEffectiveMapping(channelInput, categoryId, templateId);
+    }
+
+    const key = `${String(channelInput ?? "").trim().toLowerCase()}::${categoryId ?? ""}::${templateId ?? ""}`;
+    const cached = cache.get(key);
+    if (cached) {
+      return {
+        ...cached,
+        requiredFields: [...cached.requiredFields],
+        fieldMap: { ...cached.fieldMap },
+      };
+    }
+
+    const resolved = await this.getEffectiveMapping(channelInput, categoryId, templateId);
+    cache.set(key, resolved);
+    return {
+      ...resolved,
+      requiredFields: [...resolved.requiredFields],
+      fieldMap: { ...resolved.fieldMap },
+    };
+  }
+
+  private async runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
+    const results = new Array<T>(tasks.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < tasks.length) {
+        const current = nextIndex;
+        nextIndex += 1;
+        results[current] = await tasks[current]();
+      }
+    };
+
+    const workerCount = Math.min(Math.max(concurrency, 1), tasks.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
   }
 
   private parseChannel(channelInput: string): MarketplaceChannel {

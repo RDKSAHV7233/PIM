@@ -9,8 +9,16 @@ import { CreateProductForm } from "@/components/product/CreateProductForm";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
-import type { AppRole, CatalogStats, Category, Product } from "@/lib/api";
-import type { ReadinessStatus } from "@/lib/channel-readiness";
+import type { AppRole, CatalogStats, Category, MarketplaceChannel, Product } from "@/lib/api";
+import {
+  aggregateReadinessStatus,
+  buildLoadingReadiness,
+  buildUnknownReadiness,
+  READINESS_CHANNELS,
+  type ChannelReadinessResult,
+  type ProductReadinessBatchResponse,
+  type ReadinessStatus,
+} from "@/lib/channel-readiness";
 import { filterTestData } from "@/lib/test-data-filter";
 
 type ProductFilter = "all" | "needs_attention" | "ready";
@@ -20,6 +28,8 @@ interface ProductWithCompliance extends Product {
   complianceErrorCount: number;
   complianceWarningCount: number;
 }
+
+type ProductReadinessState = Record<string, Partial<Record<MarketplaceChannel, ChannelReadinessResult>>>;
 
 interface ProductsTabProps {
   role: AppRole;
@@ -151,7 +161,7 @@ export function ProductsTab({
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showCreateProduct, setShowCreateProduct] = useState(false);
-  const [readinessMap, setReadinessMap] = useState<Record<string, ReadinessStatus>>({});
+  const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -178,6 +188,98 @@ export function ProductsTab({
   const searchedProducts = useMemo(() => {
     return filteredProducts.filter((product) => matchesProductSearch(product, searchQuery));
   }, [filteredProducts, searchQuery]);
+
+  useEffect(() => {
+    const productIds = searchedProducts.map((product) => product.id);
+    if (productIds.length === 0) {
+      setReadinessState({});
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadingState = Object.fromEntries(
+      productIds.map((productId) => [
+        productId,
+        Object.fromEntries(
+          READINESS_CHANNELS.map((channel) => [channel, buildLoadingReadiness(channel)]),
+        ),
+      ]),
+    ) as ProductReadinessState;
+
+    setReadinessState(loadingState);
+
+    async function loadReadinessBatch() {
+      try {
+        const response = await fetch("/api/marketplace/readiness/batch", {
+          method: "POST",
+          cache: "no-store",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productIds,
+            channels: READINESS_CHANNELS,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error("readiness batch request failed");
+        }
+
+        const payload = (await response.json()) as ProductReadinessBatchResponse;
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const nextState = Object.fromEntries(
+          productIds.map((productId) => [
+            productId,
+            Object.fromEntries(
+              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
+            ),
+          ]),
+        ) as ProductReadinessState;
+
+        for (const item of payload.items ?? []) {
+          nextState[item.productId] = Object.fromEntries(
+            READINESS_CHANNELS.map((channel) => {
+              const result =
+                item.readiness.find((candidate) => candidate.channel === channel) ??
+                buildUnknownReadiness(channel);
+              return [channel, result];
+            }),
+          ) as Partial<Record<MarketplaceChannel, ChannelReadinessResult>>;
+        }
+
+        setReadinessState(nextState);
+      } catch {
+        if (controller.signal.aborted) {
+          return;
+        }
+        const fallbackState = Object.fromEntries(
+          productIds.map((productId) => [
+            productId,
+            Object.fromEntries(
+              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
+            ),
+          ]),
+        ) as ProductReadinessState;
+        setReadinessState(fallbackState);
+      }
+    }
+
+    void loadReadinessBatch();
+    return () => controller.abort();
+  }, [role, searchedProducts]);
+
+  const readinessMap = useMemo(() => {
+    return Object.fromEntries(
+      searchedProducts.map((product) => [
+        product.id,
+        aggregateReadinessStatus(READINESS_CHANNELS.map((channel) => readinessState[product.id]?.[channel])),
+      ]),
+    ) as Record<string, ReadinessStatus>;
+  }, [readinessState, searchedProducts]);
 
   const statusesLoaded = useMemo(
     () =>
@@ -523,16 +625,7 @@ export function ProductsTab({
                     </td>
                     <td className="px-3 py-2.5">
                       <ProductChannelReadinessCell
-                        productId={product.id}
-                        role={role}
-                        onResolvedStatus={(status) =>
-                          setReadinessMap((previous) => {
-                            if (previous[product.id] === status) {
-                              return previous;
-                            }
-                            return { ...previous, [product.id]: status };
-                          })
-                        }
+                        readiness={readinessState[product.id]}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>

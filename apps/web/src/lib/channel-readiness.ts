@@ -2,11 +2,57 @@ import type { MarketplaceChannel, MarketplaceSimulation } from "@/lib/api";
 
 export type ReadinessStatus = "ready" | "warnings" | "errors" | "loading" | "unknown";
 
+export const READINESS_CHANNELS: MarketplaceChannel[] = ["amazon", "flipkart", "meesho"];
+
 export interface ChannelReadinessResult {
   channel: MarketplaceChannel;
   status: ReadinessStatus;
   errorCount: number;
   warningCount: number;
+}
+
+export interface ProductReadinessBatchItem {
+  productId: string;
+  readiness: ChannelReadinessResult[];
+}
+
+export interface ProductReadinessBatchResponse {
+  items: ProductReadinessBatchItem[];
+}
+
+export function buildLoadingReadiness(channel: MarketplaceChannel): ChannelReadinessResult {
+  return {
+    channel,
+    status: "loading",
+    errorCount: 0,
+    warningCount: 0,
+  };
+}
+
+export function buildUnknownReadiness(channel: MarketplaceChannel): ChannelReadinessResult {
+  return {
+    channel,
+    status: "unknown",
+    errorCount: 0,
+    warningCount: 0,
+  };
+}
+
+export function aggregateReadinessStatus(results: Array<ChannelReadinessResult | undefined>): ReadinessStatus {
+  const statuses = results.map((item) => item?.status ?? "loading");
+  if (statuses.some((status) => status === "loading")) {
+    return "loading";
+  }
+  if (statuses.some((status) => status === "errors")) {
+    return "errors";
+  }
+  if (statuses.some((status) => status === "warnings")) {
+    return "warnings";
+  }
+  if (statuses.some((status) => status === "unknown")) {
+    return "unknown";
+  }
+  return "ready";
 }
 
 export function summarizeSimulation(

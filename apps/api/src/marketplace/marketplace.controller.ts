@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { RequireStepUp } from "../auth/step-up.decorator";
 import { StepUpGuard } from "../auth/step-up.guard";
@@ -8,6 +8,7 @@ import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { Roles } from "../common/rbac/roles";
 import { ConnectorMappingService } from "./connector-mapping.service";
+import { BatchMarketplaceReadinessDto } from "./dto/batch-marketplace-readiness.dto";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
 import {
   ArchiveConnectorMappingVersionDto,
@@ -252,6 +253,12 @@ export class MarketplaceController {
   @Post("products/:id/simulate")
   simulateProductBody(@Param("id") productId: string, @Body() dto: SimulateMarketplaceDto) {
     return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId);
+  }
+
+  @Post("readiness/batch")
+  @HttpCode(200)
+  batchReadiness(@Body() dto: BatchMarketplaceReadinessDto) {
+    return this.marketplaceService.getBatchReadiness(dto.productIds, dto.channels);
   }
 
   @Post("products/:id/export-jobs")
