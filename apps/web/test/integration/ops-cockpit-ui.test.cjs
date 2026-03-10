@@ -7,6 +7,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const KPI_CARD = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "kpi-card.tsx");
 const REFRESH_COMPONENT = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "refresh-on-interval.tsx");
 const DASHBOARD_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "dashboard", "page.tsx");
+const OPERATIONS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "page.tsx");
 const JOBS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "jobs", "page.tsx");
 const IMPORTS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "imports", "page.tsx");
 
@@ -20,6 +21,7 @@ function run() {
   const kpiSource = fs.readFileSync(KPI_CARD, "utf8");
   const refreshSource = fs.readFileSync(REFRESH_COMPONENT, "utf8");
   const dashboardSource = fs.readFileSync(DASHBOARD_PAGE, "utf8");
+  const operationsSource = fs.readFileSync(OPERATIONS_PAGE, "utf8");
   const jobsSource = fs.readFileSync(JOBS_PAGE, "utf8");
   const importsSource = fs.readFileSync(IMPORTS_PAGE, "utf8");
 
@@ -47,6 +49,12 @@ function run() {
       importsSource.includes('label="Completed"'),
     "Imports overview must use KpiCard so urgency tinting applies to the operational cockpit.",
   );
+  assert(
+    operationsSource.includes("<KpiCard") &&
+      operationsSource.includes('label="Import Jobs"') &&
+      operationsSource.includes('label="Dead Letter Queue"'),
+    "Operations overview must use KpiCard for top-level KPI surfaces instead of raw Card blocks.",
+  );
 
   console.log(
     JSON.stringify(
@@ -56,6 +64,7 @@ function run() {
           "kpi_card_uses_tinted_urgency_states",
           "dashboard_jobs_and_imports_mount_refresh_on_interval",
           "imports_overview_uses_kpi_card_for_operational_states",
+          "operations_overview_uses_kpi_card_for_top_level_metrics",
         ],
         checkedAt: new Date().toISOString(),
       },

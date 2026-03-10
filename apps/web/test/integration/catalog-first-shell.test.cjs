@@ -37,6 +37,12 @@ function run() {
     "Sidebar must expose quality and operations urgency badges from the navigation summary feed.",
   );
   assert(
+    sidebarSource.includes("function SidebarIcon") &&
+      sidebarSource.includes('"aria-hidden": true') &&
+      sidebarSource.includes("icon: \"box\""),
+    "Sidebar must use a consistent inline icon system instead of text-only item links.",
+  );
+  assert(
     dashboardSource.includes("Catalog Health") &&
       dashboardSource.includes("Publishing Health") &&
       dashboardSource.includes("Operations &amp; Usage"),

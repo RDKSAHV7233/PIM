@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 interface SidebarItem {
   label: string;
   href: string;
+  icon: SidebarIconName;
 }
 
 interface SidebarSection {
@@ -21,76 +22,181 @@ interface SidebarBadgeSummary {
   operations: number;
 }
 
+type SidebarIconName =
+  | "home"
+  | "box"
+  | "folder"
+  | "sliders"
+  | "image"
+  | "grid"
+  | "plug"
+  | "branch"
+  | "send"
+  | "pulse"
+  | "alert"
+  | "check"
+  | "chart"
+  | "pie"
+  | "clipboard"
+  | "upload"
+  | "spark"
+  | "clock"
+  | "wrench"
+  | "building"
+  | "gauge"
+  | "users"
+  | "shield"
+  | "lock"
+  | "receipt"
+  | "code"
+  | "flask"
+  | "database"
+  | "globe";
+
+function SidebarIcon({ name, className }: { name: SidebarIconName; className?: string }) {
+  const props = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    className: cn("h-4 w-4 shrink-0", className),
+    "aria-hidden": true,
+  };
+
+  switch (name) {
+    case "home":
+      return <svg {...props}><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10.5V20h13V10.5" /></svg>;
+    case "box":
+      return <svg {...props}><path d="M12 3 4.5 7 12 11l7.5-4L12 3Z" /><path d="M4.5 7v10L12 21l7.5-4V7" /><path d="M12 11v10" /></svg>;
+    case "folder":
+      return <svg {...props}><path d="M3.5 7.5h6l2 2h9v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5Z" /></svg>;
+    case "sliders":
+      return <svg {...props}><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="11" cy="18" r="2" /></svg>;
+    case "image":
+      return <svg {...props}><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m6.5 17 4-4 3 3 2.5-2.5 2 3.5" /></svg>;
+    case "grid":
+      return <svg {...props}><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" /></svg>;
+    case "plug":
+      return <svg {...props}><path d="M9 7V4" /><path d="M15 7V4" /><path d="M7 9h10v2a5 5 0 0 1-5 5 5 5 0 0 1-5-5V9Z" /><path d="M12 16v4" /></svg>;
+    case "branch":
+      return <svg {...props}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><path d="M8 6h6a4 4 0 0 1 4 4v6" /></svg>;
+    case "send":
+      return <svg {...props}><path d="M4 20 20 12 4 4l3 8-3 8Z" /><path d="M7 12h8" /></svg>;
+    case "pulse":
+      return <svg {...props}><path d="M3 12h4l2-4 4 8 2-4h6" /></svg>;
+    case "alert":
+      return <svg {...props}><path d="M12 4 3.5 19h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
+    case "check":
+      return <svg {...props}><path d="m5 12 4 4 10-10" /></svg>;
+    case "chart":
+      return <svg {...props}><path d="M5 19V9" /><path d="M12 19V5" /><path d="M19 19v-7" /></svg>;
+    case "pie":
+      return <svg {...props}><path d="M12 3v9h9" /><path d="M20.5 13A8.5 8.5 0 1 1 11 3.1" /></svg>;
+    case "clipboard":
+      return <svg {...props}><rect x="6" y="5" width="12" height="15" rx="2" /><path d="M9 5.5h6" /><path d="m9.5 13 2 2 3-4" /></svg>;
+    case "upload":
+      return <svg {...props}><path d="M12 16V5" /><path d="m7.5 9.5 4.5-4.5 4.5 4.5" /><path d="M5 19.5h14" /></svg>;
+    case "spark":
+      return <svg {...props}><path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3Z" /></svg>;
+    case "clock":
+      return <svg {...props}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>;
+    case "wrench":
+      return <svg {...props}><path d="M14.5 6.5a3 3 0 0 0 3.7 3.7l-8.8 8.8a2 2 0 1 1-2.8-2.8l8.8-8.8a3 3 0 0 0 3.7-3.7l-2 2-2.6-2.6 2-2Z" /></svg>;
+    case "building":
+      return <svg {...props}><path d="M5 20V6l7-2v16" /><path d="M12 20V9l7-2v13" /><path d="M8 9h1" /><path d="M8 12h1" /><path d="M15 12h1" /><path d="M15 15h1" /></svg>;
+    case "gauge":
+      return <svg {...props}><path d="M5 16a7 7 0 0 1 14 0" /><path d="M12 13.5 16 9.5" /><path d="M6 16h12" /></svg>;
+    case "users":
+      return <svg {...props}><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.5" /><path d="M4.5 19a4.5 4.5 0 0 1 9 0" /><path d="M14.5 19a3.5 3.5 0 0 1 5 0" /></svg>;
+    case "shield":
+      return <svg {...props}><path d="M12 4 6 6.5V11c0 4 2.6 7.2 6 8.5 3.4-1.3 6-4.5 6-8.5V6.5L12 4Z" /></svg>;
+    case "lock":
+      return <svg {...props}><rect x="5.5" y="11" width="13" height="9" rx="2" /><path d="M8 11V8.5a4 4 0 0 1 8 0V11" /></svg>;
+    case "receipt":
+      return <svg {...props}><path d="M7 4.5h10v15l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5v-15Z" /><path d="M9 9h6" /><path d="M9 13h6" /></svg>;
+    case "code":
+      return <svg {...props}><path d="m9 8-4 4 4 4" /><path d="m15 8 4 4-4 4" /><path d="m13 5-2 14" /></svg>;
+    case "flask":
+      return <svg {...props}><path d="M10 4h4" /><path d="M10 4v4l-4.5 7.5A2.5 2.5 0 0 0 7.7 19h8.6a2.5 2.5 0 0 0 2.2-3.5L14 8V4" /><path d="M9 13h6" /></svg>;
+    case "database":
+      return <svg {...props}><ellipse cx="12" cy="6.5" rx="6.5" ry="2.5" /><path d="M5.5 6.5v5c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-5" /><path d="M5.5 11.5v5c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-5" /></svg>;
+    case "globe":
+      return <svg {...props}><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17" /><path d="M12 3.5a13 13 0 0 1 0 17" /><path d="M12 3.5a13 13 0 0 0 0 17" /></svg>;
+  }
+}
+
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     title: "Dashboard",
     items: [
-      { label: "Overview", href: "/dashboard" },
+      { label: "Overview", href: "/dashboard", icon: "home" },
     ],
   },
   {
     title: "Products",
     items: [
-      { label: "Product Workbench", href: "/catalog/products" },
+      { label: "Product Workbench", href: "/catalog/products", icon: "box" },
     ],
   },
   {
     title: "Catalog",
     items: [
-      { label: "Categories", href: "/catalog/categories" },
-      { label: "Attributes", href: "/catalog/attributes" },
-      { label: "Media", href: "/catalog/media" },
+      { label: "Categories", href: "/catalog/categories", icon: "folder" },
+      { label: "Attributes", href: "/catalog/attributes", icon: "sliders" },
+      { label: "Media", href: "/catalog/media", icon: "image" },
     ],
   },
   {
     title: "Channels",
     items: [
-      { label: "Overview", href: "/channels" },
-      { label: "Connectors", href: "/channels/connectors" },
-      { label: "Mappings", href: "/channels/mappings" },
-      { label: "Submissions", href: "/channels/submissions" },
-      { label: "Health", href: "/channels/health" },
+      { label: "Overview", href: "/channels", icon: "grid" },
+      { label: "Connectors", href: "/channels/connectors", icon: "plug" },
+      { label: "Mappings", href: "/channels/mappings", icon: "branch" },
+      { label: "Submissions", href: "/channels/submissions", icon: "send" },
+      { label: "Health", href: "/channels/health", icon: "pulse" },
     ],
   },
   {
     title: "Quality",
     badgeKey: "quality",
     items: [
-      { label: "Issue Inbox", href: "/quality/issues" },
-      { label: "Validation", href: "/quality/validation" },
-      { label: "Rejection Insights", href: "/rejection" },
-      { label: "Completeness", href: "/quality/completeness" },
-      { label: "Approval Queue", href: "/quality/approvals" },
+      { label: "Issue Inbox", href: "/quality/issues", icon: "alert" },
+      { label: "Validation", href: "/quality/validation", icon: "check" },
+      { label: "Rejection Insights", href: "/rejection", icon: "chart" },
+      { label: "Completeness", href: "/quality/completeness", icon: "pie" },
+      { label: "Approval Queue", href: "/quality/approvals", icon: "clipboard" },
     ],
   },
   {
     title: "Operations",
     badgeKey: "operations",
     items: [
-      { label: "Imports", href: "/operations/imports" },
-      { label: "Bulk Edit", href: "/operations/bulk-edit" },
-      { label: "Jobs", href: "/operations/jobs" },
-      { label: "Repair Center", href: "/operations/repair" },
+      { label: "Imports", href: "/operations/imports", icon: "upload" },
+      { label: "Bulk Edit", href: "/operations/bulk-edit", icon: "spark" },
+      { label: "Jobs", href: "/operations/jobs", icon: "clock" },
+      { label: "Repair Center", href: "/operations/repair", icon: "wrench" },
     ],
   },
   {
     title: "Settings",
     items: [
-      { label: "Workspace Settings", href: "/admin/workspace" },
-      { label: "Plan & Usage", href: "/admin/plan" },
-      { label: "Users & Roles", href: "/admin/users" },
-      { label: "Connector Access", href: "/admin/connectors" },
-      { label: "Privacy", href: "/admin/privacy" },
-      { label: "Audit Logs", href: "/admin/audit" },
+      { label: "Workspace Settings", href: "/admin/workspace", icon: "building" },
+      { label: "Plan & Usage", href: "/admin/plan", icon: "gauge" },
+      { label: "Users & Roles", href: "/admin/users", icon: "users" },
+      { label: "Connector Access", href: "/admin/connectors", icon: "shield" },
+      { label: "Privacy", href: "/admin/privacy", icon: "lock" },
+      { label: "Audit Logs", href: "/admin/audit", icon: "receipt" },
     ],
   },
   {
     title: "Labs / Internal",
     items: [
-      { label: "Developer", href: "/internal/developer" },
-      { label: "AI Lab", href: "/ai" },
-      { label: "DAM", href: "/media" },
-      { label: "ONDC", href: "/ondc" },
+      { label: "Developer", href: "/internal/developer", icon: "code" },
+      { label: "AI Lab", href: "/ai", icon: "flask" },
+      { label: "DAM", href: "/media", icon: "database" },
+      { label: "ONDC", href: "/ondc", icon: "globe" },
     ],
   },
 ];
@@ -171,13 +277,14 @@ export function AppSidebar({ showInternal = false }: AppSidebarProps) {
                     <Link
                       href={item.href}
                       className={cn(
-                        "block rounded-md px-2 py-2 text-sm font-medium transition",
+                        "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition",
                         active
                           ? "bg-slate-900 text-white"
                           : "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
                       )}
                     >
-                      {item.label}
+                      <SidebarIcon name={item.icon} />
+                      <span>{item.label}</span>
                     </Link>
                   </li>
                 );

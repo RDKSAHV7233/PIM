@@ -29,9 +29,11 @@ function run() {
     "Products tab must keep primary actions inside the compact toolbar instead of a standalone workbench card.",
   );
   assert(
-    productsTabSource.includes("No products match this view") &&
-      !productsTabSource.includes("No products match your search"),
-    "Products tab empty-state copy must describe the selected view instead of a nonexistent search feature.",
+    productsPageSource.includes("search?: string") &&
+      productsTabSource.includes('placeholder="Search products by title or SKU"') &&
+      productsTabSource.includes("No products match your search") &&
+      productsTabSource.includes("window.history.replaceState"),
+    "Products tab must expose query-backed SKU/title search with search-aware empty-state copy.",
   );
   assert(
     productsTabSource.includes("Last Updated"),

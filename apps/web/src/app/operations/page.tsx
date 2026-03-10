@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   ApiHttpError,
@@ -53,25 +54,34 @@ export default async function OperationsPage() {
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardTitle>Import Jobs</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{imports.length}</p>
-            <p className="mt-1 text-xs text-slate-500">{importNeedsAttention} need attention</p>
-          </Card>
-          <Card>
-            <CardTitle>Submission Jobs</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{submissions.length}</p>
-            <p className="mt-1 text-xs text-slate-500">{submissionNeedsAttention} rejected/error</p>
-          </Card>
-          <Card>
-            <CardTitle>Dead Letter Queue</CardTitle>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{deadLetterJobs.length}</p>
-            <p className="mt-1 text-xs text-slate-500">Jobs pending manual recovery</p>
-          </Card>
-          <Card>
-            <CardTitle>Bulk Edit Control</CardTitle>
-            <p className="mt-2 text-sm text-slate-700">Use scoped preview before applying any mass change.</p>
-          </Card>
+          <KpiCard
+            label="Import Jobs"
+            value={imports.length}
+            helper={`${importNeedsAttention} need attention`}
+            tone={importNeedsAttention > 0 ? "warning" : "default"}
+            href="/operations/imports"
+          />
+          <KpiCard
+            label="Submission Jobs"
+            value={submissions.length}
+            helper={`${submissionNeedsAttention} rejected/error`}
+            tone={submissionNeedsAttention > 0 ? "danger" : "default"}
+            href="/operations/jobs"
+          />
+          <KpiCard
+            label="Dead Letter Queue"
+            value={deadLetterJobs.length}
+            helper="Jobs pending manual recovery"
+            tone={deadLetterJobs.length > 0 ? "danger" : "success"}
+            href="/operations/repair"
+          />
+          <KpiCard
+            label="Bulk Edit Control"
+            value="Preview first"
+            helper="Use scoped preview before applying any mass change."
+            tone="info"
+            href="/operations/bulk-edit"
+          />
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

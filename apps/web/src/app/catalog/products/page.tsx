@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 interface CatalogProductsPageProps {
   searchParams: Promise<{
     hideTestData?: string;
+    search?: string;
     view?: string;
   }>;
 }
@@ -35,6 +36,10 @@ function resolveProductView(value: string | undefined): "all" | "needs_attention
   return "all";
 }
 
+function resolveProductSearch(value: string | undefined): string {
+  return String(value ?? "").trim().slice(0, 80);
+}
+
 function mapConnectorSlugToChannel(slugInput: string): "amazon" | "flipkart" | "meesho" | null {
   const slug = String(slugInput ?? "").trim().toLowerCase();
   if (slug === "amazon-in") {
@@ -50,6 +55,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
   const initialView = resolveProductView(query.view);
+  const initialSearch = resolveProductSearch(query.search);
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
 
@@ -105,6 +111,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           mappingManagerHref={mappingManagerHref}
           connectorManagementHref="/channels/connectors"
           initialView={initialView}
+          initialSearch={initialSearch}
         />
       </div>
     );

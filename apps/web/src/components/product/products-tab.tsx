@@ -31,6 +31,7 @@ interface ProductsTabProps {
   mappingManagerHref: string | null;
   connectorManagementHref: string;
   initialView?: ProductFilter;
+  initialSearch?: string;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -120,6 +121,19 @@ function complianceTone(product: ProductWithCompliance): "neutral" | "success" |
   return "success";
 }
 
+function matchesProductSearch(product: ProductWithCompliance, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (product.title.toLowerCase().includes(normalized)) {
+    return true;
+  }
+
+  return (product.variants ?? []).some((variant) => variant.skuCode.toLowerCase().includes(normalized));
+}
+
 export function ProductsTab({
   role,
   products,
@@ -130,10 +144,12 @@ export function ProductsTab({
   mappingManagerHref,
   connectorManagementHref,
   initialView = "all",
+  initialSearch = "",
 }: ProductsTabProps) {
   const canWrite = role !== "viewer";
   const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessMap, setReadinessMap] = useState<Record<string, ReadinessStatus>>({});
   const pathname = usePathname();
@@ -143,6 +159,10 @@ export function ProductsTab({
   useEffect(() => {
     setSelectedFilter(initialView);
   }, [initialView]);
+
+  useEffect(() => {
+    setSearchQuery(initialSearch);
+  }, [initialSearch]);
 
   const filteredCategories = useMemo(() => filterTestData(categories, hideTestData), [categories, hideTestData]);
 
@@ -155,20 +175,24 @@ export function ProductsTab({
     }));
   }, [hideTestData, products]);
 
+  const searchedProducts = useMemo(() => {
+    return filteredProducts.filter((product) => matchesProductSearch(product, searchQuery));
+  }, [filteredProducts, searchQuery]);
+
   const statusesLoaded = useMemo(
     () =>
-      filteredProducts.every((product) => {
+      searchedProducts.every((product) => {
         const status = readinessMap[product.id];
         return status !== undefined && status !== "loading";
       }),
-    [filteredProducts, readinessMap],
+    [readinessMap, searchedProducts],
   );
 
   const triageCounts = useMemo(() => {
     if (!statusesLoaded) {
       return { needsAttention: 0, atRisk: 0, ready: 0 };
     }
-    return filteredProducts.reduce(
+    return searchedProducts.reduce(
       (accumulator, product) => {
         const bucket = classifyProduct(product, readinessMap[product.id] ?? "unknown");
         if (bucket === "needs_attention") {
@@ -182,11 +206,11 @@ export function ProductsTab({
       },
       { needsAttention: 0, atRisk: 0, ready: 0 },
     );
-  }, [filteredProducts, readinessMap, statusesLoaded]);
+  }, [readinessMap, searchedProducts, statusesLoaded]);
 
   const sortedProducts = useMemo(() => {
-    return filteredProducts.slice().sort((left, right) => sortProducts(left, right, readinessMap));
-  }, [filteredProducts, readinessMap]);
+    return searchedProducts.slice().sort((left, right) => sortProducts(left, right, readinessMap));
+  }, [readinessMap, searchedProducts]);
 
   const visibleProducts = useMemo(() => {
     if (selectedFilter === "all") {
@@ -219,7 +243,10 @@ export function ProductsTab({
   const nextOnboardingStep = onboardingSteps.find((step) => !step.done)?.label ?? "Keep products moving to ready";
 
   function onHideTestDataChange(nextValue: boolean) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params =
+      typeof window === "undefined"
+        ? new URLSearchParams(searchParams.toString())
+        : new URLSearchParams(window.location.search);
     if (nextValue) {
       params.delete("hideTestData");
     } else {
@@ -230,7 +257,10 @@ export function ProductsTab({
   }
 
   function setSavedView(view: ProductFilter) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params =
+      typeof window === "undefined"
+        ? new URLSearchParams(searchParams.toString())
+        : new URLSearchParams(window.location.search);
     if (view === "all") {
       params.delete("view");
     } else {
@@ -239,6 +269,27 @@ export function ProductsTab({
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const normalizedSearch = searchQuery.trim();
+    if (normalizedSearch) {
+      params.set("search", normalizedSearch);
+    } else {
+      params.delete("search");
+    }
+
+    const query = params.toString();
+    const nextHref = query ? `${pathname}?${query}` : pathname;
+    const currentHref = `${window.location.pathname}${window.location.search}`;
+    if (currentHref !== nextHref) {
+      window.history.replaceState(window.history.state, "", nextHref);
+    }
+  }, [pathname, searchQuery]);
 
   const emptyCatalogDescription =
     role === "viewer"
@@ -315,6 +366,25 @@ export function ProductsTab({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search products by title or SKU"
+                aria-label="Search products by title or SKU"
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 sm:w-72"
+              />
+              {searchQuery.trim().length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
             <Link
               href={`/quality/issues${hideTestData ? "" : "?hideTestData=false"}`}
               className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
@@ -358,6 +428,7 @@ export function ProductsTab({
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             Categories: {stats.categories} | Products: {stats.products} | Variants: {stats.variants}
+            {searchQuery.trim().length > 0 ? ` | Matches: ${searchedProducts.length}` : ""}
           </span>
           <span>
             {showOnboarding
@@ -396,9 +467,22 @@ export function ProductsTab({
         ) : visibleProducts.length === 0 ? (
           <EmptyState
             icon="SEARCH"
-            title="No products match this view"
-            description="Try switching back to All products or review whether hidden test data is affecting the list."
-            action={{ label: "Show all products", onClick: () => setSavedView("all") }}
+            title={searchQuery.trim().length > 0 ? "No products match your search" : "No products match this view"}
+            description={
+              searchQuery.trim().length > 0
+                ? "Try a different product title or variant SKU, or clear the current search."
+                : "Try switching back to All products or review whether hidden test data is affecting the list."
+            }
+            action={
+              searchQuery.trim().length > 0
+                ? { label: "Clear search", onClick: () => setSearchQuery("") }
+                : { label: "Show all products", onClick: () => setSavedView("all") }
+            }
+            secondaryAction={
+              searchQuery.trim().length > 0 && selectedFilter !== "all"
+                ? { label: "Show all products", onClick: () => setSavedView("all") }
+                : undefined
+            }
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-slate-200">
