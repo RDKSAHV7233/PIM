@@ -377,6 +377,29 @@
           "reopened_by": "codex",
           "reopened_reason": "P0 UX execution reopens the issue inbox workflow story to preserve filtered inbox context when users jump from Fix Now into product detail and need a direct return path.",
           "regression_evidence": "Exact failing command: @' const fs=require('fs'); const s=fs.readFileSync('apps/web/src/app/quality/issues/page.tsx','utf8'); if (s.includes('returnTo=') || s.includes('returnTo%3D')) { console.error('Expected missing returnTo link context, but returnTo already appears in Fix Now links.'); process.exit(1); } console.error('FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Issue Inbox Fix Now links do not preserve returnTo context for the filtered inbox view. Likely files: apps/web/src/app/quality/issues/page.tsx, apps/web/src/app/products/[id]/page.tsx."
+        },
+        {
+          "storyId": "ST-QUALITY-REVIEWER-ROLE-002",
+          "title": "Add reviewer approval role and approval queue decisions",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "1104e5c",
+          "tests_passed": [
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/quality-reviewer-role.test.cjs",
+            "node apps/api/test/integration/product-workflow-transitions.test.cjs",
+            "node apps/web/test/integration/quality-reviewer-role-ui.test.cjs",
+            "node apps/web/test/integration/issue-inbox-ui.test.cjs",
+            "node apps/web/test/integration/product-workbench-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         }
       ]
     },
