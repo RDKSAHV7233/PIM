@@ -1081,6 +1081,49 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-15",
+      "name": "Hydration Stability for Form Primitives",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "apps/web/src/components/ui/input.tsx",
+        "apps/web/src/components/ui/select.tsx",
+        "apps/web/src/app/catalog/categories/page.tsx",
+        "apps/web/test/integration/catalog-categories-hydration.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WEB-HYDRATION-001",
+          "title": "Suppress extension-driven hydration mismatches on shared form controls",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "91bfd0c",
+          "reopened_by": "codex",
+          "reopened_reason": "Catalog Categories emitted a hydration mismatch when browser extensions injected data-np-* attributes onto the create-category form and shared input/select controls.",
+          "regression_evidence": "Exact failing UI error: A tree hydrated but some attributes of the server rendered HTML did not match the client properties. Failing output snippet included data-np-autofill-form-type, data-np-watching, and data-np-checked attributes on the create-category form and inputs. Likely files: apps/web/src/components/ui/input.tsx, apps/web/src/components/ui/select.tsx, apps/web/src/app/catalog/categories/page.tsx.",
+          "scope": [
+            "apps/web/src/components/ui/input.tsx",
+            "apps/web/src/components/ui/select.tsx",
+            "apps/web/src/app/catalog/categories/page.tsx",
+            "apps/web/test/integration/catalog-categories-hydration.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Shared Input and Select primitives suppress hydration warnings caused by extension-injected autofill attributes.",
+            "The Catalog Categories create form suppresses hydration warnings at the form boundary.",
+            "Web lint and build remain green after the fix."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/catalog-categories-hydration.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ]
+        }
+      ]
     }
   ]
 }
