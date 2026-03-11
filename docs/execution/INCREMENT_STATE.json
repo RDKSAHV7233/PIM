@@ -990,12 +990,16 @@
         {
           "storyId": "ST-CON-ACCESS-VALIDATION-002",
           "title": "Validate connector grant principals and clarify admin permission UX",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "e82abd4",
+          "reopened_by": "codex",
+          "reopened_reason": "Fix connector definitions endpoint regression causing /channels/mappings to fail with a 500 when install action matrices are resolved.",
+          "regression_evidence": "Exact failing command: $login = Invoke-RestMethod -Uri 'http://127.0.0.1:4000/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body (@{workspaceSlug='default'; userId='admin@pim1.local'; password='pim1-demo-password'} | ConvertTo-Json); $headers=@{ Authorization = \"Bearer $($login.accessToken)\" }; Invoke-WebRequest -Uri 'http://127.0.0.1:4000/api/v1/connectors/definitions' -Headers $headers -ErrorAction Stop. Failing output snippet: DEFINITIONS_STATUS=500 and backend stack shows PrismaClientKnownRequestError P2037: Too many database connections opened during ConnectorPermissionService.buildDefinitionActions -> PlanUsageService.checkLimit/recomputeUsage. Likely files: apps/api/src/connector-installer/connector-installer.service.ts, apps/api/src/connector-installer/connector-permission.service.ts, apps/api/src/billing/plan-usage.service.ts.",
           "scope": [
             "apps/api/src/connector-installer/connector-permission.service.ts",
+            "apps/api/src/connector-installer/connector-installer.service.ts",
             "apps/web/src/app/actions.ts",
             "apps/web/src/app/admin/connectors/page.tsx",
             "apps/web/src/components/settings/connector-permission-form.tsx",

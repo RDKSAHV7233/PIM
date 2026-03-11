@@ -120,24 +120,27 @@ export class ConnectorInstallerService {
       ORDER BY display_name ASC
     `);
 
-    return Promise.all(
-      rows.map(async (row) => {
-        const slug = String(row.slug);
-        return {
-          id: String(row.id),
-          slug,
-          displayName: String(row.displayName),
-          authType: String(row.authType),
-          capabilities: parseCapabilities(row.capabilities),
-          marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
-          connectorVersion: String(row.connectorVersion),
-          isActive: Boolean(row.isActive),
-          createdAt: String(row.createdAt),
-          updatedAt: String(row.updatedAt),
-          actions: await this.connectorPermissionService.buildDefinitionActions(actor, slug),
-        };
-      }),
-    );
+    const definitions: ConnectorDefinitionRecord[] = [];
+    // Resolve install actions sequentially to avoid request-local plan-check fanout
+    // exhausting the DB pool under the current tenant-scoped Prisma client model.
+    for (const row of rows) {
+      const slug = String(row.slug);
+      definitions.push({
+        id: String(row.id),
+        slug,
+        displayName: String(row.displayName),
+        authType: String(row.authType),
+        capabilities: parseCapabilities(row.capabilities),
+        marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
+        connectorVersion: String(row.connectorVersion),
+        isActive: Boolean(row.isActive),
+        createdAt: String(row.createdAt),
+        updatedAt: String(row.updatedAt),
+        actions: await this.connectorPermissionService.buildDefinitionActions(actor, slug),
+      });
+    }
+
+    return definitions;
   }
 
   async install(slug: string, dto: InstallConnectorDto, actor: ConnectorActor): Promise<ConnectorInstallationRecord> {

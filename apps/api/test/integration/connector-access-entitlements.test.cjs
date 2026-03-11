@@ -186,6 +186,13 @@ async function run() {
     const editorToken = String(loginEditor.payload?.accessToken ?? "");
     assert(editorToken.length > 10, "missing editor token");
 
+    const definitionsWarmup = await Promise.all(
+      Array.from({ length: 4 }, () => apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken)),
+    );
+    for (const [index, result] of definitionsWarmup.entries()) {
+      assertStatus(result, 200, `definitions warmup ${index + 1}`);
+    }
+
     const setStarter = await apiRequest(baseUrl, "POST", "/billing/plan-tier", adminToken, {
       planTier: "STARTER",
     });
