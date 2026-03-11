@@ -60,7 +60,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "d0c8573",
+          "commit": "64ecc47",
           "tests_passed": [
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "node apps/web/test/integration/catalog-first-shell.test.cjs",
@@ -69,8 +69,8 @@
             "npm run build --workspace @pim1/web"
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Extend the catalog-first shell story to add Product Workbench SKU/title search and a consistent sidebar icon system as the next seller-facing navigation/discovery slice.",
-          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/product/products-tab.tsx','utf8'); if (s.includes('placeholder=\\\"Search products by title or SKU\\\"') || s.includes(\"placeholder='Search products by title or SKU'\")) { console.error('Expected missing Product Workbench search field, but search input marker already exists.'); process.exit(1); } console.error('FAIL: Product Workbench still lacks a SKU/title search input and search-aware filtering.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench still lacks a SKU/title search input and search-aware filtering. Likely file: apps/web/src/components/product/products-tab.tsx. Exact failing command: @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/components/nav/app-sidebar.tsx','utf8'); if (s.includes('function SidebarIcon') || s.includes('const SIDEBAR_ICONS') || s.includes('aria-hidden=\\\"true\\\"')) { console.error('Expected missing sidebar icon system, but icon markers already exist.'); process.exit(1); } console.error('FAIL: sidebar navigation is still text-only and has no consistent icon system.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: sidebar navigation is still text-only and has no consistent icon system. Likely file: apps/web/src/components/nav/app-sidebar.tsx."
+          "reopened_reason": "Fix Product Workbench create-product UX regression where server-action validation failures surface as a runtime crash instead of a usable inline form error.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const form = fs.readFileSync('apps/web/src/components/product/CreateProductForm.tsx','utf8'); const actions = fs.readFileSync('apps/web/src/app/actions.ts','utf8'); const directAwait = form.includes('await createProductAction(formData);'); const hasSubmitErrorState = /submitError|createError|setSubmitError|setCreateError/.test(form); const rendersOnlyAttributeError = form.includes('attributeFetchError') && !/submitError|createError/.test(form); const throwsPlainValidation = actions.includes('throw new Error(\"Product title and category are required.\")') && actions.includes('throw new Error(\"Selling Price is required.\")'); if (!(directAwait && rendersOnlyAttributeError && throwsPlainValidation) || hasSubmitErrorState) { console.error('Expected create-product runtime error markers not found.'); process.exit(1); } console.error('FAIL: Product Workbench create form has no submit-error handling while createProductAction still throws plain validation errors, so product creation failures surface as a runtime crash.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench create form has no submit-error handling while createProductAction still throws plain validation errors, so product creation failures surface as a runtime crash. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
