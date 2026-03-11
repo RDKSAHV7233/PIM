@@ -36,6 +36,7 @@ function assertStatus(result, expected, context) {
 
 async function run() {
   const baseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
+  const workspaceSlug = requireEnv("STAGING_SMOKE_WORKSPACE").toLowerCase();
   const smokeUser = requireEnv("STAGING_SMOKE_USER");
   const smokePassword = requireEnv("STAGING_SMOKE_PASSWORD");
   const expectedEnv = String(process.env.STAGING_EXPECTED_ENV ?? "staging").trim();
@@ -65,6 +66,7 @@ async function run() {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: {
+      workspaceSlug,
       userId: smokeUser,
       password: smokePassword,
       expiresInMinutes: 30,
@@ -98,6 +100,7 @@ async function run() {
           "health_status_ok",
           "health_env_matches_staging",
           "legacy_headers_not_authoritative",
+          "auth_login_uses_workspace_scoped_credentials",
           "auth_login_works_for_smoke_user",
           "billing_usage_authenticated",
           "connectors_installed_authenticated",
@@ -114,4 +117,3 @@ run().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });
-

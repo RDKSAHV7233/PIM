@@ -77,6 +77,7 @@
     "test:product:operations": "node scripts/run-product-suite.cjs operations",
     "test:product:governance": "node scripts/run-product-suite.cjs governance",
     "test:product:uiux": "node scripts/run-product-suite.cjs uiux",
+    "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
     "governance:enforce": "dotenv -o -e .env -- node scripts/enforce-payload-governance.cjs",
     "guard:unsafe-raw": "node scripts/check-unsafe-raw-comments.cjs",
     "openapi:generate": "npm run build --workspace @pim1/api && node scripts/generate-openapi.cjs",
