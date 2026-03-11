@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import {
   createExportJobAction,
   createMappingTemplateAction,
+  deleteProductAction,
+  purgeProductAction,
   updateProductAction,
   createVariantAction,
   processExportJobAction,
@@ -79,6 +81,8 @@ interface PageProps {
     planLimitValue?: string;
     planCurrent?: string;
     planUpgrade?: string;
+    deleteStatus?: string;
+    deleteError?: string;
   }>;
 }
 
@@ -181,6 +185,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const planLimitValue = Number(query.planLimitValue);
   const planCurrent = Number(query.planCurrent);
   const planUpgrade = String(query.planUpgrade ?? "").trim();
+  const deleteStatus = String(query.deleteStatus ?? "").trim();
+  const deleteError = String(query.deleteError ?? "").trim();
   const dismissPlanLimitHref = (() => {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([key, raw]) => {
@@ -272,6 +278,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     (item) => item !== "fallback_acknowledgement_required",
   );
   const canQueueExportWithAck = blockersExcludingFallbackAck.length === 0;
+  const deleteConfirmToken = (variants.find((variant) => variant.skuCode)?.skuCode ?? product.id).trim();
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
     params.set("tab", tab);
@@ -391,6 +398,21 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           Product update failed. Retry after reloading current data.
         </div>
       )}
+      {deleteStatus === "deleted" && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Product archived successfully.
+        </div>
+      )}
+      {deleteStatus === "purged" && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Product permanently deleted.
+        </div>
+      )}
+      {deleteError ? (
+        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+          Product delete failed: {deleteError}
+        </div>
+      ) : null}
 
       {activeTab === "overview" ? (
         <section className="space-y-4">
@@ -478,6 +500,50 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               </div>
             </Card>
           </div>
+          {canWrite ? (
+            <Card>
+              <CardTitle>Delete product</CardTitle>
+              <div className="mt-3 space-y-4 text-sm text-slate-700">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-medium text-slate-900">Archive (soft delete)</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Archived products are hidden from the catalog and can be restored by changing status.
+                  </p>
+                  <form action={deleteProductAction} className="mt-3 flex flex-wrap items-center gap-2">
+                    <RoleHiddenInput role={actorRole} />
+                    <input type="hidden" name="productId" value={id} />
+                    <input type="hidden" name="confirmDelete" value="yes" />
+                    <input type="hidden" name="returnTo" value="/catalog/products" />
+                    <Button type="submit" className="bg-red-600 text-white hover:bg-red-700">
+                      Archive product
+                    </Button>
+                  </form>
+                </div>
+                {actorRole === "admin" ? (
+                  <div className="rounded-md border border-red-200 bg-red-50 p-3">
+                    <p className="font-medium text-red-900">Permanent delete (admin only)</p>
+                    <p className="mt-1 text-xs text-red-800">
+                      This removes the product permanently. Type <span className="font-semibold">{deleteConfirmToken}</span> to confirm.
+                    </p>
+                    <form action={purgeProductAction} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <RoleHiddenInput role={actorRole} />
+                      <input type="hidden" name="productId" value={id} />
+                      <input type="hidden" name="confirmDelete" value="yes" />
+                      <input type="hidden" name="returnTo" value="/catalog/products" />
+                      <Input
+                        name="confirmToken"
+                        placeholder={`Type ${deleteConfirmToken}`}
+                        aria-label="Confirm permanent delete"
+                      />
+                      <Button type="submit" className="bg-red-700 text-white hover:bg-red-800">
+                        Permanently delete
+                      </Button>
+                    </form>
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
         </section>
       ) : null}
 

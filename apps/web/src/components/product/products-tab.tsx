@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { deleteProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
 import { CreateProductForm } from "@/components/product/CreateProductForm";
@@ -166,6 +167,14 @@ export function ProductsTab({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const returnTo = useMemo(() => {
+    const params =
+      typeof window === "undefined"
+        ? new URLSearchParams(searchParams.toString())
+        : new URLSearchParams(window.location.search);
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     setSelectedFilter(initialView);
@@ -371,6 +380,19 @@ export function ProductsTab({
     }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function handleDeleteSubmit(event: React.FormEvent<HTMLFormElement>, productTitle: string) {
+    if (!canWrite) {
+      event.preventDefault();
+      return;
+    }
+    const confirmed = window.confirm(
+      `Archive product "${productTitle}"? It will be hidden from the catalog but can be restored later.`,
+    );
+    if (!confirmed) {
+      event.preventDefault();
+    }
   }
 
   useEffect(() => {
@@ -605,6 +627,7 @@ export function ProductsTab({
                   <th className="px-3 py-2">Channel Readiness</th>
                   <th className="px-3 py-2">Last Updated</th>
                   <th className="px-3 py-2">Variants</th>
+                  {canWrite ? <th className="px-3 py-2 text-right">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -631,6 +654,21 @@ export function ProductsTab({
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>
                     <td className="px-3 py-2.5">{product.variants?.length ?? 0}</td>
+                    {canWrite ? (
+                      <td className="px-3 py-2.5 text-right">
+                        <form action={deleteProductAction} onSubmit={(event) => handleDeleteSubmit(event, product.title)}>
+                          <input type="hidden" name="productId" value={product.id} />
+                          <input type="hidden" name="confirmDelete" value="yes" />
+                          <input type="hidden" name="returnTo" value={returnTo} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </form>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

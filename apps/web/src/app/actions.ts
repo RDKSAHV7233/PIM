@@ -9,6 +9,8 @@ import {
   applyBulkEdit as applyBulkEditRequest,
   decideProductReview as decideProductReviewRequest,
   deleteJson,
+  getProduct,
+  getProductVariants,
   getPlanLimitExceededPayload,
   issueStepUp,
   patchJson,
@@ -16,6 +18,7 @@ import {
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -361,6 +364,38 @@ export async function createCategoryAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function deleteCategoryAction(formData: FormData) {
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim().toLowerCase();
+  if (!categoryId) {
+    throw new Error("Category id is required.");
+  }
+  if (confirmDelete !== "yes") {
+    throw new Error("Confirm category delete before proceeding.");
+  }
+  const returnTo = resolveReturnToPath(formData, "/catalog/categories");
+
+  try {
+    await deleteJsonForAction(formData, `/taxonomy/categories/${encodeURIComponent(categoryId)}`);
+    revalidatePath("/");
+    revalidatePath("/catalog/categories");
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteStatus: "deleted",
+        deletedCategory: categoryId,
+      }),
+    );
+  } catch (error: unknown) {
+    const deleteError = resolveDeleteErrorMessage(error);
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteError,
+        deletedCategory: categoryId,
+      }),
+    );
+  }
+}
+
 export async function resolveIssueInboxWarningsAction(formData: FormData) {
   const issueIds = Array.from(
     new Set(
@@ -382,6 +417,48 @@ export async function resolveIssueInboxWarningsAction(formData: FormData) {
   const returnToRaw = String(formData.get("returnTo") ?? "").trim();
   const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/quality/issues";
   redirect(returnTo || "/quality/issues");
+}
+
+function resolveReturnToPath(formData: FormData, fallback: string): string {
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  if (returnToRaw.startsWith("/")) {
+    return returnToRaw;
+  }
+  return fallback;
+}
+
+function resolveDeleteErrorMessage(error: unknown): string {
+  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+    const payload = error.body as Record<string, unknown>;
+    const message = String(payload.error ?? "").trim();
+    if (message) {
+      return message;
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "delete_failed";
+}
+
+async function resolveProductDeleteTokens(
+  productId: string,
+  options: ApiRequestOptions,
+): Promise<{ productId: string; tokens: string[] }> {
+  const [product, variants] = await Promise.all([
+    getProduct(productId, options),
+    getProductVariants(productId, options),
+  ]);
+  const tokenSet = new Set<string>();
+  if (product?.id) {
+    tokenSet.add(String(product.id));
+  }
+  for (const variant of variants ?? []) {
+    if (variant?.skuCode) {
+      tokenSet.add(String(variant.skuCode));
+    }
+  }
+  return { productId: product?.id ?? productId, tokens: Array.from(tokenSet) };
 }
 
 export async function decideProductReviewAction(formData: FormData) {
@@ -596,6 +673,85 @@ export async function validateProductAction(formData: FormData) {
   }
   await postJsonForAction(formData, `/compliance/products/${productId}/validate`, {});
   revalidatePath(`/products/${productId}`);
+}
+
+export async function deleteProductAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim().toLowerCase();
+  if (!productId) {
+    throw new Error("Product id is required.");
+  }
+  if (confirmDelete !== "yes") {
+    throw new Error("Confirm product delete before proceeding.");
+  }
+  const returnTo = resolveReturnToPath(formData, "/catalog/products");
+
+  try {
+    await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}`);
+    revalidatePath("/");
+    revalidatePath("/catalog/products");
+    revalidatePath(`/products/${productId}`);
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteStatus: "deleted",
+        deletedId: productId,
+      }),
+    );
+  } catch (error: unknown) {
+    const deleteError = resolveDeleteErrorMessage(error);
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteError,
+        deletedId: productId,
+      }),
+    );
+  }
+}
+
+export async function purgeProductAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim().toLowerCase();
+  const confirmToken = String(formData.get("confirmToken") ?? "").trim();
+  if (!productId) {
+    throw new Error("Product id is required.");
+  }
+  if (confirmDelete !== "yes") {
+    throw new Error("Confirm permanent delete before proceeding.");
+  }
+
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    throw new Error("Admin role is required for permanent delete.");
+  }
+
+  const { authHeader } = await resolveActionOptions(formData);
+  const { tokens } = await resolveProductDeleteTokens(productId, { role: actorRole, authHeader });
+  if (!confirmToken || !tokens.includes(confirmToken)) {
+    throw new Error("Confirmation does not match a known product SKU or ID.");
+  }
+
+  const returnTo = resolveReturnToPath(formData, "/catalog/products");
+
+  try {
+    await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}/purge`);
+    revalidatePath("/");
+    revalidatePath("/catalog/products");
+    revalidatePath(`/products/${productId}`);
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteStatus: "purged",
+        deletedId: productId,
+      }),
+    );
+  } catch (error: unknown) {
+    const deleteError = resolveDeleteErrorMessage(error);
+    redirect(
+      appendQueryParams(returnTo, {
+        deleteError,
+        deletedId: productId,
+      }),
+    );
+  }
 }
 
 export async function createVariantAction(formData: FormData) {
