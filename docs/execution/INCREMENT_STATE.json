@@ -60,7 +60,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "64ecc47",
+          "commit": "a8cefd8",
           "tests_passed": [
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
             "node apps/web/test/integration/catalog-first-shell.test.cjs",
@@ -69,8 +69,8 @@
             "npm run build --workspace @pim1/web"
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Fix Product Workbench create-product UX regression where server-action validation failures surface as a runtime crash instead of a usable inline form error.",
-          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const form = fs.readFileSync('apps/web/src/components/product/CreateProductForm.tsx','utf8'); const actions = fs.readFileSync('apps/web/src/app/actions.ts','utf8'); const directAwait = form.includes('await createProductAction(formData);'); const hasSubmitErrorState = /submitError|createError|setSubmitError|setCreateError/.test(form); const rendersOnlyAttributeError = form.includes('attributeFetchError') && !/submitError|createError/.test(form); const throwsPlainValidation = actions.includes('throw new Error(\"Product title and category are required.\")') && actions.includes('throw new Error(\"Selling Price is required.\")'); if (!(directAwait && rendersOnlyAttributeError && throwsPlainValidation) || hasSubmitErrorState) { console.error('Expected create-product runtime error markers not found.'); process.exit(1); } console.error('FAIL: Product Workbench create form has no submit-error handling while createProductAction still throws plain validation errors, so product creation failures surface as a runtime crash.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Product Workbench create form has no submit-error handling while createProductAction still throws plain validation errors, so product creation failures surface as a runtime crash. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
+          "reopened_reason": "Fix Product Workbench create-product workflow mismatch where the UI offered non-draft initial statuses even though the backend enforces draft-only workflow entry.",
+          "regression_evidence": "Exact failing command: @' const base = 'http://127.0.0.1:4000/api/v1'; const loginResp = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceSlug: 'default', userId: 'admin@pim1.local', password: 'pim1-demo-password' }) }); const login = await loginResp.json(); const authHeaders = { Authorization: `Bearer ${login.accessToken}` }; const catsResp = await fetch(`${base}/taxonomy/categories`, { headers: authHeaders }); const cats = await catsResp.json(); const cat = Array.isArray(cats) ? cats[0] : (Array.isArray(cats.items) ? cats.items[0] : null); if (!cat) throw new Error('NO_CATEGORY_FOUND'); const createResp = await fetch(`${base}/catalog/products`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Workflow Entry Proof Product', description: 'proof', brand: 'PIM1', categoryId: cat.id, status: 'active', attributes: { pricing: { sellingPrice: 999 } } }) }); const body = await createResp.text(); console.log('CREATE_STATUS=' + createResp.status); console.log(body); '@ | node --input-type=module -. Failing output snippet: CREATE_STATUS=400 {\"code\":\"WORKFLOW_ENTRY_INVALID\",\"message\":\"New products must enter workflow in draft status.\",\"source\":\"create_product\",\"allowedStatus\":\"draft\",\"receivedStatus\":\"active\"}. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
@@ -1025,6 +1025,59 @@
             "npm run build --workspace @pim1/web",
             "GET /api/v1/connectors/definitions -> 200 with authenticated admin token",
             "GET /channels/mappings -> 200 after web login in running app"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-14",
+      "name": "Mappings Workflow UX Restructure",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "apps/web/src/app/channels/mappings/page.tsx",
+        "apps/web/src/components/channel/mapping-editor.tsx",
+        "apps/web/src/components/channel/mapping-workflow.tsx",
+        "apps/web/test/integration/mapping-workflow-ui.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-CON-MAPPINGS-UX-001",
+          "title": "Restructure the mappings workspace into a task-first seller workflow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "8a0fc7a",
+          "scope": [
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/components/channel/mapping-workflow.tsx",
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "apps/web/test/integration/mapping-editor-component.test.cjs",
+            "apps/web/test/integration/mapping-step-up-ui.test.cjs",
+            "apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Mappings page uses a task-first workflow header with explicit publish context and step guidance.",
+            "Mapping editor defaults to missing required fields first while mapped and optional rows are demoted behind collapsed sections.",
+            "Version history and publish readiness are anchored as explicit workflow steps without changing lifecycle behavior.",
+            "Resolved snapshot and advanced JSON remain available but are no longer the dominant default view.",
+            "Existing mapping lifecycle, structured editor, and step-up UI tests remain green."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
+            "node apps/web/test/integration/mapping-editor-component.test.cjs",
+            "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "POST /api/auth/login -> 201 on production web start",
+            "GET /channels/mappings?categoryId=cmmcaxhap0001uxl0v0p9wpcf&channel=amazon&productId=cmmlilq5k000luxgk9oxvfe8l -> 200 on production web start"
           ]
         }
       ]
