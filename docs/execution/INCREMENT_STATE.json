@@ -2,7 +2,7 @@
   "meta": {
     "project": "PIM1",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-03-08",
+    "lastUpdated": "2026-03-11",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -1190,6 +1190,44 @@
             "npm run test:product:shell",
             "npm run test:product:uiux",
             "npm run test:product"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-17",
+      "name": "Catalog Delete UX",
+      "status": "completed",
+      "evidence": [],
+      "stories": [
+        {
+          "storyId": "ST-CATALOG-DELETE-001",
+          "title": "Expose product and category delete UI with safeguards",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "f4394c0",
+          "scope": [
+            "apps/web/src/app/actions.ts",
+            "apps/web/src/components/product/products-tab.tsx",
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/catalog/categories/page.tsx",
+            "apps/web/src/components/catalog/category-delete-button.tsx",
+            "apps/web/test/integration/catalog-delete-ui.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Product list exposes a soft delete action with confirmation for editor/admin roles.",
+            "Product detail exposes soft delete and admin-only hard delete with typed confirmation.",
+            "Category delete is only enabled when there are no child categories or attached products.",
+            "Reviewer role cannot delete products or categories.",
+            "Delete actions use existing API endpoints without new backend logic."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/catalog-delete-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         }
       ]
