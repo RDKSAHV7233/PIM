@@ -1307,7 +1307,136 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-19",
+      "name": "Performance Optimization Sprint",
+      "status": "completed",
+      "evidence": [],
+      "stories": [
+        {
+          "storyId": "ST-PERF-BACKEND-001",
+          "title": "Optimize backend readiness, queue, taxonomy rename, and search over-fetch",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "df4b474",
+          "scope": [
+            "apps/api/src/catalog/catalog.service.ts",
+            "apps/api/src/taxonomy/taxonomy.service.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/queue/queue.service.ts",
+            "apps/api/test/integration/catalog-global-search.test.cjs",
+            "apps/api/test/integration/taxonomy-batch-rename.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Batch readiness pre-resolves shared mapping context instead of simulating products?channels fully in parallel.",
+            "BullMQ enqueue policy applies retries/backoff and connector-aware lane concurrency defaults.",
+            "Category rename updates the full subtree inside one transaction without recursive per-child slug probes.",
+            "Catalog search reduces over-fetch and only returns the best matching SKU context per product."
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "npm run test:integration:queue-durability",
+            "npm run test:integration:worker-backpressure",
+            "node apps/api/test/integration/marketplace-worker-failure-visibility.test.cjs",
+            "node apps/api/test/integration/submission-lifecycle-api.test.cjs",
+            "node apps/api/test/integration/catalog-global-search.test.cjs",
+            "node apps/api/test/integration/taxonomy-batch-rename.test.cjs",
+            "npm run test:product"
+          ]
+        },
+        {
+          "storyId": "ST-PERF-FRONTEND-002",
+          "title": "Remove product detail fetch waterfall and lazy-load secondary mapping panels",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "33a65ab",
+          "scope": [
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/components/channel/mapping-workflow.tsx",
+            "apps/web/src/components/channel/taxonomy-search.tsx",
+            "apps/web/test/integration/product-detail-fetch-orchestration.test.cjs",
+            "apps/web/test/integration/mapping-lazy-panels.test.cjs",
+            "apps/web/test/e2e/catalog-delete.spec.js",
+            "apps/web/test/e2e/reviewer-approvals.spec.js",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Product detail starts independent fetches before awaiting product-specific data.",
+            "Mappings first render only loads task-critical editor state.",
+            "Resolved snapshot, version history, and secondary panels load on demand instead of first paint.",
+            "No user-facing mapping or product detail behavior regresses."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/product-detail-fetch-orchestration.test.cjs",
+            "node apps/web/test/integration/mapping-lazy-panels.test.cjs",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "npx playwright test --config=playwright.config.cjs",
+            "npm run test:product"
+          ]
+        },
+        {
+          "storyId": "ST-PERF-API-CONTRACT-003",
+          "title": "Add additive slim projections and default pagination for catalog, taxonomy, and export jobs",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "fc1801a",
+          "scope": [
+            "apps/api/src/catalog/catalog.controller.ts",
+            "apps/api/src/catalog/catalog.service.ts",
+            "apps/api/src/marketplace/marketplace.controller.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/taxonomy/taxonomy.controller.ts",
+            "apps/api/src/taxonomy/taxonomy.service.ts",
+            "apps/web/src/app/ai/page.tsx",
+            "apps/web/src/app/catalog/attributes/page.tsx",
+            "apps/web/src/app/catalog/categories/page.tsx",
+            "apps/web/src/app/catalog/products/page.tsx",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/app/connectors/page.tsx",
+            "apps/web/src/app/dashboard/page.tsx",
+            "apps/web/src/app/media/page.tsx",
+            "apps/web/src/app/ondc/page.tsx",
+            "apps/web/src/app/operations/bulk-edit/page.tsx",
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/quality/approvals/page.tsx",
+            "apps/web/src/app/quality/issues/page.tsx",
+            "apps/web/src/app/rejection/page.tsx",
+            "apps/web/src/lib/api.ts",
+            "apps/api/test/integration/catalog-products-list-projections.test.cjs",
+            "apps/api/test/integration/taxonomy-categories-pagination.test.cjs",
+            "apps/api/test/integration/export-jobs-template-summary.test.cjs",
+            "apps/web/test/integration/quality-reviewer-role-ui.test.cjs",
+            "apps/api/test/integration/rls-isolation.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Catalog products listing supports additive slim projection with default limit 50 while preserving the legacy full payload path.",
+            "Taxonomy categories default to paginated responses with an explicit all=true full-tree bypass.",
+            "Marketplace export job lists support additive templateSummary projection while preserving full template payload for legacy callers.",
+            "Internal callers are updated to the additive flags without breaking current product or E2E suites."
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web",
+            "node apps/api/test/integration/catalog-products-list-projections.test.cjs",
+            "node apps/api/test/integration/taxonomy-categories-pagination.test.cjs",
+            "node apps/api/test/integration/export-jobs-template-summary.test.cjs",
+            "node apps/api/test/integration/submission-lifecycle-api.test.cjs",
+            "npm run test:product",
+            "npx playwright test --config=playwright.config.cjs"
+          ]
+        }
+      ]
     }
   ]
 }
-
