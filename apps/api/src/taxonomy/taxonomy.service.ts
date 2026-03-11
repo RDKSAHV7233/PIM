@@ -99,19 +99,61 @@ export class TaxonomyService {
     }
 
     const normalizedName = dto.name.trim();
+    const oldPath = current.path;
     const newPath = current.parent ? `${current.parent.path} > ${normalizedName}` : normalizedName;
-    const newSlug = await this.ensureUniqueSlug(this.makeSlug(newPath), id);
-
-    const updated = await this.prisma.tenant().category.update({
-      where: { id },
-      data: {
+    const descendants = await this.prisma.tenant().category.findMany({
+      where: {
+        path: {
+          startsWith: `${oldPath} > `,
+        },
+      },
+      orderBy: [{ path: "asc" }, { id: "asc" }],
+    });
+    const affectedIds = [id, ...descendants.map((child) => child.id)];
+    const existingSlugs = new Set(
+      (
+        await this.prisma.tenant().category.findMany({
+          where: {
+            id: {
+              notIn: affectedIds,
+            },
+          },
+          select: {
+            slug: true,
+          },
+        })
+      ).map((category) => category.slug),
+    );
+    const plannedUpdates = [
+      {
+        id,
         name: normalizedName,
         path: newPath,
-        slug: newSlug,
+        slug: this.reserveUniqueSlug(this.makeSlug(newPath), existingSlugs),
       },
-    });
+      ...descendants.map((child) => {
+        const childPath = `${newPath}${child.path.slice(oldPath.length)}`;
+        return {
+          id: child.id,
+          name: child.name,
+          path: childPath,
+          slug: this.reserveUniqueSlug(this.makeSlug(childPath), existingSlugs),
+        };
+      }),
+    ];
 
-    await this.refreshDescendantPaths(updated.id);
+    const [updated] = await this.prisma.tenant().$transaction(
+      plannedUpdates.map((item) =>
+        this.prisma.tenant().category.update({
+          where: { id: item.id },
+          data: {
+            name: item.id === id ? item.name : undefined,
+            path: item.path,
+            slug: item.slug,
+          },
+        }),
+      ),
+    );
     return updated;
   }
 
@@ -191,28 +233,6 @@ export class TaxonomyService {
     await this.prisma.tenant().attributeDefinition.delete({ where: { id: attributeId } });
   }
 
-  private async refreshDescendantPaths(parentId: string) {
-    const parent = await this.prisma.tenant().category.findUnique({ where: { id: parentId } });
-    if (!parent) {
-      return;
-    }
-
-    const children = await this.prisma.tenant().category.findMany({
-      where: { parentId },
-      orderBy: [{ name: "asc" }],
-    });
-
-    for (const child of children) {
-      const path = `${parent.path} > ${child.name}`;
-      const slug = await this.ensureUniqueSlug(this.makeSlug(path), child.id);
-      await this.prisma.tenant().category.update({
-        where: { id: child.id },
-        data: { path, slug },
-      });
-      await this.refreshDescendantPaths(child.id);
-    }
-  }
-
   private makeSlug(value: string) {
     return value
       .toLowerCase()
@@ -244,6 +264,19 @@ export class TaxonomyService {
       const candidate = index === 0 ? root : `${root}-${index}`;
       const existing = await this.prisma.tenant().category.findUnique({ where: { slug: candidate } });
       if (!existing || existing.id === currentId) {
+        return candidate;
+      }
+      index += 1;
+    }
+  }
+
+  private reserveUniqueSlug(baseSlug: string, reservedSlugs: Set<string>) {
+    const root = baseSlug || "category";
+    let index = 0;
+    while (true) {
+      const candidate = index === 0 ? root : `${root}-${index}`;
+      if (!reservedSlugs.has(candidate)) {
+        reservedSlugs.add(candidate);
         return candidate;
       }
       index += 1;

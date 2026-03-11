@@ -121,45 +121,77 @@ export class CatalogService {
 
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.trunc(limit as number))) : 8;
     const loweredQuery = normalizedQuery.toLowerCase();
-    const products = await this.prisma.tenant().product.findMany({
-      where: {
-        OR: [
-          {
-            title: {
-              contains: normalizedQuery,
-              mode: "insensitive",
-            },
+    const fetchWindow = safeLimit + 5;
+    const resultSelect = {
+      id: true,
+      title: true,
+      status: true,
+      updatedAt: true,
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      variants: {
+        where: {
+          skuCode: {
+            contains: normalizedQuery,
+            mode: "insensitive",
           },
-          {
-            variants: {
-              some: {
-                skuCode: {
-                  contains: normalizedQuery,
-                  mode: "insensitive",
-                },
+        },
+        select: {
+          skuCode: true,
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 5,
+      },
+    } satisfies Prisma.ProductSelect;
+
+    const [titleMatches, skuMatches] = await Promise.all([
+      this.prisma.tenant().product.findMany({
+        where: {
+          title: {
+            contains: normalizedQuery,
+            mode: "insensitive",
+          },
+        },
+        select: resultSelect,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: fetchWindow,
+      }),
+      this.prisma.tenant().product.findMany({
+        where: {
+          variants: {
+            some: {
+              skuCode: {
+                contains: normalizedQuery,
+                mode: "insensitive",
               },
             },
           },
-        ],
-      },
-      include: {
-        category: {
-          select: {
-            name: true,
-          },
         },
-        variants: {
-          select: {
-            skuCode: true,
-          },
-          take: 25,
-        },
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      take: 25,
-    });
+        select: resultSelect,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: fetchWindow,
+      }),
+    ]);
 
-    return products
+    const productsById = new Map<
+      string,
+      Prisma.ProductGetPayload<{ select: typeof resultSelect }>
+    >();
+    for (const product of [...titleMatches, ...skuMatches]) {
+      const existing = productsById.get(product.id);
+      if (!existing) {
+        productsById.set(product.id, product);
+        continue;
+      }
+      if (existing.variants.length === 0 && product.variants.length > 0) {
+        productsById.set(product.id, product);
+      }
+    }
+
+    return Array.from(productsById.values())
       .map((product) => {
         const matchingSku = product.variants.find((variant) =>
           String(variant.skuCode ?? "")

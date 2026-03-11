@@ -486,6 +486,11 @@ export class QueueService implements OnModuleDestroy {
     await this.rememberBullLane(queueName, laneKey);
     const lane = await this.getOrCreateBullLane(queueName, registration, laneKey);
     await lane.queue.add(`${queueName}:${laneKey}`, payload, {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 2_000,
+      },
       removeOnComplete: 1000,
       removeOnFail: 1000,
     });

@@ -105,6 +105,8 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantA = `catalog-search-tenant-a-${runId}`;
   const tenantB = `catalog-search-tenant-b-${runId}`;
+  const workspaceSlugA = `csa-${runId}`.slice(0, 24);
+  const workspaceSlugB = `csb-${runId}`.slice(0, 24);
   const adminA = `catalog-admin-a-${runId}`;
   const reviewerA = `catalog-reviewer-a-${runId}`;
   const adminB = `catalog-admin-b-${runId}`;
@@ -114,9 +116,13 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantA,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [adminA]: { tenantId: tenantA, role: "admin" },
-      [reviewerA]: { tenantId: tenantA, role: "reviewer" },
-      [adminB]: { tenantId: tenantB, role: "admin" },
+      [adminA]: { tenantId: tenantA, role: "admin", workspaceSlug: workspaceSlugA },
+      [reviewerA]: { tenantId: tenantA, role: "reviewer", workspaceSlug: workspaceSlugA },
+      [adminB]: { tenantId: tenantB, role: "admin", workspaceSlug: workspaceSlugB },
+    }),
+    PIM_TENANT_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlugA]: { tenantId: tenantA, displayName: "Catalog Search A" },
+      [workspaceSlugB]: { tenantId: tenantB, displayName: "Catalog Search B" },
     }),
   };
 
@@ -135,9 +141,24 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
 
-    const adminALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, { userId: adminA, password: "pim1-demo-password", expiresInMinutes: 30 });
-    const reviewerALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, { userId: reviewerA, password: "pim1-demo-password", expiresInMinutes: 30 });
-    const adminBLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, { userId: adminB, password: "pim1-demo-password", expiresInMinutes: 30 });
+    const adminALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: workspaceSlugA,
+      userId: adminA,
+      password: "pim1-demo-password",
+      expiresInMinutes: 30,
+    });
+    const reviewerALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: workspaceSlugA,
+      userId: reviewerA,
+      password: "pim1-demo-password",
+      expiresInMinutes: 30,
+    });
+    const adminBLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: workspaceSlugB,
+      userId: adminB,
+      password: "pim1-demo-password",
+      expiresInMinutes: 30,
+    });
     assertStatus(adminALogin, 201, "tenant A admin login");
     assertStatus(reviewerALogin, 201, "tenant A reviewer login");
     assertStatus(adminBLogin, 201, "tenant B admin login");

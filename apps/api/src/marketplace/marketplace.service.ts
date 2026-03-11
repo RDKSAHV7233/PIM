@@ -914,16 +914,19 @@ export class MarketplaceService implements OnModuleInit {
           pauseDurationMs: 60_000,
         },
         lanePolicies: {
+          // Amazon SP-API throttles aggressively; keep it strictly single-flight.
           amazon: {
             concurrency: 1,
             minIntervalMs: 1_100,
           },
+          // Flipkart tolerates a small amount of parallel publish work without saturating tenant lanes.
           flipkart: {
-            concurrency: 1,
+            concurrency: 2,
             minIntervalMs: 300,
           },
+          // Meesho is the least restrictive current connector; allow up to three concurrent jobs per lane.
           meesho: {
-            concurrency: 1,
+            concurrency: 3,
             minIntervalMs: 300,
           },
         },
@@ -988,8 +991,17 @@ export class MarketplaceService implements OnModuleInit {
     const products = await this.getProductsForSimulation(productIds);
     const productsById = new Map(products.map((product) => [product.id, product]));
     const mappingCache = new Map<string, EffectiveMapping>();
+    const categoryChannelPairs = this.collectBatchReadinessPairs(products, channels);
     const maxConcurrentTasks = 12;
+    const channelTaskConcurrency = 3;
     const tasks: Array<() => Promise<{ productId: string; readiness: MarketplaceReadinessSummary[] }>> = [];
+
+    await this.runWithConcurrency(
+      categoryChannelPairs.map((pair) => async () => {
+        await this.getEffectiveMappingCached(pair.channel, pair.categoryId, undefined, mappingCache);
+      }),
+      channelTaskConcurrency,
+    );
 
     for (const productId of productIds) {
       tasks.push(async () => {
@@ -1006,8 +1018,8 @@ export class MarketplaceService implements OnModuleInit {
           };
         }
 
-        const readiness = await Promise.all(
-          channels.map(async (channel) => {
+        const readiness = await this.runWithConcurrency(
+          channels.map((channel) => async () => {
             try {
               const simulation = await this.buildSimulationFromProduct(
                 product,
@@ -1022,9 +1034,10 @@ export class MarketplaceService implements OnModuleInit {
                 status: "unknown" as const,
                 errorCount: 0,
                 warningCount: 0,
-              };
-            }
+                };
+              }
           }),
+          channelTaskConcurrency,
         );
 
         return { productId, readiness };
@@ -1033,6 +1046,22 @@ export class MarketplaceService implements OnModuleInit {
 
     const items = await this.runWithConcurrency(tasks, maxConcurrentTasks);
     return { items };
+  }
+
+  private collectBatchReadinessPairs(
+    products: SimulationProduct[],
+    channels: MarketplaceChannel[],
+  ): Array<{ categoryId: string; channel: MarketplaceChannel }> {
+    const pairs = new Map<string, { categoryId: string; channel: MarketplaceChannel }>();
+    for (const product of products) {
+      for (const channel of channels) {
+        const key = `${product.categoryId}::${channel}`;
+        if (!pairs.has(key)) {
+          pairs.set(key, { categoryId: product.categoryId, channel });
+        }
+      }
+    }
+    return Array.from(pairs.values());
   }
 
   private async getProductForSimulation(productId: string) {
