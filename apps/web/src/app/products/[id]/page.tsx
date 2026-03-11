@@ -209,6 +209,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       ? `/products/${encodeURIComponent(id)}?${encoded}`
       : `/products/${encodeURIComponent(id)}`;
   })();
+  const variantsPromise = getProductVariants(id, { role: actorRole, authHeader });
+  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader });
+  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader });
+  const exportJobsPromise = getMarketplaceExportJobs(id, { role: actorRole, authHeader });
   let product;
   try {
     product = await getProduct(id, { role: actorRole, authHeader });
@@ -218,29 +222,29 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     }
     notFound();
   }
-  const [variants, channels, installedConnectors, templates, mapping, simulation, exportJobs, categoryAttributes, readiness] =
+  const [variants, channels, installedConnectors, exportJobs, templates, mapping, simulation, categoryAttributes, readiness] =
     await Promise.all([
-    getProductVariants(id, { role: actorRole, authHeader }),
-    getMarketplaceChannels({ role: actorRole, authHeader }),
-    getInstalledConnectors({ role: actorRole, authHeader }),
-    getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }),
-    getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
-      role: actorRole,
-      authHeader,
-    }),
-    getMarketplaceSimulation(id, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }),
-    getMarketplaceExportJobs(id, { role: actorRole, authHeader }),
-    getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }),
-    evaluateConnectorPublishReadiness(
-      mapMarketplaceChannelToConnectorSlug(selectedChannel),
-      {
-        categoryScope: product.categoryId,
-        productId: id,
-        fallbackAcknowledged: false,
-      },
-      { role: actorRole, authHeader },
-    ),
-  ]);
+      variantsPromise,
+      channelsPromise,
+      installedConnectorsPromise,
+      exportJobsPromise,
+      getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }),
+      getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
+        role: actorRole,
+        authHeader,
+      }),
+      getMarketplaceSimulation(id, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }),
+      getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }),
+      evaluateConnectorPublishReadiness(
+        mapMarketplaceChannelToConnectorSlug(selectedChannel),
+        {
+          categoryScope: product.categoryId,
+          productId: id,
+          fallbackAcknowledged: false,
+        },
+        { role: actorRole, authHeader },
+      ),
+    ]);
   const publishCapableConnectorSlugs = new Set(
     installedConnectors
       .filter(

@@ -4,6 +4,7 @@ import { LegacyTemplateCompatibilityCard, MappingEditorCard, MappingStepUpAlert,
 import { MappingContextSummaryCard, MappingWorkflowHeader } from "@/components/channel/mapping-workflow";
 import { MappingsFilterCard, TaxonomyAlignmentCard } from "@/components/channel/taxonomy-search";
 import { VersionManagerCard } from "@/components/channel/version-manager";
+import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   ApiHttpError,
@@ -31,7 +32,78 @@ import { getServerActorRole } from "@/lib/server-session";
 export const dynamic = "force-dynamic";
 
 interface ChannelsMappingsPageProps {
-  searchParams: Promise<{ categoryId?: string; channel?: MarketplaceChannel; productId?: string; stepUpAction?: "publish" | "archive" | "rollback"; stepUpError?: string; stepUpVersionId?: string; taxonomyQ?: string }>;
+  searchParams: Promise<{
+    categoryId?: string;
+    channel?: MarketplaceChannel;
+    productId?: string;
+    stepUpAction?: "publish" | "archive" | "rollback";
+    stepUpError?: string;
+    stepUpVersionId?: string;
+    taxonomyQ?: string;
+    showContext?: string;
+    showTaxonomy?: string;
+    showResolved?: string;
+    showHistory?: string;
+  }>;
+}
+
+function isEnabled(value: string | undefined): boolean {
+  return String(value ?? "").trim() === "1";
+}
+
+function buildMappingHref(
+  query: Awaited<ChannelsMappingsPageProps["searchParams"]>,
+  overrides: Partial<
+    Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory" | "taxonomyQ" | "categoryId" | "channel" | "productId", string | undefined>
+  >,
+): string {
+  const params = new URLSearchParams();
+  const nextQuery = {
+    categoryId: String(query.categoryId ?? "").trim(),
+    channel: String(query.channel ?? "").trim(),
+    productId: String(query.productId ?? "").trim(),
+    taxonomyQ: String(query.taxonomyQ ?? "").trim(),
+    showContext: String(query.showContext ?? "").trim(),
+    showTaxonomy: String(query.showTaxonomy ?? "").trim(),
+    showResolved: String(query.showResolved ?? "").trim(),
+    showHistory: String(query.showHistory ?? "").trim(),
+    ...overrides,
+  };
+
+  for (const [key, raw] of Object.entries(nextQuery)) {
+    const value = String(raw ?? "").trim();
+    if (value.length > 0) {
+      params.set(key, value);
+    }
+  }
+
+  const encoded = params.toString();
+  return encoded ? `/channels/mappings?${encoded}` : "/channels/mappings";
+}
+
+function DeferredMappingPanelCard({
+  title,
+  description,
+  href,
+  actionLabel,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+}) {
+  return (
+    <Card>
+      <CardTitle>{title}</CardTitle>
+      <p className="mt-2 text-sm text-slate-600">{description}</p>
+      <Link
+        href={href}
+        className="mt-3 inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      >
+        {actionLabel}
+      </Link>
+    </Card>
+  );
 }
 
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
@@ -42,6 +114,11 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   const stepUpAction = (String(query.stepUpAction ?? "").trim() as ProtectedMappingActionKind | "") || "";
   const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
   const stepUpMessage = resolveStepUpErrorMessage(String(query.stepUpError ?? "").trim(), stepUpAction);
+  const selectedProductId = String(query.productId ?? "").trim();
+  const showContext = isEnabled(query.showContext);
+  const showResolved = isEnabled(query.showResolved) || showContext;
+  const showTaxonomy = isEnabled(query.showTaxonomy) || String(query.taxonomyQ ?? "").trim().length > 0;
+  const showHistory = isEnabled(query.showHistory) || Boolean(stepUpAction) || Boolean(stepUpVersionId);
 
   try {
     const [channels, categoriesRaw, connectorDefinitions] = await Promise.all([
@@ -55,25 +132,33 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const connectorSlug = mapChannelToConnectorSlug(selectedChannel);
     const definition = definitionForConnector(connectorDefinitions, connectorSlug);
     const taxonomyQ = String(query.taxonomyQ ?? "").trim();
-    const selectedProductId = String(query.productId ?? "").trim();
-    const selectedProductPromise = selectedProductId
-      ? getProduct(selectedProductId, { role: actorRole, authHeader }).catch((error: unknown) => {
-          if (error instanceof ApiHttpError && error.status === 404) {
-            return null;
-          }
-          throw error;
-        })
-      : Promise.resolve(null);
-    const [mapping, versions, resolved, preflight, readiness, taxonomyMatches, unmappedCategories, categoryAttributes, selectedProduct] = await Promise.all([
+    const [mapping, preflight, readiness, categoryAttributes] = await Promise.all([
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, { role: actorRole, authHeader }),
-      getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId || undefined, includeArchived: true }, { role: actorRole, authHeader }),
-      selectedCategoryId ? resolveConnectorMapping(connectorSlug, selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? evaluateConnectorMappingPreflight(connectorSlug, { categoryScope: selectedCategoryId, fallbackAcknowledged: false }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, productId: selectedProductId || undefined, fallbackAcknowledged: false }, { role: actorRole, authHeader }) : Promise.resolve(null),
-      searchConnectorTaxonomy(connectorSlug, { q: taxonomyQ || undefined, limit: 25 }, { role: actorRole, authHeader }),
-      getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader }),
       selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve([]),
-      selectedProductPromise,
+    ]);
+    const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct] = await Promise.all([
+      showHistory
+        ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId || undefined, includeArchived: true }, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      showResolved && selectedCategoryId
+        ? resolveConnectorMapping(connectorSlug, selectedCategoryId, { role: actorRole, authHeader })
+        : Promise.resolve(null),
+      showTaxonomy
+        ? searchConnectorTaxonomy(connectorSlug, { q: taxonomyQ || undefined, limit: 25 }, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      showTaxonomy
+        ? getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      showContext && selectedProductId
+        ? getProduct(selectedProductId, { role: actorRole, authHeader }).catch((error: unknown) => {
+            if (error instanceof ApiHttpError && error.status === 404) {
+              return null;
+            }
+            throw error;
+          })
+        : Promise.resolve(null),
     ]);
     const viewModel = buildMappingsViewModel({ mapping, resolved, taxonomyMatches, unmappedCategories, categoryAttributes, selectedCategoryId, selectedChannel, selectedProductId, taxonomyQ });
     const selectedCategoryPath =
@@ -91,9 +176,18 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       <div className="space-y-5">
         <PageHeader title="Mappings" description="Manage mapping lifecycle, taxonomy linkage, preflight gates, and fallback policy for channel publishing." breadcrumb={<>Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span></>} actions={<Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open Connector Detail</Link>} />
         <MappingStepUpAlert message={stepUpMessage} />
-        <MappingsFilterCard categories={categories} channels={channels} selectedCategoryId={selectedCategoryId} selectedChannel={selectedChannel} taxonomyQ={taxonomyQ} />
+        <MappingsFilterCard
+          categories={categories}
+          channels={channels}
+          selectedCategoryId={selectedCategoryId}
+          selectedChannel={selectedChannel}
+          taxonomyQ={taxonomyQ}
+          selectedProductId={selectedProductId}
+          preserveFlags={{ showContext, showTaxonomy, showResolved, showHistory }}
+        />
         <MappingWorkflowHeader
           product={selectedProduct}
+          productId={selectedProductId || undefined}
           channel={selectedChannel}
           categoryPath={selectedCategoryPath}
           publishCategory={selectedTargetCategoryLabel}
@@ -107,20 +201,57 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             {/* mapTarget:: */}
             {/* placeholder={mappingDraftRulesDefault} */}
             <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
-            <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} />
+            {showHistory ? (
+              <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} />
+            ) : (
+              <DeferredMappingPanelCard
+                title="Version History"
+                description="Draft history, validation, publish, archive, and rollback actions now load only when you need them."
+                href={buildMappingHref(query, { showHistory: "1" })}
+                actionLabel="Load version history"
+              />
+            )}
           </div>
           <div className="space-y-4">
-            <MappingContextSummaryCard
-              product={selectedProduct}
-              channel={selectedChannel}
-              categoryPath={selectedCategoryPath}
-              publishCategory={selectedTargetCategoryLabel}
-              compatibilityLabel={definition ? (resolved?.compatibilityState ?? "compatible") : "compatible"}
-              matchedVersions={resolved?.matched?.length ?? 0}
-            />
+            {showContext ? (
+              <MappingContextSummaryCard
+                product={selectedProduct}
+                productId={selectedProductId || undefined}
+                channel={selectedChannel}
+                categoryPath={selectedCategoryPath}
+                publishCategory={selectedTargetCategoryLabel}
+                compatibilityLabel={definition ? (resolved?.compatibilityState ?? "compatible") : "compatible"}
+                matchedVersions={resolved?.matched?.length ?? 0}
+              />
+            ) : (
+              <DeferredMappingPanelCard
+                title="Context"
+                description="Product context and resolved compatibility load on demand when you need to inspect the blocked product or mapped category."
+                href={buildMappingHref(query, { showContext: "1" })}
+                actionLabel="Load product context"
+              />
+            )}
             <PublishReadinessCard preflight={preflight} readiness={readiness} />
-            <TaxonomyAlignmentCard connectorSlug={connectorSlug} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} />
-            <ResolvedMappingSnapshotCard mapping={mapping} connectorSlug={connectorSlug} resolved={resolved} resolvedMappingJson={viewModel.resolvedMappingJson} />
+            {showTaxonomy ? (
+              <TaxonomyAlignmentCard connectorSlug={connectorSlug} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} />
+            ) : (
+              <DeferredMappingPanelCard
+                title="Taxonomy Alignment"
+                description="Taxonomy search results and unmapped category inventory stay deferred until you open alignment details or run a taxonomy query."
+                href={buildMappingHref(query, { showTaxonomy: "1" })}
+                actionLabel="Load taxonomy alignment"
+              />
+            )}
+            {showResolved ? (
+              <ResolvedMappingSnapshotCard mapping={mapping} connectorSlug={connectorSlug} resolved={resolved} resolvedMappingJson={viewModel.resolvedMappingJson} />
+            ) : (
+              <DeferredMappingPanelCard
+                title="Resolved Mapping Snapshot"
+                description="Resolved mapping JSON and matched-version diagnostics load only when you need advanced troubleshooting."
+                href={buildMappingHref(query, { showResolved: "1" })}
+                actionLabel="Load resolved snapshot"
+              />
+            )}
           </div>
         </section>
         {/* Legacy Template Compatibility (Transition Only) */}

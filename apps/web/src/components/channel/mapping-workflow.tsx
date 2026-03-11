@@ -21,6 +21,7 @@ function contextPill(label: string, value: string, tone: "info" | "success" | "w
 
 export function MappingWorkflowHeader({
   product,
+  productId,
   channel,
   categoryPath,
   publishCategory,
@@ -30,6 +31,7 @@ export function MappingWorkflowHeader({
   missingRequiredCount,
 }: {
   product: Product | null;
+  productId?: string;
   channel: string;
   categoryPath: string;
   publishCategory: string;
@@ -38,6 +40,8 @@ export function MappingWorkflowHeader({
   mappedRequiredCount: number;
   missingRequiredCount: number;
 }) {
+  const productLabel = product?.title ?? (productId ? `product ${productId.slice(0, 8)}` : null);
+
   return (
     <Card>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -45,13 +49,13 @@ export function MappingWorkflowHeader({
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapping workflow</p>
             <h2 className="text-2xl font-semibold text-slate-950">
-              {product
-                ? `Complete this mapping to publish ${product.title}`
+              {productLabel
+                ? `Complete this mapping to publish ${productLabel}`
                 : `Complete this ${presentChannel(channel)} mapping`}
             </h2>
             <p className="max-w-3xl text-sm text-slate-600">
-              {product
-                ? `This ${presentChannel(channel)} mapping is blocking publish for ${product.title}. Start by filling the missing required fields, then validate and publish the draft version.`
+              {productLabel
+                ? `This ${presentChannel(channel)} mapping is blocking publish for ${productLabel}. Start by filling the missing required fields, then validate and publish the draft version.`
                 : `Start by mapping the missing required fields for this ${presentChannel(channel)} category. Validate the draft version after the required fields are mapped, then publish it.`}
             </p>
           </div>
@@ -68,10 +72,10 @@ export function MappingWorkflowHeader({
               missingRequiredCount > 0 ? "warning" : "success",
             )}
           </div>
-          {product ? (
+          {productId ? (
             <div className="flex flex-wrap gap-2">
               <Link
-                href={`/products/${product.id}`}
+                href={`/products/${productId}`}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Back to product
@@ -103,6 +107,7 @@ export function MappingWorkflowHeader({
 
 export function MappingContextSummaryCard({
   product,
+  productId,
   channel,
   categoryPath,
   publishCategory,
@@ -110,6 +115,7 @@ export function MappingContextSummaryCard({
   matchedVersions,
 }: {
   product: Product | null;
+  productId?: string;
   channel: string;
   categoryPath: string;
   publishCategory: string;
@@ -120,11 +126,11 @@ export function MappingContextSummaryCard({
     <Card>
       <CardTitle>Context</CardTitle>
       <dl className="grid gap-3 text-sm text-slate-700">
-        {product ? (
+        {product || productId ? (
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product</dt>
-            <dd className="mt-1 font-medium text-slate-900">{product.title}</dd>
-            <dd className="text-xs text-slate-500">{product.id}</dd>
+            <dd className="mt-1 font-medium text-slate-900">{product?.title ?? "Product context available"}</dd>
+            <dd className="text-xs text-slate-500">{product?.id ?? productId}</dd>
           </div>
         ) : null}
         <div>

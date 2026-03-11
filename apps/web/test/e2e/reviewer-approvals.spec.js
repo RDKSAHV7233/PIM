@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const {
+  DEFAULT_API_URL,
   apiLogin,
   apiLoginPayload,
   createCategory,
@@ -81,7 +82,7 @@ test("reviewer can approve clean products and reject blocked products", async ({
     await expect(page).toHaveURL(/decisionStatus=rejected/);
     await expect(page.getByText("Product review decision recorded: rejected.")).toBeVisible();
 
-    const cleanStatus = await page.request.get(`${process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4000/api/v1"}/catalog/products/${clean.id}`, {
+    const cleanStatus = await page.request.get(`${DEFAULT_API_URL}/catalog/products/${clean.id}`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const cleanPayload = await cleanStatus.json();

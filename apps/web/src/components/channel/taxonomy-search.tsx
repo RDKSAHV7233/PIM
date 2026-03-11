@@ -12,16 +12,24 @@ export function MappingsFilterCard({
   selectedCategoryId,
   selectedChannel,
   taxonomyQ,
+  selectedProductId,
+  preserveFlags,
 }: {
   categories: Array<{ id: string; path: string }>;
   channels: Array<{ channel: MarketplaceChannel; displayName: string }>;
   selectedCategoryId: string;
   selectedChannel: MarketplaceChannel;
   taxonomyQ: string;
+  selectedProductId?: string;
+  preserveFlags?: Partial<Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory", boolean>>;
 }) {
   return (
     <FilterBar>
       <form method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+        {selectedProductId ? <input type="hidden" name="productId" value={selectedProductId} /> : null}
+        {Object.entries(preserveFlags ?? {}).map(([key, enabled]) =>
+          enabled ? <input key={key} type="hidden" name={key} value="1" /> : null,
+        )}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category">
             Category

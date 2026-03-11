@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const {
+  DEFAULT_API_URL,
   apiLogin,
   apiRequest,
   createCategory,
@@ -35,7 +36,7 @@ test("editor can archive a product from the workbench", async ({ page }) => {
     await row.getByRole("button", { name: "Delete" }).click();
     await expect(page).toHaveURL(/deleteStatus=deleted/);
     const response = await page.request.get(
-      `${process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4000/api/v1"}/catalog/products/${product.id}`,
+      `${DEFAULT_API_URL}/catalog/products/${product.id}`,
       {
         headers: { Authorization: `Bearer ${adminToken}` },
         failOnStatusCode: false,
