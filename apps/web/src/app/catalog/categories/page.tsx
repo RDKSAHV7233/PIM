@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { ApiHttpError, getCategories, getProducts } from "@/lib/api";
+import { ApiHttpError, getCategoryTree, getProductList } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -54,8 +54,8 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
 
   try {
     const [categories, products] = await Promise.all([
-      getCategories({ role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
     const filteredCategories = filterTestData(categories, hideTestData);
     const filteredProducts = filterTestData(products, hideTestData);

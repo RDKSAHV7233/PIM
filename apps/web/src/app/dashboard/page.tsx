@@ -11,7 +11,7 @@ import {
   getDashboardHealth,
   getDeadLetterSubmissions,
   getInstalledConnectors,
-  getProducts,
+  getProductList,
   getStats,
   getSubmissions,
 } from "@/lib/api";
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
       getSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
       getDeadLetterSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
       getBulkImportJobs({ role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
     const submissions = Array.isArray(submissionsResponse)
       ? submissionsResponse
@@ -80,8 +80,8 @@ export default async function DashboardPage() {
     const jobsNeedingRetry = failedSubmissionJobs + deadLetterJobs.length;
     const priorityProducts = products
       .map((product) => {
-        const blockingCount = (product.validationIssues ?? []).filter((issue) => issue.severity === "error").length;
-        const warningCount = (product.validationIssues ?? []).filter((issue) => issue.severity === "warning").length;
+        const blockingCount = product.openValidationErrorCount ?? 0;
+        const warningCount = product.openValidationWarningCount ?? 0;
         const completenessScore = product.completenessScore ?? 0;
         const priorityReason =
           product.status === "in_review"
@@ -255,7 +255,7 @@ export default async function DashboardPage() {
                         <td className="px-3 py-2.5">
                           <div className="space-y-1">
                             <p className="font-medium text-slate-900">{product.title}</p>
-                            <p className="text-xs text-slate-500">{product.category?.path ?? product.categoryId}</p>
+                            <p className="text-xs text-slate-500">{product.categoryPath ?? product.categoryId}</p>
                           </div>
                         </td>
                         <td className="px-3 py-2.5">

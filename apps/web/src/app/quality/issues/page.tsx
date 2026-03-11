@@ -15,7 +15,7 @@ import {
   type AppRole,
   type CatalogStatus,
   type IssueInboxSeverity,
-  getCategories,
+  getCategoryTree,
   getInstalledConnectors,
   getIssueInbox,
 } from "@/lib/api";
@@ -136,7 +136,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
         },
         { role: actorRole, authHeader },
       ),
-      getCategories({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
 

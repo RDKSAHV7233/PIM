@@ -15,7 +15,7 @@ import {
   getCategoryAttributes,
   getConnectorDefinitions,
   getConnectorMappingVersions,
-  getCategories,
+  getCategoryTree,
   getMarketplaceChannelMapping,
   getMarketplaceChannels,
   getUnmappedConnectorTaxonomy,
@@ -123,7 +123,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   try {
     const [channels, categoriesRaw, connectorDefinitions] = await Promise.all([
       getMarketplaceChannels({ role: actorRole, authHeader }),
-      getCategories({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       getConnectorDefinitions({ role: actorRole, authHeader }),
     ]);
     const categories = filterTestData(categoriesRaw, true);

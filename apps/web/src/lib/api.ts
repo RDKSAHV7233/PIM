@@ -120,6 +120,22 @@ export interface Product {
   updatedAt: string;
 }
 
+export interface ProductListItem {
+  id: string;
+  title: string;
+  brand: string;
+  categoryId: string;
+  categoryName?: string;
+  categoryPath?: string;
+  status: CatalogStatus;
+  completenessScore?: number;
+  variantCount: number;
+  openValidationErrorCount: number;
+  openValidationWarningCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CatalogStats {
   categories: number;
   products: number;
@@ -189,6 +205,24 @@ interface PaginatedResponse<T> {
   nextCursor: string | null;
   limit: number;
 }
+
+type ProductListQuery = {
+  slim?: boolean;
+  cursor?: string;
+  limit?: number;
+};
+
+type CategoryListQuery = {
+  all?: boolean;
+  cursor?: string;
+  limit?: number;
+};
+
+type ExportJobListQuery = {
+  templateSummary?: boolean;
+  cursor?: string;
+  limit?: number;
+};
 
 export interface PlanUsageResponse {
   planTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
@@ -443,7 +477,14 @@ export interface MarketplaceExportJob {
   dlqReason: string | null;
   payload: Record<string, unknown> | null;
   exportPayload: Record<string, unknown> | null;
-  template?: ChannelMappingTemplate | null;
+  template?:
+    | ChannelMappingTemplate
+    | {
+        id: string;
+        name: string;
+        channelId: string;
+      }
+    | null;
   product?: {
     id: string;
     title: string;
@@ -861,6 +902,65 @@ export async function getCategories(options?: ApiRequestOptions) {
 
 export async function getProducts(options?: ApiRequestOptions) {
   return fetchJson<Product[]>("/catalog/products", undefined, options);
+}
+
+function isApiRequestOptions(value: unknown): value is ApiRequestOptions {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return "role" in value || "tenantKey" in value || "authHeader" in value || "headers" in value;
+}
+
+export async function getCategoryTree(
+  inputOrOptions?: CategoryListQuery | ApiRequestOptions,
+  maybeOptions?: ApiRequestOptions,
+) {
+  const queryInput = isApiRequestOptions(inputOrOptions) || !inputOrOptions ? {} : inputOrOptions;
+  const options = isApiRequestOptions(inputOrOptions) ? inputOrOptions : maybeOptions;
+  const params = new URLSearchParams();
+  if (queryInput.all) {
+    params.set("all", "true");
+  }
+  if (queryInput.cursor) {
+    params.set("cursor", queryInput.cursor);
+    params.set("pagination", "cursor");
+  }
+  if (typeof queryInput.limit === "number" && Number.isFinite(queryInput.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(queryInput.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetchJson<PaginatedResponse<Category> | Category[]>(
+    `/taxonomy/categories${query}`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : response.items;
+}
+
+export async function getProductList(
+  inputOrOptions?: ProductListQuery | ApiRequestOptions,
+  maybeOptions?: ApiRequestOptions,
+) {
+  const queryInput = isApiRequestOptions(inputOrOptions) || !inputOrOptions ? {} : inputOrOptions;
+  const options = isApiRequestOptions(inputOrOptions) ? inputOrOptions : maybeOptions;
+  const params = new URLSearchParams();
+  if (queryInput.slim) {
+    params.set("slim", "true");
+  }
+  if (queryInput.cursor) {
+    params.set("cursor", queryInput.cursor);
+    params.set("pagination", "cursor");
+  }
+  if (typeof queryInput.limit === "number" && Number.isFinite(queryInput.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(queryInput.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetchJson<PaginatedResponse<ProductListItem> | ProductListItem[]>(
+    `/catalog/products${query}`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : response.items;
 }
 
 export async function getProduct(productId: string, options?: ApiRequestOptions) {
@@ -1327,9 +1427,27 @@ export async function getMarketplaceSimulation(
   );
 }
 
-export async function getMarketplaceExportJobs(productId: string, options?: ApiRequestOptions) {
+export async function getMarketplaceExportJobs(
+  productId: string,
+  inputOrOptions?: ExportJobListQuery | ApiRequestOptions,
+  maybeOptions?: ApiRequestOptions,
+) {
+  const queryInput = isApiRequestOptions(inputOrOptions) || !inputOrOptions ? {} : inputOrOptions;
+  const options = isApiRequestOptions(inputOrOptions) ? inputOrOptions : maybeOptions;
+  const params = new URLSearchParams();
+  params.set("productId", productId);
+  if (queryInput.templateSummary) {
+    params.set("templateSummary", "true");
+  }
+  if (queryInput.cursor) {
+    params.set("cursor", queryInput.cursor);
+    params.set("pagination", "cursor");
+  }
+  if (typeof queryInput.limit === "number" && Number.isFinite(queryInput.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(queryInput.limit))));
+  }
   return fetchJson<MarketplaceExportJob[]>(
-    `/marketplace/export-jobs?productId=${encodeURIComponent(productId)}`,
+    `/marketplace/export-jobs?${params.toString()}`,
     undefined,
     options,
   );

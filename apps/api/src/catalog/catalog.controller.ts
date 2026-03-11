@@ -25,8 +25,9 @@ export class CatalogController {
   @Get("products")
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
-  listProducts(@Query() pagination: CursorPaginationDto) {
-    return this.catalogService.listProducts(pagination);
+  listProducts(@Query() pagination: CursorPaginationDto, @Query("slim") slim?: string) {
+    // Full list payload remains available for legacy callers; prefer ?slim=true for list surfaces.
+    return this.catalogService.listProducts(pagination, { slim: slim === "true" });
   }
 
   @Get("products/search")

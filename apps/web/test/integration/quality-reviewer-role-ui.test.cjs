@@ -34,7 +34,7 @@ function run() {
   );
   assert(
     approvalsSource.includes("decideProductReviewAction") &&
-      approvalsSource.includes("getProducts({ role: actorRole, authHeader })") &&
+      approvalsSource.includes("getProductList({ slim: true }, { role: actorRole, authHeader })") &&
       approvalsSource.includes("canDecideApproval(actorRole)") &&
       approvalsSource.includes("Approve") &&
       approvalsSource.includes("Reject"),

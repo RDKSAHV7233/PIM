@@ -10,7 +10,7 @@ import {
   ApiHttpError,
   getBulkEditOperations,
   getBulkEditPreview,
-  getCategories,
+  getCategoryTree,
   getProducts,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -73,7 +73,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   try {
     const [operations, categories, products] = await Promise.all([
       getBulkEditOperations(100, { role: actorRole, authHeader }),
-      getCategories({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       getProducts({ role: actorRole, authHeader }),
     ]);
 

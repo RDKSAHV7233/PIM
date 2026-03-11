@@ -11,7 +11,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getDashboardHealth,
-  getProducts,
+  getProductList,
   getRejectionIntelligenceScore,
   MarketplaceChannel,
 } from "@/lib/api";
@@ -64,11 +64,11 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
   const productId = String(query.productId ?? "").trim();
   const channel = (query.channel ?? "amazon") as MarketplaceChannel;
 
-  let products: Awaited<ReturnType<typeof getProducts>>;
+  let products: Awaited<ReturnType<typeof getProductList>>;
   let health: Awaited<ReturnType<typeof getDashboardHealth>>;
   try {
     [products, health] = await Promise.all([
-      getProducts({ role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
       getDashboardHealth({ role: actorRole, authHeader }),
     ]);
   } catch (error: unknown) {

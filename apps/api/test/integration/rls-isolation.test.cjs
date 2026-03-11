@@ -193,7 +193,7 @@ async function run() {
       const expected = isA ? categoryA : categoryB;
       const forbidden = isA ? categoryB : categoryA;
       const tenant = isA ? tenantA : tenantB;
-      return apiJson(baseUrl, "GET", "/taxonomy/categories", token).then((categories) => {
+      return apiJson(baseUrl, "GET", "/taxonomy/categories?all=true", token).then((categories) => {
         if (!Array.isArray(categories)) {
           throw new Error(`Expected array for tenant ${tenant}`);
         }

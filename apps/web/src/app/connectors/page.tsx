@@ -16,7 +16,7 @@ import {
   type MarketplaceChannel,
   getConnectorDefinitions,
   getInstalledConnectors,
-  getProducts,
+  getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -116,7 +116,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     const [definitions, installations, productsRaw] = await Promise.all([
       getConnectorDefinitions({ role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
 
     const visibleProducts = filterTestData(productsRaw, true);

@@ -9,8 +9,8 @@ import {
   AppRole,
   getAiAttributeEnrichment,
   getAiCategorySuggestion,
+  getProductList,
   getAiTitleSuggestion,
-  getProducts,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -39,9 +39,9 @@ export default async function AiPage({ searchParams }: AiPageProps) {
   const productId = String(query.productId ?? "").trim();
   const repairStatus = String(query.repairStatus ?? "").trim();
 
-  let products: Awaited<ReturnType<typeof getProducts>>;
+  let products: Awaited<ReturnType<typeof getProductList>>;
   try {
-    products = await getProducts({ role: actorRole, authHeader });
+    products = await getProductList({ slim: true }, { role: actorRole, authHeader });
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/ai", error.status));

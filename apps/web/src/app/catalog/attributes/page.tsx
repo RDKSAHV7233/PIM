@@ -10,7 +10,7 @@ import {
   ApiHttpError,
   type AppRole,
   type AttributeDefinition,
-  getCategories,
+  getCategoryTree,
   getCategoryAttributes,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -63,7 +63,10 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
   const canManageTaxonomy = actorRole === "admin";
 
   try {
-    const categories = filterTestData(await getCategories({ role: actorRole, authHeader }), hideTestData);
+    const categories = filterTestData(
+      await getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      hideTestData,
+    );
     const selectedCategoryId = String(query.categoryId ?? "").trim() || categories[0]?.id || "";
     const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
     const definitions = selectedCategoryId

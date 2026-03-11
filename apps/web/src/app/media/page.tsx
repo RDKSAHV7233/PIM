@@ -13,7 +13,7 @@ import {
   AppRole,
   getMediaAssets,
   getMediaAssetValidation,
-  getProducts,
+  getProductList,
   MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -83,11 +83,11 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     return encoded ? `/media?${encoded}` : "/media";
   })();
 
-  let rawProducts: Awaited<ReturnType<typeof getProducts>>;
+  let rawProducts: Awaited<ReturnType<typeof getProductList>>;
   let assets: Awaited<ReturnType<typeof getMediaAssets>>;
   try {
     [rawProducts, assets] = await Promise.all([
-      getProducts({ role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
       getMediaAssets(productId || undefined, variantId || undefined, { role: actorRole, authHeader }),
     ]);
   } catch (error: unknown) {

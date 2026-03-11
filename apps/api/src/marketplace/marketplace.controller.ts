@@ -274,8 +274,15 @@ export class MarketplaceController {
   @Get("export-jobs")
   @ApiOperation({ summary: "List export jobs" })
   @ApiResponse({ status: 200, description: "Export jobs fetched" })
-  listExportJobs(@Query("productId") productId?: string, @Query() pagination?: CursorPaginationDto) {
-    return this.marketplaceService.listExportJobs(productId, pagination);
+  listExportJobs(
+    @Query("productId") productId?: string,
+    @Query() pagination?: CursorPaginationDto,
+    @Query("templateSummary") templateSummary?: string,
+  ) {
+    // Full template payload remains available for legacy callers; prefer ?templateSummary=true for job lists.
+    return this.marketplaceService.listExportJobs(productId, pagination, {
+      templateSummary: templateSummary === "true",
+    });
   }
 
   @Post("export-job")

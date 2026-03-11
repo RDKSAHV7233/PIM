@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { decideProductReviewAction } from "@/app/actions";
-import { ApiHttpError, getIssueInbox, getProducts, getStats } from "@/lib/api";
+import { ApiHttpError, getIssueInbox, getProductList, getStats } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -40,7 +40,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         },
         { role: actorRole, authHeader },
       ),
-      getProducts({ role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
 
     const blockingProducts = new Set(
@@ -187,7 +187,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                         <td className="py-2.5">
                           <p className="font-medium text-slate-900">{product.title}</p>
                           <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                            <span>{product.category?.name ?? product.categoryId}</span>
+                            <span>{product.categoryName ?? product.categoryId}</span>
                             <StatusChip label={product.status} tone="warning" />
                           </div>
                           <Link

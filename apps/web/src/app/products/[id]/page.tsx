@@ -212,7 +212,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const variantsPromise = getProductVariants(id, { role: actorRole, authHeader });
   const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader });
   const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader });
-  const exportJobsPromise = getMarketplaceExportJobs(id, { role: actorRole, authHeader });
+  const exportJobsPromise = getMarketplaceExportJobs(
+    id,
+    { templateSummary: true },
+    { role: actorRole, authHeader },
+  );
   let product;
   try {
     product = await getProduct(id, { role: actorRole, authHeader });

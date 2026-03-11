@@ -9,11 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
   AppRole,
-  getCategories,
+  getCategoryTree,
   getOndcMappings,
   getOndcSimulation,
   getOndcVersions,
-  getProducts,
+  getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -50,14 +50,14 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
   const productId = String(query.productId ?? "").trim();
   const mappingId = String(query.mappingId ?? "").trim();
 
-  let rawCategories: Awaited<ReturnType<typeof getCategories>>;
-  let rawProducts: Awaited<ReturnType<typeof getProducts>>;
+  let rawCategories: Awaited<ReturnType<typeof getCategoryTree>>;
+  let rawProducts: Awaited<ReturnType<typeof getProductList>>;
   let versions: Awaited<ReturnType<typeof getOndcVersions>>;
   let mappings: Awaited<ReturnType<typeof getOndcMappings>>;
   try {
     [rawCategories, rawProducts, versions, mappings] = await Promise.all([
-      getCategories({ role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
       getOndcVersions({ role: actorRole, authHeader }),
       getOndcMappings(
         {

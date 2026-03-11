@@ -465,7 +465,22 @@ export class MarketplaceService implements OnModuleInit {
     return job;
   }
 
-  async listExportJobs(productId?: string, pagination?: CursorPaginationQuery) {
+  async listExportJobs(
+    productId?: string,
+    pagination?: CursorPaginationQuery,
+    options?: {
+      templateSummary?: boolean;
+    },
+  ) {
+    const templateInclude = options?.templateSummary
+      ? {
+          select: {
+            id: true,
+            name: true,
+            channel: true,
+          },
+        }
+      : true;
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -492,7 +507,7 @@ export class MarketplaceService implements OnModuleInit {
             : {}),
         },
         include: {
-          template: true,
+          template: templateInclude,
           product: { select: { id: true, title: true } },
         },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -502,7 +517,18 @@ export class MarketplaceService implements OnModuleInit {
       const items = hasNext ? jobs.slice(0, limit) : jobs;
       const last = items[items.length - 1];
       return {
-        items,
+        items: options?.templateSummary
+          ? items.map((job) => ({
+              ...job,
+              template: job.template
+                ? {
+                    id: job.template.id,
+                    name: job.template.name,
+                    channelId: job.template.channel,
+                  }
+                : null,
+            }))
+          : items,
         limit,
         nextCursor: hasNext && last
           ? encodeCursorToken({
@@ -515,12 +541,25 @@ export class MarketplaceService implements OnModuleInit {
     return this.prisma.tenant().marketplaceExportJob.findMany({
       where: productId ? { productId } : undefined,
       include: {
-        template: true,
+        template: templateInclude,
         product: { select: { id: true, title: true } },
       },
       orderBy: [{ updatedAt: "desc" }],
       take: 50,
-    });
+    }).then((jobs) =>
+      options?.templateSummary
+        ? jobs.map((job) => ({
+            ...job,
+            template: job.template
+              ? {
+                  id: job.template.id,
+                  name: job.template.name,
+                  channelId: job.template.channel,
+                }
+              : null,
+          }))
+        : jobs,
+    );
   }
 
   async listSubmissions(filters?: SubmissionFilters, pagination?: CursorPaginationQuery) {

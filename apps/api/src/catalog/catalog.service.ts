@@ -55,7 +55,14 @@ export class CatalogService {
 
   async listProducts(
     pagination?: CursorPaginationQuery,
+    options?: {
+      slim?: boolean;
+    },
   ) {
+    if (options?.slim) {
+      return this.listProductsSlim(pagination);
+    }
+
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -111,6 +118,120 @@ export class CatalogService {
       orderBy: [{ updatedAt: "desc" }],
     });
     return this.attachCompletenessScores(products);
+  }
+
+  private async listProductsSlim(pagination?: CursorPaginationQuery) {
+    const limit = resolveCursorLimit(pagination?.limit ?? 50);
+    const token = decodeCursorToken(pagination?.cursor);
+    if (pagination?.cursor && !token) {
+      throw new BadRequestException("Invalid cursor.");
+    }
+    const cursorDate = token ? new Date(token.sort) : null;
+    if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+      throw new BadRequestException("Invalid cursor.");
+    }
+
+    const products = await this.prisma.tenant().product.findMany({
+      where: token && cursorDate
+        ? {
+            OR: [
+              { updatedAt: { lt: cursorDate } },
+              {
+                updatedAt: cursorDate,
+                id: { lt: token.id },
+              },
+            ],
+          }
+        : undefined,
+      select: {
+        id: true,
+        title: true,
+        brand: true,
+        description: true,
+        categoryId: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        category: {
+          select: {
+            name: true,
+            path: true,
+          },
+        },
+        _count: {
+          select: {
+            variants: true,
+          },
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    });
+    const hasNext = products.length > limit;
+    const page = hasNext ? products.slice(0, limit) : products;
+    const scored = await this.attachCompletenessScores(page);
+    const issueCounts = await this.prisma.tenant().validationIssue.groupBy({
+      by: ["productId", "severity"],
+      where: {
+        productId: {
+          in: page.map((product) => product.id),
+        },
+        status: ValidationIssueStatus.open,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const issueSummaryByProduct = new Map<string, { errorCount: number; warningCount: number }>();
+    for (const issueCount of issueCounts) {
+      const current = issueSummaryByProduct.get(issueCount.productId) ?? {
+        errorCount: 0,
+        warningCount: 0,
+      };
+      if (issueCount.severity === RuleSeverity.error) {
+        current.errorCount = issueCount._count._all;
+      } else {
+        current.warningCount = issueCount._count._all;
+      }
+      issueSummaryByProduct.set(issueCount.productId, current);
+    }
+
+    const items = scored.map((product) => {
+      const issueSummary = issueSummaryByProduct.get(product.id) ?? {
+        errorCount: 0,
+        warningCount: 0,
+      };
+      return {
+        id: product.id,
+        title: product.title,
+        brand: product.brand,
+        categoryId: product.categoryId,
+        categoryName: product.category?.name ?? undefined,
+        categoryPath: product.category?.path ?? undefined,
+        status: product.status,
+        completenessScore: product.completenessScore,
+        variantCount: product._count.variants,
+        openValidationErrorCount: issueSummary.errorCount,
+        openValidationWarningCount: issueSummary.warningCount,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+      };
+    });
+    const last = page[page.length - 1];
+    return {
+      items,
+      limit,
+      nextCursor: hasNext && last
+        ? encodeCursorToken({
+            sort: last.updatedAt.toISOString(),
+            id: last.id,
+          })
+        : null,
+    };
   }
 
   async searchProducts(query: string | undefined, limit?: number) {
@@ -675,9 +796,9 @@ export class CatalogService {
       gstRate: number | null;
       attributes: unknown;
     },
-  >(products: T[]) {
+  >(products: T[]): Promise<Array<T & { completenessScore: number }>> {
     if (products.length === 0) {
-      return products;
+      return [];
     }
 
     const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));

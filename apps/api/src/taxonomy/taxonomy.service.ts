@@ -17,45 +17,51 @@ import { UpdateCategoryDto } from "./dto/update-category.dto";
 export class TaxonomyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listCategories(pagination?: CursorPaginationQuery) {
-    if (isCursorPagination(pagination)) {
-      const limit = resolveCursorLimit(pagination?.limit);
-      const token = decodeCursorToken(pagination?.cursor);
-      if (pagination?.cursor && !token) {
-        throw new BadRequestException("Invalid cursor.");
-      }
-      const categories = await this.prisma.tenant().category.findMany({
-        where: token
-          ? {
-              OR: [
-                { path: { gt: token.sort } },
-                {
-                  path: token.sort,
-                  id: { gt: token.id },
-                },
-              ],
-            }
-          : undefined,
-        orderBy: [{ path: "asc" }, { id: "asc" }],
-        take: limit + 1,
+  async listCategories(
+    pagination?: CursorPaginationQuery,
+    options?: {
+      all?: boolean;
+    },
+  ) {
+    if (options?.all) {
+      return this.prisma.tenant().category.findMany({
+        orderBy: [{ path: "asc" }],
       });
-      const hasNext = categories.length > limit;
-      const items = hasNext ? categories.slice(0, limit) : categories;
-      const last = items[items.length - 1];
-      return {
-        items,
-        limit,
-        nextCursor: hasNext && last
-          ? encodeCursorToken({
-              sort: last.path,
-              id: last.id,
-            })
-          : null,
-      };
     }
-    return this.prisma.tenant().category.findMany({
+
+    const limit = resolveCursorLimit(pagination?.limit ?? 100);
+    const token = decodeCursorToken(pagination?.cursor);
+    if (pagination?.cursor && !token) {
+      throw new BadRequestException("Invalid cursor.");
+    }
+    const categories = await this.prisma.tenant().category.findMany({
+      where: token
+        ? {
+            OR: [
+              { path: { gt: token.sort } },
+              {
+                path: token.sort,
+                id: { gt: token.id },
+              },
+            ],
+          }
+        : undefined,
       orderBy: [{ path: "asc" }],
+      take: limit + 1,
     });
+    const hasNext = categories.length > limit;
+    const items = hasNext ? categories.slice(0, limit) : categories;
+    const last = items[items.length - 1];
+    return {
+      items,
+      limit,
+      nextCursor: hasNext && last
+        ? encodeCursorToken({
+            sort: last.path,
+            id: last.id,
+          })
+        : null,
+    };
   }
 
   async getCategory(id: string) {

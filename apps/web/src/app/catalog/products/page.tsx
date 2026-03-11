@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { ProductsTab } from "@/components/product/products-tab";
 import { PageHeader } from "@/components/ui/page-header";
-import { ApiHttpError, getCategories, getInstalledConnectors, getProducts, getStats } from "@/lib/api";
+import { ApiHttpError, getCategoryTree, getInstalledConnectors, getProducts, getStats } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -62,7 +62,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   try {
     const [stats, categories, products, installedConnectors] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
-      getCategories({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       getProducts({ role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);

@@ -12,8 +12,9 @@ export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
 
   @Get()
-  listCategories(@Query() pagination: CursorPaginationDto) {
-    return this.taxonomyService.listCategories(pagination);
+  listCategories(@Query() pagination: CursorPaginationDto, @Query("all") all?: string) {
+    // Unbounded tree fetch is deprecated for default callers; pass ?all=true when the full tree is required.
+    return this.taxonomyService.listCategories(pagination, { all: all === "true" });
   }
 
   @Get(":id")
