@@ -1231,6 +1231,63 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-18",
+      "name": "Playwright E2E Coverage and Workflow Stabilization",
+      "status": "completed",
+      "evidence": [
+        "playwright.config.cjs",
+        "scripts/start-playwright-api.cjs",
+        "scripts/start-playwright-web.cjs",
+        "apps/web/test/e2e/",
+        ".gitignore"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-TEST-E2E-001",
+          "title": "Add Playwright browser coverage for current PIM1 user workflows",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "39df1ec",
+          "scope": [
+            "package.json",
+            "package-lock.json",
+            "playwright.config.cjs",
+            "scripts/start-playwright-api.cjs",
+            "scripts/start-playwright-web.cjs",
+            "apps/api/src/auth/auth.service.ts",
+            "apps/web/src/lib/api.ts",
+            "apps/web/src/app/actions.ts",
+            "apps/web/test/integration/connector-access-delete-helper.test.cjs",
+            "apps/web/test/e2e/helpers/global-setup.cjs",
+            "apps/web/test/e2e/helpers/pim1.cjs",
+            "apps/web/test/e2e/auth.workspace.spec.js",
+            "apps/web/test/e2e/catalog-delete.spec.js",
+            "apps/web/test/e2e/reviewer-approvals.spec.js",
+            "apps/web/test/e2e/notifications.spec.js",
+            ".gitignore",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Playwright can start isolated API and web test servers against the current workspace-scoped login model.",
+            "Browser E2E coverage exists for workspace login, product archive/category delete UI, reviewer approval decisions, and notification center behavior.",
+            "Shared web helpers tolerate empty successful responses and do not swallow successful redirect control flow during server actions.",
+            "The full Playwright suite passes on current PIM1 behavior.",
+            "Playwright runtime logs do not pollute the working tree."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/connector-access-delete-helper.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "npm run build --workspace @pim1/api",
+            "npx playwright test --config=playwright.config.cjs"
+          ]
+        }
+      ]
     }
   ]
 }
+
