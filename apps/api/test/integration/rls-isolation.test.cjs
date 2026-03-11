@@ -108,9 +108,10 @@ async function apiJson(baseUrl, method, route, token, body) {
   return payload;
 }
 
-async function login(baseUrl, userId) {
+async function login(baseUrl, userId, workspaceSlug) {
   const response = await apiJson(baseUrl, "POST", "/auth/login", null, {
     userId,
+    workspaceSlug,
     password: "pim1-demo-password",
     expiresInMinutes: 30,
   });
@@ -131,6 +132,8 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
   const tenantA = `rls-tenant-a-${runId}`;
   const tenantB = `rls-tenant-b-${runId}`;
+  const workspaceSlugA = `rlsa-${runId}`.slice(0, 24);
+  const workspaceSlugB = `rlsb-${runId}`.slice(0, 24);
   const userA = `rls-user-a-${runId}`;
   const userB = `rls-user-b-${runId}`;
   const categoryA = `RLS Isolation A ${runId}`;
@@ -142,8 +145,12 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantA,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userA]: { tenantId: tenantA, role: "admin" },
-      [userB]: { tenantId: tenantB, role: "admin" },
+      [userA]: { tenantId: tenantA, role: "admin", workspaceSlug: workspaceSlugA },
+      [userB]: { tenantId: tenantB, role: "admin", workspaceSlug: workspaceSlugB },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlugA]: { tenantId: tenantA, displayName: "RLS A" },
+      [workspaceSlugB]: { tenantId: tenantB, displayName: "RLS B" },
     }),
   };
 
@@ -173,8 +180,8 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
 
-    const tokenA = await login(baseUrl, userA);
-    const tokenB = await login(baseUrl, userB);
+    const tokenA = await login(baseUrl, userA, workspaceSlugA);
+    const tokenB = await login(baseUrl, userB, workspaceSlugB);
 
     await apiJson(baseUrl, "POST", "/taxonomy/categories", tokenA, { name: categoryA });
     await apiJson(baseUrl, "POST", "/taxonomy/categories", tokenB, { name: categoryB });

@@ -148,6 +148,7 @@ async function run() {
   const apiPort = 5800 + Math.floor(Math.random() * 140);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `metrics-kpi-tenant-${runId}`;
+  const workspaceSlug = `metrics-${runId}`.slice(0, 24);
   const userId = `metrics-kpi-user-${runId}`;
   const env = {
     ...process.env,
@@ -155,7 +156,10 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Metrics KPI" },
     }),
   };
 
@@ -184,6 +188,7 @@ async function run() {
 
     const login = await tracedRequest("login", baseUrl, "POST", "/auth/login", null, {
       userId,
+      workspaceSlug,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });

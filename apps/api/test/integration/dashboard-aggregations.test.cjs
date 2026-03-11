@@ -131,6 +131,7 @@ async function run() {
   const apiPort = 5800 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `dashboard-tenant-${runId}`;
+  const workspaceSlug = `dash-${runId}`.slice(0, 24);
   const userId = `dashboard-user-${runId}`;
   const env = {
     ...process.env,
@@ -138,7 +139,10 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Dashboard" },
     }),
   };
 
@@ -173,6 +177,7 @@ async function run() {
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
+      workspaceSlug,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });

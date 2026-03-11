@@ -124,6 +124,7 @@ async function run() {
   const apiPort = 5850 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `readiness-batch-tenant-${runId}`;
+  const workspaceSlug = `ready-${runId}`.slice(0, 24);
   const userId = `readiness-batch-user-${runId}`;
   const env = {
     ...process.env,
@@ -132,7 +133,10 @@ async function run() {
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_DEFAULT_ROLE: "admin",
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Readiness Batch" },
     }),
   };
 
@@ -161,8 +165,7 @@ async function run() {
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      tenantId,
-      role: "admin",
+      workspaceSlug,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });

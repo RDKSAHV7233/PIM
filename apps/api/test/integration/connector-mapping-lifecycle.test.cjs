@@ -140,6 +140,8 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantA = `mapping-lifecycle-a-${runId}`;
   const tenantB = `mapping-lifecycle-b-${runId}`;
+  const workspaceSlugA = `mapa-${runId}`.slice(0, 24);
+  const workspaceSlugB = `mapb-${runId}`.slice(0, 24);
   const userA = `mapping-user-a-${runId}`;
   const userB = `mapping-user-b-${runId}`;
 
@@ -149,8 +151,12 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantA,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userA]: { tenantId: tenantA, role: "admin" },
-      [userB]: { tenantId: tenantB, role: "admin" },
+      [userA]: { tenantId: tenantA, role: "admin", workspaceSlug: workspaceSlugA },
+      [userB]: { tenantId: tenantB, role: "admin", workspaceSlug: workspaceSlugB },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlugA]: { tenantId: tenantA, displayName: "Mapping Lifecycle A" },
+      [workspaceSlugB]: { tenantId: tenantB, displayName: "Mapping Lifecycle B" },
     }),
   };
 
@@ -179,6 +185,7 @@ async function run() {
 
     const loginA = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userA,
+      workspaceSlug: workspaceSlugA,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });
@@ -188,6 +195,7 @@ async function run() {
 
     const loginB = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userB,
+      workspaceSlug: workspaceSlugB,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });

@@ -129,6 +129,7 @@ async function run() {
   const apiPort = 6800 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `audit-actor-${runId}`;
+  const workspaceSlug = `audit-${runId}`.slice(0, 24);
   const userId = `audit-actor-user-${runId}@example.com`;
   const spoofedActor = `spoofed-header-${runId}`;
 
@@ -138,7 +139,10 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Audit Actor" },
     }),
   };
 
@@ -167,6 +171,7 @@ async function run() {
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
+      workspaceSlug,
       password: process.env.PIM_AUTH_PASSWORD,
       expiresInMinutes: 30,
     });

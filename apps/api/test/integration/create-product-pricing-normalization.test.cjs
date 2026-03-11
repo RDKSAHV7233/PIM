@@ -103,11 +103,10 @@ async function apiRequest(baseUrl, method, route, token, body) {
   return { status: response.status, payload };
 }
 
-async function login(baseUrl, userId, tenantId) {
+async function login(baseUrl, userId, workspaceSlug) {
   const response = await apiRequest(baseUrl, "POST", "/auth/login", null, {
     userId,
-    tenantId,
-    role: "admin",
+    workspaceSlug,
     password: "pim1-demo-password",
     expiresInMinutes: 30,
   });
@@ -133,18 +132,20 @@ async function run() {
   const apiPort = 4900 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `pricing-normalization-tenant-${runId}`;
+  const workspaceSlug = `price-${runId}`.slice(0, 24);
   const userId = `pricing-normalization-user-${tenantId}`;
-  const authIdentityJson = JSON.stringify({
-    [userId]: { tenantId, role: "admin" },
-  });
-
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_DEFAULT_ROLE: "admin",
-    PIM_AUTH_IDENTITIES_JSON: authIdentityJson,
+    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Pricing Normalization" },
+    }),
   };
 
   const stdoutBuffer = [];
@@ -170,7 +171,7 @@ async function run() {
 
   try {
     await waitForHealth(baseUrl, 60_000);
-    const token = await login(baseUrl, userId, tenantId);
+    const token = await login(baseUrl, userId, workspaceSlug);
 
     const categoryResponse = await apiRequest(baseUrl, "POST", "/taxonomy/categories", token, {
       name: `Pricing Category ${runId}`,

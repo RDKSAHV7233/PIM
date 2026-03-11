@@ -123,6 +123,7 @@ async function run() {
   const apiPort = 6100 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `reviewer-role-tenant-${runId}`;
+  const workspaceSlug = `review-${runId}`.slice(0, 24);
   const adminUserId = `reviewer-admin-${runId}`;
   const reviewerUserId = `reviewer-user-${runId}`;
   const env = {
@@ -131,8 +132,11 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [adminUserId]: { tenantId, role: "admin" },
-      [reviewerUserId]: { tenantId, role: "reviewer" },
+      [adminUserId]: { tenantId, role: "admin", workspaceSlug },
+      [reviewerUserId]: { tenantId, role: "reviewer", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Reviewer Role" },
     }),
   };
 
@@ -161,6 +165,7 @@ async function run() {
 
     const adminLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: adminUserId,
+      workspaceSlug,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });
@@ -169,6 +174,7 @@ async function run() {
 
     const reviewerLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: reviewerUserId,
+      workspaceSlug,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
     });
