@@ -12,6 +12,10 @@ dist/
 .env.local
 coverage/
 *.log
+*-run.err
+*-run.out
+*-start.err
+*-start.out
 *.tsbuildinfo
 storage/
 .runlogs/
