@@ -1124,6 +1124,58 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-16",
+      "name": "Product Test Architecture and UI UX Acceptance",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "package.json",
+        "scripts/run-product-suite.cjs",
+        "apps/web/test/integration/product-shell-uiux.test.cjs",
+        "docs/strategy/PIM1_PRODUCT_TEST_STRATEGY.md"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-TEST-PRODUCT-001",
+          "title": "Reorganize current PIM1 tests into product-facing acceptance suites with UI UX coverage",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "818de81",
+          "scope": [
+            "package.json",
+            "scripts/run-product-suite.cjs",
+            "docs/strategy/PIM1_PRODUCT_TEST_STRATEGY.md",
+            "apps/web/test/integration/product-shell-uiux.test.cjs",
+            "apps/api/test/integration/create-product-pricing-normalization.test.cjs",
+            "apps/api/test/integration/product-workflow-transitions.test.cjs",
+            "apps/api/test/integration/connector-mapping-lifecycle.test.cjs",
+            "apps/api/test/integration/marketplace-readiness-batch.test.cjs",
+            "apps/api/test/integration/submission-lifecycle-api.test.cjs",
+            "apps/api/test/integration/dashboard-aggregations.test.cjs",
+            "apps/api/test/integration/metrics-kpi-trends.test.cjs",
+            "apps/api/test/integration/marketplace-worker-failure-visibility.test.cjs",
+            "apps/api/test/integration/audit-actor-context.test.cjs",
+            "apps/api/test/integration/quality-reviewer-role.test.cjs",
+            "apps/api/test/integration/rls-isolation.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "PIM1 exposes product-oriented test suite entry points for shell, catalog, publish, operations, governance, and UI UX validation.",
+            "The product shell has explicit UI UX acceptance coverage for current topbar and sidebar affordances.",
+            "The full product suite passes against the current workspace-scoped login model and current PIM1 feature set.",
+            "A committed test strategy document maps product capabilities to the maintained suite entry points."
+          ],
+          "tests_passed": [
+            "npm run test:product:shell",
+            "npm run test:product:uiux",
+            "npm run test:product"
+          ]
+        }
+      ]
     }
   ]
 }
