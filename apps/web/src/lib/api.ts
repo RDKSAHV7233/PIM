@@ -844,7 +844,15 @@ async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiReque
   if (response.status === 204) {
     return undefined as T;
   }
-  return (await response.json()) as T;
+  const contentType = String(response.headers.get("content-type") ?? "").toLowerCase();
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return undefined as T;
+  }
+  if (contentType.includes("application/json")) {
+    return JSON.parse(rawBody) as T;
+  }
+  return rawBody as T;
 }
 
 export async function getCategories(options?: ApiRequestOptions) {

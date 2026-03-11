@@ -14,8 +14,8 @@ import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
 
 const DEFAULT_LOGIN_EXPIRY_MINUTES = 4 * 60;
 const MAX_LOGIN_EXPIRY_MINUTES = 4 * 60;
-const IP_ATTEMPT_LIMIT = 10;
-const IP_WINDOW_MS = 15 * 60 * 1000;
+const DEFAULT_IP_ATTEMPT_LIMIT = 10;
+const DEFAULT_IP_WINDOW_MS = 15 * 60 * 1000;
 const USER_ATTEMPT_LIMIT = 5;
 const ACCOUNT_LOCK_MS = 15 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -25,6 +25,11 @@ const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
 const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
 const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
+
+function resolvePositiveIntegerEnv(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 export interface LoginResponse {
   accessToken: string;
@@ -186,6 +191,11 @@ export class AuthService implements OnModuleDestroy {
   private redisAvailable = false;
   private redisRetryAfterMs = 0;
   private lastRedisWarnAtMs = 0;
+  private readonly ipAttemptLimit = resolvePositiveIntegerEnv(
+    process.env.PIM_AUTH_IP_ATTEMPT_LIMIT,
+    DEFAULT_IP_ATTEMPT_LIMIT,
+  );
+  private readonly ipWindowMs = resolvePositiveIntegerEnv(process.env.PIM_AUTH_IP_WINDOW_MS, DEFAULT_IP_WINDOW_MS);
 
   constructor(
     private readonly jwtBlocklistService: JwtBlocklistService,
@@ -656,7 +666,7 @@ export class AuthService implements OnModuleDestroy {
   private incrementAndCheckIpRateLimitInMemory(ipAddress: string, now: number): number {
     const ipKey = String(ipAddress || "unknown").trim() || "unknown";
     const existing = this.ipAttempts.get(ipKey);
-    if (!existing || now - existing.windowStartMs >= IP_WINDOW_MS) {
+    if (!existing || now - existing.windowStartMs >= this.ipWindowMs) {
       this.ipAttempts.set(ipKey, {
         windowStartMs: now,
         attempts: 1,
@@ -664,8 +674,8 @@ export class AuthService implements OnModuleDestroy {
       return 0;
     }
 
-    if (existing.attempts >= IP_ATTEMPT_LIMIT) {
-      const remainingMs = Math.max(0, IP_WINDOW_MS - (now - existing.windowStartMs));
+    if (existing.attempts >= this.ipAttemptLimit) {
+      const remainingMs = Math.max(0, this.ipWindowMs - (now - existing.windowStartMs));
       return Math.max(1, Math.ceil(remainingMs / 1000));
     }
 
@@ -683,14 +693,14 @@ export class AuthService implements OnModuleDestroy {
     const key = this.ipRateKey(ipKey);
     const attempts = await client.incr(key);
     if (attempts === 1) {
-      await client.pExpire(key, IP_WINDOW_MS);
+      await client.pExpire(key, this.ipWindowMs);
       return 0;
     }
-    if (attempts <= IP_ATTEMPT_LIMIT) {
+    if (attempts <= this.ipAttemptLimit) {
       return 0;
     }
     const ttlMs = await client.pTTL(key);
-    const effectiveTtlMs = ttlMs > 0 ? ttlMs : IP_WINDOW_MS;
+    const effectiveTtlMs = ttlMs > 0 ? ttlMs : this.ipWindowMs;
     return Math.max(1, Math.ceil(effectiveTtlMs / 1000));
   }
 

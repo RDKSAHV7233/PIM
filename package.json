@@ -77,6 +77,9 @@
     "test:product:operations": "node scripts/run-product-suite.cjs operations",
     "test:product:governance": "node scripts/run-product-suite.cjs governance",
     "test:product:uiux": "node scripts/run-product-suite.cjs uiux",
+    "test:e2e:playwright": "playwright test --config=playwright.config.cjs",
+    "test:e2e:playwright:headed": "playwright test --config=playwright.config.cjs --headed",
+    "test:e2e:playwright:ui": "playwright test --config=playwright.config.cjs --ui",
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
     "governance:enforce": "dotenv -o -e .env -- node scripts/enforce-payload-governance.cjs",
     "guard:unsafe-raw": "node scripts/check-unsafe-raw-comments.cjs",
@@ -87,6 +90,7 @@
     "infra:logs": "docker compose logs -f"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "dotenv-cli": "^11.0.0",
     "yaml": "^2.8.2"
   }

@@ -23,6 +23,14 @@ function run() {
     "fetchJson must only set Content-Type for requests that actually send a body.",
   );
   assert(
+    source.includes("const rawBody = await response.text();"),
+    "fetchJson must read successful responses as text first so empty-body success responses do not crash.",
+  );
+  assert(
+    source.includes("if (!rawBody.trim()) {"),
+    "fetchJson must treat empty successful responses as undefined instead of attempting JSON.parse.",
+  );
+  assert(
     source.includes("export async function deleteJson(path: string, options?: ApiRequestOptions)"),
     "deleteJson helper must remain available for connector permission revoke flows.",
   );
@@ -33,6 +41,7 @@ function run() {
         status: "ok",
         validated: [
           "fetchJson_omits_json_content_type_for_empty_body_requests",
+          "fetchJson_tolerates_empty_success_bodies",
           "deleteJson_helper_still_available_for_revoke_flows",
         ],
         checkedAt: new Date().toISOString(),

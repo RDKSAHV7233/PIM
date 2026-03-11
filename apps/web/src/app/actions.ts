@@ -3,6 +3,7 @@
 import { Buffer } from "node:buffer";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   ApiHttpError,
   type ApiRequestOptions,
@@ -31,6 +32,12 @@ const STEP_UP_ERROR_CODES = new Set([
   "STEP_UP_PASSWORD_REQUIRED",
 ]);
 const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "reviewer", "viewer"]);
+
+function rethrowRedirectError(error: unknown): void {
+  if (isRedirectError(error)) {
+    throw error;
+  }
+}
 
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
@@ -386,6 +393,7 @@ export async function deleteCategoryAction(formData: FormData) {
       }),
     );
   } catch (error: unknown) {
+    rethrowRedirectError(error);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -485,6 +493,7 @@ export async function decideProductReviewAction(formData: FormData) {
     revalidatePath(`/products/${productId}`);
     redirect(appendQueryParams(returnTo, { decisionStatus: status }));
   } catch (error: unknown) {
+    rethrowRedirectError(error);
     const message = error instanceof ApiHttpError ? String((error.body as Record<string, unknown> | null)?.error ?? "") : "";
     const decisionError = message || "decision_failed";
     redirect(appendQueryParams(returnTo, { decisionError }));
@@ -608,6 +617,7 @@ export async function updateProductAction(formData: FormData) {
       }),
     );
   } catch (error: unknown) {
+    rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : String(error ?? "");
     if (message.includes("VERSION_CONFLICT")) {
       const currentVersion = extractCurrentVersionFromError(message);
@@ -698,6 +708,7 @@ export async function deleteProductAction(formData: FormData) {
       }),
     );
   } catch (error: unknown) {
+    rethrowRedirectError(error);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
@@ -744,6 +755,7 @@ export async function purgeProductAction(formData: FormData) {
       }),
     );
   } catch (error: unknown) {
+    rethrowRedirectError(error);
     const deleteError = resolveDeleteErrorMessage(error);
     redirect(
       appendQueryParams(returnTo, {
