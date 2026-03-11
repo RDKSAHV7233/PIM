@@ -466,7 +466,7 @@ export async function createProductAction(formData: FormData) {
       hsnCode: String(formData.get("hsnCode") ?? "").trim() || undefined,
       gstRate: parseNumber(formData.get("gstRate")),
       attributes,
-      status: String(formData.get("status") ?? "draft"),
+      status: "draft",
     });
   } catch (error: unknown) {
     const redirectPath = withPlanLimitQuery("/catalog/products", error);

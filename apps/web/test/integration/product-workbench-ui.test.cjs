@@ -56,8 +56,16 @@ function run() {
     "Create product form must catch non-redirect submit failures and render a usable inline error instead of crashing the runtime.",
   );
   assert(
-    actionsSource.includes('revalidatePath("/catalog/products");'),
-    "Successful product creation must revalidate the catalog products route so the new product appears without a stale refresh.",
+    createProductFormSource.includes('name="status" value="draft"') &&
+      createProductFormSource.includes("New products always start in") &&
+      !createProductFormSource.includes('<option value=\"active\">active</option>') &&
+      !createProductFormSource.includes('<option value=\"archived\">archived</option>'),
+    "Create product form must not expose invalid initial workflow statuses when new products are draft-only.",
+  );
+  assert(
+    actionsSource.includes('revalidatePath("/catalog/products");') &&
+      actionsSource.includes('status: "draft",'),
+    "Successful product creation must revalidate the catalog products route and always submit draft status for new products.",
   );
 
   console.log(

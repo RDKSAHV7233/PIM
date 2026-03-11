@@ -186,6 +186,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
     <form action={submitAction} className="grid gap-3 md:grid-cols-2">
       <input type="hidden" name="actorRole" value={role} />
       <input type="hidden" name="attributes" value={attributesJson} />
+      <input type="hidden" name="status" value="draft" />
 
       <div className="space-y-1">
         <label htmlFor={fieldId("title")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -292,15 +293,9 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
         </Select>
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor={fieldId("status")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Status
-        </label>
-        <Select id={fieldId("status")} name="status" defaultValue="draft">
-          <option value="draft">draft</option>
-          <option value="active">active</option>
-          <option value="archived">archived</option>
-        </Select>
+      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        New products always start in <span className="font-semibold text-slate-900">draft</span>. Move them forward
+        in workflow after validation and review.
       </div>
 
       <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:col-span-2">
