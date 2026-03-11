@@ -571,6 +571,23 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-REL-STAGING-SMOKE-002",
+          "title": "Align staging post-deploy smoke verification with workspace-scoped login",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "21f94b8",
+          "tests_passed": [
+            "npm run test:staging:postdeploy-check",
+            "STAGING_BASE_URL=http://127.0.0.1:4000 STAGING_SMOKE_WORKSPACE=default STAGING_SMOKE_USER=admin@pim1.local STAGING_SMOKE_PASSWORD=*** STAGING_EXPECTED_ENV=development node scripts/staging-postdeploy-check.cjs",
+            "npm run test:product:shell",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: STAGING_BASE_URL=http://127.0.0.1:4000 STAGING_SMOKE_USER=admin@pim1.local STAGING_SMOKE_PASSWORD=*** STAGING_EXPECTED_ENV=development node scripts/staging-postdeploy-check.cjs. Failing output snippet: login failed: expected 201, got 404; payload={\"error\":\"WORKSPACE_NOT_FOUND\"}. Likely files: scripts/staging-postdeploy-check.cjs and .github/workflows/deploy-staging.yml."
         }
       ]
     },
