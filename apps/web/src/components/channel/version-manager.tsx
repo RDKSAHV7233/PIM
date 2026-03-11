@@ -102,9 +102,21 @@ export function VersionManagerCard({
   stepUpAction: ProtectedMappingActionKind | "";
   stepUpVersionId: string;
 }) {
+  const draftCount = versions.filter((version) => version.lifecycleState === "draft").length;
+  const validatedCount = versions.filter((version) => version.lifecycleState === "validated").length;
+  const liveCount = versions.filter((version) => version.lifecycleState === "published").length;
+
   return (
-    <Card>
+    <Card id="mapping-history">
       <CardTitle>Mapping History</CardTitle>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <StatusChip label={`${draftCount} draft`} tone="info" />
+        <StatusChip label={`${validatedCount} ready to publish`} tone={validatedCount > 0 ? "warning" : "neutral"} />
+        <StatusChip label={`${liveCount} live`} tone={liveCount > 0 ? "success" : "neutral"} />
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        After you save a draft, validate it here. Publish becomes available only for validated versions.
+      </p>
       <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">

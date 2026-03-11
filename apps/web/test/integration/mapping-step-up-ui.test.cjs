@@ -7,6 +7,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 const API_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api.ts");
 const MAPPINGS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
+const VERSION_MANAGER_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "version-manager.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -18,6 +19,7 @@ function run() {
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
   const apiSource = fs.readFileSync(API_FILE, "utf8");
   const mappingsSource = fs.readFileSync(MAPPINGS_PAGE, "utf8");
+  const versionManagerSource = fs.readFileSync(VERSION_MANAGER_FILE, "utf8");
 
   assert(
     actionsSource.includes('scope: STEP_UP_SCOPE_MAPPING_HIGH_RISK'),
@@ -36,10 +38,11 @@ function run() {
     "Web API client must support protected action headers and mapping actions must define x-pim-step-up-token.",
   );
   assert(
-    mappingsSource.includes("Step-up re-authentication") &&
-      mappingsSource.includes("rollbackConnectorMappingVersionAction") &&
-      mappingsSource.includes("Rollback restores this prior published mapping as a new published version."),
-    "Mappings page must expose step-up re-authentication UX for publish/archive/rollback flows.",
+    mappingsSource.includes("VersionManagerCard") &&
+      versionManagerSource.includes("Step-up re-authentication") &&
+      versionManagerSource.includes("rollbackConnectorMappingVersionAction") &&
+      versionManagerSource.includes("Rollback restores this prior published mapping as a new published version."),
+    "Mappings workspace must expose step-up re-authentication UX for publish/archive/rollback flows through the version manager component.",
   );
 
   console.log(

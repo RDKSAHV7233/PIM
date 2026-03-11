@@ -20,6 +20,135 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
 
+type MappingFieldRow = {
+  targetField: string;
+  selectedSource: string;
+  required: boolean;
+};
+
+type MappingFieldGroupKey = "core" | "compliance" | "attributes" | "media";
+
+function classifyMappingFieldGroup(targetField: string): {
+  key: MappingFieldGroupKey;
+  title: string;
+  description: string;
+} {
+  const normalized = String(targetField ?? "").trim().toLowerCase();
+  if (normalized.startsWith("attributes.")) {
+    return {
+      key: "attributes",
+      title: "Attributes",
+      description: "Map the product attributes required by the target taxonomy.",
+    };
+  }
+  if (
+    normalized.includes("hsn") ||
+    normalized.includes("gst") ||
+    normalized.includes("tax") ||
+    normalized.includes("compliance")
+  ) {
+    return {
+      key: "compliance",
+      title: "Compliance",
+      description: "Complete tax and compliance fields before validating the draft.",
+    };
+  }
+  if (
+    normalized.includes("image") ||
+    normalized.includes("media") ||
+    normalized.includes("gallery") ||
+    normalized.includes("video")
+  ) {
+    return {
+      key: "media",
+      title: "Media",
+      description: "Map image and media fields only when the target category requires them.",
+    };
+  }
+  return {
+    key: "core",
+    title: "Core product",
+    description: "Title, brand, description, and other core catalog fields come first.",
+  };
+}
+
+function renderFieldRows(
+  rows: MappingFieldRow[],
+  fieldInputPrefix: string,
+  sourceFieldOptions: Array<{ value: string; label: string }>,
+) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const grouped = new Map<
+    MappingFieldGroupKey,
+    {
+      title: string;
+      description: string;
+      rows: MappingFieldRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    const group = classifyMappingFieldGroup(row.targetField);
+    if (!grouped.has(group.key)) {
+      grouped.set(group.key, { title: group.title, description: group.description, rows: [] });
+    }
+    grouped.get(group.key)?.rows.push(row);
+  }
+
+  return Array.from(grouped.values()).map((group) => (
+    <div key={group.title} className="space-y-2">
+      <div className="px-3 pt-3">
+        <p className="text-sm font-semibold text-slate-900">{group.title}</p>
+        <p className="text-xs text-slate-500">{group.description}</p>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Channel field</th>
+              <th className="px-3 py-2">PIM field</th>
+              <th className="px-3 py-2">Required</th>
+              <th className="px-3 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.rows.map((row) => (
+              <tr key={row.targetField} className="border-t border-slate-200">
+                <td className="px-3 py-2.5 font-medium text-slate-900">{row.targetField}</td>
+                <td className="px-3 py-2.5">
+                  <Select name={`${fieldInputPrefix}${row.targetField}`} defaultValue={row.selectedSource}>
+                    <option value="">Select PIM field</option>
+                    {sourceFieldOptions.map((option) => (
+                      <option key={`${row.targetField}:${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </td>
+                <td className="px-3 py-2.5">
+                  <StatusChip
+                    label={row.required ? "Required" : "Optional"}
+                    tone={row.required ? "warning" : "neutral"}
+                  />
+                </td>
+                <td className="px-3 py-2.5">
+                  <StatusChip
+                    label={row.selectedSource ? "Mapped" : "Missing"}
+                    tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ));
+}
+
 export function MappingStepUpAlert({
   message,
 }: {
@@ -135,12 +264,33 @@ export function MappingEditorCard({
   advancedJsonTitle: string;
   mappingRulesPlaceholder: string;
 }) {
+  const rows: MappingFieldRow[] = targetFieldOptions.map((targetField) => ({
+    targetField,
+    selectedSource: mappedTargetToSource[targetField] ?? "",
+    required: requiredTargetFields.includes(targetField),
+  }));
+  const missingRequiredRows = rows.filter((row) => row.required && !row.selectedSource);
+  const mappedRequiredRows = rows.filter((row) => row.required && row.selectedSource);
+  const optionalRows = rows.filter((row) => !row.required);
+  const mappedRequiredCount = mappedRequiredRows.length;
+  const missingRequiredCount = missingRequiredRows.length;
+
   return (
-    <Card>
-      <CardTitle>Create Mapping Draft</CardTitle>
+    <Card id="mapping-draft">
+      <CardTitle>Map required fields first</CardTitle>
       {canWrite ? (
         <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
           <RoleHiddenInput role={actorRole} />
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <StatusChip label={`${requiredTargetFields.length} required fields`} tone="info" />
+              <StatusChip label={`${mappedRequiredCount} mapped`} tone={mappedRequiredCount > 0 ? "success" : "neutral"} />
+              <StatusChip label={`${missingRequiredCount} missing`} tone={missingRequiredCount > 0 ? "warning" : "success"} />
+            </div>
+            <p className="mt-2 text-sm text-slate-700">
+              Start by mapping the missing required fields below. Optional fields and advanced JSON overrides are available after the required fields are covered.
+            </p>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-level">
@@ -198,49 +348,46 @@ export function MappingEditorCard({
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200">
+          <div className="space-y-3 rounded-lg border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
               <p className="text-sm font-medium text-slate-900">{attributeMappingTitle}</p>
               <p className="text-xs text-slate-500">{attributeMappingDescription}</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Channel field</th>
-                    <th className="px-3 py-2">PIM field</th>
-                    <th className="px-3 py-2">Required</th>
-                    <th className="px-3 py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {targetFieldOptions.map((targetField) => {
-                    const selectedSource = mappedTargetToSource[targetField] ?? "";
-                    const required = requiredTargetFields.includes(targetField);
-                    return (
-                      <tr key={targetField} className="border-t border-slate-200">
-                        <td className="px-3 py-2.5 font-medium text-slate-900">{targetField}</td>
-                        <td className="px-3 py-2.5">
-                          <Select name={`${fieldInputPrefix}${targetField}`} defaultValue={selectedSource}>
-                            <option value="">Select PIM field</option>
-                            {sourceFieldOptions.map((option) => (
-                              <option key={`${targetField}:${option.value}`} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={required ? "Required" : "Optional"} tone={required ? "warning" : "neutral"} />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={selectedSource ? "Mapped" : "Missing"} tone={selectedSource ? "success" : required ? "danger" : "neutral"} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-4 p-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-semibold text-amber-900">Required fields still missing</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Finish these required fields before you move to validation and publish.
+                </p>
+              </div>
+              {missingRequiredRows.length > 0 ? (
+                renderFieldRows(missingRequiredRows, fieldInputPrefix, sourceFieldOptions)
+              ) : (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  All required fields are mapped. Save the draft, then validate it in version history.
+                </div>
+              )}
+
+              {mappedRequiredRows.length > 0 ? (
+                <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-slate-900">
+                    Show mapped required fields
+                  </summary>
+                  <div className="mt-3">{renderFieldRows(mappedRequiredRows, fieldInputPrefix, sourceFieldOptions)}</div>
+                </details>
+              ) : null}
+
+              {optionalRows.length > 0 ? (
+                <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-slate-900">
+                    Show optional fields
+                  </summary>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Optional fields can improve completeness, but they are not required to create the draft.
+                  </p>
+                  <div className="mt-3">{renderFieldRows(optionalRows, fieldInputPrefix, sourceFieldOptions)}</div>
+                </details>
+              ) : null}
             </div>
           </div>
 
@@ -317,9 +464,14 @@ export function MappingEditorCard({
           <input type="hidden" name="connectorSlug" value={connectorSlug} />
           <input type="hidden" name="connectorDefinitionId" value={definitionId} />
           <input type="hidden" name="connectorDefinitionVersion" value={definitionVersion} />
-          <Button type="submit" className="w-fit">
-            Create draft version
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Save the draft here, then jump to version history to validate and publish it.
+            </p>
+            <Button type="submit" className="w-fit">
+              Save draft version
+            </Button>
+          </div>
         </form>
       ) : (
         <p className="mt-2 text-sm text-slate-600">Your role is read-only for mapping version management.</p>
@@ -336,9 +488,12 @@ export function PublishReadinessCard({
   readiness: ConnectorPublishReadiness | null;
 }) {
   return (
-    <Card>
+    <Card id="mapping-readiness">
       <CardTitle>Publish Readiness (Hard Gate)</CardTitle>
       <div className="mt-2 grid gap-3 text-sm text-slate-700">
+        <p className="text-xs text-slate-500">
+          Use this section after the draft is validated. Publish remains blocked until both mapping preflight and publish readiness are clear.
+        </p>
         <div>
           <p className="font-medium">Mapping preflight</p>
           <StatusChip label={preflight?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(preflight)} />
