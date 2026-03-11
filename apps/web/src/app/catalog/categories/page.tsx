@@ -113,7 +113,7 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
         {canAdmin ? (
           <Card>
             <CardTitle>Create Category</CardTitle>
-            <form action={createCategoryAction} className="space-y-3">
+            <form action={createCategoryAction} className="space-y-3" suppressHydrationWarning>
               <div className="space-y-1">
                 <label
                   htmlFor="create-category-name"
