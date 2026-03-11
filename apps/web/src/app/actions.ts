@@ -476,6 +476,7 @@ export async function createProductAction(formData: FormData) {
     throw error;
   }
   revalidatePath("/");
+  revalidatePath("/catalog/products");
 }
 
 function extractCurrentVersionFromError(message: string): number | null {

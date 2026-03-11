@@ -6,6 +6,8 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PRODUCTS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "catalog", "products", "page.tsx");
 const PRODUCTS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "components", "product", "products-tab.tsx");
+const CREATE_PRODUCT_FORM = path.join(REPO_ROOT, "apps", "web", "src", "components", "product", "CreateProductForm.tsx");
+const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -16,6 +18,8 @@ function assert(condition, message) {
 function run() {
   const productsPageSource = fs.readFileSync(PRODUCTS_PAGE, "utf8");
   const productsTabSource = fs.readFileSync(PRODUCTS_TAB, "utf8");
+  const createProductFormSource = fs.readFileSync(CREATE_PRODUCT_FORM, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
     productsPageSource.includes("/channels/mappings?channel=") &&
@@ -43,6 +47,18 @@ function run() {
     !productsTabSource.includes(">HSN<") && !productsTabSource.includes(">GST %<"),
     "Products workbench should not prioritize compliance-field columns over core workbench signals.",
   );
+  assert(
+    createProductFormSource.includes("const [submitError, setSubmitError] = useState<string>(\"\")") &&
+      createProductFormSource.includes("isRedirectErrorLike") &&
+      createProductFormSource.includes("await createProductAction(formData);") &&
+      createProductFormSource.includes("setSubmitError(message);") &&
+      createProductFormSource.includes("text-red-700"),
+    "Create product form must catch non-redirect submit failures and render a usable inline error instead of crashing the runtime.",
+  );
+  assert(
+    actionsSource.includes('revalidatePath("/catalog/products");'),
+    "Successful product creation must revalidate the catalog products route so the new product appears without a stale refresh.",
+  );
 
   console.log(
     JSON.stringify(
@@ -52,6 +68,7 @@ function run() {
           "product_workbench_uses_canonical_mapping_route",
           "products_tab_uses_compact_toolbar_actions",
           "products_table_prioritizes_catalog_workbench_signals",
+          "create_product_form_handles_submit_failures_inline",
         ],
         checkedAt: new Date().toISOString(),
       },

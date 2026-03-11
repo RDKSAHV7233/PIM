@@ -68,12 +68,21 @@ function normalizeAttributeValue(
   return text || null;
 }
 
+function isRedirectErrorLike(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const digest = "digest" in error ? error.digest : undefined;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
 export function CreateProductForm({ role, categories, onCreated }: CreateProductFormProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
   const [attributeValues, setAttributeValues] = useState<Record<string, AttributeInputValue>>({});
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [attributeFetchError, setAttributeFetchError] = useState<string>("");
+  const [submitError, setSubmitError] = useState<string>("");
   const [mrp, setMrp] = useState<string>("");
   const [sellingPrice, setSellingPrice] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -151,13 +160,22 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
 
   const submitAction = async (formData: FormData) => {
     startTransition(async () => {
-      await createProductAction(formData);
-      setSelectedCategoryId("");
-      setDefinitions([]);
-      setAttributeValues({});
-      setMrp("");
-      setSellingPrice("");
-      onCreated?.();
+      setSubmitError("");
+      try {
+        await createProductAction(formData);
+        setSelectedCategoryId("");
+        setDefinitions([]);
+        setAttributeValues({});
+        setMrp("");
+        setSellingPrice("");
+        onCreated?.();
+      } catch (error: unknown) {
+        if (isRedirectErrorLike(error)) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : "Unable to create product.";
+        setSubmitError(message);
+      }
     });
   };
 
@@ -407,6 +425,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
       </div>
 
       <div className="md:col-span-2">
+        {submitError ? <p className="mb-2 text-sm text-red-700">{submitError}</p> : null}
         <Button type="submit" disabled={isPending}>
           {isPending ? "Creating..." : "Create product"}
         </Button>
