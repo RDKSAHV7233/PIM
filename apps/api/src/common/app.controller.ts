@@ -18,6 +18,7 @@ export class AppController {
   @ApiResponse({ status: 200, description: "Service health" })
   async health() {
     const dbPool = await this.prismaService.getPoolStats();
+    const queueMetrics = await this.queueService.getMetrics();
     const authMode = String(process.env.AUTH_MODE ?? "local").trim().toLowerCase();
     return {
       status: "ok",
@@ -27,7 +28,7 @@ export class AppController {
         identitySource: authMode === "db" ? "database" : "local_env",
       },
       db_pool: dbPool,
-      queues: this.queueService.getMetrics(),
+      queues: queueMetrics,
     };
   }
 }

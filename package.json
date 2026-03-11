@@ -42,6 +42,7 @@
     "test:integration:bulk-import-tenant-boundary": "dotenv -o -e .env -- node apps/api/test/integration/bulk-import-tenant-boundary.test.cjs",
     "test:integration:credential-rotation": "dotenv -o -e .env -- node apps/api/test/integration/credential-rotation.test.cjs",
     "test:integration:worker-backpressure": "dotenv -o -e .env -- node apps/api/test/integration/worker-backpressure.test.cjs",
+    "test:integration:queue-durability": "dotenv -o -e .env -- node apps/api/test/integration/queue-durability.test.cjs",
     "test:integration:connector-capability-orchestration": "dotenv -o -e .env -- node apps/api/test/integration/connector-capability-orchestration.test.cjs",
     "test:integration:marketplace-capability-gating": "dotenv -o -e .env -- node apps/api/test/integration/marketplace-capability-gating.test.cjs",
     "test:integration:marketplace-readiness-batch": "dotenv -o -e .env -- node apps/api/test/integration/marketplace-readiness-batch.test.cjs",
@@ -92,6 +93,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "dotenv-cli": "^11.0.0",
+    "redis-memory-server": "^0.16.0",
     "yaml": "^2.8.2"
   }
 }

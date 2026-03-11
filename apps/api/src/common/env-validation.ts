@@ -3,6 +3,7 @@ import { z } from "zod";
 type AppEnv = "development" | "staging" | "production";
 type BoolText = "true" | "false";
 type AuthMode = "local" | "db";
+type QueueBackend = "memory" | "bullmq";
 
 export interface ValidatedEnv {
   DATABASE_URL_POOLED: string;
@@ -30,6 +31,8 @@ export interface ValidatedEnv {
   MEESHO_SECRET_KEY?: string;
   FEATURE_ONDC_ENABLED: BoolText;
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
+  QUEUE_BACKEND: QueueBackend;
+  QUEUE_WORKER_ENABLED: BoolText;
 }
 
 const UrlSchema = z.string().url();
@@ -76,6 +79,8 @@ const EnvSchema = z.object({
   MEESHO_SECRET_KEY: z.string().optional(),
   FEATURE_ONDC_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
+  QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
+  QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),
 });
 
 export function validateEnv(): ValidatedEnv {
@@ -133,6 +138,9 @@ export function validateEnv(): ValidatedEnv {
     }
     if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && data.AUTH_MODE !== "db") {
       issues.push("AUTH_MODE: staging/production must use AUTH_MODE=db");
+    }
+    if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && data.QUEUE_BACKEND !== "bullmq") {
+      issues.push("QUEUE_BACKEND: staging/production must use QUEUE_BACKEND=bullmq");
     }
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");

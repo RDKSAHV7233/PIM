@@ -458,7 +458,7 @@ export class MarketplaceService implements OnModuleInit {
         job.id,
       );
     }
-    this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+    await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
     });
@@ -776,7 +776,7 @@ export class MarketplaceService implements OnModuleInit {
     }
     const jobId = idempotencyKey.slice(0, delimiter);
     const requeuedJob = await this.requeueExportJob(jobId);
-    this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+    await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId,
       connectorSlug: String(submission.connectorSlug ?? "").toLowerCase(),
     });

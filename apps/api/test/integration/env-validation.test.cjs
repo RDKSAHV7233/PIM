@@ -47,6 +47,8 @@ function buildBaseEnv() {
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "pim1-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
+  setDefaultEnv("QUEUE_BACKEND", "memory");
+  setDefaultEnv("QUEUE_WORKER_ENABLED", "true");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
@@ -175,6 +177,50 @@ async function runCaseValidEnvStarts(baseEnv) {
   }
 }
 
+async function runCaseStagingRequiresBullmq(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5400 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    QUEUE_BACKEND: "memory",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail when QUEUE_BACKEND=memory, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail when QUEUE_BACKEND=memory, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("QUEUE_BACKEND")) {
+    throw new Error(`Expected startup failure output to mention QUEUE_BACKEND. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -182,13 +228,14 @@ async function run() {
   const baseEnv = buildBaseEnv();
 
   await runCaseMissingJwtSecret(baseEnv);
+  await runCaseStagingRequiresBullmq(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
     JSON.stringify(
       {
         status: "ok",
-        validated: ["missing_env_exits_with_error", "valid_env_starts_api"],
+        validated: ["missing_env_exits_with_error", "staging_requires_bullmq_queue_backend", "valid_env_starts_api"],
         checkedAt: new Date().toISOString(),
       },
       null,

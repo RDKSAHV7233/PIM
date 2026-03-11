@@ -28,6 +28,8 @@ function assert(condition, message) {
 }
 
 async function run() {
+  process.env.QUEUE_BACKEND = "memory";
+  process.env.QUEUE_WORKER_ENABLED = "true";
   const { QueueService, QueueRateLimitError } = require(QUEUE_SERVICE_ENTRY);
   const { QUEUE_NAMES } = require(QUEUE_CONSTANTS_ENTRY);
 
@@ -85,13 +87,13 @@ async function run() {
   );
 
   for (let index = 1; index <= 5; index += 1) {
-    queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+    await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       id: `amazon_${index}`,
       connectorSlug: "amazon",
     });
   }
   for (let index = 1; index <= 4; index += 1) {
-    queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+    await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       id: `flipkart_${index}`,
       connectorSlug: "flipkart",
     });
@@ -119,22 +121,22 @@ async function run() {
     );
   }
 
-  queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+  await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
     id: "amazon_rl_1",
     connectorSlug: "amazon",
     rateLimit: true,
   });
-  queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+  await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
     id: "amazon_rl_2",
     connectorSlug: "amazon",
     rateLimit: true,
   });
-  queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+  await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
     id: "amazon_rl_3",
     connectorSlug: "amazon",
     rateLimit: true,
   });
-  queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+  await queue.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
     id: "amazon_after_pause",
     connectorSlug: "amazon",
   });
@@ -157,7 +159,7 @@ async function run() {
   );
 
   await waitFor(() => processedJobs.includes("amazon_after_pause"), 5_000, "post-pause processing");
-  const metrics = queue.getMetrics();
+  const metrics = await queue.getMetrics();
   const connectorQueueMetrics = metrics[QUEUE_NAMES.CONNECTOR_SUBMISSION];
   assert(Boolean(connectorQueueMetrics), "Expected connector queue metrics to be present.");
   assert(
