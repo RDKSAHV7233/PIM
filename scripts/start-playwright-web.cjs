@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
+const nextDir = path.join(root, "apps", "web", ".next");
 
 function loadEnvFile(filePath) {
   const values = {};
@@ -39,6 +40,13 @@ function loadEnvFile(filePath) {
 }
 
 const fileEnv = loadEnvFile(envFile);
+
+try {
+  fs.rmSync(nextDir, { recursive: true, force: true });
+} catch (error) {
+  console.error("Failed to clear apps/web/.next before Playwright build:", error);
+  process.exit(1);
+}
 
 const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/web"], {
   cwd: root,

@@ -206,6 +206,37 @@ interface PaginatedResponse<T> {
   limit: number;
 }
 
+export type AuditEntityType =
+  | "product"
+  | "category"
+  | "mapping"
+  | "connector"
+  | "user"
+  | "plan"
+  | "privacy"
+  | "auth"
+  | "import"
+  | "job"
+  | "other";
+
+export interface AuditEventRecord {
+  id: string;
+  actorId: string;
+  actorRole: AppRole | string;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  entityType: AuditEntityType;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AuditEventListResponse {
+  items: AuditEventRecord[];
+  nextCursor: string | null;
+  limit: number;
+}
+
 type ProductListQuery = {
   slim?: boolean;
   cursor?: string;
@@ -214,6 +245,16 @@ type ProductListQuery = {
 
 type CategoryListQuery = {
   all?: boolean;
+  cursor?: string;
+  limit?: number;
+};
+
+type AuditEventsQuery = {
+  actorId?: string;
+  action?: string;
+  entityType?: AuditEntityType;
+  dateFrom?: string;
+  dateTo?: string;
   cursor?: string;
   limit?: number;
 };
@@ -980,6 +1021,33 @@ export async function searchCatalogProducts(
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<CatalogSearchResult[]>(`/catalog/products/search${query}`, undefined, options);
+}
+
+export async function getAuditEvents(input?: AuditEventsQuery, options?: ApiRequestOptions) {
+  const params = new URLSearchParams();
+  if (input?.actorId?.trim()) {
+    params.set("actorId", input.actorId.trim());
+  }
+  if (input?.action?.trim()) {
+    params.set("action", input.action.trim());
+  }
+  if (input?.entityType) {
+    params.set("entityType", input.entityType);
+  }
+  if (input?.dateFrom?.trim()) {
+    params.set("dateFrom", input.dateFrom.trim());
+  }
+  if (input?.dateTo?.trim()) {
+    params.set("dateTo", input.dateTo.trim());
+  }
+  if (input?.cursor?.trim()) {
+    params.set("cursor", input.cursor.trim());
+  }
+  if (typeof input?.limit === "number" && Number.isFinite(input.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return fetchJson<AuditEventListResponse>(`/audit/events${query}`, undefined, options);
 }
 
 export async function getNotifications(
