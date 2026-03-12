@@ -1437,6 +1437,61 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-20",
+      "name": "Audit Explorer UI",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/audit/audit.controller.ts",
+        "apps/api/src/audit/audit.service.ts",
+        "apps/api/src/audit/dto/list-audit-events.dto.ts",
+        "apps/web/src/app/admin/audit/page.tsx",
+        "apps/web/src/app/api/admin/audit/export/route.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/api/test/integration/audit-explorer-api.test.cjs",
+        "apps/web/test/integration/audit-explorer-ui.test.cjs",
+        "apps/web/test/e2e/audit-explorer.spec.js"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-AUDIT-EXPLORER-001",
+          "title": "Add admin audit explorer with filters and CSV export",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "32f7057",
+          "scope": [
+            "apps/api/src/audit/audit.controller.ts",
+            "apps/api/src/audit/audit.service.ts",
+            "apps/api/src/audit/dto/list-audit-events.dto.ts",
+            "apps/web/src/app/admin/audit/page.tsx",
+            "apps/web/src/app/api/admin/audit/export/route.ts",
+            "apps/web/src/lib/api.ts",
+            "apps/api/test/integration/audit-explorer-api.test.cjs",
+            "apps/web/test/integration/audit-explorer-ui.test.cjs",
+            "apps/web/test/e2e/audit-explorer.spec.js",
+            "scripts/start-playwright-web.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Admin users can filter audit events by actor, action, entity type, and date range.",
+            "Non-admin roles are denied access to audit explorer data and CSV export.",
+            "Audit explorer supports cursor-based pagination and CSV export without changing existing audit log write behaviour.",
+            "Audit explorer passes API, UI, product-suite, and Playwright validation."
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web",
+            "node apps/api/test/integration/audit-explorer-api.test.cjs",
+            "node apps/web/test/integration/audit-explorer-ui.test.cjs",
+            "npm run test:product",
+            "npx playwright test --config=playwright.config.cjs",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
+        }
+      ]
     }
   ]
 }
