@@ -132,6 +132,22 @@ type ConnectorProductSource = Prisma.ProductGetPayload<{
   };
 }>;
 
+type ConnectorWorkerPayload =
+  | {
+      mode?: "export-job";
+      jobId: string;
+      connectorSlug?: string;
+    }
+  | {
+      mode: "status-sync";
+      submissionId: string;
+      connectorSlug?: string;
+      attemptNumber?: number;
+    };
+
+const AUTO_STATUS_SYNC_DELAY_MS = 800;
+const AUTO_STATUS_SYNC_MAX_ATTEMPTS = 3;
+
 const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
   amazon: {
     channel: "amazon",
@@ -916,6 +932,36 @@ export class MarketplaceService implements OnModuleInit {
     return this.getSubmission(submissionId);
   }
 
+  private async autoSyncSubmissionStatus(submissionId: string, attemptNumber: number) {
+    const submission = (await this.getSubmission(submissionId)) as {
+      id: string;
+      connectorSlug: string;
+      status: string;
+    };
+    if (String(submission.status).toUpperCase() !== "PENDING") {
+      return submission;
+    }
+
+    const synced = (await this.syncSubmissionStatus(submissionId)) as {
+      id: string;
+      connectorSlug: string;
+      status: string;
+    };
+
+    if (
+      String(synced.status).toUpperCase() === "PENDING" &&
+      attemptNumber < AUTO_STATUS_SYNC_MAX_ATTEMPTS
+    ) {
+      await this.queueSubmissionStatusSync(
+        submissionId,
+        String(synced.connectorSlug ?? "").toLowerCase(),
+        attemptNumber + 1,
+      );
+    }
+
+    return synced;
+  }
+
   async retrySubmission(submissionId: string) {
     const submission = await this.getSubmission(submissionId) as { idempotencyKey: string; connectorSlug: string };
     const idempotencyKey = String(submission.idempotencyKey ?? "").trim();
@@ -1084,7 +1130,19 @@ export class MarketplaceService implements OnModuleInit {
         },
       },
       async (payload: unknown) => {
-        const lanePayload = payload as { jobId?: string };
+        const lanePayload = payload as ConnectorWorkerPayload;
+        if (lanePayload.mode === "status-sync") {
+          const submissionId = String(lanePayload.submissionId ?? "").trim();
+          if (!submissionId) {
+            return;
+          }
+          await this.autoSyncSubmissionStatus(
+            submissionId,
+            Math.max(1, Number(lanePayload.attemptNumber ?? 1)),
+          );
+          return;
+        }
+
         const jobId = String(lanePayload.jobId ?? "").trim();
         if (!jobId) {
           return;
@@ -1950,6 +2008,13 @@ export class MarketplaceService implements OnModuleInit {
             sellerMessage: issue.sellerMessage,
           })),
         });
+        if (
+          publishResult.status === "PENDING" &&
+          publishResult.isAsync &&
+          installation.capabilities.includes("STATUS_SYNC")
+        ) {
+          await this.queueSubmissionStatusSync(submission.id, connectorSlug, 1);
+        }
       } catch (error) {
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
@@ -2244,5 +2309,22 @@ export class MarketplaceService implements OnModuleInit {
     } catch {
       // Metrics emission must not block submission tracking.
     }
+  }
+
+  private async queueSubmissionStatusSync(
+    submissionId: string,
+    connectorSlug: string,
+    attemptNumber: number,
+  ) {
+    await this.queueService.enqueue(
+      QUEUE_NAMES.CONNECTOR_SUBMISSION,
+      {
+        mode: "status-sync",
+        submissionId,
+        connectorSlug,
+        attemptNumber,
+      } satisfies ConnectorWorkerPayload,
+      { delayMs: AUTO_STATUS_SYNC_DELAY_MS },
+    );
   }
 }

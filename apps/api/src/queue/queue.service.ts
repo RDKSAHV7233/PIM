@@ -191,8 +191,9 @@ export class QueueService implements OnModuleDestroy {
     await Promise.all(closeTasks);
   }
 
-  async enqueue<T>(queueName: QueueName, payload: T): Promise<void> {
+  async enqueue<T>(queueName: QueueName, payload: T, options?: { delayMs?: number }): Promise<void> {
     const name = String(queueName);
+    const delayMs = Math.max(0, Math.floor(Number(options?.delayMs ?? 0)));
     const registration = this.registrations.get(name);
     if (!registration) {
       const queue = this.pending.get(name) ?? [];
@@ -201,10 +202,10 @@ export class QueueService implements OnModuleDestroy {
       return;
     }
     if (registration.kind === "memory") {
-      this.enqueueToMemoryLane(registration, payload);
+      this.enqueueToMemoryLane(registration, payload, delayMs);
       return;
     }
-    await this.enqueueToBullLane(name, registration, payload);
+    await this.enqueueToBullLane(name, registration, payload, delayMs);
   }
 
   process<T>(queueName: QueueName, handler: QueueHandler<T>): void {
@@ -316,11 +317,22 @@ export class QueueService implements OnModuleDestroy {
     return output;
   }
 
-  private enqueueToMemoryLane(registration: MemoryQueueRegistration, payload: unknown) {
+  private enqueueToMemoryLane(
+    registration: MemoryQueueRegistration,
+    payload: unknown,
+    delayMs = 0,
+  ) {
     const laneKey = this.resolveLaneKey(registration.options, payload);
-    const lane = this.getOrCreateMemoryLane(registration, laneKey);
-    lane.pending.push(payload);
-    this.scheduleMemoryLaneDrain(registration, laneKey, 0);
+    const scheduleInsert = () => {
+      const lane = this.getOrCreateMemoryLane(registration, laneKey);
+      lane.pending.push(payload);
+      this.scheduleMemoryLaneDrain(registration, laneKey, 0);
+    };
+    if (delayMs > 0) {
+      setTimeout(scheduleInsert, delayMs);
+      return;
+    }
+    scheduleInsert();
   }
 
   private getOrCreateMemoryLane(registration: MemoryQueueRegistration, laneKey: string): MemoryLaneState {
@@ -481,6 +493,7 @@ export class QueueService implements OnModuleDestroy {
     queueName: string,
     registration: BullQueueRegistration,
     payload: unknown,
+    delayMs = 0,
   ): Promise<void> {
     const laneKey = this.resolveLaneKey(registration.options, payload);
     await this.rememberBullLane(queueName, laneKey);
@@ -491,6 +504,7 @@ export class QueueService implements OnModuleDestroy {
         type: "exponential",
         delay: 2_000,
       },
+      delay: delayMs,
       removeOnComplete: 1000,
       removeOnFail: 1000,
     });
