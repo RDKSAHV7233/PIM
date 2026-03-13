@@ -651,6 +651,29 @@
             "Release-readiness docs record the deeper local verification while keeping RISK-P0-003 open until a live staging run exists.",
             "Gate artifact requirements remain satisfied through record-gate-signoff metadata capture."
           ]
+        },
+        {
+          "storyId": "ST-REL-ROLLOUT-AUTOMATION-005",
+          "title": "Automate live staging rollout snapshot capture and artifact upload",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "c4301c7",
+          "tests_passed": [
+            "node scripts/capture-controlled-rollout-snapshot.cjs --environment development --tenantId SMOKE_TENANT_LOCAL --apiBase http://127.0.0.1:4000/api/v1 --timeoutMs 2000",
+            "Select-String -Path .github/workflows/deploy-staging.yml -Pattern 'Capture controlled rollout snapshot|Upload staging gate artifacts|actions/upload-artifact@v4|capture-controlled-rollout-snapshot.cjs'",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "scope": [
+            ".github/workflows/deploy-staging.yml",
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The staging deployment workflow captures a controlled rollout snapshot against the live staging base URL.",
+            "The workflow uploads gate and rollout snapshot artifacts for the run.",
+            "RISK-P0-001 remains open only for the external live staging run evidence and 14-day/SLO observation window."
+          ]
         }
       ]
     },
