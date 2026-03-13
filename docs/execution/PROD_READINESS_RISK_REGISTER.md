@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-07 (release-governance hardening)
+Last updated: 2026-03-13 (release-governance hardening)
 
 ## P0 (Must close before production)
 
@@ -37,10 +37,11 @@ Last updated: 2026-03-07 (release-governance hardening)
 - Validation commands:
   - `npm run test:integration:auth-revocation`
   - `npm run test:integration:env-validation`
-- Validation evidence (2026-03-05):
-  - `test:integration:auth-revocation` -> pass
-  - `test:integration:env-validation` -> pass
+- Validation evidence refreshed (2026-03-13):
+  - `test:integration:auth-revocation` -> pass after workspace-scoped login fixture alignment (`workspaceSlug` + workspace directory mapping).
+  - `test:integration:env-validation` -> pass.
   - Env validation enforces `AUTH_MODE=db` when `APP_ENV` is `staging`/`production`.
+  - Closure evidence is current again after the INC-11 workspace-login contract change.
 
 ### RISK-P0-003: Post-deploy verification too shallow
 - Severity: P0
