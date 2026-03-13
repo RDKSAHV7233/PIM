@@ -1017,6 +1017,34 @@
             "Workspace-scoped auth and connector idempotency integration suites are aligned with the INC-11 login contract.",
             "Staging env examples document the Flipkart seller-surface gate flags."
           ]
+        },
+        {
+          "storyId": "ST-FK-RUNTIME-003",
+          "title": "Implement Flipkart credential runtime foundation",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "4486eab",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-runtime-foundation.test.cjs",
+            "npm run test:integration:connector-issue-contract",
+            "npm run test:integration:connector-capability-orchestration",
+            "npm run lint --workspace @pim1/api",
+            "npm run test:integration:credential-rotation"
+          ],
+          "scope": [
+            "apps/api/src/connectors/flipkart/flipkart.connector.ts",
+            "apps/api/test/integration/flipkart-runtime-foundation.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Flipkart connector can resolve encrypted client, refresh, and cached access tokens from connector_credentials.",
+            "Flipkart validateCredentials performs real token refresh logic and records credential health without logging secrets.",
+            "Flipkart handleOAuthCallback exchanges an authorization code and persists encrypted access and refresh tokens.",
+            "Flipkart validateProduct returns seller-readable LOCAL_RULES errors and warnings aligned with current field requirements.",
+            "Flipkart normaliseError maps known provider codes to seller-readable messages with deterministic fallback handling."
+          ]
         }
       ]
     },
