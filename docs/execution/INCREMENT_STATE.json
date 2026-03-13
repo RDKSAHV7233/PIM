@@ -797,6 +797,32 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Exact failing command: npm run test:integration:connector-idempotency-semantics. Failing output snippet: expected completed on second attempt, got failed; API stderr tail: Marketplace export job failed during processing; error=\"Add a primary HTTPS image before publishing to Flipkart.\". Likely file: apps/api/test/integration/connector-idempotency-semantics.test.cjs."
+        },
+        {
+          "storyId": "ST-REL-MIGRATION-011",
+          "title": "Pass staging database secrets into the deploy workflow migration step",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "7c2faed",
+          "tests_passed": [
+            "node scripts/validate-deploy-staging-workflow.cjs"
+          ],
+          "scope": [
+            ".github/workflows/deploy-staging.yml",
+            "scripts/validate-deploy-staging-workflow.cjs",
+            "docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md",
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The deploy-staging workflow passes staging database secrets into the migration step before Prisma runs.",
+            "The workflow fails with a clear message if neither STAGING_DATABASE_URL_DIRECT nor STAGING_DATABASE_URL is configured.",
+            "The local workflow validator and operator runbook both reflect the database-secret requirement for live staging evidence runs."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: gh run view 23063902524 --repo RDKSAHV7233/PIM1 --log-failed. Failing output snippet: Apply migrations -> Error code P1012; Environment variable not found: DATABASE_URL. Likely file: .github/workflows/deploy-staging.yml."
         }
       ]
     },
