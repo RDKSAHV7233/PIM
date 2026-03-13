@@ -161,6 +161,7 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: tenantId,
       userId,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -260,4 +261,3 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
