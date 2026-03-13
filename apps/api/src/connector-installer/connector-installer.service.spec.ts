@@ -21,6 +21,14 @@ describe("ConnectorInstallerService", () => {
     const marketplaceService = {
       previewPayloadForInstallation: jest.fn(),
     };
+    const connectorRegistry = {
+      getConnector: jest.fn().mockReturnValue({
+        validateCredentials: jest.fn().mockResolvedValue(true),
+      }),
+    };
+    const credentialEncryptionService = {
+      storeCredential: jest.fn().mockResolvedValue({ id: "cred_1", keyVersion: "v1" }),
+    };
     const connectorPermissionService = {
       assertActionAllowed: jest.fn().mockResolvedValue(undefined),
       buildDefinitionActions: jest.fn().mockResolvedValue({
@@ -41,6 +49,8 @@ describe("ConnectorInstallerService", () => {
       prisma as never,
       auditService,
       marketplaceService as never,
+      connectorRegistry as never,
+      credentialEncryptionService as never,
       connectorPermissionService as never,
     );
     return {

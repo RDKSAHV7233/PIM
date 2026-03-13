@@ -29,6 +29,8 @@ export const dynamic = "force-dynamic";
 interface ConnectorsPageProps {
   searchParams: Promise<{
     status?: string;
+    connectorSlug?: string;
+    installError?: string;
   }>;
 }
 
@@ -61,6 +63,29 @@ function formatStatusMessage(raw: string): string | null {
     return "Connector installation record deleted.";
   }
   return null;
+}
+
+function formatInstallErrorMessage(raw: string, connectorSlug?: string): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    return null;
+  }
+  const connectorLabel =
+    connectorSlug === "flipkart"
+      ? "Flipkart"
+      : connectorSlug === "amazon-in"
+      ? "Amazon India"
+      : connectorSlug === "meesho"
+      ? "Meesho"
+      : "connector";
+
+  if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires client ID, client secret, and refresh token together.`;
+  }
+  if (value === "FLIPKART_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the client ID, client secret, and refresh token.`;
+  }
+  return `${connectorLabel} install failed: ${value}`;
 }
 
 function isPlanBlockedReason(reason: string | null | undefined): boolean {
@@ -111,6 +136,10 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const actionStatusMessage = formatStatusMessage(String(query.status ?? ""));
+  const installErrorMessage = formatInstallErrorMessage(
+    String(query.installError ?? ""),
+    String(query.connectorSlug ?? "").trim().toLowerCase(),
+  );
 
   try {
     const [definitions, installations, productsRaw] = await Promise.all([
@@ -142,6 +171,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         {actionStatusMessage ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             {actionStatusMessage}
+          </div>
+        ) : null}
+        {installErrorMessage ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            {installErrorMessage}
           </div>
         ) : null}
 
@@ -208,6 +242,57 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                             placeholder="Optional"
                           />
                         </div>
+                        {definition.slug === "flipkart" ? (
+                          <>
+                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                              Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                htmlFor={`install-client-id-${definition.id}`}
+                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                              >
+                                Client ID
+                              </label>
+                              <Input
+                                id={`install-client-id-${definition.id}`}
+                                name="clientId"
+                                autoComplete="off"
+                                placeholder="fk-client-id"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                htmlFor={`install-client-secret-${definition.id}`}
+                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                              >
+                                Client Secret
+                              </label>
+                              <Input
+                                id={`install-client-secret-${definition.id}`}
+                                name="clientSecret"
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder="Enter Flipkart client secret"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                htmlFor={`install-refresh-token-${definition.id}`}
+                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                              >
+                                Refresh Token
+                              </label>
+                              <Input
+                                id={`install-refresh-token-${definition.id}`}
+                                name="refreshToken"
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder="Enter Flipkart refresh token"
+                              />
+                            </div>
+                          </>
+                        ) : null}
                         <Button type="submit">Install connector</Button>
                       </form>
                     ) : (

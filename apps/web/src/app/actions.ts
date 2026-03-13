@@ -449,6 +449,20 @@ function resolveDeleteErrorMessage(error: unknown): string {
   return "delete_failed";
 }
 
+function resolveInstallConnectorError(error: unknown): string {
+  if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+    const payload = error.body as Record<string, unknown>;
+    const code = String(payload.error ?? "").trim();
+    if (code) {
+      return code;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return "install_failed";
+}
+
 async function resolveProductDeleteTokens(
   productId: string,
   options: ApiRequestOptions,
@@ -904,19 +918,41 @@ export async function installConnectorAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const accountAlias = String(formData.get("accountAlias") ?? "").trim();
   const externalAccountRef = String(formData.get("externalAccountRef") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
+  const refreshToken = String(formData.get("refreshToken") ?? "").trim();
   if (!slug) {
     throw new Error("Connector slug is required.");
   }
 
-  await postJsonForAction(formData, `/connectors/${encodeURIComponent(slug)}/install`, {
-    accountAlias: accountAlias || undefined,
-    externalAccountRef: externalAccountRef || undefined,
-  });
+  try {
+    await postJsonForAction(formData, `/connectors/${encodeURIComponent(slug)}/install`, {
+      accountAlias: accountAlias || undefined,
+      externalAccountRef: externalAccountRef || undefined,
+      clientId: clientId || undefined,
+      clientSecret: clientSecret || undefined,
+      refreshToken: refreshToken || undefined,
+    });
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const installError = resolveInstallConnectorError(error);
+    redirect(
+      appendQueryParams("/channels/connectors", {
+        installError,
+        connectorSlug: slug,
+      }),
+    );
+  }
 
   revalidatePath("/channels/connectors");
   revalidatePath("/channels");
   revalidatePath("/");
-  redirect("/channels/connectors?status=installed");
+  redirect(
+    appendQueryParams("/channels/connectors", {
+      status: "installed",
+      connectorSlug: slug,
+    }),
+  );
 }
 
 export async function reconnectConnectorAction(formData: FormData) {

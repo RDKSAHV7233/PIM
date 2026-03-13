@@ -11,6 +11,7 @@ import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConnectorCap } from "../connector-framework/connector.interface";
+import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
   ConnectorDefinitionRecord,
   ConnectorInstallationRecord,
@@ -20,6 +21,7 @@ import {
   ConnectorActor,
   ConnectorPermissionService,
 } from "./connector-permission.service";
+import { ConnectorCredentialEncryptionService } from "./credential-encryption.service";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
@@ -101,6 +103,8 @@ export class ConnectorInstallerService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly marketplaceService: MarketplaceService,
+    private readonly connectorRegistry: ConnectorRegistry,
+    private readonly credentialEncryptionService: ConnectorCredentialEncryptionService,
     private readonly connectorPermissionService: ConnectorPermissionService,
   ) {}
 
@@ -158,6 +162,8 @@ export class ConnectorInstallerService {
     const tenantKey = this.getTenantKey();
     const normalizedSlug = slug.trim().toLowerCase();
     const accountAlias = (dto.accountAlias ?? "primary").trim() || "primary";
+    const externalAccountRef = dto.externalAccountRef?.trim() || null;
+    const installationId = randomUUID();
 
     await this.auditService.record({
       actorId: actor.actorId,
@@ -167,6 +173,7 @@ export class ConnectorInstallerService {
       metadata: {
         connectorSlug: normalizedSlug,
         accountAlias,
+        credentialsCaptured: this.hasConnectorCredentialInput(dto),
       },
     });
 
@@ -211,11 +218,11 @@ export class ConnectorInstallerService {
             installed_by
           ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', '{}'::jsonb, $6)
           `,
-          randomUUID(),
+          installationId,
           tenantKey,
           String(definition.id),
           accountAlias,
-          dto.externalAccountRef?.trim() || null,
+          externalAccountRef,
           actor.actorId,
         );
       } catch (error: unknown) {
@@ -225,6 +232,21 @@ export class ConnectorInstallerService {
           );
         }
         throw error;
+      }
+
+      if (normalizedSlug === "flipkart") {
+        try {
+          await this.captureAndValidateFlipkartCredentials({
+            tenantKey,
+            connectorId: String(definition.id),
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -619,6 +641,95 @@ export class ConnectorInstallerService {
       dto.productId,
       dto.templateId,
       dto.channel,
+    );
+  }
+
+  private hasConnectorCredentialInput(dto: InstallConnectorDto): boolean {
+    return Boolean(
+      String(dto.clientId ?? "").trim() ||
+        String(dto.clientSecret ?? "").trim() ||
+        String(dto.refreshToken ?? "").trim(),
+    );
+  }
+
+  private async captureAndValidateFlipkartCredentials(input: {
+    tenantKey: string;
+    connectorId: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+    const refreshToken = String(input.dto.refreshToken ?? "").trim();
+
+    if (!clientId && !clientSecret && !refreshToken) {
+      return;
+    }
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new BadRequestException({
+        error: "FLIPKART_CREDENTIALS_INCOMPLETE",
+        message: "Flipkart installation requires client ID, client secret, and refresh token together.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "refresh_token",
+      plainValue: refreshToken,
+      metadata: { source: "install_form" },
+    });
+
+    const connector = this.connectorRegistry.getConnector("flipkart");
+    const validated = await connector.validateCredentials({
+      tenantId: input.tenantKey,
+      installationId: input.installationId,
+      connectorId: input.connectorId,
+      sellerId: input.externalAccountRef ?? undefined,
+      getAccessToken: async () => "",
+    });
+
+    if (!validated) {
+      throw new BadRequestException({
+        error: "FLIPKART_CREDENTIALS_INVALID",
+        message: "Flipkart credentials could not be validated. Check the client ID, client secret, and refresh token.",
+      });
+    }
+  }
+
+  private async cleanupInstallationArtifacts(tenantKey: string, installationId: string): Promise<void> {
+    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
+      `
+      DELETE FROM connector_credentials
+      WHERE tenant_key = $1 AND installation_id = $2
+      `,
+      tenantKey,
+      installationId,
+    );
+
+    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
+      `
+      DELETE FROM connector_installations
+      WHERE tenant_key = $1 AND id = $2
+      `,
+      tenantKey,
+      installationId,
     );
   }
 

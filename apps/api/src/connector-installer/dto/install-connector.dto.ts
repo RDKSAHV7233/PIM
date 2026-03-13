@@ -10,4 +10,19 @@ export class InstallConnectorDto {
   @IsString()
   @MaxLength(120)
   externalAccountRef?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  clientSecret?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  refreshToken?: string;
 }
