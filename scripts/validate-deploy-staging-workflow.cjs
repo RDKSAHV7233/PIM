@@ -42,6 +42,11 @@ function main() {
 
   assert(workflow && typeof workflow === "object", "deploy-staging workflow YAML did not parse to an object");
   assert(String(workflow.name ?? "").trim() === "Deploy Staging", "Unexpected workflow name");
+  const triggers = workflow.on ?? {};
+  assert(
+    triggers && typeof triggers === "object" && Object.prototype.hasOwnProperty.call(triggers, "workflow_dispatch"),
+    "deploy-staging workflow must support workflow_dispatch for manual staging evidence runs",
+  );
 
   const jobs = workflow.jobs ?? {};
   const job = jobs["deploy-staging"];
@@ -104,6 +109,7 @@ function main() {
         status: "ok",
         workflow: ".github/workflows/deploy-staging.yml",
         validated: [
+          "workflow_dispatch_trigger_present",
           "deploy_step_secret_guard_present",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",

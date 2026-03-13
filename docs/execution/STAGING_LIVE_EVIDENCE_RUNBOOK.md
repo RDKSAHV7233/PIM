@@ -43,6 +43,8 @@ gh workflow run deploy-staging.yml --ref main
 gh run list --workflow deploy-staging.yml --limit 1
 ```
 
+This is the preferred path because `.github/workflows/deploy-staging.yml` now supports `workflow_dispatch` for evidence collection without requiring a no-op push to `main`.
+
 Copy the returned run ID, then watch the run:
 
 ```powershell
