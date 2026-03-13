@@ -100,20 +100,16 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "6467c62",
+          "commit": "2ac55f3",
           "tests_passed": [
+            "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
-            "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
-            "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
-            "node apps/web/test/integration/mapping-structured-editor.test.cjs",
-            "node apps/web/test/integration/catalog-first-shell.test.cjs",
-            "node apps/web/test/integration/product-workbench-ui.test.cjs",
-            "node apps/web/test/integration/mapping-step-up-ui.test.cjs"
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
-          "reopened_by": "user",
-          "reopened_reason": "Phase 3 redesign still left product detail overloaded even after shell, mapping, dashboard, and workbench corrections.",
-          "regression_evidence": "Exact failing command: $script = @' const fs = require('fs'); const s = fs.readFileSync('apps/web/src/app/products/[id]/page.tsx','utf8'); const missing = []; if (!s.includes('Legacy template inventory (transition only)')) missing.push('legacy template inventory'); if (!s.includes('Pre-Export Jobs')) missing.push('pre-export jobs'); if (!s.includes('SideRailCard title=\"Workflow\"')) missing.push('workflow side-rail'); if (missing.length) { console.error('Expected overload markers not found: ' + missing.join(', ')); process.exit(1); } console.error('FAIL: product detail still exposes legacy template inventory, pre-export jobs, and workflow side-rail in the main merchandiser surface.'); process.exit(1); '@; $script | node -. Failing output snippet: FAIL: product detail still exposes legacy template inventory, pre-export jobs, and workflow side-rail in the main merchandiser surface. Likely file: apps/web/src/app/products/[id]/page.tsx."
+          "reopened_by": "codex",
+          "reopened_reason": "Product-detail seller action is still labeled as publish even though the active action path queues export jobs, creating product-truth drift in the main channel workflow.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const page = fs.readFileSync('apps/web/src/app/products/[id]/page.tsx','utf8'); const actions = fs.readFileSync('apps/web/src/app/actions.ts','utf8'); if (!page.includes('Publish to a channel')) { console.error('Expected misleading publish label not found.'); process.exit(1); } if (!actions.includes('/export-jobs')) { console.error('Expected export-jobs action path not found.'); process.exit(1); } console.error('FAIL: product detail still labels the seller action as publish while createExportJobAction routes to /export-jobs. Likely files: apps/web/src/app/products/[id]/page.tsx and apps/web/src/app/actions.ts.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: product detail still labels the seller action as publish while createExportJobAction routes to /export-jobs. Likely files: apps/web/src/app/products/[id]/page.tsx and apps/web/src/app/actions.ts."
         },
         {
           "storyId": "ST-UI-AUTH-SHELL-005",
