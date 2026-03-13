@@ -694,6 +694,30 @@
             "The suite passes without WORKSPACE_NOT_FOUND drift.",
             "Capability gating proof remains executable in release-readiness validation."
           ]
+        },
+        {
+          "storyId": "ST-REL-WORKFLOW-GUARD-007",
+          "title": "Add a static deploy-staging workflow guard for required proof and artifact steps",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "b57cbfd",
+          "tests_passed": [
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "npm run test:staging:postdeploy-check",
+            "node scripts/capture-controlled-rollout-snapshot.cjs --environment development --tenantId SMOKE_TENANT_LOCAL --apiBase http://127.0.0.1:4000/api/v1 --timeoutMs 2000",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "scope": [
+            "scripts/validate-deploy-staging-workflow.cjs",
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "A local validator proves the staging deploy workflow still includes smoke, post-deploy, gate artifact, rollout snapshot, and upload-artifact steps.",
+            "Release-risk documentation records that workflow wiring is locally guarded against regression.",
+            "RISK-P0-001 and RISK-P0-003 remain open only for the external live staging run evidence, not for missing workflow structure."
+          ]
         }
       ]
     },
