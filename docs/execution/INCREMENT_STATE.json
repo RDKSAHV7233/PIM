@@ -969,7 +969,7 @@
     {
       "incrementId": "INC-10",
       "name": "Flipkart Publish Connector v1",
-      "status": "in_progress",
+      "status": "completed",
       "evidence": [
         "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
       ],
@@ -1001,42 +1001,35 @@
         },
         {
           "storyId": "ST-FK-GATE-002",
-          "title": "Gate Flipkart from seller-facing surfaces until the live connector path exists",
+          "title": "Control Flipkart seller-surface visibility through stub env flags and lift the default staging gate once the live path exists",
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "1aa0a1a",
+          "commit": "5b775c7",
           "tests_passed": [
-            "npm run test:integration:auth-revocation",
-            "npm run test:integration:connector-idempotency-semantics",
             "npm run build --workspace @pim1/api",
-            "npm run build --workspace @pim1/web"
+            "npm run lint --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-seller-surface-availability.test.cjs",
+            "node apps/api/test/integration/flipkart-install-credentials.test.cjs",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "node apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "node apps/api/test/integration/flipkart-auto-status-sync.test.cjs",
+            "node apps/api/test/integration/flipkart-update-retry.test.cjs"
           ],
           "scope": [
-            ".env.example",
             ".env.staging.example",
-            "apps/api/src/connector-installer/connector-installer.service.ts",
-            "apps/api/src/marketplace/marketplace.service.ts",
-            "apps/api/test/integration/auth-revocation.test.cjs",
-            "apps/api/test/integration/connector-idempotency-semantics.test.cjs",
-            "apps/web/src/app/api/marketplace/readiness/batch/route.ts",
-            "apps/web/src/app/api/marketplace/readiness/route.ts",
-            "apps/web/src/app/channels/submissions/page.tsx",
-            "apps/web/src/app/media/page.tsx",
-            "apps/web/src/app/operations/jobs/page.tsx",
-            "apps/web/src/app/products/[id]/page.tsx",
-            "apps/web/src/app/rejection/page.tsx",
-            "apps/web/src/components/channel/product-readiness-summary-bar.tsx",
-            "apps/web/src/lib/channel-readiness.ts",
+            "apps/api/test/integration/flipkart-seller-surface-availability.test.cjs",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
-            "Connector definitions and installed connector lists hide slugs declared in CONNECTOR_STUB_SLUGS.",
-            "Marketplace channel and readiness surfaces hide stubbed channels for seller-facing flows.",
-            "Direct product and validation screens fall back to non-stub channels instead of honoring hidden stub slugs from query params.",
-            "Workspace-scoped auth and connector idempotency integration suites are aligned with the INC-11 login contract.",
-            "Staging env examples document the Flipkart seller-surface gate flags."
-          ]
+            "Flipkart is visible in connector definitions and marketplace channel surfaces when stub env flags are blank.",
+            "CONNECTOR_STUB_SLUGS and NEXT_PUBLIC_CONNECTOR_STUB_SLUGS still provide an explicit kill switch for Flipkart seller surfaces.",
+            "The default staging example no longer hides Flipkart once the live connector path exists.",
+            "Existing Flipkart install, publish, sync, and retry integration proofs remain green after ungating the default staging configuration."
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Live Flipkart connector path now exists, but staging defaults still hide seller-facing Flipkart surfaces.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const text = fs.readFileSync('.env.staging.example', 'utf8'); const hasApiGate = /CONNECTOR_STUB_SLUGS=\"flipkart\"/.test(text); const hasWebGate = /NEXT_PUBLIC_CONNECTOR_STUB_SLUGS=\"flipkart\"/.test(text); if (hasApiGate || hasWebGate) { console.error('FAIL: .env.staging.example still gates Flipkart seller surfaces.'); console.error(text.split(/\\r?\\n/).filter((line) => /CONNECTOR_STUB_SLUGS|NEXT_PUBLIC_CONNECTOR_STUB_SLUGS/.test(line)).join('\\n')); process.exit(1); } console.log('PASS: staging example does not gate Flipkart.'); '@ | node -. Failing output snippet: FAIL: .env.staging.example still gates Flipkart seller surfaces. CONNECTOR_STUB_SLUGS=\"flipkart\" NEXT_PUBLIC_CONNECTOR_STUB_SLUGS=\"flipkart\". Likely file path responsible: .env.staging.example."
         },
         {
           "storyId": "ST-FK-RUNTIME-003",
@@ -1207,7 +1200,9 @@
             "npm run test:integration:connector-issue-contract"
           ]
         }
-      ]
+      ],
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": []
     },
     {
       "incrementId": "INC-11",
