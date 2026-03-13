@@ -10,6 +10,9 @@ async function main() {
   let loginBody = null;
   let usageAuthorized = false;
   let connectorsAuthorized = false;
+  let logoutAuthorized = false;
+  let revokedUsageAuthorized = false;
+  let tokenRevoked = false;
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
@@ -45,7 +48,14 @@ async function main() {
     }
 
     if (req.method === "GET" && url.pathname === "/api/v1/billing/usage") {
-      usageAuthorized = req.headers.authorization === "Bearer test-token";
+      const isAuthorized = req.headers.authorization === "Bearer test-token";
+      if (tokenRevoked && isAuthorized) {
+        revokedUsageAuthorized = true;
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "TOKEN_REVOKED" }));
+        return;
+      }
+      usageAuthorized = isAuthorized;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ plan: "starter" }));
       return;
@@ -55,6 +65,14 @@ async function main() {
       connectorsAuthorized = req.headers.authorization === "Bearer test-token";
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify([]));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/v1/auth/logout") {
+      logoutAuthorized = req.headers.authorization === "Bearer test-token";
+      tokenRevoked = logoutAuthorized;
+      res.writeHead(204);
+      res.end();
       return;
     }
 
@@ -104,6 +122,8 @@ async function main() {
   );
   assert.equal(usageAuthorized, true, "billing usage must reuse bearer token from login");
   assert.equal(connectorsAuthorized, true, "connectors installed must reuse bearer token from login");
+  assert.equal(logoutAuthorized, true, "logout must reuse bearer token from login");
+  assert.equal(revokedUsageAuthorized, true, "revoked token check must reuse the logged-out bearer token");
 
   console.log(
     JSON.stringify(
@@ -112,6 +132,7 @@ async function main() {
         validated: [
           "staging_smoke_login_includes_workspace_slug",
           "staging_smoke_reuses_bearer_token_for_authenticated_checks",
+          "staging_smoke_proves_logout_revokes_token",
         ],
         checkedAt: new Date().toISOString(),
       },

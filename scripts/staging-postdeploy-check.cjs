@@ -92,6 +92,28 @@ async function run() {
   });
   assertStatus(connectors, 200, "connectors installed");
 
+  const logout = await requestJson(baseUrl, "/api/v1/auth/logout", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+  });
+  assertStatus(logout, 204, "logout");
+
+  const revokedUsage = await requestJson(baseUrl, "/api/v1/billing/usage", {
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+  });
+  if (revokedUsage.status !== 401) {
+    throw new Error(
+      `revoked token probe failed: expected 401, got ${revokedUsage.status}; payload=${JSON.stringify(revokedUsage.payload)}`,
+    );
+  }
+  if (String(revokedUsage.payload?.error ?? "") !== "TOKEN_REVOKED") {
+    throw new Error(`revoked token payload invalid: ${JSON.stringify(revokedUsage.payload)}`);
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -104,6 +126,8 @@ async function run() {
           "auth_login_works_for_smoke_user",
           "billing_usage_authenticated",
           "connectors_installed_authenticated",
+          "logout_revokes_smoke_token",
+          "revoked_token_returns_401",
         ],
         checkedAt: new Date().toISOString(),
       },

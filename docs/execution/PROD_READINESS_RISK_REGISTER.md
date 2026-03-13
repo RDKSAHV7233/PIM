@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-13 (release-governance hardening)
+Last updated: 2026-03-13 (release-governance hardening + post-deploy verification refresh)
 
 ## P0 (Must close before production)
 
@@ -53,14 +53,18 @@ Last updated: 2026-03-13 (release-governance hardening)
   2. Pipeline fails on integration regression.
   3. Gate artifact includes environment, tenantId, date, gitTag, runUrl.
 - Validation commands:
+  - `npm run test:staging:postdeploy-check`
+  - `STAGING_BASE_URL=... STAGING_SMOKE_WORKSPACE=... STAGING_SMOKE_USER=... STAGING_SMOKE_PASSWORD=... STAGING_EXPECTED_ENV=staging node scripts/staging-postdeploy-check.cjs`
   - CI job execution proof in `.github/workflows/deploy-staging.yml` logs.
-- Implementation update (2026-03-05):
+- Implementation update (2026-03-13):
   - Added `scripts/staging-postdeploy-check.cjs`.
+  - Added local script coverage for smoke-user logout + revoked-token rejection.
   - Updated `.github/workflows/deploy-staging.yml`:
     - runs post-deploy auth/trust-boundary verification
     - records gate artifact via `record-gate-signoff.cjs`
   - Updated `package.json` gate script so `APP_ENV=staging` can be passed at runtime (no dotenv override).
-  - Remaining: verify on next GitHub Actions staging deployment run.
+  - Gate artifact recorder already emits `environment`, `tenantId`, `date`, `gitTag`, and `runUrl`.
+  - Remaining: verify on next GitHub Actions staging deployment run against the live staging URL and capture the resulting artifact/logs.
 
 ## P1 (Before scale / broad pilot)
 
