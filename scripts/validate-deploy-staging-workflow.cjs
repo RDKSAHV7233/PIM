@@ -59,7 +59,15 @@ function main() {
   requireStep(steps, "Setup Node");
   requireStep(steps, "Install dependencies");
   requireStep(steps, "Generate Prisma client");
-  requireStep(steps, "Apply migrations");
+  const migrationsStep = requireStep(steps, "Apply migrations");
+  requireEnvVar(migrationsStep, "DATABASE_URL_DIRECT", "Apply migrations");
+  requireEnvVar(migrationsStep, "DATABASE_URL", "Apply migrations");
+  requireRunContains(
+    migrationsStep,
+    "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for migrations.",
+    "Apply migrations",
+  );
+  requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
 
@@ -110,6 +118,7 @@ function main() {
         workflow: ".github/workflows/deploy-staging.yml",
         validated: [
           "workflow_dispatch_trigger_present",
+          "migration_step_has_database_secret_guard",
           "deploy_step_secret_guard_present",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",

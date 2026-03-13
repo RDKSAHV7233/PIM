@@ -21,6 +21,7 @@ gh auth status
 ```
 
 2. Repository secrets exist for the workflow:
+   - `STAGING_DATABASE_URL_DIRECT` (preferred) or `STAGING_DATABASE_URL`
    - `STAGING_DEPLOY_COMMAND`
    - `STAGING_BASE_URL`
    - `STAGING_SMOKE_WORKSPACE`

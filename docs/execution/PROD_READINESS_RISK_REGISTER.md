@@ -63,14 +63,15 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
   - `npm run test:staging:postdeploy-check`
   - `STAGING_BASE_URL=... STAGING_SMOKE_WORKSPACE=... STAGING_SMOKE_USER=... STAGING_SMOKE_PASSWORD=... STAGING_EXPECTED_ENV=staging node scripts/staging-postdeploy-check.cjs`
   - CI job execution proof in `.github/workflows/deploy-staging.yml` logs.
-- Implementation update (2026-03-13):
-  - Added `scripts/staging-postdeploy-check.cjs`.
-  - Added local script coverage for smoke-user logout + revoked-token rejection.
-  - Updated `.github/workflows/deploy-staging.yml`:
-    - runs post-deploy auth/trust-boundary verification
-    - records gate artifact via `record-gate-signoff.cjs`
-    - supports `workflow_dispatch` for direct evidence runs
-  - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the workflow still runs those post-deploy and artifact-capture steps.
+  - Implementation update (2026-03-13):
+    - Added `scripts/staging-postdeploy-check.cjs`.
+    - Added local script coverage for smoke-user logout + revoked-token rejection.
+    - Updated `.github/workflows/deploy-staging.yml`:
+      - runs post-deploy auth/trust-boundary verification
+      - records gate artifact via `record-gate-signoff.cjs`
+      - supports `workflow_dispatch` for direct evidence runs
+      - passes staging database secrets into the migration step via the repo-standard `npm run prisma:migrate:deploy` wrapper
+    - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the workflow still runs those post-deploy and artifact-capture steps.
   - Added `scripts/validate-live-staging-evidence.cjs` plus a runbook so the live workflow artifact bundle can be checked for gate shape, live `runUrl`, and healthy controlled-rollout proof before risk closure.
   - Updated `package.json` gate script so `APP_ENV=staging` can be passed at runtime (no dotenv override).
   - Gate artifact recorder already emits `environment`, `tenantId`, `date`, `gitTag`, and `runUrl`.
