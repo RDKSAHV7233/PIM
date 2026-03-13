@@ -674,6 +674,26 @@
             "The workflow uploads gate and rollout snapshot artifacts for the run.",
             "RISK-P0-001 remains open only for the external live staging run evidence and 14-day/SLO observation window."
           ]
+        },
+        {
+          "storyId": "ST-REL-CAPABILITY-GATING-006",
+          "title": "Align marketplace capability gating integration test with workspace-scoped login",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "a0bf2ae",
+          "tests_passed": [
+            "npm run test:integration:marketplace-capability-gating"
+          ],
+          "scope": [
+            "apps/api/test/integration/marketplace-capability-gating.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Marketplace capability gating integration test uses workspaceSlug under the INC-11 login contract.",
+            "The suite passes without WORKSPACE_NOT_FOUND drift.",
+            "Capability gating proof remains executable in release-readiness validation."
+          ]
         }
       ]
     },
