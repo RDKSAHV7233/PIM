@@ -1188,6 +1188,24 @@
             "The connectors page renders masked Flipkart credential fields and surfaces install-time validation failures without exposing secrets.",
             "Existing Flipkart publish and status-sync proofs still pass after the install flow gains credential capture."
           ]
+        },
+        {
+          "storyId": "ST-FK-UPDATE-008",
+          "title": "Retry live Flipkart submissions through the connector update path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "9131293",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "npm run lint --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-update-retry.test.cjs",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "node apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "node apps/api/test/integration/flipkart-auto-status-sync.test.cjs",
+            "npm run test:integration:connector-capability-orchestration",
+            "npm run test:integration:connector-issue-contract"
+          ]
         }
       ]
     },
