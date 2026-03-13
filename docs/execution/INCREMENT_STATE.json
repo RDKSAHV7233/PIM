@@ -848,6 +848,36 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Railway staging path selected after live run 23064730488 moved past migrations and stopped at the deploy step. The current workflow had no Railway CLI install step and no RAILWAY_TOKEN pass-through."
+        },
+        {
+          "storyId": "ST-REL-RAILWAY-RUNTIME-013",
+          "title": "Stabilize Railway API packaging and live staging smoke behavior",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "6331ae7",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "npm run lint --workspace @pim1/api",
+            "node scripts/prepare-railway-api-package.cjs",
+            "curl.exe --http1.1 --resolve <staging-host>:443:<staging-ip> https://<staging-host>/api/v1/health",
+            "curl.exe --http1.1 live smoke matrix: legacy header probe, workspace-scoped login, billing usage, connectors installed, logout, revoked-token rejection"
+          ],
+          "scope": [
+            "apps/api/src/auth/auth.service.ts",
+            "apps/api/src/auth/jwt-blocklist.service.ts",
+            "apps/api/src/dashboard/dashboard.service.ts",
+            "scripts/prepare-railway-api-package.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Railway staging deploys can build a self-contained API package with Prisma schema generation before build.",
+            "Auth and dashboard services normalize Redis client return types cleanly in the Railway build/runtime path.",
+            "Live staging smoke checks pass for health, workspace-scoped login, authenticated billing usage, installed connectors, logout, and revoked-token rejection."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: railway up .tmp/railway-api-service --service <api-service-id> --project <railway-project-id> --environment production --path-as-root --ci. Failing output snippet: TypeScript/packaging failures in auth.service.ts, jwt-blocklist.service.ts, dashboard.service.ts and missing Prisma schema in the API-only package. Likely files: apps/api/src/auth/auth.service.ts, apps/api/src/auth/jwt-blocklist.service.ts, apps/api/src/dashboard/dashboard.service.ts, scripts/prepare-railway-api-package.cjs."
         }
       ]
     },
