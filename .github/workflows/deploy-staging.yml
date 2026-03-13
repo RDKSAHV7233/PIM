@@ -89,3 +89,32 @@ jobs:
             --suite STAGING_DEPLOY_POSTCHECK \
             --tenantId "${STAGING_SMOKE_TENANT_ID}" \
             --runUrl "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Capture controlled rollout snapshot
+        shell: bash
+        env:
+          APP_ENV: staging
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
+        run: |
+          if [ -z "${STAGING_BASE_URL}" ]; then
+            echo "Missing STAGING_BASE_URL secret for rollout snapshot."
+            exit 1
+          fi
+          if [ -z "${STAGING_SMOKE_TENANT_ID}" ]; then
+            echo "Missing STAGING_SMOKE_TENANT_ID secret for rollout snapshot."
+            exit 1
+          fi
+          node scripts/capture-controlled-rollout-snapshot.cjs \
+            --environment staging \
+            --tenantId "${STAGING_SMOKE_TENANT_ID}" \
+            --apiBase "${STAGING_BASE_URL}/api/v1"
+
+      - name: Upload staging gate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-gate-artifacts-${{ github.run_id }}
+          path: |
+            docs/execution/gates/*.json
+            docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json
+          if-no-files-found: error

@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-13 (release-governance hardening + post-deploy verification refresh)
+Last updated: 2026-03-13 (release-governance hardening + rollout evidence automation refresh)
 
 ## P0 (Must close before production)
 
@@ -24,6 +24,10 @@ Last updated: 2026-03-13 (release-governance hardening + post-deploy verificatio
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Latest snapshot: `docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: `docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json`
+- Implementation update (2026-03-13):
+  - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
+  - The same workflow now uploads gate and rollout snapshot artifacts via `actions/upload-artifact@v4`.
+  - Remaining: execute the workflow against live staging and capture the resulting health-proof artifact plus the 14-day/SLO observation window.
 
 ### RISK-P0-002: Non-local auth hardening drift risk
 - Severity: P0
