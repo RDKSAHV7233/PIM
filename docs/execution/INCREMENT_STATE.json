@@ -912,6 +912,45 @@
             "Installation and credential contract is documented against current PIM1 connector installation surfaces.",
             "Response normalization and idempotency key contracts are explicitly documented."
           ]
+        },
+        {
+          "storyId": "ST-FK-GATE-002",
+          "title": "Gate Flipkart from seller-facing surfaces until the live connector path exists",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "1aa0a1a",
+          "tests_passed": [
+            "npm run test:integration:auth-revocation",
+            "npm run test:integration:connector-idempotency-semantics",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web"
+          ],
+          "scope": [
+            ".env.example",
+            ".env.staging.example",
+            "apps/api/src/connector-installer/connector-installer.service.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/test/integration/auth-revocation.test.cjs",
+            "apps/api/test/integration/connector-idempotency-semantics.test.cjs",
+            "apps/web/src/app/api/marketplace/readiness/batch/route.ts",
+            "apps/web/src/app/api/marketplace/readiness/route.ts",
+            "apps/web/src/app/channels/submissions/page.tsx",
+            "apps/web/src/app/media/page.tsx",
+            "apps/web/src/app/operations/jobs/page.tsx",
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/rejection/page.tsx",
+            "apps/web/src/components/channel/product-readiness-summary-bar.tsx",
+            "apps/web/src/lib/channel-readiness.ts",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Connector definitions and installed connector lists hide slugs declared in CONNECTOR_STUB_SLUGS.",
+            "Marketplace channel and readiness surfaces hide stubbed channels for seller-facing flows.",
+            "Direct product and validation screens fall back to non-stub channels instead of honoring hidden stub slugs from query params.",
+            "Workspace-scoped auth and connector idempotency integration suites are aligned with the INC-11 login contract.",
+            "Staging env examples document the Flipkart seller-surface gate flags."
+          ]
         }
       ]
     },
