@@ -739,13 +739,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       </Card>
 
       <Card hidden={activeTab !== "channels"}>
-        <CardTitle>Channel readiness and publish</CardTitle>
+        <CardTitle>Channel readiness and queued exports</CardTitle>
         <div className="space-y-4">
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            <p className="font-medium text-slate-900">Publish readiness</p>
+            <p className="font-medium text-slate-900">Queue readiness</p>
             <p className="mt-1">
               <span className={readiness.ok ? "text-emerald-700" : "text-red-700"}>
-                {readiness.ok ? "Ready to publish" : "Blocked until fixes are complete"}
+                {readiness.ok ? "Ready to queue export" : "Blocked until fixes are complete"}
               </span>
             </p>
             {readinessBlockers.length > 0 ? (
@@ -755,7 +755,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-xs text-slate-500">No preflight blockers.</p>
+              <p className="mt-2 text-xs text-slate-500">No preflight blockers for queued export.</p>
             )}
             {readinessWarnings.length > 0 ? (
               <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
@@ -829,15 +829,15 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
                 </Select>
               </div>
               <Button type="submit" disabled={!canQueueExportWithAck}>
-                Publish to a channel
+                Queue channel export
               </Button>
             </form>
           ) : canWrite ? (
             <p className="text-sm text-slate-600">
-              No installed connector with publish capability is available for this tenant.
+              No installed connector is currently available for queued export jobs in this tenant.
             </p>
           ) : (
-            <p className="text-sm text-slate-600">Your role cannot queue publish actions.</p>
+            <p className="text-sm text-slate-600">Your role cannot queue export jobs.</p>
           )}
           <details className="rounded-lg border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
@@ -1044,11 +1044,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       </Card>
 
       <Card hidden={activeTab !== "channels"}>
-        <CardTitle>Publish attempts and recovery</CardTitle>
+        <CardTitle>Queued export attempts and recovery</CardTitle>
         <div className="space-y-3">
           <details className="rounded-lg border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
-              View publish attempts and recovery actions
+              View queued export attempts and recovery actions
             </summary>
             <div className="overflow-x-auto border-t border-slate-200 rounded-b-lg">
             <table className="w-full min-w-[960px] text-left text-sm">

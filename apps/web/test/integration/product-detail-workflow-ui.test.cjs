@@ -25,14 +25,15 @@ function run() {
     "Product detail must expose a fix-blockers section with direct readiness action.",
   );
   assert(
-    source.includes("<CardTitle>Channel readiness and publish</CardTitle>") &&
-      source.includes("Publish to a channel"),
-    "Product detail must promote readiness and publish actions before diagnostics.",
+    source.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
+      source.includes("Queue channel export") &&
+      !source.includes("Publish to a channel"),
+    "Product detail must use truthful queued-export language before diagnostics.",
   );
   assert(
     source.includes("Advanced channel diagnostics") &&
-      source.includes("View publish attempts and recovery actions"),
-    "Technical channel diagnostics must be demoted behind collapsible disclosure controls.",
+      source.includes("View queued export attempts and recovery actions"),
+    "Technical channel diagnostics must be demoted behind collapsible queued-export disclosure controls.",
   );
   assert(
     source.includes("<SideRailCard title=\"Next actions\">") &&
@@ -50,7 +51,7 @@ function run() {
         status: "ok",
         validated: [
           "product_detail_leads_with_overview_and_fix_blockers",
-          "product_detail_promotes_readiness_and_publish",
+          "product_detail_uses_truthful_queued_export_language",
           "product_detail_demotes_diagnostics_and_workflow_metadata",
         ],
         checkedAt: new Date().toISOString(),
