@@ -12,6 +12,7 @@ import {
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
+import { ProductPayload } from "../connector-framework/connector.interface";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -114,6 +115,22 @@ type SubmissionIssue = {
   severity: "error" | "warning";
   sellerMessage: string;
 };
+
+type ConnectorProductSource = Prisma.ProductGetPayload<{
+  include: {
+    category: {
+      select: {
+        id: true;
+        name: true;
+        path: true;
+      };
+    };
+    variants: {
+      orderBy: [{ updatedAt: "desc" }];
+      take: 1;
+    };
+  };
+}>;
 
 const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
   amazon: {
@@ -1842,31 +1859,80 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const operation = installation.capabilities.includes("PUBLISH") ? "PUBLISH" : "EXPORT_ONLY";
-    const status =
-      operation === "PUBLISH"
-        ? simulation.exportReady
-          ? "PENDING"
-          : "ERROR"
-        : simulation.exportReady
-          ? "SUCCESS"
-          : "ERROR";
     const source = simulation.validationSource === "amazon_sp_api" ? "LIVE_API" : "LOCAL_RULES";
 
-    const submission = await this.connectorFramework.recordSubmissionAttempt({
-      installation,
-      productId: job.productId,
-      jobId: job.id,
-      operation,
-      source,
-      status,
-      payloadSnapshot: simulation.mappedPayload,
-      channelErrors: simulation.channelIssues.map((issue) => ({
-        code: issue.code,
-        fieldPath: issue.fieldPath,
-        severity: issue.severity,
-        sellerMessage: issue.sellerMessage,
-      })),
-    });
+    let submission;
+    if (operation === "PUBLISH" && simulation.exportReady) {
+      try {
+        const productPayload = await this.buildConnectorProductPayload(job.productId);
+        const publishResult = await this.connectorFramework.publish(installation, productPayload);
+        submission = await this.connectorFramework.recordSubmissionAttempt({
+          installation,
+          productId: job.productId,
+          jobId: job.id,
+          operation,
+          source: "LIVE_API",
+          status: publishResult.status,
+          externalRef: publishResult.externalRef,
+          payloadSnapshot: simulation.mappedPayload,
+          channelErrors: simulation.channelIssues.map((issue) => ({
+            code: issue.code,
+            fieldPath: issue.fieldPath,
+            severity: issue.severity,
+            sellerMessage: issue.sellerMessage,
+          })),
+        });
+      } catch (error) {
+        submission = await this.connectorFramework.recordSubmissionAttempt({
+          installation,
+          productId: job.productId,
+          jobId: job.id,
+          operation,
+          source: "LIVE_API",
+          status: "ERROR",
+          payloadSnapshot: simulation.mappedPayload,
+          channelErrors: [
+            {
+              code: "CONNECTOR_PUBLISH_FAILED",
+              fieldPath: "",
+              severity: "error",
+              sellerMessage: this.toFailureReason(error),
+            },
+          ],
+        });
+        await this.emitConnectorOutcomeMetrics({
+          tenantKey,
+          connectorSlug,
+          submissionStatus: submission.status,
+          attemptNumber: submission.attemptNumber,
+        });
+        throw error;
+      }
+    } else {
+      const status =
+        operation === "PUBLISH"
+          ? simulation.exportReady
+            ? "PENDING"
+            : "ERROR"
+          : simulation.exportReady
+            ? "SUCCESS"
+            : "ERROR";
+      submission = await this.connectorFramework.recordSubmissionAttempt({
+        installation,
+        productId: job.productId,
+        jobId: job.id,
+        operation,
+        source,
+        status,
+        payloadSnapshot: simulation.mappedPayload,
+        channelErrors: simulation.channelIssues.map((issue) => ({
+          code: issue.code,
+          fieldPath: issue.fieldPath,
+          severity: issue.severity,
+          sellerMessage: issue.sellerMessage,
+        })),
+      });
+    }
 
     await this.emitConnectorOutcomeMetrics({
       tenantKey,
@@ -1874,6 +1940,136 @@ export class MarketplaceService implements OnModuleInit {
       submissionStatus: submission.status,
       attemptNumber: submission.attemptNumber,
     });
+  }
+
+  private async buildConnectorProductPayload(productId: string): Promise<ProductPayload> {
+    const product = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            path: true,
+          },
+        },
+        variants: {
+          orderBy: [{ updatedAt: "desc" }],
+          take: 1,
+        },
+      },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found for connector submission.");
+    }
+
+    const attributes = this.asRecord(product.attributes);
+    const variant = product.variants[0] ?? null;
+    const variantAttributes = this.asRecord(variant?.attributes);
+    const pricing = this.asRecord(attributes.pricing);
+    const sku = this.firstNonEmptyString(
+      variant?.skuCode,
+      attributes.sku,
+      product.id,
+    );
+    const mrp = this.firstNumber(
+      variant?.mrp,
+      pricing.mrp,
+      attributes.mrp,
+      attributes.price,
+    );
+    const sellingPrice = this.firstNumber(
+      variant?.sellingPrice,
+      pricing.sellingPrice,
+      attributes.sellingPrice,
+      attributes.selling_price,
+      mrp,
+    );
+    const mainImageUrl = await this.resolveConnectorImageUrl(product.id, attributes);
+    const productType = this.firstNonEmptyString(
+      attributes.productType,
+      attributes.flipkartProductType,
+      product.category.path,
+      product.category.name,
+      "general",
+    );
+
+    return {
+      sku,
+      title: this.firstNonEmptyString(product.title),
+      description: this.firstNonEmptyString(product.description),
+      brand: this.firstNonEmptyString(product.brand),
+      hsnCode: this.firstNonEmptyString(product.hsnCode),
+      gstRate: this.firstNumber(product.gstRate),
+      mrp,
+      sellingPrice,
+      mainImageUrl,
+      attributes: {
+        ...attributes,
+        ...variantAttributes,
+        ...(variant ? { inventoryQty: variant.inventoryQty } : {}),
+      },
+      productType,
+    };
+  }
+
+  private async resolveConnectorImageUrl(
+    productId: string,
+    attributes: Record<string, unknown>,
+  ): Promise<string> {
+    const attributeUrl = this.firstNonEmptyString(
+      attributes.mainImageUrl,
+      attributes.primaryImageUrl,
+      attributes.imageUrl,
+      attributes.image_url,
+    );
+    if (attributeUrl.startsWith("https://")) {
+      return attributeUrl;
+    }
+
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ storagePath: string | null }>>(
+      `
+      SELECT storage_path AS "storagePath"
+      FROM media_assets
+      WHERE tenant_key = $1
+        AND product_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      tenantKey,
+      productId,
+    );
+    const storagePath = String(rows[0]?.storagePath ?? "").trim();
+    const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+    if (!storagePath || !publicBase) {
+      return "";
+    }
+    return `${publicBase}/${storagePath.replace(/^\/+/, "").replace(/\\/g, "/")}`;
+  }
+
+  private firstNonEmptyString(...values: unknown[]): string {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return "";
+  }
+
+  private firstNumber(...values: unknown[]): number {
+    for (const value of values) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string" && value.trim().length > 0) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+    return 0;
   }
 
   private async emitExportThroughputMetric(

@@ -38,9 +38,40 @@ type FlipkartTokenResponse = {
   token_type?: string;
 };
 
+type FlipkartListingPayload = {
+  skuId: string;
+  productId?: string;
+  mrp: number;
+  sellingPrice: number;
+  listingStatus: "ACTIVE" | "INACTIVE";
+  quantity: number;
+  fulfillmentBy: "seller" | "flipkart";
+  procurementType: "REGULAR" | "LIMITED";
+  procurementSla: number;
+  shippingProvider: string;
+  packageWeight: number;
+  packageLength: number;
+  packageBreadth: number;
+  packageHeight: number;
+  hsn?: string;
+  taxCode?: string;
+  attributes?: Record<string, string | number | boolean>;
+};
+
+type FlipkartPublishResponse = {
+  requestId?: string;
+  status?: "SUCCESS" | "PARTIAL" | "FAILURE";
+  skuErrors?: Array<{
+    skuId?: string;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
+};
+
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_OAUTH_BASE_URL = "https://api.flipkart.net";
+const DEFAULT_REQUEST_DELAY_MS = 100;
 const REQUIRED_FIELDS = [
   { fieldPath: "sku", message: "Add a seller SKU before publishing to Flipkart." },
   { fieldPath: "title", message: "Product title is required for Flipkart publish." },
@@ -203,7 +234,54 @@ export class FlipkartConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     product: ProductPayload,
   ): Promise<SubmissionRef> {
-    throw new Error("Not implemented (P5-S4)");
+    const validation = await this.validateProduct(ctx, product);
+    if (!validation.isValid) {
+      throw new Error(validation.errors.map((issue) => issue.sellerMessage).join(" | "));
+    }
+
+    const requestId = this.buildRequestId(ctx, product.sku);
+    const endpoint = `${this.resolveApiBaseUrl()}/listings/v3/skus/listings/update`;
+    const payload = {
+      skuData: [this.buildListingPayload(product)],
+    };
+
+    this.logger.info("Flipkart publish request started", {
+      installationId: ctx.installationId,
+      endpoint,
+      sku: product.sku,
+    });
+
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Flipkart-Request-Id": requestId,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseBody = await this.parseJsonResponse<FlipkartPublishResponse>(response);
+    this.logger.info("Flipkart publish request completed", {
+      installationId: ctx.installationId,
+      statusCode: response.status,
+      sku: product.sku,
+    });
+
+    if (!response.ok) {
+      throw new Error(this.describePublishFailure(responseBody, response.status));
+    }
+
+    const providerStatus = String(responseBody.status ?? "").trim().toUpperCase();
+    if (providerStatus === "FAILURE") {
+      throw new Error(this.describePublishFailure(responseBody, response.status));
+    }
+
+    return {
+      externalRef: String(responseBody.requestId ?? requestId),
+      status: "PENDING",
+      isAsync: true,
+    };
   }
 
   async updateProduct(
@@ -439,6 +517,211 @@ export class FlipkartConnector implements ConnectorInterface {
     )
       .trim()
       .replace(/\/+$/, "");
+  }
+
+  private resolveApiBaseUrl(): string {
+    const explicit = String(
+      process.env.PIM_FLIPKART_API_BASE_URL ?? process.env.FLIPKART_API_BASE_URL ?? "",
+    )
+      .trim()
+      .replace(/\/+$/, "");
+    if (explicit.length > 0) {
+      return explicit;
+    }
+    return `${this.resolveOauthBaseUrl()}/sellers`;
+  }
+
+  private buildListingPayload(product: ProductPayload): FlipkartListingPayload {
+    const attributes = this.asScalarAttributes(product.attributes);
+    const quantity = this.readPositiveInteger(
+      attributes.quantity ??
+        attributes.inventoryQty ??
+        attributes.stockQuantity,
+      1,
+    );
+    const packageWeight = this.readPositiveInteger(
+      attributes.packageWeight ?? attributes.weight,
+      500,
+    );
+    const packageLength = this.readPositiveInteger(attributes.packageLength ?? attributes.length, 100);
+    const packageBreadth = this.readPositiveInteger(attributes.packageBreadth ?? attributes.width, 80);
+    const packageHeight = this.readPositiveInteger(attributes.packageHeight ?? attributes.height, 30);
+    const procurementSla = this.readPositiveInteger(attributes.procurementSla, 3);
+    const fulfillmentBy = this.readEnumValue(
+      attributes.fulfillmentBy,
+      ["seller", "flipkart"] as const,
+      "seller",
+    );
+    const procurementType = this.readEnumValue(
+      attributes.procurementType,
+      ["REGULAR", "LIMITED"] as const,
+      "REGULAR",
+    );
+    const listingStatus = this.readEnumValue(
+      attributes.listingStatus,
+      ["ACTIVE", "INACTIVE"] as const,
+      "ACTIVE",
+    );
+    const shippingProvider = this.readString(attributes.shippingProvider, "seller-standard");
+    const productId = this.readOptionalString(attributes.flipkartProductId ?? attributes.productId);
+    const taxCode = this.readOptionalString(attributes.taxCode);
+
+    return {
+      skuId: product.sku,
+      ...(productId ? { productId } : {}),
+      mrp: Math.round(product.mrp * 100),
+      sellingPrice: Math.round(product.sellingPrice * 100),
+      listingStatus,
+      quantity,
+      fulfillmentBy,
+      procurementType,
+      procurementSla,
+      shippingProvider,
+      packageWeight,
+      packageLength,
+      packageBreadth,
+      packageHeight,
+      ...(product.hsnCode ? { hsn: product.hsnCode } : {}),
+      ...(taxCode ? { taxCode } : {}),
+      attributes,
+    };
+  }
+
+  private async fetchWithTokenRetry(
+    ctx: ConnectorContext,
+    url: string,
+    init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
+  ): Promise<Response> {
+    await this.delay(DEFAULT_REQUEST_DELAY_MS);
+    let token = await this.resolveAccessToken(ctx);
+    let response = await fetch(url, {
+      ...init,
+      headers: {
+        ...init.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (response.status !== 401) {
+      return response;
+    }
+
+    await this.invalidateAccessToken(ctx);
+    token = await this.resolveAccessToken(ctx);
+    await this.delay(DEFAULT_REQUEST_DELAY_MS);
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...init.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response;
+  }
+
+  private async invalidateAccessToken(ctx: ConnectorContext): Promise<void> {
+    const db = this.prismaDirect.getClient();
+    await db.$executeRawUnsafe(
+      `
+      UPDATE connector_credentials
+      SET expires_at = NOW(), updated_at = NOW()
+      WHERE tenant_key = $1
+        AND installation_id = $2
+        AND credential_type = 'access_token'
+      `,
+      ctx.tenantId,
+      ctx.installationId,
+    );
+  }
+
+  private async parseJsonResponse<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    if (!text.trim()) {
+      return {} as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+
+  private describePublishFailure(responseBody: FlipkartPublishResponse, statusCode: number): string {
+    const firstError = Array.isArray(responseBody.skuErrors) ? responseBody.skuErrors[0] : undefined;
+    if (firstError) {
+      const issue = this.normaliseError(
+        String(firstError.errorCode ?? "UNKNOWN_ERROR"),
+        String(firstError.errorMessage ?? "").trim(),
+      );
+      return issue.sellerMessage;
+    }
+    return `Flipkart publish failed with status ${statusCode}.`;
+  }
+
+  private buildRequestId(ctx: ConnectorContext, sku: string): string {
+    return `${ctx.tenantId}-${ctx.installationId}-${sku}`
+      .replace(/[^a-zA-Z0-9-]+/g, "-")
+      .slice(0, 120);
+  }
+
+  private asScalarAttributes(
+    attributes: Record<string, unknown>,
+  ): Record<string, string | number | boolean> {
+    const scalarAttributes: Record<string, string | number | boolean> = {};
+    for (const [key, value] of Object.entries(attributes ?? {})) {
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        scalarAttributes[key] = value;
+      }
+    }
+    return scalarAttributes;
+  }
+
+  private readPositiveInteger(value: unknown, fallback: number): number {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.max(1, Math.round(value));
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.max(1, Math.round(parsed));
+      }
+    }
+    return fallback;
+  }
+
+  private readString(value: unknown, fallback: string): string {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+    return fallback;
+  }
+
+  private readOptionalString(value: unknown): string | undefined {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+    return undefined;
+  }
+
+  private readEnumValue<T extends readonly string[]>(
+    value: unknown,
+    allowed: T,
+    fallback: T[number],
+  ): T[number] {
+    if (typeof value === "string") {
+      const normalized = value.trim();
+      if (allowed.includes(normalized as T[number])) {
+        return normalized as T[number];
+      }
+    }
+    return fallback;
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private isCredentialFresh(row: CredentialRow): boolean {
