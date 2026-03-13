@@ -20,6 +20,14 @@ function requireStep(steps, name) {
   return step;
 }
 
+function requireStepOrder(steps, firstName, secondName) {
+  const firstIndex = steps.findIndex((item) => String(item?.name ?? "").trim() === firstName);
+  const secondIndex = steps.findIndex((item) => String(item?.name ?? "").trim() === secondName);
+  assert(firstIndex !== -1, `Missing workflow step: ${firstName}`);
+  assert(secondIndex !== -1, `Missing workflow step: ${secondName}`);
+  assert(firstIndex < secondIndex, `${firstName} must appear before ${secondName}`);
+}
+
 function requireRunContains(step, fragment, label) {
   const run = String(step?.run ?? "");
   assert(run.includes(fragment), `${label} missing required fragment: ${fragment}`);
@@ -70,9 +78,13 @@ function main() {
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
+  requireStep(steps, "Install Railway CLI");
+  requireStepOrder(steps, "Install Railway CLI", "Deploy to staging");
 
   const deployStep = requireStep(steps, "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_TOKEN", "Deploy to staging");
   requireEnvVar(deployStep, "STAGING_DEPLOY_COMMAND", "Deploy to staging");
+  requireRunContains(deployStep, "Missing RAILWAY_TOKEN secret", "Deploy to staging");
   requireRunContains(deployStep, "Missing STAGING_DEPLOY_COMMAND", "Deploy to staging");
   requireRunContains(deployStep, "eval", "Deploy to staging");
 
@@ -119,6 +131,8 @@ function main() {
         validated: [
           "workflow_dispatch_trigger_present",
           "migration_step_has_database_secret_guard",
+          "railway_cli_install_step_present_before_deploy",
+          "deploy_step_has_railway_token_env_and_guard",
           "deploy_step_secret_guard_present",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",

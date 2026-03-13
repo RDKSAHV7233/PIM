@@ -45,11 +45,19 @@ jobs:
       - name: Build Web
         run: npm run build --workspace @pim1/web
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Deploy to staging
         shell: bash
         env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           STAGING_DEPLOY_COMMAND: ${{ secrets.STAGING_DEPLOY_COMMAND }}
         run: |
+          if [ -z "${RAILWAY_TOKEN}" ]; then
+            echo "Missing RAILWAY_TOKEN secret for staging deploy."
+            exit 1
+          fi
           if [ -z "${STAGING_DEPLOY_COMMAND}" ]; then
             echo "Missing STAGING_DEPLOY_COMMAND secret. Configure provider deploy command."
             exit 1

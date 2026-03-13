@@ -22,6 +22,7 @@ gh auth status
 
 2. Repository secrets exist for the workflow:
    - `STAGING_DATABASE_URL_DIRECT` (preferred) or `STAGING_DATABASE_URL`
+   - `RAILWAY_TOKEN` when `STAGING_DEPLOY_COMMAND` uses Railway CLI
    - `STAGING_DEPLOY_COMMAND`
    - `STAGING_BASE_URL`
    - `STAGING_SMOKE_WORKSPACE`
@@ -29,7 +30,9 @@ gh auth status
    - `STAGING_SMOKE_PASSWORD`
    - `STAGING_SMOKE_TENANT_ID`
 
-3. The target branch contains the current workflow guards:
+3. If `STAGING_DEPLOY_COMMAND` uses Railway CLI, the workflow now installs `@railway/cli` on the runner before deploy and expects `RAILWAY_TOKEN` to be present.
+
+4. The target branch contains the current workflow guards:
 
 ```powershell
 node scripts/validate-deploy-staging-workflow.cjs
