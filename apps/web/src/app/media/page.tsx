@@ -17,12 +17,27 @@ import {
   MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
+
+function normalizeChannel(value: MarketplaceChannel | undefined): MarketplaceChannel {
+  if (value && READINESS_CHANNELS.includes(value)) {
+    return value;
+  }
+  return READINESS_CHANNELS[0] ?? "amazon";
+}
+
+function formatChannelLabel(channel: MarketplaceChannel): string {
+  if (channel === "meesho") {
+    return "Meesho";
+  }
+  return channel === "amazon" ? "Amazon" : "Flipkart";
+}
 
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
@@ -49,7 +64,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
   const canWrite = canEditWorkspace(actorRole);
   const productId = String(query.productId ?? "").trim();
   const variantId = String(query.variantId ?? "").trim();
-  const channel = (query.channel ?? "amazon") as MarketplaceChannel;
+  const channel = normalizeChannel(query.channel);
   const assetId = String(query.assetId ?? "").trim();
   const bulkAssociationStatus = String(query.bulkAssociationStatus ?? "").trim();
   const showPlanLimitModal =
@@ -291,9 +306,11 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
             <input type="hidden" name="variantId" value={variantId} />
             <input type="hidden" name="assetId" value={assetId} />
             <Select name="channel" defaultValue={channel}>
-              <option value="amazon">amazon</option>
-              <option value="flipkart">flipkart</option>
-              <option value="meesho">meesho</option>
+              {READINESS_CHANNELS.map((availableChannel) => (
+                <option key={availableChannel} value={availableChannel}>
+                  {formatChannelLabel(availableChannel)}
+                </option>
+              ))}
             </Select>
             <Button type="submit">Run validation</Button>
           </form>

@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-badge";
 import { Button } from "@/components/ui/button";
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
-import type { ChannelReadinessResult } from "@/lib/channel-readiness";
-
-const CHANNELS: MarketplaceChannel[] = ["amazon", "flipkart", "meesho"];
+import { READINESS_CHANNELS, type ChannelReadinessResult } from "@/lib/channel-readiness";
 
 function toChannel(value: MarketplaceChannel): "amazon" | "flipkart" | "meesho" {
   if (value === "flipkart" || value === "meesho") {
@@ -33,25 +31,29 @@ interface ProductReadinessSummaryBarProps {
 }
 
 export function ProductReadinessSummaryBar({ productId, role }: ProductReadinessSummaryBarProps) {
-  const [results, setResults] = useState<Record<MarketplaceChannel, ChannelReadinessResult>>({
-    amazon: { channel: "amazon", status: "loading", errorCount: 0, warningCount: 0 },
-    flipkart: { channel: "flipkart", status: "loading", errorCount: 0, warningCount: 0 },
-    meesho: { channel: "meesho", status: "loading", errorCount: 0, warningCount: 0 },
-  });
+  const buildResults = useCallback(
+    (status: "loading" | "unknown"): Partial<Record<MarketplaceChannel, ChannelReadinessResult>> =>
+      Object.fromEntries(
+        READINESS_CHANNELS.map((channel) => [
+          channel,
+          { channel, status, errorCount: 0, warningCount: 0 },
+        ]),
+      ) as Partial<Record<MarketplaceChannel, ChannelReadinessResult>>,
+    [],
+  );
+  const [results, setResults] = useState<Partial<Record<MarketplaceChannel, ChannelReadinessResult>>>(() =>
+    buildResults("loading"),
+  );
   const [checking, setChecking] = useState(false);
   const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null);
   const [lastCheckedLabel, setLastCheckedLabel] = useState("not checked");
 
   const runCheck = useCallback(async () => {
     setChecking(true);
-    setResults({
-      amazon: { channel: "amazon", status: "loading", errorCount: 0, warningCount: 0 },
-      flipkart: { channel: "flipkart", status: "loading", errorCount: 0, warningCount: 0 },
-      meesho: { channel: "meesho", status: "loading", errorCount: 0, warningCount: 0 },
-    });
+    setResults(buildResults("loading"));
 
     const settled = await Promise.allSettled(
-      CHANNELS.map(async (channel) => {
+      READINESS_CHANNELS.map(async (channel) => {
         const response = await fetch(
           `/api/marketplace/readiness?productId=${encodeURIComponent(productId)}&channel=${encodeURIComponent(
             channel,
@@ -68,13 +70,9 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
       }),
     );
 
-    const next: Record<MarketplaceChannel, ChannelReadinessResult> = {
-      amazon: { channel: "amazon", status: "unknown", errorCount: 0, warningCount: 0 },
-      flipkart: { channel: "flipkart", status: "unknown", errorCount: 0, warningCount: 0 },
-      meesho: { channel: "meesho", status: "unknown", errorCount: 0, warningCount: 0 },
-    };
+    const next = buildResults("unknown");
 
-    CHANNELS.forEach((channel, index) => {
+    READINESS_CHANNELS.forEach((channel, index) => {
       const item = settled[index];
       if (item.status === "fulfilled") {
         next[channel] = item.value;
@@ -86,7 +84,7 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
     setLastCheckedAt(checkedAt);
     setLastCheckedLabel(relativeTime(checkedAt));
     setChecking(false);
-  }, [productId, role]);
+  }, [buildResults, productId, role]);
 
   useEffect(() => {
     void runCheck();
@@ -108,8 +106,13 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
 
   const badges = useMemo(
     () =>
-      CHANNELS.map((channel) => {
-        const item = results[channel];
+      READINESS_CHANNELS.map((channel) => {
+        const item = results[channel] ?? {
+          channel,
+          status: "unknown" as const,
+          errorCount: 0,
+          warningCount: 0,
+        };
         return (
           <ChannelReadinessBadge
             key={channel}

@@ -142,7 +142,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="jobs-connector-filter">
                 Connector Slug
               </label>
-              <Input id="jobs-connector-filter" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / flipkart / meesho" />
+              <Input id="jobs-connector-filter" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / connector slug" />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="jobs-submission-filter">

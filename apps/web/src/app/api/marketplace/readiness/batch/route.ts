@@ -14,8 +14,11 @@ function parseChannels(value: unknown): MarketplaceChannel[] {
     return [...READINESS_CHANNELS];
   }
 
-  const channels = value
-    .filter((item): item is MarketplaceChannel => item === "amazon" || item === "flipkart" || item === "meesho");
+  const allowedChannels = new Set<MarketplaceChannel>(READINESS_CHANNELS);
+  const channels = value.filter(
+    (item): item is MarketplaceChannel =>
+      typeof item === "string" && allowedChannels.has(item as MarketplaceChannel),
+  );
 
   return channels.length > 0 ? channels : [...READINESS_CHANNELS];
 }

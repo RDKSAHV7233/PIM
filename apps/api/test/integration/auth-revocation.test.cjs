@@ -134,9 +134,12 @@ async function run() {
   const port = 4900 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
   const tenantId = `auth-revoke-tenant-${runId}`;
+  const workspaceSuffix = runId.slice(-8);
   const userId = `auth-revoke-user-${runId}`;
   const viewerTenant = `${tenantId}-viewer`;
   const adminTenant = `${tenantId}-admin`;
+  const viewerWorkspaceSlug = `vw-${workspaceSuffix}`;
+  const adminWorkspaceSlug = `ad-${workspaceSuffix}`;
   const viewerUserId = `${userId}-viewer-default`;
   const adminUserId = userId;
   const forgedUserId = `${userId}-forged`;
@@ -148,9 +151,13 @@ async function run() {
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_DEFAULT_ROLE: "viewer",
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [viewerUserId]: { tenantId: viewerTenant, role: "viewer" },
-      [adminUserId]: { tenantId: adminTenant, role: "admin" },
-      [forgedUserId]: { tenantId: viewerTenant, role: "viewer" },
+      [viewerUserId]: { tenantId: viewerTenant, role: "viewer", workspaceSlug: viewerWorkspaceSlug },
+      [adminUserId]: { tenantId: adminTenant, role: "admin", workspaceSlug: adminWorkspaceSlug },
+      [forgedUserId]: { tenantId: viewerTenant, role: "viewer", workspaceSlug: viewerWorkspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [viewerWorkspaceSlug]: { tenantId: viewerTenant, displayName: "Viewer workspace" },
+      [adminWorkspaceSlug]: { tenantId: adminTenant, displayName: "Admin workspace" },
     }),
   };
 
@@ -195,6 +202,7 @@ async function run() {
     }
 
     const defaultRoleLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: viewerWorkspaceSlug,
       userId: viewerUserId,
       password: "pim1-demo-password",
       expiresInMinutes: 15,
@@ -216,6 +224,7 @@ async function run() {
     }
 
     const loginResult = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: adminWorkspaceSlug,
       userId: adminUserId,
       password: "pim1-demo-password",
       expiresInMinutes: 30,
@@ -243,6 +252,7 @@ async function run() {
     }
 
     const forgedIdentityLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: viewerWorkspaceSlug,
       userId: forgedUserId,
       tenantId: `${tenantId}-forged-admin`,
       role: "admin",

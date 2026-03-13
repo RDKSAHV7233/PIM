@@ -49,6 +49,13 @@ function parseCapabilities(raw: unknown): ConnectorCap[] {
   return [];
 }
 
+function resolveStubConnectorSlugs(): string[] {
+  return String(process.env.CONNECTOR_STUB_SLUGS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
 function parseMetadata(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return raw as Record<string, unknown>;
@@ -102,6 +109,7 @@ export class ConnectorInstallerService {
   }
 
   async listAvailableDefinitions(actor: ConnectorActor): Promise<ConnectorDefinitionRecord[]> {
+    const stubSlugs = new Set(resolveStubConnectorSlugs());
     // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(`
       SELECT
@@ -125,6 +133,9 @@ export class ConnectorInstallerService {
     // exhausting the DB pool under the current tenant-scoped Prisma client model.
     for (const row of rows) {
       const slug = String(row.slug);
+      if (stubSlugs.has(slug.toLowerCase())) {
+        continue;
+      }
       definitions.push({
         id: String(row.id),
         slug,
@@ -265,6 +276,7 @@ export class ConnectorInstallerService {
     const tenantKey = this.getTenantKey();
     const limit = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_LIMIT, 1), MAX_PAGE_LIMIT);
     const cursor = decodeCursor(query.cursor);
+    const stubSlugs = resolveStubConnectorSlugs();
 
     const params: unknown[] = [tenantKey];
     let cursorWhere = "";
@@ -283,6 +295,15 @@ export class ConnectorInstallerService {
     if (slugFilter) {
       params.push(slugFilter);
       slugWhere = ` AND cd.slug = $${params.length}`;
+    }
+
+    let hiddenStubWhere = "";
+    if (stubSlugs.length > 0) {
+      const placeholders = stubSlugs.map((slug) => {
+        params.push(slug);
+        return `$${params.length}`;
+      });
+      hiddenStubWhere = ` AND cd.slug NOT IN (${placeholders.join(", ")})`;
     }
 
     params.push(limit + 1);
@@ -309,6 +330,7 @@ export class ConnectorInstallerService {
       JOIN connector_definitions cd ON cd.id = ci.connector_id
       WHERE ci.tenant_key = $1
       ${slugWhere}
+      ${hiddenStubWhere}
       ${cursorWhere}
       ORDER BY ci.installed_at DESC, ci.id DESC
       LIMIT $${params.length}

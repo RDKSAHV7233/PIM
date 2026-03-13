@@ -62,6 +62,30 @@ type AmazonValidationResult = {
   warnings: string[];
 };
 
+function resolveStubConnectorSlugs(): Set<string> {
+  return new Set(
+    String(process.env.CONNECTOR_STUB_SLUGS ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0),
+  );
+}
+
+function resolveStubMarketplaceChannels(): Set<MarketplaceChannel> {
+  const stubSlugs = resolveStubConnectorSlugs();
+  const channels = new Set<MarketplaceChannel>();
+  if (stubSlugs.has("amazon") || stubSlugs.has("amazon-in")) {
+    channels.add("amazon");
+  }
+  if (stubSlugs.has("flipkart")) {
+    channels.add("flipkart");
+  }
+  if (stubSlugs.has("meesho")) {
+    channels.add("meesho");
+  }
+  return channels;
+}
+
 type SimulationProduct = Prisma.ProductGetPayload<{
   include: {
     validationIssues: true;
@@ -172,7 +196,8 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   listChannels() {
-    return MARKETPLACE_CHANNELS.map((channel) => {
+    const stubChannels = resolveStubMarketplaceChannels();
+    return MARKETPLACE_CHANNELS.filter((channel) => !stubChannels.has(channel)).map((channel) => {
       const pack = MAPPING_PACKS[channel];
       return {
         channel,
@@ -1129,12 +1154,16 @@ export class MarketplaceService implements OnModuleInit {
 
   private resolveBatchChannels(channelsInput?: string[]): MarketplaceChannel[] {
     const requested = Array.isArray(channelsInput) ? channelsInput : [];
+    const stubChannels = resolveStubMarketplaceChannels();
+    const allowedChannels = MARKETPLACE_CHANNELS.filter((channel) => !stubChannels.has(channel));
     if (requested.length === 0) {
-      return [...MARKETPLACE_CHANNELS];
+      return [...allowedChannels];
     }
 
-    const normalized = this.uniqueStrings(requested).map((channelInput) => this.parseChannel(channelInput));
-    return normalized;
+    const normalized = this.uniqueStrings(requested)
+      .map((channelInput) => this.parseChannel(channelInput))
+      .filter((channel) => !stubChannels.has(channel));
+    return normalized.length > 0 ? normalized : [...allowedChannels];
   }
 
   private summarizeReadiness(

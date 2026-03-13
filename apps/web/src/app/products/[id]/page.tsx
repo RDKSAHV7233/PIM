@@ -40,6 +40,7 @@ import {
   MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { translateError, translateExportStatus } from "@/lib/errors";
 import { formatINR } from "@/lib/format";
 import { canEditWorkspace } from "@/lib/role-capabilities";
@@ -95,10 +96,10 @@ function normalizeDetailTab(value: string | undefined): DetailTab {
 }
 
 function normalizeChannel(value: string | undefined): MarketplaceChannel {
-  if (value === "flipkart" || value === "meesho") {
-    return value;
+  if (value && READINESS_CHANNELS.includes(value as MarketplaceChannel)) {
+    return value as MarketplaceChannel;
   }
-  return "amazon";
+  return READINESS_CHANNELS[0] ?? "amazon";
 }
 
 function normalizeTemplateId(value: string | undefined): string | undefined {

@@ -2,7 +2,28 @@ import type { MarketplaceChannel, MarketplaceSimulation } from "@/lib/api";
 
 export type ReadinessStatus = "ready" | "warnings" | "errors" | "loading" | "unknown";
 
-export const READINESS_CHANNELS: MarketplaceChannel[] = ["amazon", "flipkart", "meesho"];
+const BASE_READINESS_CHANNELS: MarketplaceChannel[] = ["amazon", "flipkart", "meesho"];
+
+function resolveStubReadinessChannels(): Set<MarketplaceChannel> {
+  const values = String(process.env.NEXT_PUBLIC_CONNECTOR_STUB_SLUGS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+  const channels = new Set<MarketplaceChannel>();
+  for (const value of values) {
+    if (value === "amazon" || value === "amazon-in") {
+      channels.add("amazon");
+    } else if (value === "flipkart" || value === "meesho") {
+      channels.add(value);
+    }
+  }
+  return channels;
+}
+
+const stubChannels = resolveStubReadinessChannels();
+export const READINESS_CHANNELS: MarketplaceChannel[] = BASE_READINESS_CHANNELS.filter(
+  (channel) => !stubChannels.has(channel),
+);
 
 export interface ChannelReadinessResult {
   channel: MarketplaceChannel;

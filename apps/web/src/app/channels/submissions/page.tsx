@@ -132,7 +132,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="channel-submissions-connector">
                 Connector Slug
               </label>
-              <Input id="channel-submissions-connector" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / flipkart / meesho" />
+              <Input id="channel-submissions-connector" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / connector slug" />
             </div>
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">

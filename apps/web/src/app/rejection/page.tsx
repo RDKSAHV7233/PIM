@@ -16,11 +16,26 @@ import {
   MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
+
+function normalizeChannel(value: MarketplaceChannel | undefined): MarketplaceChannel {
+  if (value && READINESS_CHANNELS.includes(value)) {
+    return value;
+  }
+  return READINESS_CHANNELS[0] ?? "amazon";
+}
+
+function formatChannelLabel(channel: MarketplaceChannel): string {
+  if (channel === "meesho") {
+    return "Meesho";
+  }
+  return channel === "amazon" ? "Amazon" : "Flipkart";
+}
 
 interface RejectionPageProps {
   searchParams: Promise<{
@@ -62,7 +77,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const productId = String(query.productId ?? "").trim();
-  const channel = (query.channel ?? "amazon") as MarketplaceChannel;
+  const channel = normalizeChannel(query.channel);
 
   let products: Awaited<ReturnType<typeof getProductList>>;
   let health: Awaited<ReturnType<typeof getDashboardHealth>>;
@@ -158,9 +173,11 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
               Channel
             </label>
             <Select id="rejection-channel" name="channel" defaultValue={channel}>
-              <option value="amazon">Amazon</option>
-              <option value="flipkart">Flipkart</option>
-              <option value="meesho">Meesho</option>
+              {READINESS_CHANNELS.map((availableChannel) => (
+                <option key={availableChannel} value={availableChannel}>
+                  {formatChannelLabel(availableChannel)}
+                </option>
+              ))}
             </Select>
           </div>
           <div className="flex items-end">
