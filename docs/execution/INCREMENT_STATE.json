@@ -1150,6 +1150,44 @@
             "Automatic Flipkart status resolution reuses the published submission SKU lookup and updates connector_submissions to a terminal state without manual intervention.",
             "Worker backpressure validation still passes after delayed queue support is added to the shared queue service."
           ]
+        },
+        {
+          "storyId": "ST-FK-INSTALL-007",
+          "title": "Support Flipkart credential capture and validation through the normal connector install flow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "a191372",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "npm run lint --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-install-credentials.test.cjs",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "node apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "node apps/api/test/integration/flipkart-auto-status-sync.test.cjs",
+            "npm run test:integration:connector-capability-orchestration",
+            "npm run test:integration:connector-issue-contract",
+            "npm run build --workspace @pim1/web",
+            "npm run lint --workspace @pim1/web",
+            "node apps/web/test/integration/connector-install-form.test.cjs"
+          ],
+          "scope": [
+            "apps/api/src/connector-installer/dto/install-connector.dto.ts",
+            "apps/api/src/connector-installer/connector-installer.service.ts",
+            "apps/api/src/connector-installer/connector-installer.service.spec.ts",
+            "apps/api/test/integration/flipkart-install-credentials.test.cjs",
+            "apps/web/src/app/actions.ts",
+            "apps/web/src/app/connectors/page.tsx",
+            "apps/web/test/integration/connector-install-form.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Flipkart installs can optionally capture client ID, client secret, and refresh token through the normal connector install endpoint without changing other connector install contracts.",
+            "Supplied Flipkart credentials are encrypted on write and validated before the install returns success.",
+            "Invalid supplied Flipkart credentials fail the install cleanly and do not leave connector_installations or connector_credentials artifacts behind.",
+            "The connectors page renders masked Flipkart credential fields and surfaces install-time validation failures without exposing secrets.",
+            "Existing Flipkart publish and status-sync proofs still pass after the install flow gains credential capture."
+          ]
         }
       ]
     },
