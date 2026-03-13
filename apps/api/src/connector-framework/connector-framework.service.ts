@@ -9,7 +9,14 @@ import {
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "./connector.errors";
-import { ConnectorCap, ConnectorContext, ProductPayload, SubmissionRef, ValidationResult } from "./connector.interface";
+import {
+  ConnectorCap,
+  ConnectorContext,
+  ProductPayload,
+  SubmissionRef,
+  SubmissionStatusUpdate,
+  ValidationResult,
+} from "./connector.interface";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorInstallationRecord } from "./connector.types";
 
@@ -141,6 +148,20 @@ export class ConnectorFrameworkService {
       throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
     }
     return connector.publishProduct(this.buildContext(installation), product);
+  }
+
+  async syncStatus(
+    installation: ConnectorInstallationRecord,
+    externalRef: string,
+  ): Promise<SubmissionStatusUpdate> {
+    const connector = this.registry.getConnector(installation.slug);
+    if (!installation.capabilities.includes("STATUS_SYNC")) {
+      throw new CapabilityNotSupportedError(installation.slug, "STATUS_SYNC");
+    }
+    if (!connector.syncSubmissionStatus) {
+      throw new CapabilityNotSupportedError(installation.slug, "STATUS_SYNC");
+    }
+    return connector.syncSubmissionStatus(this.buildContext(installation), externalRef);
   }
 
   async submitOrExport(

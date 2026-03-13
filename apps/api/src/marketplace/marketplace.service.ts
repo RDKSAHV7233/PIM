@@ -848,6 +848,74 @@ export class MarketplaceService implements OnModuleInit {
     return this.normalizeSubmissionIssues(submission.channelErrors);
   }
 
+  async syncSubmissionStatus(submissionId: string) {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+      `
+      SELECT
+        cs.id,
+        cs.product_id AS "productId",
+        cs.installation_id AS "installationId",
+        cs.external_ref AS "externalRef",
+        cd.slug AS "connectorSlug"
+      FROM connector_submissions cs
+      JOIN connector_installations ci ON ci.id = cs.installation_id
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE cs.tenant_key = $1
+        AND cs.id = $2
+      LIMIT 1
+      `,
+      tenantKey,
+      submissionId,
+    )) as Array<{
+      id: string;
+      productId: string;
+      installationId: string;
+      externalRef: string | null;
+      connectorSlug: string;
+    }>;
+
+    const submission = rows[0];
+    if (!submission) {
+      throw new NotFoundException("Submission not found");
+    }
+    if (!submission.externalRef) {
+      throw new BadRequestException("Submission cannot be synced because no external reference is stored.");
+    }
+
+    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug);
+    const statusLookupRef = await this.buildSubmissionStatusLookupRef(
+      submission.productId,
+      submission.externalRef,
+    );
+    const update = await this.connectorFramework.syncStatus(installation, statusLookupRef);
+    const normalizedErrors = update.channelErrors.map((issue) => ({
+      code: issue.code,
+      fieldPath: issue.fieldPath,
+      severity: issue.severity,
+      sellerMessage: issue.sellerMessage,
+    }));
+
+    await this.prisma.tenant().$executeRawUnsafe(
+      `
+      UPDATE connector_submissions
+      SET
+        status = $3,
+        channel_errors = $4::jsonb,
+        resolved_at = $5
+      WHERE tenant_key = $1
+        AND id = $2
+      `,
+      tenantKey,
+      submissionId,
+      update.status,
+      JSON.stringify(normalizedErrors),
+      update.resolvedAt ?? null,
+    );
+
+    return this.getSubmission(submissionId);
+  }
+
   async retrySubmission(submissionId: string) {
     const submission = await this.getSubmission(submissionId) as { idempotencyKey: string; connectorSlug: string };
     const idempotencyKey = String(submission.idempotencyKey ?? "").trim();
@@ -2011,6 +2079,28 @@ export class MarketplaceService implements OnModuleInit {
       },
       productType,
     };
+  }
+
+  private async buildSubmissionStatusLookupRef(productId: string, externalRef: string): Promise<string> {
+    const sku = await this.resolveProductSku(productId);
+    return sku ? `${externalRef}::${sku}` : externalRef;
+  }
+
+  private async resolveProductSku(productId: string): Promise<string> {
+    const product = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      include: {
+        variants: {
+          orderBy: [{ updatedAt: "desc" }],
+          take: 1,
+        },
+      },
+    });
+    if (!product) {
+      return "";
+    }
+    const attributes = this.asRecord(product.attributes);
+    return this.firstNonEmptyString(product.variants[0]?.skuCode, attributes.sku, product.id);
   }
 
   private async resolveConnectorImageUrl(

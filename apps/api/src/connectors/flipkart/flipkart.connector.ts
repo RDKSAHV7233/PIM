@@ -296,7 +296,53 @@ export class FlipkartConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     externalRef: string,
   ): Promise<SubmissionStatusUpdate> {
-    throw new Error("Not implemented (P5-S4)");
+    const lookup = this.parseStatusLookupRef(externalRef);
+    if (!lookup.sku) {
+      throw new Error("Flipkart status sync requires a SKU lookup reference.");
+    }
+
+    const endpoint = `${this.resolveApiBaseUrl()}/listings/v3/skus/${encodeURIComponent(lookup.sku)}/listings`;
+    this.logger.info("Flipkart status sync started", {
+      installationId: ctx.installationId,
+      endpoint,
+      externalRef: lookup.externalRef,
+      sku: lookup.sku,
+    });
+
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    const responseBody = await this.parseJsonResponse<Record<string, unknown>>(response);
+    this.logger.info("Flipkart status sync completed", {
+      installationId: ctx.installationId,
+      statusCode: response.status,
+      externalRef: lookup.externalRef,
+      sku: lookup.sku,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Flipkart status sync failed with status ${response.status}.`);
+    }
+
+    const providerStatus = this.extractListingStatus(responseBody);
+    const mappedStatus = this.mapProviderStatus(providerStatus);
+    return {
+      externalRef: lookup.externalRef,
+      status: mappedStatus,
+      channelErrors:
+        mappedStatus === "REJECTED"
+          ? [
+              this.normaliseError(
+                this.extractErrorCode(responseBody),
+                this.extractErrorMessage(responseBody, providerStatus),
+              ),
+            ]
+          : [],
+      ...(mappedStatus === "PENDING" ? {} : { resolvedAt: new Date() }),
+    };
   }
 
   private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
@@ -655,6 +701,98 @@ export class FlipkartConnector implements ConnectorInterface {
       return issue.sellerMessage;
     }
     return `Flipkart publish failed with status ${statusCode}.`;
+  }
+
+  private parseStatusLookupRef(externalRef: string): { externalRef: string; sku: string } {
+    const value = String(externalRef ?? "").trim();
+    const parts = value.split("::");
+    if (parts.length >= 2) {
+      return {
+        externalRef: parts[0],
+        sku: parts[1],
+      };
+    }
+    return {
+      externalRef: value,
+      sku: "",
+    };
+  }
+
+  private extractListingStatus(responseBody: Record<string, unknown>): string {
+    const directStatus = this.readOptionalString(responseBody.status ?? responseBody.listingStatus);
+    if (directStatus) {
+      return directStatus.toUpperCase();
+    }
+
+    const listings = responseBody.listings;
+    if (Array.isArray(listings) && listings.length > 0) {
+      const first = listings[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const nestedStatus = this.readOptionalString(
+          (first as Record<string, unknown>).status ??
+            (first as Record<string, unknown>).listingStatus,
+        );
+        if (nestedStatus) {
+          return nestedStatus.toUpperCase();
+        }
+      }
+    }
+
+    return "PENDING";
+  }
+
+  private mapProviderStatus(status: string): SubmissionStatusUpdate["status"] {
+    if (status === "ACTIVE") {
+      return "SUCCESS";
+    }
+    if (status === "INACTIVE") {
+      return "SUPPRESSED";
+    }
+    if (status === "BLOCKED") {
+      return "REJECTED";
+    }
+    return "PENDING";
+  }
+
+  private extractErrorCode(responseBody: Record<string, unknown>): string {
+    const directCode = this.readOptionalString(responseBody.errorCode);
+    if (directCode) {
+      return directCode.toUpperCase();
+    }
+    const errors = responseBody.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const nestedCode = this.readOptionalString((first as Record<string, unknown>).errorCode);
+        if (nestedCode) {
+          return nestedCode.toUpperCase();
+        }
+      }
+    }
+    return "BLOCKED";
+  }
+
+  private extractErrorMessage(responseBody: Record<string, unknown>, providerStatus: string): string {
+    const directMessage = this.readOptionalString(responseBody.errorMessage ?? responseBody.message);
+    if (directMessage) {
+      return directMessage;
+    }
+    const errors = responseBody.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const nestedMessage = this.readOptionalString(
+          (first as Record<string, unknown>).errorMessage ??
+            (first as Record<string, unknown>).message,
+        );
+        if (nestedMessage) {
+          return nestedMessage;
+        }
+      }
+    }
+    return providerStatus === "BLOCKED"
+      ? "Flipkart blocked the listing during status sync."
+      : "Flipkart listing status could not be resolved.";
   }
 
   private buildRequestId(ctx: ConnectorContext, sku: string): string {

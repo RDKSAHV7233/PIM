@@ -50,6 +50,13 @@ export class SubmissionsController {
     return this.marketplaceService.getSubmissionIssues(submissionId);
   }
 
+  @Post(":id/sync")
+  @ApiOperation({ summary: "Sync a submission status from the provider" })
+  @ApiResponse({ status: 201, description: "Submission status synced" })
+  syncSubmission(@Param("id") submissionId: string) {
+    return this.marketplaceService.syncSubmissionStatus(submissionId);
+  }
+
   @Post(":id/retry")
   @ApiOperation({ summary: "Retry submission by requeuing underlying export job" })
   @ApiResponse({ status: 201, description: "Submission retry queued" })
