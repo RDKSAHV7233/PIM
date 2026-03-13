@@ -28,6 +28,7 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
   - The same workflow now uploads gate and rollout snapshot artifacts via `actions/upload-artifact@v4`.
   - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the deploy workflow still contains the required smoke, post-deploy, gate-signoff, rollout-snapshot, and artifact-upload steps.
+  - Added `scripts/validate-live-staging-evidence.cjs` plus `docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md` so the next live staging run can be validated mechanically instead of with a manual artifact read-through.
   - Remaining: execute the workflow against live staging and capture the resulting health-proof artifact plus the 14-day/SLO observation window.
 
 ### RISK-P0-002: Non-local auth hardening drift risk
@@ -68,6 +69,7 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
     - runs post-deploy auth/trust-boundary verification
     - records gate artifact via `record-gate-signoff.cjs`
   - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the workflow still runs those post-deploy and artifact-capture steps.
+  - Added `scripts/validate-live-staging-evidence.cjs` plus a runbook so the live workflow artifact bundle can be checked for gate shape, live `runUrl`, and healthy controlled-rollout proof before risk closure.
   - Updated `package.json` gate script so `APP_ENV=staging` can be passed at runtime (no dotenv override).
   - Gate artifact recorder already emits `environment`, `tenantId`, `date`, `gitTag`, and `runUrl`.
   - Remaining: verify on next GitHub Actions staging deployment run against the live staging URL and capture the resulting artifact/logs.

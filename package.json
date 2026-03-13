@@ -82,6 +82,8 @@
     "test:e2e:playwright:headed": "playwright test --config=playwright.config.cjs --headed",
     "test:e2e:playwright:ui": "playwright test --config=playwright.config.cjs --ui",
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
+    "test:staging:live-evidence": "node scripts/validate-live-staging-evidence.test.cjs",
+    "release:validate-live-staging-evidence": "node scripts/validate-live-staging-evidence.cjs",
     "governance:enforce": "dotenv -o -e .env -- node scripts/enforce-payload-governance.cjs",
     "guard:unsafe-raw": "node scripts/check-unsafe-raw-comments.cjs",
     "openapi:generate": "npm run build --workspace @pim1/api && node scripts/generate-openapi.cjs",
