@@ -823,6 +823,31 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Exact failing command: gh run view 23063902524 --repo RDKSAHV7233/PIM1 --log-failed. Failing output snippet: Apply migrations -> Error code P1012; Environment variable not found: DATABASE_URL. Likely file: .github/workflows/deploy-staging.yml."
+        },
+        {
+          "storyId": "ST-REL-RAILWAY-012",
+          "title": "Add Railway CLI support and token guard to the staging deploy workflow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "b9da11c",
+          "tests_passed": [
+            "node scripts/validate-deploy-staging-workflow.cjs"
+          ],
+          "scope": [
+            ".github/workflows/deploy-staging.yml",
+            "scripts/validate-deploy-staging-workflow.cjs",
+            "docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The staging workflow installs Railway CLI before the deploy step runs.",
+            "The deploy step receives RAILWAY_TOKEN and fails clearly when it is missing.",
+            "The workflow validator and live-evidence runbook both reflect the Railway-specific prerequisites."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Railway staging path selected after live run 23064730488 moved past migrations and stopped at the deploy step. The current workflow had no Railway CLI install step and no RAILWAY_TOKEN pass-through."
         }
       ]
     },
