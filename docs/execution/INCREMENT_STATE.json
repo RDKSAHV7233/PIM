@@ -604,6 +604,28 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Exact failing command: STAGING_BASE_URL=http://127.0.0.1:4000 STAGING_SMOKE_USER=admin@pim1.local STAGING_SMOKE_PASSWORD=*** STAGING_EXPECTED_ENV=development node scripts/staging-postdeploy-check.cjs. Failing output snippet: login failed: expected 201, got 404; payload={\"error\":\"WORKSPACE_NOT_FOUND\"}. Likely files: scripts/staging-postdeploy-check.cjs and .github/workflows/deploy-staging.yml."
+        },
+        {
+          "storyId": "ST-REL-AUTH-EVIDENCE-003",
+          "title": "Refresh RISK-P0-002 closure evidence after workspace-scoped login rollout",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "4df21a5",
+          "tests_passed": [
+            "npm run test:integration:auth-revocation",
+            "npm run test:integration:env-validation",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "scope": [
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "RISK-P0-002 closure evidence is refreshed after the INC-11 workspace-scoped login contract change.",
+            "The risk register records current passing auth-revocation and env-validation evidence.",
+            "Release-readiness governance reflects that the earlier stale auth proof has been re-verified."
+          ]
         }
       ]
     },
