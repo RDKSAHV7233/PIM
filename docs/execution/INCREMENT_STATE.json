@@ -770,6 +770,33 @@
             "The workflow guard fails if workflow_dispatch is removed later.",
             "The live staging evidence runbook uses the actual supported trigger path."
           ]
+        },
+        {
+          "storyId": "ST-REL-IDEMPOTENCY-010",
+          "title": "Repair connector idempotency semantics integration proof for the live Flipkart path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "b911dda",
+          "tests_passed": [
+            "npm run test:integration:connector-idempotency-semantics",
+            "npm run test:integration:auth-revocation",
+            "npm run test:integration:env-validation",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web"
+          ],
+          "scope": [
+            "apps/api/test/integration/connector-idempotency-semantics.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The connector idempotency semantics suite seeds a publishable live Flipkart retry fixture instead of relying on pre-live stub assumptions.",
+            "The suite proves stable idempotency keys, retry attempt increments, and cross-tenant allowance under the current live connector path.",
+            "The release push gate is green for auth revocation, connector idempotency semantics, env validation, and both workspace builds."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: npm run test:integration:connector-idempotency-semantics. Failing output snippet: expected completed on second attempt, got failed; API stderr tail: Marketplace export job failed during processing; error=\"Add a primary HTTPS image before publishing to Flipkart.\". Likely file: apps/api/test/integration/connector-idempotency-semantics.test.cjs."
         }
       ]
     },
