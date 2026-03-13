@@ -718,6 +718,33 @@
             "Release-risk documentation records that workflow wiring is locally guarded against regression.",
             "RISK-P0-001 and RISK-P0-003 remain open only for the external live staging run evidence, not for missing workflow structure."
           ]
+        },
+        {
+          "storyId": "ST-REL-LIVE-EVIDENCE-KIT-008",
+          "title": "Add a live staging evidence validator and operator runbook for the external proof path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "0bffd41",
+          "tests_passed": [
+            "npm run test:staging:live-evidence",
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "node --check scripts/validate-live-staging-evidence.cjs",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "scope": [
+            "scripts/validate-live-staging-evidence.cjs",
+            "scripts/validate-live-staging-evidence.test.cjs",
+            "package.json",
+            "docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md",
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "A local validator can confirm a downloaded staging artifact bundle includes a live GitHub Actions gate artifact and a healthy controlled-rollout snapshot.",
+            "A runbook documents the exact workflow trigger, artifact download, and validator commands needed for the next live staging run.",
+            "Release-risk documentation points to the new validator and runbook while keeping RISK-P0-001 and RISK-P0-003 open until live evidence exists."
+          ]
         }
       ]
     },
