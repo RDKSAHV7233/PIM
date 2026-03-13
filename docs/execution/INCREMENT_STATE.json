@@ -1122,6 +1122,34 @@
             "Marketplace submissions can be manually synced through the submissions API without introducing a new queue or scheduler path.",
             "A full integration proof covers live publish initiation followed by manual provider-backed status sync to a terminal submission state."
           ]
+        },
+        {
+          "storyId": "ST-FK-AUTO-SYNC-006",
+          "title": "Automatically requeue pending Flipkart submissions for provider-backed status resolution",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "98d7e82",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "node apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "node apps/api/test/integration/flipkart-auto-status-sync.test.cjs",
+            "npm run test:integration:worker-backpressure",
+            "npm run lint --workspace @pim1/api"
+          ],
+          "scope": [
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/queue/queue.service.ts",
+            "apps/api/test/integration/flipkart-auto-status-sync.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Pending Flipkart connector submissions schedule a bounded delayed status-sync job immediately after live publish initiation.",
+            "The existing connector-submission queue can execute both export-job work and connector status-sync work without introducing a new queue or scheduler.",
+            "Automatic Flipkart status resolution reuses the published submission SKU lookup and updates connector_submissions to a terminal state without manual intervention.",
+            "Worker backpressure validation still passes after delayed queue support is added to the shared queue service."
+          ]
         }
       ]
     },
