@@ -289,7 +289,56 @@ export class FlipkartConnector implements ConnectorInterface {
     product: ProductPayload,
     externalRef: string,
   ): Promise<SubmissionRef> {
-    throw new Error("Not implemented (P5-S4)");
+    const validation = await this.validateProduct(ctx, product);
+    if (!validation.isValid) {
+      throw new Error(validation.errors.map((issue) => issue.sellerMessage).join(" | "));
+    }
+
+    const requestId = this.buildRequestId(ctx, product.sku);
+    const endpoint = `${this.resolveApiBaseUrl()}/listings/v3/skus/listings/update`;
+    const payload = {
+      skuData: [this.buildListingPayload(product)],
+    };
+
+    this.logger.info("Flipkart update request started", {
+      installationId: ctx.installationId,
+      endpoint,
+      externalRef,
+      sku: product.sku,
+    });
+
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Flipkart-Request-Id": requestId,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseBody = await this.parseJsonResponse<FlipkartPublishResponse>(response);
+    this.logger.info("Flipkart update request completed", {
+      installationId: ctx.installationId,
+      statusCode: response.status,
+      externalRef,
+      sku: product.sku,
+    });
+
+    if (!response.ok) {
+      throw new Error(this.describePublishFailure(responseBody, response.status));
+    }
+
+    const providerStatus = String(responseBody.status ?? "").trim().toUpperCase();
+    if (providerStatus === "FAILURE") {
+      throw new Error(this.describePublishFailure(responseBody, response.status));
+    }
+
+    return {
+      externalRef: String(responseBody.requestId ?? externalRef ?? requestId),
+      status: "PENDING",
+      isAsync: true,
+    };
   }
 
   async syncSubmissionStatus(

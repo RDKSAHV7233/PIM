@@ -143,6 +143,11 @@ type ConnectorWorkerPayload =
       submissionId: string;
       connectorSlug?: string;
       attemptNumber?: number;
+    }
+  | {
+      mode: "submission-retry";
+      submissionId: string;
+      connectorSlug?: string;
     };
 
 const AUTO_STATUS_SYNC_DELAY_MS = 800;
@@ -963,7 +968,26 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async retrySubmission(submissionId: string) {
-    const submission = await this.getSubmission(submissionId) as { idempotencyKey: string; connectorSlug: string };
+    const submission = await this.getSubmission(submissionId) as {
+      idempotencyKey: string;
+      connectorSlug: string;
+      externalRef?: string | null;
+      source?: string | null;
+    };
+
+    if (this.shouldRetryThroughLiveUpdate(submission)) {
+      await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+        mode: "submission-retry",
+        submissionId,
+        connectorSlug: String(submission.connectorSlug ?? "").toLowerCase(),
+      } satisfies ConnectorWorkerPayload);
+      return {
+        queued: true,
+        submissionId,
+        mode: "live_update",
+      };
+    }
+
     const idempotencyKey = String(submission.idempotencyKey ?? "").trim();
     const delimiter = idempotencyKey.indexOf(":");
     if (delimiter <= 0) {
@@ -980,6 +1004,113 @@ export class MarketplaceService implements OnModuleInit {
       submissionId,
       exportJob: requeuedJob,
     };
+  }
+
+  private shouldRetryThroughLiveUpdate(submission: {
+    connectorSlug?: string | null;
+    externalRef?: string | null;
+    source?: string | null;
+  }): boolean {
+    const connectorSlug = String(submission.connectorSlug ?? "").trim().toLowerCase();
+    if (connectorSlug !== "flipkart") {
+      return false;
+    }
+    const externalRef = String(submission.externalRef ?? "").trim();
+    if (!externalRef) {
+      return false;
+    }
+    return String(submission.source ?? "").trim().toUpperCase() === "LIVE_API";
+  }
+
+  private async processLiveSubmissionRetry(submissionId: string) {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const submission = await this.getSubmission(submissionId) as {
+      idempotencyKey: string;
+      connectorSlug: string;
+      installationId: string;
+      productId: string;
+      externalRef: string | null;
+    };
+
+    if (!this.shouldRetryThroughLiveUpdate(submission)) {
+      throw new BadRequestException("Submission cannot be retried through the live connector update path.");
+    }
+
+    const idempotencyKey = String(submission.idempotencyKey ?? "").trim();
+    const delimiter = idempotencyKey.indexOf(":");
+    if (delimiter <= 0) {
+      throw new BadRequestException("Submission cannot be retried: invalid idempotency key format.");
+    }
+    const jobId = idempotencyKey.slice(0, delimiter);
+
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      String(submission.connectorSlug ?? "").toLowerCase(),
+    );
+    const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
+    const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
+
+    let recordedAttempt;
+    try {
+      const updateResult = await this.connectorFramework.update(
+        installation,
+        productPayload,
+        String(submission.externalRef ?? ""),
+      );
+      recordedAttempt = await this.connectorFramework.recordSubmissionAttempt({
+        installation,
+        productId: String(submission.productId),
+        jobId,
+        operation: "PUBLISH",
+        source: "LIVE_API",
+        status: updateResult.status,
+        externalRef: updateResult.externalRef,
+        payloadSnapshot,
+        channelErrors: [],
+      });
+
+      if (
+        updateResult.status === "PENDING" &&
+        updateResult.isAsync &&
+        installation.capabilities.includes("STATUS_SYNC")
+      ) {
+        await this.queueSubmissionStatusSync(recordedAttempt.id, installation.slug, 1);
+      }
+    } catch (error) {
+      recordedAttempt = await this.connectorFramework.recordSubmissionAttempt({
+        installation,
+        productId: String(submission.productId),
+        jobId,
+        operation: "PUBLISH",
+        source: "LIVE_API",
+        status: "ERROR",
+        payloadSnapshot,
+        channelErrors: [
+          {
+            code: "CONNECTOR_UPDATE_FAILED",
+            fieldPath: "",
+            severity: "error",
+            sellerMessage: this.toFailureReason(error),
+          },
+        ],
+      });
+      await this.emitConnectorOutcomeMetrics({
+        tenantKey,
+        connectorSlug: installation.slug,
+        submissionStatus: recordedAttempt.status,
+        attemptNumber: recordedAttempt.attemptNumber,
+      });
+      throw error;
+    }
+
+    await this.emitConnectorOutcomeMetrics({
+      tenantKey,
+      connectorSlug: installation.slug,
+      submissionStatus: recordedAttempt.status,
+      attemptNumber: recordedAttempt.attemptNumber,
+    });
+
+    return this.getSubmission(recordedAttempt.id);
   }
 
   async getExportJob(jobId: string) {
@@ -1140,6 +1271,15 @@ export class MarketplaceService implements OnModuleInit {
             submissionId,
             Math.max(1, Number(lanePayload.attemptNumber ?? 1)),
           );
+          return;
+        }
+
+        if (lanePayload.mode === "submission-retry") {
+          const submissionId = String(lanePayload.submissionId ?? "").trim();
+          if (!submissionId) {
+            return;
+          }
+          await this.processLiveSubmissionRetry(submissionId);
           return;
         }
 

@@ -150,6 +150,21 @@ export class ConnectorFrameworkService {
     return connector.publishProduct(this.buildContext(installation), product);
   }
 
+  async update(
+    installation: ConnectorInstallationRecord,
+    product: ProductPayload,
+    externalRef: string,
+  ): Promise<SubmissionRef> {
+    const connector = this.registry.getConnector(installation.slug);
+    if (!installation.capabilities.includes("PUBLISH")) {
+      throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+    }
+    if (!connector.updateProduct) {
+      throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+    }
+    return connector.updateProduct(this.buildContext(installation), product, externalRef);
+  }
+
   async syncStatus(
     installation: ConnectorInstallationRecord,
     externalRef: string,
