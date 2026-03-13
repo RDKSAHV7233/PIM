@@ -691,7 +691,7 @@ export class AuthService implements OnModuleDestroy {
     }
     const ipKey = String(ipAddress || "unknown").trim() || "unknown";
     const key = this.ipRateKey(ipKey);
-    const attempts = await client.incr(key);
+    const attempts = Number(await client.incr(key));
     if (attempts === 1) {
       await client.pExpire(key, this.ipWindowMs);
       return 0;
@@ -699,7 +699,7 @@ export class AuthService implements OnModuleDestroy {
     if (attempts <= this.ipAttemptLimit) {
       return 0;
     }
-    const ttlMs = await client.pTTL(key);
+    const ttlMs = Number(await client.pTTL(key));
     const effectiveTtlMs = ttlMs > 0 ? ttlMs : this.ipWindowMs;
     return Math.max(1, Math.ceil(effectiveTtlMs / 1000));
   }
@@ -710,7 +710,8 @@ export class AuthService implements OnModuleDestroy {
       try {
         const lockRaw = await this.redisClient.get(this.userLockKey(userKey));
         if (lockRaw) {
-          const lockedUntilMs = Number.parseInt(lockRaw, 10);
+          const lockText = String(lockRaw);
+          const lockedUntilMs = Number.parseInt(lockText, 10);
           if (Number.isFinite(lockedUntilMs) && lockedUntilMs > now) {
             return {
               failedAttempts: USER_ATTEMPT_LIMIT,
@@ -889,7 +890,7 @@ export class AuthService implements OnModuleDestroy {
     if (this.redisAvailable && this.redisClient) {
       try {
         const failedKey = this.userFailedKey(userKey);
-        const attempts = await this.redisClient.incr(failedKey);
+        const attempts = Number(await this.redisClient.incr(failedKey));
         if (attempts === 1) {
           await this.redisClient.pExpire(failedKey, ACCOUNT_LOCK_MS);
         }
@@ -970,7 +971,7 @@ export class AuthService implements OnModuleDestroy {
           retryAfterSeconds: 0,
         };
       }
-      const ttlMs = await this.redisClient.pTTL(resendKey);
+      const ttlMs = Number(await this.redisClient.pTTL(resendKey));
       const effectiveTtlMs = ttlMs > 0 ? ttlMs : RESEND_COOLDOWN_MS;
       return {
         ok: true,

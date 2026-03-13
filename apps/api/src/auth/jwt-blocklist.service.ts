@@ -183,7 +183,7 @@ export class JwtBlocklistService implements OnModuleDestroy {
     }
 
     try {
-      const exists = await this.redisClient.exists(this.keyForJti(normalizedJti));
+      const exists = Number(await this.redisClient.exists(this.keyForJti(normalizedJti)));
       const revoked = exists > 0;
       this.cache.set(normalizedJti, { value: revoked, expiresAtMs: nowMs + CACHE_TTL_MS });
       return revoked;

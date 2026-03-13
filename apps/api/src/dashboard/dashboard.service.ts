@@ -140,7 +140,8 @@ export class DashboardService implements OnModuleDestroy {
       if (!raw) {
         return null;
       }
-      const parsed = JSON.parse(raw) as T;
+      const rawText = String(raw);
+      const parsed = JSON.parse(rawText) as T;
       if (this.allowInMemoryFallbackCache) {
         this.writeFallbackCache(
           key,
