@@ -1065,6 +1065,33 @@
             "Flipkart validateProduct returns seller-readable LOCAL_RULES errors and warnings aligned with current field requirements.",
             "Flipkart normaliseError maps known provider codes to seller-readable messages with deterministic fallback handling."
           ]
+        },
+        {
+          "storyId": "ST-FK-PUBLISH-004",
+          "title": "Route queued Flipkart jobs through the real connector publish path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "1a03ec3",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "npm run test:integration:connector-capability-orchestration",
+            "npm run test:integration:connector-issue-contract",
+            "npm run lint --workspace @pim1/api"
+          ],
+          "scope": [
+            "apps/api/src/connectors/flipkart/flipkart.connector.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Flipkart publishProduct performs a real token-authenticated provider request and returns a deterministic external submission reference.",
+            "Marketplace export-job processing routes publish-capable Flipkart jobs through ConnectorFrameworkService.publish instead of recording a simulation-only pending row.",
+            "Connector submissions store LIVE_API source and provider externalRef for a successful Flipkart publish initiation.",
+            "The first end-to-end integration proof covers category setup, mapping publish, export-job processing, and live connector submission creation."
+          ]
         }
       ]
     },
