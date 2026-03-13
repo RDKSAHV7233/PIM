@@ -1092,6 +1092,36 @@
             "Connector submissions store LIVE_API source and provider externalRef for a successful Flipkart publish initiation.",
             "The first end-to-end integration proof covers category setup, mapping publish, export-job processing, and live connector submission creation."
           ]
+        },
+        {
+          "storyId": "ST-FK-STATUS-005",
+          "title": "Add manual Flipkart submission status sync on top of the live publish path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "ccf5ff7",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-publish-job.test.cjs",
+            "node apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "npm run test:integration:connector-capability-orchestration",
+            "npm run test:integration:connector-issue-contract",
+            "npm run lint --workspace @pim1/api"
+          ],
+          "scope": [
+            "apps/api/src/connector-framework/connector-framework.service.ts",
+            "apps/api/src/connectors/flipkart/flipkart.connector.ts",
+            "apps/api/src/marketplace/marketplace.service.ts",
+            "apps/api/src/marketplace/submissions.controller.ts",
+            "apps/api/test/integration/flipkart-status-sync.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "ConnectorFrameworkService exposes a bounded STATUS_SYNC execution path for connectors that support polling.",
+            "Flipkart syncSubmissionStatus polls the provider with the published SKU and maps provider states into connector submission statuses.",
+            "Marketplace submissions can be manually synced through the submissions API without introducing a new queue or scheduler path.",
+            "A full integration proof covers live publish initiation followed by manual provider-backed status sync to a terminal submission state."
+          ]
         }
       ]
     },
