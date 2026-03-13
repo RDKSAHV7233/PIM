@@ -5,6 +5,7 @@ const path = require("node:path");
 const net = require("node:net");
 const { randomUUID } = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
+const http = require("node:http");
 const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -140,6 +141,139 @@ function assert(condition, message) {
   }
 }
 
+function createFlipkartStub() {
+  const calls = {
+    oauth: [],
+    publish: [],
+  };
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/oauth-service/oauth/token") {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          const params = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+          calls.oauth.push({
+            grantType: params.get("grant_type") || "",
+            auth: String(req.headers.authorization || ""),
+          });
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              access_token: "stub-access-token",
+              expires_in: 3600,
+              token_type: "bearer",
+            }),
+          );
+        });
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/sellers/listings/v3/skus/listings/update") {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          const bodyText = Buffer.concat(chunks).toString("utf8");
+          let payload = {};
+          try {
+            payload = bodyText ? JSON.parse(bodyText) : {};
+          } catch {
+            payload = {};
+          }
+          calls.publish.push({
+            auth: String(req.headers.authorization || ""),
+            requestId: String(req.headers["x-flipkart-request-id"] || ""),
+            payload,
+          });
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              requestId: `fk-request-${calls.publish.length}`,
+              status: "SUCCESS",
+            }),
+          );
+        });
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Unable to resolve Flipkart stub address."));
+        return;
+      }
+      resolve({
+        server,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        calls,
+      });
+    });
+  });
+}
+
+async function seedCredentials(repoRoot, tenantKey, installationId) {
+  const { PrismaDirectService } = require(path.join(
+    repoRoot,
+    "apps",
+    "api",
+    "dist",
+    "prisma",
+    "prisma-direct.service.js",
+  ));
+  const { LoggerService } = require(path.join(
+    repoRoot,
+    "apps",
+    "api",
+    "dist",
+    "common",
+    "logging",
+    "logger.service.js",
+  ));
+  const { ConnectorCredentialEncryptionService } = require(path.join(
+    repoRoot,
+    "apps",
+    "api",
+    "dist",
+    "connector-installer",
+    "credential-encryption.service.js",
+  ));
+
+  const prismaDirect = new PrismaDirectService();
+  await prismaDirect.onModuleInit();
+  try {
+    const logger = new LoggerService();
+    const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_id",
+      plainValue: "flipkart-client-id",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_secret",
+      plainValue: "flipkart-client-secret",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "refresh_token",
+      plainValue: "flipkart-refresh-token",
+    });
+  } finally {
+    await prismaDirect.onModuleDestroy();
+  }
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -151,11 +285,13 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `idempotency-tenant-${runId}`;
   const userId = `idempotency-user-${runId}`;
+  const stub = await createFlipkartStub();
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_FLIPKART_OAUTH_BASE_URL: stub.baseUrl,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
       [userId]: { tenantId, role: "admin" },
     }),
@@ -222,6 +358,23 @@ async function run() {
       accountAlias: "primary",
     });
     assertStatus(installFlipkart, 201, "install flipkart connector");
+    await seedCredentials(REPO_ROOT, tenantId, String(installFlipkart.payload.id));
+
+    const createVariant = await apiRequest(
+      baseUrl,
+      "POST",
+      `/catalog/products/${product.payload.id}/variants`,
+      accessToken,
+      {
+        skuCode: `FK-IDEMP-${runId}`,
+        attributes: {},
+        mrp: 1999,
+        sellingPrice: 1499,
+        inventoryQty: 5,
+        status: "draft",
+      },
+    );
+    assertStatus(createVariant, 201, "create variant");
 
     const createJob = await apiRequest(
       baseUrl,
@@ -254,7 +407,12 @@ async function run() {
       description: "Now export-ready",
       hsnCode: "62046200",
       gstRate: 18,
-      attributes: { color: "black", size: "M", material: "cotton" },
+      attributes: {
+        color: "black",
+        size: "M",
+        material: "cotton",
+        mainImageUrl: "https://cdn.example.com/products/idempotency.jpg",
+      },
     });
     assertStatus(updateProduct, 200, "update product");
 
@@ -408,6 +566,7 @@ async function run() {
     }
     process.exitCode = 1;
   } finally {
+    await new Promise((resolve) => stub.server.close(() => resolve()));
     await prisma.$disconnect();
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
