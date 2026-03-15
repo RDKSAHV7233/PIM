@@ -882,8 +882,8 @@
         {
           "storyId": "ST-REL-RAILWAY-HARDEN-014",
           "title": "Harden Railway staging deploy workflow with explicit deploy script and queue smoke proof",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "e56d72b",
           "tests_passed": [
@@ -913,9 +913,9 @@
             "The staging post-deploy smoke verifies BullMQ queue runtime metadata and worker-enabled state from the health response.",
             "The staging env example and live-evidence runbook reflect Railway-specific base URLs and deploy secrets."
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": "Exact failing commands: node -e \"const fs=require('fs'); const YAML=require('yaml'); const parsed=YAML.parse(fs.readFileSync('.github/workflows/deploy-staging.yml','utf8')); const job=parsed.jobs['deploy-staging']; if (!job.concurrency) { throw new Error('deploy-staging job missing concurrency'); } if (!job.environment || job.environment !== 'staging') { throw new Error('deploy-staging job missing environment=staging'); } const deploy=(job.steps||[]).find(s=>s.name==='Deploy to staging'); if (!deploy || !String(deploy.run||'').includes('scripts/railway-deploy.cjs')) { throw new Error('deploy step still not pinned to checked-in railway deploy script'); }\" -> Error: deploy-staging job missing concurrency. node -e \"const fs=require('fs'); const text=fs.readFileSync('scripts/staging-postdeploy-check.cjs','utf8'); if (!/queues/.test(text) || !/QUEUE_WORKER_ENABLED|workerEnabled|worker_enabled/.test(text)) { throw new Error('staging postdeploy check does not assert queue worker readiness'); }\" -> Error: staging postdeploy check does not assert queue worker readiness. Likely files: .github/workflows/deploy-staging.yml and scripts/staging-postdeploy-check.cjs."
+          "reopened_by": "codex",
+          "reopened_reason": "Live Railway staging run used a lowercase environment name that does not match the actual Railway environment, so the hardened deploy workflow must be corrected and reverified.",
+          "regression_evidence": "Exact failing command: gh run view 23104456116 --repo RDKSAHV7233/PIM1 --log-failed. Failing output snippet: RAILWAY_ENVIRONMENT_NAME: staging ... Unauthorized. Please check that your RAILWAY_TOKEN is valid and has access to the resource you're trying to use. Railway API deploy failed with exit code 1. Likely file: .github/workflows/deploy-staging.yml."
         }
       ]
     },
