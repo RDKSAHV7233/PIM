@@ -878,6 +878,44 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": "Exact failing command: railway up .tmp/railway-api-service --service <api-service-id> --project <railway-project-id> --environment production --path-as-root --ci. Failing output snippet: TypeScript/packaging failures in auth.service.ts, jwt-blocklist.service.ts, dashboard.service.ts and missing Prisma schema in the API-only package. Likely files: apps/api/src/auth/auth.service.ts, apps/api/src/auth/jwt-blocklist.service.ts, apps/api/src/dashboard/dashboard.service.ts, scripts/prepare-railway-api-package.cjs."
+        },
+        {
+          "storyId": "ST-REL-RAILWAY-HARDEN-014",
+          "title": "Harden Railway staging deploy workflow with explicit deploy script and queue smoke proof",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "e56d72b",
+          "tests_passed": [
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "node scripts/railway-deploy.test.cjs",
+            "npm run test:staging:postdeploy-check",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web",
+            "npm run test:staging:live-evidence"
+          ],
+          "scope": [
+            ".github/workflows/deploy-staging.yml",
+            "scripts/railway-deploy.cjs",
+            "scripts/railway-deploy.test.cjs",
+            "scripts/staging-postdeploy-check.cjs",
+            "scripts/staging-postdeploy-check.test.cjs",
+            ".env.staging.example",
+            "docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md",
+            "scripts/validate-deploy-staging-workflow.cjs",
+            "apps/api/src/common/app.controller.ts",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The staging deploy workflow is serialized with concurrency and targets the staging environment boundary.",
+            "The deploy step uses a checked-in Railway deploy script with explicit project and service identifiers instead of eval.",
+            "The staging post-deploy smoke verifies BullMQ queue runtime metadata and worker-enabled state from the health response.",
+            "The staging env example and live-evidence runbook reflect Railway-specific base URLs and deploy secrets."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing commands: node -e \"const fs=require('fs'); const YAML=require('yaml'); const parsed=YAML.parse(fs.readFileSync('.github/workflows/deploy-staging.yml','utf8')); const job=parsed.jobs['deploy-staging']; if (!job.concurrency) { throw new Error('deploy-staging job missing concurrency'); } if (!job.environment || job.environment !== 'staging') { throw new Error('deploy-staging job missing environment=staging'); } const deploy=(job.steps||[]).find(s=>s.name==='Deploy to staging'); if (!deploy || !String(deploy.run||'').includes('scripts/railway-deploy.cjs')) { throw new Error('deploy step still not pinned to checked-in railway deploy script'); }\" -> Error: deploy-staging job missing concurrency. node -e \"const fs=require('fs'); const text=fs.readFileSync('scripts/staging-postdeploy-check.cjs','utf8'); if (!/queues/.test(text) || !/QUEUE_WORKER_ENABLED|workerEnabled|worker_enabled/.test(text)) { throw new Error('staging postdeploy check does not assert queue worker readiness'); }\" -> Error: staging postdeploy check does not assert queue worker readiness. Likely files: .github/workflows/deploy-staging.yml and scripts/staging-postdeploy-check.cjs."
         }
       ]
     },
