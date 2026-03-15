@@ -9,6 +9,10 @@ on:
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     env:
       APP_ENV: staging
     steps:
@@ -52,17 +56,12 @@ jobs:
         shell: bash
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          STAGING_DEPLOY_COMMAND: ${{ secrets.STAGING_DEPLOY_COMMAND }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_NAME: staging
         run: |
-          if [ -z "${RAILWAY_TOKEN}" ]; then
-            echo "Missing RAILWAY_TOKEN secret for staging deploy."
-            exit 1
-          fi
-          if [ -z "${STAGING_DEPLOY_COMMAND}" ]; then
-            echo "Missing STAGING_DEPLOY_COMMAND secret. Configure provider deploy command."
-            exit 1
-          fi
-          eval "${STAGING_DEPLOY_COMMAND}"
+          node scripts/railway-deploy.cjs
 
       - name: Staging smoke test
         shell: bash

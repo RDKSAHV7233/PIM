@@ -59,6 +59,10 @@ function main() {
   const jobs = workflow.jobs ?? {};
   const job = jobs["deploy-staging"];
   assert(job && typeof job === "object", "Missing deploy-staging job");
+  assert(job.environment === "staging", "deploy-staging job must target environment=staging");
+  assert(job.concurrency && typeof job.concurrency === "object", "deploy-staging job must define concurrency");
+  assert(String(job.concurrency.group ?? "").trim() === "deploy-staging", "deploy-staging concurrency group must be deploy-staging");
+  assert(job.concurrency["cancel-in-progress"] === false, "deploy-staging concurrency must not cancel in-progress deploys");
 
   const steps = Array.isArray(job.steps) ? job.steps : [];
   assert(steps.length > 0, "deploy-staging job has no steps");
@@ -83,10 +87,12 @@ function main() {
 
   const deployStep = requireStep(steps, "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_TOKEN", "Deploy to staging");
-  requireEnvVar(deployStep, "STAGING_DEPLOY_COMMAND", "Deploy to staging");
-  requireRunContains(deployStep, "Missing RAILWAY_TOKEN secret", "Deploy to staging");
-  requireRunContains(deployStep, "Missing STAGING_DEPLOY_COMMAND", "Deploy to staging");
-  requireRunContains(deployStep, "eval", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_API_SERVICE_ID", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_WEB_SERVICE_ID", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
+  requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
+  assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
 
   const smokeStep = requireStep(steps, "Staging smoke test");
   requireEnvVar(smokeStep, "STAGING_BASE_URL", "Staging smoke test");
@@ -130,10 +136,10 @@ function main() {
         workflow: ".github/workflows/deploy-staging.yml",
         validated: [
           "workflow_dispatch_trigger_present",
+          "deploy_job_serialized_with_environment_protection",
           "migration_step_has_database_secret_guard",
           "railway_cli_install_step_present_before_deploy",
-          "deploy_step_has_railway_token_env_and_guard",
-          "deploy_step_secret_guard_present",
+          "deploy_step_uses_checked_in_railway_script",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
           "gate_artifact_step_records_staging_postcheck_suite",

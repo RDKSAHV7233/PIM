@@ -29,6 +29,10 @@ export class AppController {
       },
       db_pool: dbPool,
       queues: queueMetrics,
+      queueRuntime: {
+        backend: this.queueService.getBackend(),
+        workerEnabled: this.queueService.isWorkerEnabled(),
+      },
     };
   }
 }

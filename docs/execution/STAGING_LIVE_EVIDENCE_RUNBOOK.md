@@ -22,15 +22,17 @@ gh auth status
 
 2. Repository secrets exist for the workflow:
    - `STAGING_DATABASE_URL_DIRECT` (preferred) or `STAGING_DATABASE_URL`
-   - `RAILWAY_TOKEN` when `STAGING_DEPLOY_COMMAND` uses Railway CLI
-   - `STAGING_DEPLOY_COMMAND`
+   - `RAILWAY_TOKEN`
+   - `RAILWAY_PROJECT_ID`
+   - `RAILWAY_API_SERVICE_ID`
+   - `RAILWAY_WEB_SERVICE_ID`
    - `STAGING_BASE_URL`
    - `STAGING_SMOKE_WORKSPACE`
    - `STAGING_SMOKE_USER`
    - `STAGING_SMOKE_PASSWORD`
    - `STAGING_SMOKE_TENANT_ID`
 
-3. If `STAGING_DEPLOY_COMMAND` uses Railway CLI, the workflow now installs `@railway/cli` on the runner before deploy and expects `RAILWAY_TOKEN` to be present.
+3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
 
 4. The target branch contains the current workflow guards:
 

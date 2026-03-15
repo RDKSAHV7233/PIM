@@ -19,7 +19,16 @@ async function main() {
 
     if (req.method === "GET" && url.pathname === "/api/v1/health") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", env: "development" }));
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          env: "development",
+          queueRuntime: {
+            backend: "bullmq",
+            workerEnabled: true,
+          },
+        }),
+      );
       return;
     }
 

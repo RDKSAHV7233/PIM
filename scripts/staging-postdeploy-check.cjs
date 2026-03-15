@@ -49,6 +49,14 @@ async function run() {
   if (String(health.payload.env ?? "") !== expectedEnv) {
     throw new Error(`health env mismatch: expected=${expectedEnv} got=${String(health.payload.env ?? "")}`);
   }
+  if (String(health.payload.queueRuntime?.backend ?? "") !== "bullmq") {
+    throw new Error(
+      `health queue backend mismatch: expected=bullmq got=${String(health.payload.queueRuntime?.backend ?? "")}`,
+    );
+  }
+  if (health.payload.queueRuntime?.workerEnabled !== true) {
+    throw new Error(`health queue worker not enabled: payload=${JSON.stringify(health.payload.queueRuntime ?? null)}`);
+  }
 
   const legacyHeaderProbe = await requestJson(baseUrl, "/api/v1/catalog/products", {
     headers: {
@@ -121,6 +129,8 @@ async function run() {
         validated: [
           "health_status_ok",
           "health_env_matches_staging",
+          "health_queue_backend_uses_bullmq",
+          "health_queue_worker_enabled",
           "legacy_headers_not_authoritative",
           "auth_login_uses_workspace_scoped_credentials",
           "auth_login_works_for_smoke_user",
