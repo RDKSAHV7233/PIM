@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-13 (release-governance hardening + rollout evidence automation refresh)
+Last updated: 2026-03-16 (live Railway staging evidence captured and governance closeout refreshed)
 
 ## P0 (Must close before production)
 
@@ -13,7 +13,8 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
   - Completed: 2 consecutive E10 signoff artifacts recorded (`E10-ST-QA-001-RUN3`, `E10-ST-QA-001-RUN4`).
   - Completed: local staging-format signoff artifact recorded (`INC08-STAGING-SIGNOFF-LOCAL`).
   - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
-  - Remaining: staging health response from live staging URL still pending explicit CI run evidence.
+  - Completed: live staging workflow run `23127921361` captured a healthy staging snapshot with `/api/v1/health` returning `env=staging`, queue runtime `backend=bullmq`, and `workerEnabled=true`.
+  - Completed: artifact `staging-gate-artifacts-23127921361` uploaded with digest `sha256:c2de34cd35af3cbac223b77885c37c8755424e6cdc3ea64a5ae3599fb615d537`.
   - Remaining: controlled rollout broad window not complete (14-day/SLO evidence).
 - Exit criteria:
   1. Two consecutive E10 signoff artifacts recorded.
@@ -22,15 +23,22 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
 - Validation commands:
   - `node scripts/record-gate-signoff.cjs --suite E10-... --tenantId SMOKE_TENANT_LOCAL --runUrl ...`
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
-  - Latest snapshot: `docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
-  - Latest signoff: `docs/execution/gates/2026-03-05T17-25-16.998Z_INC08-STAGING-SIGNOFF-LOCAL.json`
-- Implementation update (2026-03-13):
+  - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
+  - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
+  - Latest snapshot: artifact bundle `staging-gate-artifacts-23127921361` -> `rollout/2026-03-16T04-31-32.714Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
+- Implementation update (2026-03-16):
+  - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
+  - The uploaded rollout snapshot shows `controlledRollout.pending = []`.
+  - The staging deploy path is operational and verifiable again.
+  - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
   - The same workflow now uploads gate and rollout snapshot artifacts via `actions/upload-artifact@v4`.
   - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the deploy workflow still contains the required smoke, post-deploy, gate-signoff, rollout-snapshot, and artifact-upload steps.
   - Added `scripts/validate-live-staging-evidence.cjs` plus `docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md` so the next live staging run can be validated mechanically instead of with a manual artifact read-through.
   - `deploy-staging.yml` now also supports `workflow_dispatch`, so the evidence run can be triggered directly from GitHub CLI without a synthetic push to `main`.
-  - Remaining: execute the workflow against live staging and capture the resulting health-proof artifact plus the 14-day/SLO observation window.
+  - Remaining after this update: only the 14-day/SLO observation window.
 
 ### RISK-P0-002: Non-local auth hardening drift risk
 - Severity: P0
@@ -52,7 +60,7 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
 
 ### RISK-P0-003: Post-deploy verification too shallow
 - Severity: P0
-- Status: In Progress
+- Status: Closed
 - Owner: DevOps
 - Description: Staging deployment currently verifies health only; it should verify critical trust/isolation/reliability suites.
 - Exit criteria:
@@ -63,19 +71,21 @@ Last updated: 2026-03-13 (release-governance hardening + rollout evidence automa
   - `npm run test:staging:postdeploy-check`
   - `STAGING_BASE_URL=... STAGING_SMOKE_WORKSPACE=... STAGING_SMOKE_USER=... STAGING_SMOKE_PASSWORD=... STAGING_EXPECTED_ENV=staging node scripts/staging-postdeploy-check.cjs`
   - CI job execution proof in `.github/workflows/deploy-staging.yml` logs.
-  - Implementation update (2026-03-13):
-    - Added `scripts/staging-postdeploy-check.cjs`.
-    - Added local script coverage for smoke-user logout + revoked-token rejection.
-    - Updated `.github/workflows/deploy-staging.yml`:
-      - runs post-deploy auth/trust-boundary verification
-      - records gate artifact via `record-gate-signoff.cjs`
-      - supports `workflow_dispatch` for direct evidence runs
-      - passes staging database secrets into the migration step via the repo-standard `npm run prisma:migrate:deploy` wrapper
-    - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the workflow still runs those post-deploy and artifact-capture steps.
-  - Added `scripts/validate-live-staging-evidence.cjs` plus a runbook so the live workflow artifact bundle can be checked for gate shape, live `runUrl`, and healthy controlled-rollout proof before risk closure.
-  - Updated `package.json` gate script so `APP_ENV=staging` can be passed at runtime (no dotenv override).
-  - Gate artifact recorder already emits `environment`, `tenantId`, `date`, `gitTag`, and `runUrl`.
-  - Remaining: verify on next GitHub Actions staging deployment run against the live staging URL and capture the resulting artifact/logs.
+- Validation evidence (2026-03-16):
+  - GitHub Actions run `23127921361` passed all required staging steps:
+    - `Deploy to staging`
+    - `Staging smoke test`
+    - `Staging post-deploy verification (auth + trust boundary)`
+    - `Record staging gate artifact`
+    - `Capture controlled rollout snapshot`
+    - `Upload staging gate artifacts`
+  - Gate artifact `2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json` recorded:
+    - `environment=staging`
+    - `tenantId=staging-smoke`
+    - `date=2026-03-16T04:31:32.674Z`
+    - `gitTag=sha-ab4ffd9`
+    - `runUrl=https://github.com/RDKSAHV7233/PIM1/actions/runs/23127921361`
+  - Uploaded artifact `staging-gate-artifacts-23127921361` is present, digest-backed, and unexpired.
 
 ## P1 (Before scale / broad pilot)
 

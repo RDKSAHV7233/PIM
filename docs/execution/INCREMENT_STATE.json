@@ -2,7 +2,7 @@
   "meta": {
     "project": "PIM1",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-03-11",
+    "lastUpdated": "2026-03-16",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -281,11 +281,9 @@
     {
       "incrementId": "INC-05",
       "name": "Ops and Observability",
-      "status": "in_progress",
+      "status": "completed",
       "deliveryStatus": "completed",
-      "pendingReleaseItems": [
-        "RISK-P0-003 post-deploy verification live proof pending"
-      ],
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/E7_PARTIAL_ST-OPS-001_EXECUTION_2026-03-03.md",
         "docs/execution/E7_PARTIAL_ST-OPS-002_EXECUTION_2026-03-03.md",
@@ -295,7 +293,9 @@
         "docs/execution/gates/2026-03-05T16-49-35.077Z_INC05-OPS-GATE.json",
         "docs/execution/rollout/2026-03-05T16-49-14.526Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
         "docs/execution/gates/2026-03-06T10-34-28.391Z_E10-ST-QA-001-RUN5.json",
-        "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
+        "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
+        "https://github.com/RDKSAHV7233/PIM1/actions/runs/23127921361",
+        "artifact:staging-gate-artifacts-23127921361"
       ],
       "stories": [
         {
@@ -478,7 +478,8 @@
       "status": "in_progress",
       "deliveryStatus": "completed",
       "pendingReleaseItems": [
-        "RISK-P0-001 live staging health proof and 14-day broad rollout observation pending"
+        "RISK-P0-001 14-day broad rollout observation window pending",
+        "RISK-P0-001 production SLO trend evidence window pending"
       ],
       "evidence": [
         "docs/execution/E10_STORIES_EXECUTION_2026-03-03.md",
@@ -487,7 +488,9 @@
         "docs/execution/rollout/2026-03-05T17-27-33.754Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
         "docs/execution/gates/2026-03-06T10-34-28.391Z_E10-ST-QA-001-RUN5.json",
         "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
-        "docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
+        "docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
+        "https://github.com/RDKSAHV7233/PIM1/actions/runs/23127921361",
+        "artifact:staging-gate-artifacts-23127921361"
       ],
       "stories": [
         {
@@ -882,10 +885,10 @@
         {
           "storyId": "ST-REL-RAILWAY-HARDEN-014",
           "title": "Harden Railway staging deploy workflow with explicit deploy script and queue smoke proof",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "e56d72b",
+          "commit": "ab4ffd9",
           "tests_passed": [
             "node scripts/validate-deploy-staging-workflow.cjs",
             "node scripts/railway-deploy.test.cjs",
@@ -893,7 +896,9 @@
             "npx tsc -p apps/api/tsconfig.build.json --noEmit",
             "npm run build --workspace @pim1/api",
             "npm run build --workspace @pim1/web",
-            "npm run test:staging:live-evidence"
+            "npm run test:staging:live-evidence",
+            "gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs",
+            "gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts"
           ],
           "scope": [
             ".github/workflows/deploy-staging.yml",
