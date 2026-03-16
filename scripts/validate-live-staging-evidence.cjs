@@ -105,6 +105,14 @@ function isGithubRunUrl(value) {
   return /^https:\/\/github\.com\/.+\/actions\/runs\/\d+$/i.test(String(value ?? "").trim());
 }
 
+function isHealthyStatus(value) {
+  if (typeof value === "number") {
+    return value >= 200 && value < 300;
+  }
+
+  return String(value ?? "").trim().toLowerCase() === "ok";
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = path.resolve(__dirname, "..");
@@ -158,7 +166,10 @@ function main() {
   const latestRollout = chooseLatest(rolloutCandidates, "capturedAt");
   assert(latestRollout, "Unable to select latest rollout snapshot");
   assert(latestRollout.json.health?.ok === true, "Rollout snapshot health.ok is not true");
-  assert(String(latestRollout.json.health?.status ?? "").toLowerCase() === "ok", `Rollout snapshot health.status is not ok: ${latestRollout.json.health?.status}`);
+  assert(
+    isHealthyStatus(latestRollout.json.health?.status),
+    `Rollout snapshot health.status is not ok: ${latestRollout.json.health?.status}`,
+  );
   assert(
     Array.isArray(latestRollout.json.controlledRollout?.pending) && latestRollout.json.controlledRollout.pending.length === 0,
     `Controlled rollout still has pending blockers: ${(latestRollout.json.controlledRollout?.pending || []).join("; ")}`,

@@ -69,6 +69,44 @@ function main() {
   assert(passJson.mode === "controlled_ready_evidence", "Expected controlled-ready mode by default");
   assert(Array.isArray(passJson.broadPending) && passJson.broadPending.length === 1, "Expected broad pending note to be preserved");
 
+  writeJson(path.join(gatesDir, "2026-03-13T12-06-00.000Z_STAGING_DEPLOY_POSTCHECK_NUMERIC.json"), {
+    environment: "staging",
+    tenantId: "SMOKE_TENANT",
+    date: "2026-03-13T12:06:00.000Z",
+    gitTag: "sha-abcdef9",
+    runUrl: "https://github.com/example/pim1/actions/runs/123456790",
+    suite: "STAGING_DEPLOY_POSTCHECK",
+  });
+
+  writeJson(path.join(rolloutDir, "2026-03-13T12-06-30.000Z_CONTROLLED_ROLLOUT_SNAPSHOT_NUMERIC.json"), {
+    capturedAt: "2026-03-13T12:06:30.000Z",
+    environment: "staging",
+    tenantId: "SMOKE_TENANT",
+    apiBase: "https://staging.example.com/api/v1",
+    health: {
+      ok: true,
+      status: 200,
+      body: { status: "ok", env: "staging" },
+      error: null,
+    },
+    controlledRollout: {
+      pending: [],
+    },
+    broadRollout: {
+      pending: [
+        "14-day controlled rollout observation window not complete.",
+      ],
+    },
+  });
+
+  const numericRun = runValidator(["--artifactDir", artifactDir, "--tenantId", "SMOKE_TENANT"], tempRoot);
+  assert(
+    numericRun.status === 0,
+    `Expected validator pass with numeric health.status, got status=${numericRun.status} stderr=${numericRun.stderr}`,
+  );
+  const numericJson = JSON.parse(numericRun.stdout);
+  assert(numericJson.rolloutSnapshot.health.status === 200, "Expected numeric health.status to be preserved");
+
   writeJson(path.join(gatesDir, "2026-03-13T12-10-00.000Z_STAGING_DEPLOY_POSTCHECK_BAD.json"), {
     environment: "staging",
     tenantId: "SMOKE_TENANT",
