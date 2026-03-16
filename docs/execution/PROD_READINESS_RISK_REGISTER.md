@@ -32,8 +32,10 @@ Last updated: 2026-03-16 (live Railway staging evidence captured and governance 
   - The uploaded rollout snapshot shows `controlledRollout.pending = []`.
   - The staging deploy path is operational and verifiable again.
   - Broad-rollout coverage is now computed from actual evidence days instead of hardcoded placeholders.
+  - Daily workflow `.github/workflows/capture-daily-rollout-evidence.yml` now records a staging gate artifact plus rollout snapshot on schedule and persists the JSON evidence back into the repo.
+  - Daily evidence run `23129106401` succeeded, uploaded artifact `daily-rollout-evidence-23129106401`, and persisted bot commit `67564b5`.
   - Latest validation against live staging evidence (2026-03-16) shows:
-    - controlled rollout observation coverage: `4 / 14` required days
+    - controlled rollout observation coverage: `5 / 14` required days
     - production SLO trend evidence coverage: `5 / 14` required days
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):

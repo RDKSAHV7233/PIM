@@ -490,7 +490,10 @@
         "docs/execution/rollout/2026-03-06T10-34-28.462Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
         "docs/execution/rollout/2026-03-07T04-07-09.334Z_CONTROLLED_ROLLOUT_SNAPSHOT.json",
         "https://github.com/RDKSAHV7233/PIM1/actions/runs/23127921361",
-        "artifact:staging-gate-artifacts-23127921361"
+        "artifact:staging-gate-artifacts-23127921361",
+        "https://github.com/RDKSAHV7233/PIM1/actions/runs/23129106401",
+        "artifact:daily-rollout-evidence-23129106401",
+        "commit:67564b5"
       ],
       "stories": [
         {
@@ -930,6 +933,36 @@
           "reopened_by": "codex",
           "reopened_reason": "Live Railway staging run used a lowercase environment name that does not match the actual Railway environment, so the hardened deploy workflow must be corrected and reverified.",
           "regression_evidence": "Exact failing command: gh run view 23104456116 --repo RDKSAHV7233/PIM1 --log-failed. Failing output snippet: RAILWAY_ENVIRONMENT_NAME: staging ... Unauthorized. Please check that your RAILWAY_TOKEN is valid and has access to the resource you're trying to use. Railway API deploy failed with exit code 1. Likely file: .github/workflows/deploy-staging.yml."
+        },
+        {
+          "storyId": "ST-REL-DAILY-EVIDENCE-015",
+          "title": "Automate daily broad-rollout evidence capture and repo persistence",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "69e1ad8",
+          "tests_passed": [
+            "node scripts/validate-daily-rollout-evidence-workflow.cjs",
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "node scripts/capture-controlled-rollout-snapshot.test.cjs",
+            "gh run view 23129106401 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,jobs,headSha",
+            "gh api repos/RDKSAHV7233/PIM1/actions/runs/23129106401/artifacts",
+            "node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId staging-smoke --apiBase https://api-staging-4faf.up.railway.app/api/v1 --gatesDir docs/execution/gates --rolloutDir .tmp/rollout-validation"
+          ],
+          "scope": [
+            ".github/workflows/deploy-staging.yml",
+            ".github/workflows/capture-daily-rollout-evidence.yml",
+            "scripts/validate-daily-rollout-evidence-workflow.cjs",
+            "docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md",
+            "docs/execution/PROD_READINESS_RISK_REGISTER.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "A daily GitHub Actions workflow records a staging gate artifact and rollout snapshot on schedule and via workflow_dispatch.",
+            "The workflow uploads the daily evidence bundle and commits the generated JSON evidence back into docs/execution/gates and docs/execution/rollout.",
+            "deploy-staging ignores evidence-only bot commits so daily evidence capture does not recursively redeploy staging.",
+            "Broad-rollout blockers are now driven by measured evidence-day coverage rather than manual-only collection."
+          ]
         }
       ]
     },
