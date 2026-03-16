@@ -4,7 +4,11 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 
-const { buildDeployCommands, resolveConfig } = require("./railway-deploy.cjs");
+const {
+  buildDeployCommands,
+  isRetryableRailwayDeployError,
+  resolveConfig,
+} = require("./railway-deploy.cjs");
 
 function main() {
   const repoRoot = path.resolve(__dirname, "..");
@@ -27,6 +31,8 @@ function main() {
   assert.equal(config.environmentName, "staging");
   assert.equal(path.relative(repoRoot, config.apiSourcePath), path.join(".tmp", "railway-api-service"));
   assert.equal(path.relative(repoRoot, config.webSourcePath), "");
+  assert.equal(config.deployRetries, 3);
+  assert.equal(config.deployRetryDelayMs, 5000);
 
   const commands = buildDeployCommands(config);
   assert.equal(commands.length, 2, "Expected API and Web deploy commands");
@@ -54,6 +60,23 @@ function main() {
     "--path-as-root",
     "--ci",
   ]);
+
+  assert.equal(
+    isRetryableRailwayDeployError({
+      message: "Railway API deploy failed with exit code 1",
+      stderr: "error sending request for url\nCaused by:\n    operation timed out",
+    }),
+    true,
+    "Timeout upload failures should be retryable",
+  );
+  assert.equal(
+    isRetryableRailwayDeployError({
+      message: "Railway API deploy failed with exit code 1",
+      stderr: "Unauthorized. Please check that your RAILWAY_TOKEN is valid.",
+    }),
+    false,
+    "Non-timeout Railway failures should not be retried",
+  );
 
   console.log("railway-deploy.test.cjs: PASS");
 }

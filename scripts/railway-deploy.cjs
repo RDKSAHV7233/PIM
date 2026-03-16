@@ -21,6 +21,8 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
   const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".").trim() || ".");
   const railwayBin = String(env.RAILWAY_CLI_BIN ?? "railway").trim() || "railway";
+  const deployRetries = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRIES ?? "3"), 10);
+  const deployRetryDelayMs = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRY_DELAY_MS ?? "5000"), 10);
 
   return {
     repoRoot,
@@ -31,6 +33,8 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
     apiSourcePath,
     webSourcePath,
     railwayBin,
+    deployRetries: Number.isFinite(deployRetries) ? Math.max(1, deployRetries) : 3,
+    deployRetryDelayMs: Number.isFinite(deployRetryDelayMs) ? Math.max(0, deployRetryDelayMs) : 5000,
   };
 }
 
@@ -75,13 +79,63 @@ function runCommand(command, args, options) {
   const result = childProcess.spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
-    stdio: "inherit",
+    encoding: "utf8",
   });
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`${options.label} failed with exit code ${result.status}`);
+    const error = new Error(`${options.label} failed with exit code ${result.status}`);
+    error.stdout = result.stdout;
+    error.stderr = result.stderr;
+    error.combinedOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+    throw error;
+  }
+}
+
+function isRetryableRailwayDeployError(error) {
+  const combined = [
+    error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.stdout ?? "") : "",
+    error && typeof error === "object" ? String(error.stderr ?? "") : "",
+    error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return combined.includes("operation timed out") || combined.includes("error sending request for url");
+}
+
+function sleep(ms) {
+  if (ms <= 0) {
+    return;
+  }
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function runDeployCommandWithRetry(command, options) {
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
+    try {
+      runCommand(command.binary, command.args, {
+        cwd: options.cwd,
+        env: options.env,
+        label: command.label,
+      });
+      return;
+    } catch (error) {
+      if (!isRetryableRailwayDeployError(error) || attempt === options.maxAttempts) {
+        throw error;
+      }
+      console.warn(
+        `[railway-deploy] ${command.label} timed out on attempt ${attempt}/${options.maxAttempts}. Retrying in ${options.retryDelayMs}ms...`,
+      );
+      sleep(options.retryDelayMs);
+    }
   }
 }
 
@@ -110,11 +164,19 @@ function main(env = process.env) {
 
   for (const command of buildDeployCommands(config)) {
     console.log(`[railway-deploy] Deploying ${command.label} service...`);
-    runCommand(config.railwayBin, command.args, {
-      cwd: repoRoot,
-      env,
-      label: `Railway ${command.label} deploy`,
-    });
+    runDeployCommandWithRetry(
+      {
+        binary: config.railwayBin,
+        args: command.args,
+        label: `Railway ${command.label} deploy`,
+      },
+      {
+        cwd: repoRoot,
+        env,
+        maxAttempts: config.deployRetries,
+        retryDelayMs: config.deployRetryDelayMs,
+      },
+    );
   }
 }
 
@@ -129,6 +191,8 @@ if (require.main === module) {
 
 module.exports = {
   buildDeployCommands,
+  isRetryableRailwayDeployError,
   main,
   resolveConfig,
+  runDeployCommandWithRetry,
 };
