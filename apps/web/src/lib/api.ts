@@ -847,6 +847,18 @@ export class ApiHttpError extends Error {
   readonly status: number;
   readonly body: unknown;
 
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    const candidate = value as { name?: unknown; status?: unknown; body?: unknown };
+    return (
+      candidate.name === "ApiHttpError" &&
+      typeof candidate.status === "number" &&
+      "body" in candidate
+    );
+  }
+
   constructor(status: number, body: unknown, fallbackMessage: string) {
     const message =
       typeof body === "string"
@@ -858,6 +870,7 @@ export class ApiHttpError extends Error {
     this.name = "ApiHttpError";
     this.status = status;
     this.body = body;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
