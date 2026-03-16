@@ -12,6 +12,23 @@ Purpose: collect the external proof needed to close `RISK-P0-003` and advance `R
 - Remaining after a single successful run:
   - the 14-day / SLO broad-rollout observation window still remains open
 
+## Daily broad-rollout automation
+
+Broad-rollout evidence now has a dedicated workflow:
+
+- `.github/workflows/capture-daily-rollout-evidence.yml`
+
+It runs on a daily schedule and on `workflow_dispatch`, then:
+
+1. records a `STAGING_BROAD_ROLLOUT_DAILY` gate artifact
+2. captures the current staging rollout snapshot
+3. uploads the generated evidence as a workflow artifact
+4. commits the new JSON evidence back into:
+   - `docs/execution/gates/`
+   - `docs/execution/rollout/`
+
+The `deploy-staging.yml` push trigger now ignores those evidence paths so the daily bot commit does not recursively redeploy staging.
+
 ## Preconditions
 
 1. GitHub CLI is authenticated:
@@ -98,6 +115,8 @@ node scripts/validate-live-staging-evidence.cjs --artifactDir $artifactDir --env
 ### Expected partial state after the first live run
 
 The validator should still report `broadPending` items until the 14-day/SLO window is complete. That is expected and should not block closure of `RISK-P0-003`.
+
+The rollout snapshot now computes those `broadPending` items from actual evidence-day coverage rather than fixed placeholder text.
 
 ## Attach to the release record
 
