@@ -725,12 +725,13 @@
         {
           "storyId": "ST-REL-LIVE-EVIDENCE-KIT-008",
           "title": "Add a live staging evidence validator and operator runbook for the external proof path",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "0bffd41",
+          "commit": "6d3b6dc",
           "tests_passed": [
                                                  "npm run test:staging:live-evidence",
+                                                 "node scripts/validate-live-staging-evidence.cjs --artifactDir .tmp/staging-run-23127921361",
                                                  "node scripts/validate-deploy-staging-workflow.cjs",
                                                  "node --check scripts/validate-live-staging-evidence.cjs",
                                                  "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
