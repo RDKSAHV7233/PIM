@@ -15,6 +15,8 @@ function parseArgs(argv) {
     tenantId: "SMOKE_TENANT_LOCAL",
     windowDays: 14,
     timeoutMs: 5000,
+    gatesDir: GATES_DIR,
+    rolloutDir: OUTPUT_DIR,
   };
   while (args.length > 0) {
     const token = args.shift();
@@ -33,6 +35,12 @@ function parseArgs(argv) {
         break;
       case "--timeoutMs":
         parsed.timeoutMs = Number.parseInt(String(args.shift() || parsed.timeoutMs), 10);
+        break;
+      case "--gatesDir":
+        parsed.gatesDir = path.resolve(String(args.shift() || parsed.gatesDir).trim());
+        break;
+      case "--rolloutDir":
+        parsed.rolloutDir = path.resolve(String(args.shift() || parsed.rolloutDir).trim());
         break;
       default:
         throw new Error(`Unknown argument: ${token}`);
@@ -60,15 +68,15 @@ function parseJsonFile(filePath) {
   }
 }
 
-function loadGateArtifacts(environment, sinceUtcMs) {
-  if (!fs.existsSync(GATES_DIR)) {
+function loadGateArtifacts(environment, sinceUtcMs, gatesDir = GATES_DIR) {
+  if (!fs.existsSync(gatesDir)) {
     return [];
   }
   const entries = fs
-    .readdirSync(GATES_DIR)
+    .readdirSync(gatesDir)
     .filter((name) => name.toLowerCase().endsWith(".json"))
     .map((name) => {
-      const fullPath = path.join(GATES_DIR, name);
+      const fullPath = path.join(gatesDir, name);
       const parsed = parseJsonFile(fullPath);
       if (!parsed || typeof parsed !== "object") {
         return null;
@@ -99,15 +107,15 @@ function loadGateArtifacts(environment, sinceUtcMs) {
   return entries;
 }
 
-function loadAllArtifactsInWindow(sinceUtcMs) {
-  if (!fs.existsSync(GATES_DIR)) {
+function loadAllArtifactsInWindow(sinceUtcMs, gatesDir = GATES_DIR) {
+  if (!fs.existsSync(gatesDir)) {
     return [];
   }
   return fs
-    .readdirSync(GATES_DIR)
+    .readdirSync(gatesDir)
     .filter((name) => name.toLowerCase().endsWith(".json"))
     .map((name) => {
-      const fullPath = path.join(GATES_DIR, name);
+      const fullPath = path.join(gatesDir, name);
       const parsed = parseJsonFile(fullPath);
       if (!parsed || typeof parsed !== "object") {
         return null;
@@ -127,6 +135,41 @@ function loadAllArtifactsInWindow(sinceUtcMs) {
     .sort((left, right) => (right.dateMs || 0) - (left.dateMs || 0));
 }
 
+function loadRolloutSnapshots(environment, sinceUtcMs, rolloutDir) {
+  if (!fs.existsSync(rolloutDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(rolloutDir)
+    .filter((name) => name.toLowerCase().endsWith(".json"))
+    .map((name) => {
+      const fullPath = path.join(rolloutDir, name);
+      const parsed = parseJsonFile(fullPath);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+      const environmentText = String(parsed.environment || "").trim().toLowerCase();
+      if (!environmentText || environmentText !== environment) {
+        return null;
+      }
+      const capturedAt = String(parsed.capturedAt || "").trim();
+      const capturedAtMs = Date.parse(capturedAt);
+      if (!Number.isFinite(capturedAtMs) || capturedAtMs < sinceUtcMs) {
+        return null;
+      }
+      return {
+        name,
+        path: fullPath,
+        snapshot: parsed,
+        capturedAt,
+        capturedAtMs,
+      };
+    })
+    .filter((item) => item !== null)
+    .sort((left, right) => (right.capturedAtMs || 0) - (left.capturedAtMs || 0));
+}
+
 function extractConsecutiveE10Runs(artifacts) {
   const e10Runs = artifacts.filter((entry) => {
     const suite = String(entry.artifact.suite || "");
@@ -138,6 +181,26 @@ function extractConsecutiveE10Runs(artifacts) {
 function hasArtifact(artifacts, pattern) {
   const matcher = new RegExp(pattern, "i");
   return artifacts.some((entry) => matcher.test(entry.name) || matcher.test(String(entry.artifact.suite || "")));
+}
+
+function toUtcDayString(dateValue) {
+  return new Date(dateValue).toISOString().slice(0, 10);
+}
+
+function countDistinctUtcDays(entries, getDateValue) {
+  const days = new Set();
+  for (const entry of entries) {
+    const value = getDateValue(entry);
+    if (value === null || value === undefined) {
+      continue;
+    }
+    const dateMs = typeof value === "number" ? value : Date.parse(String(value));
+    if (!Number.isFinite(dateMs)) {
+      continue;
+    }
+    days.add(toUtcDayString(dateMs));
+  }
+  return days;
 }
 
 async function fetchHealth(apiBase, timeoutMs) {
@@ -181,12 +244,16 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const now = new Date();
   const since = new Date(now.getTime() - args.windowDays * 24 * 60 * 60 * 1000);
-  const signoffArtifacts = loadGateArtifacts(args.environment, since.getTime());
-  const allArtifacts = loadAllArtifactsInWindow(since.getTime());
+  const signoffArtifacts = loadGateArtifacts(args.environment, since.getTime(), args.gatesDir);
+  const allArtifacts = loadAllArtifactsInWindow(since.getTime(), args.gatesDir);
+  const historicalRolloutSnapshots = loadRolloutSnapshots(args.environment, since.getTime(), args.rolloutDir);
   const consecutiveE10 = extractConsecutiveE10Runs(signoffArtifacts);
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
   const reportedEnv = String(health?.body?.env || "").trim().toLowerCase();
   const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
+  const observationWindowDays = countDistinctUtcDays(signoffArtifacts, (entry) => entry.dateMs);
+  const sloWindowDays = countDistinctUtcDays(historicalRolloutSnapshots, (entry) => entry.capturedAtMs);
+  sloWindowDays.add(toUtcDayString(now.getTime()));
 
   const snapshot = {
     capturedAt: now.toISOString(),
@@ -211,10 +278,15 @@ async function main() {
       pending: [],
     },
     broadRollout: {
-      pending: [
-        "14-day controlled rollout observation window not complete.",
-        "Production SLO trend evidence window not complete.",
-      ],
+      criteria: {
+        observationWindowDaysCovered: observationWindowDays.size,
+        observationWindowDaysRequired: args.windowDays,
+        observationWindowComplete: observationWindowDays.size >= args.windowDays,
+        sloTrendDaysCovered: sloWindowDays.size,
+        sloTrendDaysRequired: args.windowDays,
+        sloTrendWindowComplete: sloWindowDays.size >= args.windowDays,
+      },
+      pending: [],
     },
   };
 
@@ -242,9 +314,20 @@ async function main() {
       );
     }
   }
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  if (!snapshot.broadRollout.criteria.observationWindowComplete) {
+    snapshot.broadRollout.pending.push(
+      `Controlled rollout observation window covers ${snapshot.broadRollout.criteria.observationWindowDaysCovered} of ${snapshot.broadRollout.criteria.observationWindowDaysRequired} required days.`,
+    );
+  }
+  if (!snapshot.broadRollout.criteria.sloTrendWindowComplete) {
+    snapshot.broadRollout.pending.push(
+      `Production SLO trend evidence covers ${snapshot.broadRollout.criteria.sloTrendDaysCovered} of ${snapshot.broadRollout.criteria.sloTrendDaysRequired} required days.`,
+    );
+  }
+
+  fs.mkdirSync(args.rolloutDir, { recursive: true });
   const stamp = now.toISOString().replace(/[:]/g, "-");
-  const outputPath = path.join(OUTPUT_DIR, `${stamp}_CONTROLLED_ROLLOUT_SNAPSHOT.json`);
+  const outputPath = path.join(args.rolloutDir, `${stamp}_CONTROLLED_ROLLOUT_SNAPSHOT.json`);
   fs.writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
 
   console.log(

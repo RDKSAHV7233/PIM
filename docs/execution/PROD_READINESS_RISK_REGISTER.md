@@ -31,6 +31,10 @@ Last updated: 2026-03-16 (live Railway staging evidence captured and governance 
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
   - The uploaded rollout snapshot shows `controlledRollout.pending = []`.
   - The staging deploy path is operational and verifiable again.
+  - Broad-rollout coverage is now computed from actual evidence days instead of hardcoded placeholders.
+  - Latest validation against live staging evidence (2026-03-16) shows:
+    - controlled rollout observation coverage: `4 / 14` required days
+    - production SLO trend evidence coverage: `5 / 14` required days
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
