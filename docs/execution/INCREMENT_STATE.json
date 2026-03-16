@@ -658,12 +658,14 @@
         {
           "storyId": "ST-REL-ROLLOUT-AUTOMATION-005",
           "title": "Automate live staging rollout snapshot capture and artifact upload",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "c4301c7",
+          "commit": "55fca22",
           "tests_passed": [
             "node scripts/capture-controlled-rollout-snapshot.cjs --environment development --tenantId SMOKE_TENANT_LOCAL --apiBase http://127.0.0.1:4000/api/v1 --timeoutMs 2000",
+            "node scripts/capture-controlled-rollout-snapshot.test.cjs",
+            "node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId staging-smoke --apiBase https://api-staging-4faf.up.railway.app/api/v1 --gatesDir docs/execution/gates --rolloutDir .tmp/rollout-validation",
             "Select-String -Path .github/workflows/deploy-staging.yml -Pattern 'Capture controlled rollout snapshot|Upload staging gate artifacts|actions/upload-artifact@v4|capture-controlled-rollout-snapshot.cjs'",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
