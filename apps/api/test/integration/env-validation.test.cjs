@@ -185,6 +185,7 @@ async function runCaseStagingRequiresBullmq(baseEnv) {
     AUTH_MODE: "db",
     CORS_ORIGIN: "https://staging.example.com",
     QUEUE_BACKEND: "memory",
+    PIM_AUTH_IDENTITIES_JSON: "",
   };
 
   const stderr = [];
@@ -221,6 +222,52 @@ async function runCaseStagingRequiresBullmq(baseEnv) {
   }
 }
 
+async function runCaseStagingRequiresWorkerEnabled(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5450 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "false",
+    PIM_AUTH_IDENTITIES_JSON: "",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail when QUEUE_WORKER_ENABLED=false, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail when QUEUE_WORKER_ENABLED=false, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("QUEUE_WORKER_ENABLED")) {
+    throw new Error(`Expected startup failure output to mention QUEUE_WORKER_ENABLED. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -229,13 +276,19 @@ async function run() {
 
   await runCaseMissingJwtSecret(baseEnv);
   await runCaseStagingRequiresBullmq(baseEnv);
+  await runCaseStagingRequiresWorkerEnabled(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
     JSON.stringify(
       {
         status: "ok",
-        validated: ["missing_env_exits_with_error", "staging_requires_bullmq_queue_backend", "valid_env_starts_api"],
+        validated: [
+          "missing_env_exits_with_error",
+          "staging_requires_bullmq_queue_backend",
+          "staging_requires_queue_worker_enabled",
+          "valid_env_starts_api",
+        ],
         checkedAt: new Date().toISOString(),
       },
       null,

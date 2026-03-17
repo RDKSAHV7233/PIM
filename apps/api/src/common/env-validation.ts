@@ -142,6 +142,12 @@ export function validateEnv(): ValidatedEnv {
     if ((data.APP_ENV === "staging" || data.APP_ENV === "production") && data.QUEUE_BACKEND !== "bullmq") {
       issues.push("QUEUE_BACKEND: staging/production must use QUEUE_BACKEND=bullmq");
     }
+    if (
+      (data.APP_ENV === "staging" || data.APP_ENV === "production") &&
+      data.QUEUE_WORKER_ENABLED !== "true"
+    ) {
+      issues.push("QUEUE_WORKER_ENABLED: staging/production must use QUEUE_WORKER_ENABLED=true");
+    }
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");
     }
