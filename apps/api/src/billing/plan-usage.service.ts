@@ -33,6 +33,30 @@ interface UsageRow {
   updatedAt: Date | string;
 }
 
+interface UsageSummaryReadRow {
+  tenantKey: string;
+  month: string;
+  planTier: string;
+  skuCount: number;
+  submissionCount: number;
+  storageGb: number;
+  connectorInstallationsCount: number;
+  connectorAccountsCount: number;
+  usageUpdatedAt: Date | string;
+  maxSkus: number;
+  maxSubmissionsPerMonth: number;
+  maxUsers: number;
+  maxStorageGb: number;
+  maxConnectorInstallations: number;
+  maxAccountsPerConnector: number;
+  profileTenantKey: string | null;
+  profilePlanTier: string | null;
+  profileEffectiveFrom: Date | string | null;
+  profileUpdatedBy: string | null;
+  profileCreatedAt: Date | string | null;
+  profileUpdatedAt: Date | string | null;
+}
+
 interface TenantPlanProfileRow {
   tenantKey: string;
   planTier: string;
@@ -233,6 +257,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   async getUsageSummary(tenantKeyInput?: string): Promise<PlanUsageSummary> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
     const month = this.getMonthKey();
+    const warmSummaryRow = await this.getUsageSummaryRow(tenantKey, month);
+    if (this.isUsageSummaryRowFresh(warmSummaryRow)) {
+      return this.buildUsageSummary(
+        tenantKey,
+        this.mapUsageSummaryRowToUsage(warmSummaryRow),
+        this.mapUsageSummaryRowToLimits(warmSummaryRow),
+        this.mapUsageSummaryRowToProfile(warmSummaryRow),
+      );
+    }
+
     const [cachedUsage, profile] = await Promise.all([
       this.getUsageRow(tenantKey, month),
       this.getOrCreateTenantPlanProfile(tenantKey),
@@ -599,6 +633,42 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     return rows[0] ?? null;
   }
 
+  private async getUsageSummaryRow(tenantKey: string, month: string): Promise<UsageSummaryReadRow | null> {
+    const rows = await this.prisma.tenant(tenantKey).$queryRaw<UsageSummaryReadRow[]>(Prisma.sql`
+      SELECT
+        usage."tenantKey" AS "tenantKey",
+        usage."month" AS "month",
+        usage."planTier" AS "planTier",
+        usage."skuCount" AS "skuCount",
+        usage."submissionCount" AS "submissionCount",
+        usage."storageGb" AS "storageGb",
+        usage."connectorInstallationsCount" AS "connectorInstallationsCount",
+        usage."connectorAccountsCount" AS "connectorAccountsCount",
+        usage."updatedAt" AS "usageUpdatedAt",
+        limits."maxSkus" AS "maxSkus",
+        limits."maxSubmissionsPerMonth" AS "maxSubmissionsPerMonth",
+        limits."maxUsers" AS "maxUsers",
+        limits."maxStorageGb" AS "maxStorageGb",
+        limits."maxConnectorInstallations" AS "maxConnectorInstallations",
+        limits."maxAccountsPerConnector" AS "maxAccountsPerConnector",
+        profile."tenantKey" AS "profileTenantKey",
+        profile."planTier" AS "profilePlanTier",
+        profile."effectiveFrom" AS "profileEffectiveFrom",
+        profile."updatedBy" AS "profileUpdatedBy",
+        profile."createdAt" AS "profileCreatedAt",
+        profile."updatedAt" AS "profileUpdatedAt"
+      FROM "PlanUsage" usage
+      JOIN "PlanLimits" limits
+        ON limits."planTier" = usage."planTier"
+      LEFT JOIN "TenantPlanProfile" profile
+        ON profile."tenantKey" = usage."tenantKey"
+      WHERE usage."tenantKey" = ${tenantKey}
+        AND usage."month" = ${month}
+      LIMIT 1
+    `);
+    return rows[0] ?? null;
+  }
+
   private isUsageRowFresh(row: UsageRow | null): row is UsageRow {
     if (!row) {
       return false;
@@ -608,6 +678,56 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
     return Date.now() - updatedAt.getTime() <= USAGE_SUMMARY_TTL_MS;
+  }
+
+  private isUsageSummaryRowFresh(row: UsageSummaryReadRow | null): row is UsageSummaryReadRow {
+    if (!row || !this.isUsageRowFresh(this.mapUsageSummaryRowToUsage(row))) {
+      return false;
+    }
+
+    return !!(
+      row.profileTenantKey &&
+      row.profilePlanTier &&
+      row.profileCreatedAt &&
+      row.profileUpdatedAt
+    );
+  }
+
+  private mapUsageSummaryRowToUsage(row: UsageSummaryReadRow): UsageRow {
+    return {
+      tenantKey: row.tenantKey,
+      month: row.month,
+      planTier: row.planTier,
+      skuCount: row.skuCount,
+      submissionCount: row.submissionCount,
+      storageGb: row.storageGb,
+      connectorInstallationsCount: row.connectorInstallationsCount,
+      connectorAccountsCount: row.connectorAccountsCount,
+      updatedAt: row.usageUpdatedAt,
+    };
+  }
+
+  private mapUsageSummaryRowToLimits(row: UsageSummaryReadRow): PlanLimitsRow {
+    return {
+      planTier: row.planTier,
+      maxSkus: row.maxSkus,
+      maxSubmissionsPerMonth: row.maxSubmissionsPerMonth,
+      maxUsers: row.maxUsers,
+      maxStorageGb: row.maxStorageGb,
+      maxConnectorInstallations: row.maxConnectorInstallations,
+      maxAccountsPerConnector: row.maxAccountsPerConnector,
+    };
+  }
+
+  private mapUsageSummaryRowToProfile(row: UsageSummaryReadRow): PlanProfileSummary {
+    return this.mapPlanProfileRow({
+      tenantKey: row.profileTenantKey ?? row.tenantKey,
+      planTier: row.profilePlanTier ?? row.planTier,
+      effectiveFrom: row.profileEffectiveFrom,
+      updatedBy: row.profileUpdatedBy,
+      createdAt: row.profileCreatedAt ?? row.usageUpdatedAt,
+      updatedAt: row.profileUpdatedAt ?? row.usageUpdatedAt,
+    });
   }
 
   private buildUsageSummary(

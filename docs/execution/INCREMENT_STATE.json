@@ -2054,7 +2054,7 @@
     {
       "incrementId": "INC-21",
       "name": "Billing Usage Read-Path Optimization",
-      "status": "completed",
+      "status": "in_progress",
       "evidence": [
         "apps/api/src/billing/plan-usage.service.ts",
         "apps/api/src/connector-installer/connector-installer.service.ts",
@@ -2065,10 +2065,22 @@
         {
           "storyId": "ST-PERF-BILLING-001",
           "title": "Serve warm billing usage reads from cached PlanUsage rows and refresh on connector mutations",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "fe171a6",
+          "reopened_by": "codex",
+          "reopened_reason": "Warm staging billing usage reads remain a top steady-state hotspot and need a tighter composite read path.",
+          "regression_evidence": [
+            {
+              "command": "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run1 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage",
+              "output": "billing_run1 200 3.918739"
+            },
+            {
+              "command": "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run2 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage",
+              "output": "billing_run2 200 1.671962"
+            }
+          ],
           "scope": [
             "apps/api/src/billing/plan-usage.service.ts",
             "apps/api/src/connector-installer/connector-installer.service.ts",
