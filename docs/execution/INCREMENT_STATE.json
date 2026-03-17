@@ -2054,21 +2054,22 @@
     {
       "incrementId": "INC-21",
       "name": "Billing Usage Read-Path Optimization",
-      "status": "in_progress",
+      "status": "completed",
       "evidence": [
         "apps/api/src/billing/plan-usage.service.ts",
         "apps/api/src/connector-installer/connector-installer.service.ts",
         "apps/api/test/integration/billing-usage-cache-read.test.cjs",
-        "staging deploy run 23174510016"
+        "staging deploy run 23174510016",
+        "staging deploy run 23177719863"
       ],
       "stories": [
         {
           "storyId": "ST-PERF-BILLING-001",
           "title": "Serve warm billing usage reads from cached PlanUsage rows and refresh on connector mutations",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "fe171a6",
+          "commit": "60f62bd",
           "reopened_by": "codex",
           "reopened_reason": "Warm staging billing usage reads remain a top steady-state hotspot and need a tighter composite read path.",
           "regression_evidence": [
@@ -2099,7 +2100,10 @@
             "node apps/api/test/integration/billing-usage-cache-read.test.cjs",
             "node apps/api/test/integration/dashboard-aggregations.test.cjs",
             "node apps/api/test/integration/connector-access-entitlements.test.cjs",
-            "GitHub Actions deploy-staging.yml run 23174510016"
+            "GitHub Actions deploy-staging.yml run 23174510016",
+            "GitHub Actions deploy-staging.yml run 23177719863",
+            "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run1 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage -> billing_run1 200 1.982041",
+            "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run2 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage -> billing_run2 200 1.555168"
           ]
         }
       ]
