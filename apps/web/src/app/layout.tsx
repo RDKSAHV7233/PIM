@@ -23,7 +23,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3 md:px-8">
+          <div className="flex w-full items-center justify-between gap-4 px-5 py-3 md:px-8">
             <div className="flex items-center gap-4">
               <Link href="/dashboard" className="text-sm font-semibold text-slate-900">
                 PIM1
@@ -38,9 +38,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </div>
         </header>
         {hasAuthToken ? (
-          <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[250px_minmax(0,1fr)]">
+          <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
             <AppSidebar showInternal={false} />
-            <main>{children}</main>
+            <main className="min-w-0">{children}</main>
           </div>
         ) : (
           <main className="mx-auto max-w-7xl p-5 md:p-8">{children}</main>
