@@ -2050,6 +2050,47 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-21",
+      "name": "Billing Usage Read-Path Optimization",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/billing/plan-usage.service.ts",
+        "apps/api/src/connector-installer/connector-installer.service.ts",
+        "apps/api/test/integration/billing-usage-cache-read.test.cjs",
+        "staging deploy run 23174510016"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-PERF-BILLING-001",
+          "title": "Serve warm billing usage reads from cached PlanUsage rows and refresh on connector mutations",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "fe171a6",
+          "scope": [
+            "apps/api/src/billing/plan-usage.service.ts",
+            "apps/api/src/connector-installer/connector-installer.service.ts",
+            "apps/api/test/integration/billing-usage-cache-read.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Billing usage reads return the current-month PlanUsage row without recomputing when the row is fresh.",
+            "Billing usage recomputes and rewrites the PlanUsage row when the cached row is missing or older than the bounded TTL.",
+            "Connector install, disable, and delete paths refresh PlanUsage immediately so billing usage remains accurate after mutations.",
+            "Dashboard aggregation and connector entitlement integrations continue to pass with the cached read path."
+          ],
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/billing-usage-cache-read.test.cjs",
+            "node apps/api/test/integration/dashboard-aggregations.test.cjs",
+            "node apps/api/test/integration/connector-access-entitlements.test.cjs",
+            "GitHub Actions deploy-staging.yml run 23174510016"
+          ]
+        }
+      ]
     }
   ]
 }
