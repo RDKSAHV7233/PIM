@@ -44,12 +44,13 @@ export class CatalogService {
   ) {}
 
   async stats() {
-    const [categories, products, variants, pendingApprovals] = await Promise.all([
+    const [categories, products, variants, pendingApprovals] = await this.prisma.tenant().$transaction([
       this.prisma.tenant().category.count(),
       this.prisma.tenant().product.count(),
       this.prisma.tenant().variant.count(),
       this.prisma.tenant().product.count({ where: { status: RecordStatus.in_review } }),
     ]);
+
     return { categories, products, variants, pendingApprovals };
   }
 
