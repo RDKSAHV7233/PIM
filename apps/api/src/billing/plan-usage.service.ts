@@ -7,6 +7,7 @@ import { PLAN_LIMITS } from "./plan-limits.seed";
 import { PlanResource } from "./require-plan-limit.decorator";
 
 const PLAN_TIERS = ["STARTER", "GROWTH", "ENTERPRISE"] as const;
+const USAGE_SUMMARY_TTL_MS = 60_000;
 
 type PlanTier = (typeof PLAN_TIERS)[number];
 
@@ -29,6 +30,7 @@ interface UsageRow {
   storageGb: number;
   connectorInstallationsCount: number;
   connectorAccountsCount: number;
+  updatedAt: Date | string;
 }
 
 interface TenantPlanProfileRow {
@@ -230,48 +232,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async getUsageSummary(tenantKeyInput?: string): Promise<PlanUsageSummary> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
-    const usage = await this.recomputeUsage(tenantKey);
+    const month = this.getMonthKey();
+    const [cachedUsage, profile] = await Promise.all([
+      this.getUsageRow(tenantKey, month),
+      this.getOrCreateTenantPlanProfile(tenantKey),
+    ]);
+    const usage = this.isUsageRowFresh(cachedUsage)
+      ? cachedUsage
+      : await this.recomputeUsage(tenantKey, { month, profile });
     const limits = await this.getPlanLimits(usage.planTier);
-    const monthBounds = this.getMonthBounds(usage.month);
-    const profile = await this.getOrCreateTenantPlanProfile(tenantKey);
-
-    return {
-      planTier: usage.planTier,
-      month: usage.month,
-      billingCycleResetAt: monthBounds.end.toISOString(),
-      skus: {
-        current: usage.skuCount,
-        limit: limits.maxSkus,
-      },
-      submissions: {
-        current: usage.submissionCount,
-        limit: limits.maxSubmissionsPerMonth,
-      },
-      storageGb: {
-        current: Number(usage.storageGb.toFixed(6)),
-        limit: limits.maxStorageGb,
-      },
-      users: {
-        current: 1,
-        limit: limits.maxUsers,
-      },
-      connectorsInstallations: {
-        current: usage.connectorInstallationsCount,
-        limit: limits.maxConnectorInstallations,
-      },
-      connectorAccounts: {
-        current: usage.connectorAccountsCount,
-        limit: limits.maxAccountsPerConnector,
-      },
-      profile: {
-        tenantKey,
-        planTier: profile.planTier,
-        effectiveFrom: profile.effectiveFrom,
-        updatedBy: profile.updatedBy,
-        createdAt: profile.createdAt,
-        updatedAt: profile.updatedAt,
-      },
-    };
+    return this.buildUsageSummary(tenantKey, usage, limits, profile);
   }
 
   async getTenantPlanProfile(tenantKeyInput?: string): Promise<PlanProfileSummary> {
@@ -303,9 +273,15 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     return this.getOrCreateTenantPlanProfile(tenantKey);
   }
 
-  async recomputeUsage(tenantKeyInput?: string): Promise<UsageRow> {
+  async recomputeUsage(
+    tenantKeyInput?: string,
+    options?: {
+      month?: string;
+      profile?: PlanProfileSummary;
+    },
+  ): Promise<UsageRow> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
-    const month = this.getMonthKey();
+    const month = options?.month ?? this.getMonthKey();
     const bounds = this.getMonthBounds(month);
     const [productCount, submissionCount, storageRows, connectorCountsRows, profile] = await Promise.all([
       this.prisma.tenant(tenantKey).product.count(),
@@ -339,7 +315,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           GROUP BY ci.connector_id
         ) grouped
       `),
-      this.getOrCreateTenantPlanProfile(tenantKey),
+      options?.profile ? Promise.resolve(options.profile) : this.getOrCreateTenantPlanProfile(tenantKey),
     ]);
 
     const bytesValue = storageRows[0]?.bytes ?? 0;
@@ -392,22 +368,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         "updatedAt" = NOW()
     `);
 
-    const rows = await this.prisma.tenant(tenantKey).$queryRaw<UsageRow[]>(Prisma.sql`
-      SELECT
-        "tenantKey" AS "tenantKey",
-        "month" AS "month",
-        "planTier" AS "planTier",
-        "skuCount" AS "skuCount",
-        "submissionCount" AS "submissionCount",
-        "storageGb" AS "storageGb",
-        "connectorInstallationsCount" AS "connectorInstallationsCount",
-        "connectorAccountsCount" AS "connectorAccountsCount"
-      FROM "PlanUsage"
-      WHERE "tenantKey" = ${tenantKey} AND "month" = ${month}
-      LIMIT 1
-    `);
-
-    const row = rows[0];
+    const row = await this.getUsageRow(tenantKey, month);
     if (!row) {
       throw new Error("Failed to upsert PlanUsage row");
     }
@@ -617,5 +578,81 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         });
       }, 24 * 60 * 60 * 1000);
     }, delayMs);
+  }
+
+  private async getUsageRow(tenantKey: string, month: string): Promise<UsageRow | null> {
+    const rows = await this.prisma.tenant(tenantKey).$queryRaw<UsageRow[]>(Prisma.sql`
+      SELECT
+        "tenantKey" AS "tenantKey",
+        "month" AS "month",
+        "planTier" AS "planTier",
+        "skuCount" AS "skuCount",
+        "submissionCount" AS "submissionCount",
+        "storageGb" AS "storageGb",
+        "connectorInstallationsCount" AS "connectorInstallationsCount",
+        "connectorAccountsCount" AS "connectorAccountsCount",
+        "updatedAt" AS "updatedAt"
+      FROM "PlanUsage"
+      WHERE "tenantKey" = ${tenantKey} AND "month" = ${month}
+      LIMIT 1
+    `);
+    return rows[0] ?? null;
+  }
+
+  private isUsageRowFresh(row: UsageRow | null): row is UsageRow {
+    if (!row) {
+      return false;
+    }
+    const updatedAt = new Date(row.updatedAt);
+    if (Number.isNaN(updatedAt.getTime())) {
+      return false;
+    }
+    return Date.now() - updatedAt.getTime() <= USAGE_SUMMARY_TTL_MS;
+  }
+
+  private buildUsageSummary(
+    tenantKey: string,
+    usage: UsageRow,
+    limits: PlanLimitsRow,
+    profile: PlanProfileSummary,
+  ): PlanUsageSummary {
+    const monthBounds = this.getMonthBounds(usage.month);
+    return {
+      planTier: usage.planTier,
+      month: usage.month,
+      billingCycleResetAt: monthBounds.end.toISOString(),
+      skus: {
+        current: usage.skuCount,
+        limit: limits.maxSkus,
+      },
+      submissions: {
+        current: usage.submissionCount,
+        limit: limits.maxSubmissionsPerMonth,
+      },
+      storageGb: {
+        current: Number(usage.storageGb.toFixed(6)),
+        limit: limits.maxStorageGb,
+      },
+      users: {
+        current: 1,
+        limit: limits.maxUsers,
+      },
+      connectorsInstallations: {
+        current: usage.connectorInstallationsCount,
+        limit: limits.maxConnectorInstallations,
+      },
+      connectorAccounts: {
+        current: usage.connectorAccountsCount,
+        limit: limits.maxAccountsPerConnector,
+      },
+      profile: {
+        tenantKey,
+        planTier: profile.planTier,
+        effectiveFrom: profile.effectiveFrom,
+        updatedBy: profile.updatedBy,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      },
+    };
   }
 }

@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { AppRole } from "../common/rbac/roles";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
@@ -102,6 +103,7 @@ export class ConnectorInstallerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly planUsageService: PlanUsageService,
     private readonly marketplaceService: MarketplaceService,
     private readonly connectorRegistry: ConnectorRegistry,
     private readonly credentialEncryptionService: ConnectorCredentialEncryptionService,
@@ -261,6 +263,8 @@ export class ConnectorInstallerService {
       if (!item) {
         throw new BadRequestException("Connector installed but could not be retrieved.");
       }
+
+      await this.planUsageService.touchUsageForCurrentTenant();
 
       await this.auditService.record({
         actorId: actor.actorId,
@@ -437,6 +441,8 @@ export class ConnectorInstallerService {
         throw new NotFoundException("Connector installation not found.");
       }
 
+      await this.planUsageService.touchUsageForCurrentTenant();
+
       await this.auditService.record({
         actorId: actor.actorId,
         actorRole: actor.actorRole,
@@ -523,6 +529,8 @@ export class ConnectorInstallerService {
       if (affected === 0) {
         throw new NotFoundException("Connector installation not found.");
       }
+
+      await this.planUsageService.touchUsageForCurrentTenant();
       return { id: installationId, status: "DELETED" };
     } catch (error: unknown) {
       await this.auditService.record({
