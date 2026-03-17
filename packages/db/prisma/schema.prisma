@@ -172,6 +172,7 @@ model Product {
   @@index([hsnCode])
   @@index([tenantKey])
   @@index([tenantKey, deletedAt])
+  @@index([tenantKey, deletedAt, updatedAt(sort: Desc), id(sort: Desc)], map: "idx_product_tenant_deleted_updated_id")
 }
 
 model Variant {
