@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, RecordStatus } from "@prisma/client";
 import { createClient } from "redis";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -48,6 +48,7 @@ type DashboardHealthResponse = {
   snapshot: DashboardHealthSnapshot;
   trend: DashboardHealthSnapshot[];
   asOf: string;
+  pendingApprovals: number;
 };
 
 type DashboardOperationsSummaryResponse = {
@@ -131,7 +132,7 @@ export class DashboardService implements OnModuleDestroy {
 
   async getHealth(): Promise<DashboardHealthResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
-    const cacheKey = `dashboard:health:${tenantKey}`;
+    const cacheKey = `dashboard:health:v2:${tenantKey}`;
     return this.getOrSetCache(cacheKey, async () => this.computeDashboardHealth(tenantKey));
   }
 
@@ -564,7 +565,14 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   private async computeDashboardHealth(tenantKey: string): Promise<DashboardHealthResponse> {
-    const latestSnapshot = await this.getLatestSnapshotRow(tenantKey);
+    const [latestSnapshot, pendingApprovals] = await Promise.all([
+      this.getLatestSnapshotRow(tenantKey),
+      this.prisma.tenant(tenantKey).product.count({
+        where: {
+          status: RecordStatus.in_review,
+        },
+      }),
+    ]);
     const shouldRefresh =
       !latestSnapshot ||
       Date.now() - new Date(latestSnapshot.captured_at).getTime() >= SNAPSHOT_REFRESH_MS;
@@ -629,6 +637,7 @@ export class DashboardService implements OnModuleDestroy {
       snapshot,
       trend,
       asOf: snapshot.capturedAt,
+      pendingApprovals: Number(pendingApprovals ?? 0),
     };
   }
 

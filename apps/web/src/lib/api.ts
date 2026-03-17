@@ -301,6 +301,7 @@ export interface DashboardHealthResponse {
   snapshot: DashboardHealthSnapshot;
   trend: DashboardHealthSnapshot[];
   asOf: string;
+  pendingApprovals: number;
 }
 
 export interface DashboardOperationsSummaryResponse {

@@ -10,7 +10,6 @@ import {
   getDashboardHealth,
   getDashboardOperationsSummary,
   getProductList,
-  getStats,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -38,8 +37,7 @@ export default async function DashboardPage() {
   const actorRole = await getServerActorRole();
 
   try {
-    const [stats, health, usage, operationsSummary, products] = await Promise.all([
-      getStats({ role: actorRole, authHeader }),
+    const [health, usage, operationsSummary, products] = await Promise.all([
       getDashboardHealth({ role: actorRole, authHeader }),
       getBillingUsage({ role: actorRole, authHeader }),
       getDashboardOperationsSummary({ role: actorRole, authHeader }),
@@ -57,8 +55,10 @@ export default async function DashboardPage() {
       0,
     );
     const completeness =
-      stats.products > 0 ? (health.snapshot.completeSkus / stats.products) * 100 : 0;
-    const pendingApprovals = Number(stats.pendingApprovals ?? 0);
+      health.snapshot.totalSkus > 0
+        ? (health.snapshot.completeSkus / health.snapshot.totalSkus) * 100
+        : 0;
+    const pendingApprovals = Number(health.pendingApprovals ?? 0);
     const failedImportJobs = operationsSummary.failedImportJobs;
     const jobsNeedingRetry = operationsSummary.jobsNeedingRetry;
     const priorityProducts = products
@@ -173,7 +173,7 @@ export default async function DashboardPage() {
             <KpiCard
               label="Ready to Publish"
               value={readinessTotal}
-              helper={`${stats.products} total products`}
+              helper={`${health.snapshot.totalSkus} total products`}
               tone={readinessTotal > 0 ? "success" : "info"}
               href="/catalog/products?view=ready"
             />

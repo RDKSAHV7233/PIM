@@ -24,8 +24,8 @@ function run() {
     "CatalogStats must expose pendingApprovals.",
   );
   assert(
-    dashboardSource.includes("const pendingApprovals = Number(stats.pendingApprovals ?? 0);"),
-    "Dashboard must derive pending approvals from real stats.",
+    dashboardSource.includes("const pendingApprovals = Number(health.pendingApprovals ?? 0);"),
+    "Dashboard must derive pending approvals from real dashboard health data.",
   );
   assert(
     !dashboardSource.includes('StatusChip label="0"'),

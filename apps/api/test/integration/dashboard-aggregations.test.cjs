@@ -281,6 +281,10 @@ async function run() {
     assert(dashboardHealth.payload.snapshot, "dashboard health must include snapshot");
     assert(Array.isArray(dashboardHealth.payload.trend), "dashboard health trend must be array");
     assert(
+      typeof dashboardHealth.payload.pendingApprovals === "number",
+      "dashboard health pendingApprovals must be number",
+    );
+    assert(
       typeof dashboardHealth.payload.snapshot.totalSkus === "number",
       "dashboard health snapshot.totalSkus must be number",
     );
