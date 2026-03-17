@@ -107,6 +107,7 @@ export class DashboardService implements OnModuleDestroy {
   private redisConnecting: Promise<void> | null = null;
   private redisAvailable = false;
   private redisRetryAfterMs = 0;
+  private readonly dashboardHealthRefreshes = new Map<string, Promise<void>>();
   private readonly allowInMemoryFallbackCache = !isProductionAppEnv();
   private readonly fallbackCache = new Map<
     string,
@@ -132,8 +133,8 @@ export class DashboardService implements OnModuleDestroy {
 
   async getHealth(): Promise<DashboardHealthResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
-    const cacheKey = `dashboard:health:v2:${tenantKey}`;
-    return this.getOrSetCache(cacheKey, async () => this.computeDashboardHealth(tenantKey));
+    const cacheKey = `dashboard:health:v3:${tenantKey}`;
+    return this.getOrSetCache(cacheKey, async () => this.computeDashboardHealth(tenantKey, cacheKey));
   }
 
   async getOperationsSummary(): Promise<DashboardOperationsSummaryResponse> {
@@ -197,6 +198,20 @@ export class DashboardService implements OnModuleDestroy {
     }
     try {
       await this.redisClient.setEx(key, CACHE_TTL_SECONDS, JSON.stringify(value));
+    } catch {
+      this.markRedisUnavailable();
+    }
+  }
+
+  private async deleteCache(key: string): Promise<void> {
+    if (this.allowInMemoryFallbackCache) {
+      this.fallbackCache.delete(key);
+    }
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.del(key);
     } catch {
       this.markRedisUnavailable();
     }
@@ -274,6 +289,7 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.dashboardHealthRefreshes.clear();
     if (this.redisClient) {
       await this.redisClient.quit().catch(() => undefined);
       this.redisClient = null;
@@ -564,7 +580,10 @@ export class DashboardService implements OnModuleDestroy {
     };
   }
 
-  private async computeDashboardHealth(tenantKey: string): Promise<DashboardHealthResponse> {
+  private async computeDashboardHealth(
+    tenantKey: string,
+    cacheKey: string,
+  ): Promise<DashboardHealthResponse> {
     const [latestSnapshot, pendingApprovals] = await Promise.all([
       this.getLatestSnapshotRow(tenantKey),
       this.prisma.tenant(tenantKey).product.count({
@@ -573,13 +592,20 @@ export class DashboardService implements OnModuleDestroy {
         },
       }),
     ]);
-    const shouldRefresh =
-      !latestSnapshot ||
-      Date.now() - new Date(latestSnapshot.captured_at).getTime() >= SNAPSHOT_REFRESH_MS;
+    const latestSnapshotAgeMs = latestSnapshot
+      ? Date.now() - new Date(latestSnapshot.captured_at).getTime()
+      : Number.POSITIVE_INFINITY;
+    const shouldRefresh = latestSnapshotAgeMs >= SNAPSHOT_REFRESH_MS;
 
-    const snapshot = shouldRefresh
-      ? await this.captureSnapshot(tenantKey)
-      : this.mapSnapshotRow(latestSnapshot);
+    let snapshot: DashboardHealthSnapshot;
+    if (!latestSnapshot) {
+      snapshot = await this.captureSnapshot(tenantKey);
+    } else {
+      snapshot = this.mapSnapshotRow(latestSnapshot);
+      if (shouldRefresh) {
+        this.scheduleDashboardHealthRefresh(tenantKey, cacheKey);
+      }
+    }
 
     // RLS-BYPASS: manual tenant filter
     const trendRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
@@ -639,6 +665,25 @@ export class DashboardService implements OnModuleDestroy {
       asOf: snapshot.capturedAt,
       pendingApprovals: Number(pendingApprovals ?? 0),
     };
+  }
+
+  private scheduleDashboardHealthRefresh(tenantKey: string, cacheKey: string): void {
+    if (this.dashboardHealthRefreshes.has(tenantKey)) {
+      return;
+    }
+
+    const refresh = (async () => {
+      try {
+        await this.captureSnapshot(tenantKey);
+        await this.deleteCache(cacheKey);
+      } catch {
+        // Best-effort refresh: keep serving the last snapshot if background refresh fails.
+      } finally {
+        this.dashboardHealthRefreshes.delete(tenantKey);
+      }
+    })();
+
+    this.dashboardHealthRefreshes.set(tenantKey, refresh);
   }
 
   private async captureSnapshot(tenantKey: string): Promise<DashboardHealthSnapshot> {
