@@ -173,19 +173,29 @@ export class CatalogService {
     });
     const hasNext = products.length > limit;
     const page = hasNext ? products.slice(0, limit) : products;
-    const scored = await this.attachCompletenessScores(page);
-    const issueCounts = await this.prisma.tenant().validationIssue.groupBy({
-      by: ["productId", "severity"],
-      where: {
-        productId: {
-          in: page.map((product) => product.id),
+    if (page.length === 0) {
+      return {
+        items: [],
+        limit,
+        nextCursor: null,
+      };
+    }
+
+    const [scored, issueCounts] = await Promise.all([
+      this.attachCompletenessScores(page),
+      this.prisma.tenant().validationIssue.groupBy({
+        by: ["productId", "severity"],
+        where: {
+          productId: {
+            in: page.map((product) => product.id),
+          },
+          status: ValidationIssueStatus.open,
         },
-        status: ValidationIssueStatus.open,
-      },
-      _count: {
-        _all: true,
-      },
-    });
+        _count: {
+          _all: true,
+        },
+      }),
+    ]);
 
     const issueSummaryByProduct = new Map<string, { errorCount: number; warningCount: number }>();
     for (const issueCount of issueCounts) {
