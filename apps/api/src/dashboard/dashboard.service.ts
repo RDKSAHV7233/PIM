@@ -50,6 +50,22 @@ type DashboardHealthResponse = {
   asOf: string;
 };
 
+type DashboardOperationsSummaryResponse = {
+  activeConnectors: number;
+  installedConnectors: number;
+  failedImportJobs: number;
+  failedSubmissionJobs: number;
+  deadLetterJobs: number;
+  jobsNeedingRetry: number;
+  asOf: string;
+};
+
+type DashboardCachedValue =
+  | ReadinessResponse
+  | CatalogHealthResponse
+  | DashboardHealthResponse
+  | DashboardOperationsSummaryResponse;
+
 const CACHE_TTL_SECONDS = 5 * 60;
 const SNAPSHOT_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SNAPSHOT_TREND_DAYS = 30;
@@ -74,6 +90,13 @@ function isProductionAppEnv(): boolean {
   return appEnv === "production";
 }
 
+function resolveStubConnectorSlugs(): string[] {
+  return String(process.env.CONNECTOR_STUB_SLUGS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
 @Injectable()
 export class DashboardService implements OnModuleDestroy {
   private readonly redisDisabled =
@@ -86,7 +109,7 @@ export class DashboardService implements OnModuleDestroy {
   private readonly allowInMemoryFallbackCache = !isProductionAppEnv();
   private readonly fallbackCache = new Map<
     string,
-    { value: ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse; expiresAt: number }
+    { value: DashboardCachedValue; expiresAt: number }
   >();
 
   constructor(
@@ -112,7 +135,13 @@ export class DashboardService implements OnModuleDestroy {
     return this.getOrSetCache(cacheKey, async () => this.computeDashboardHealth(tenantKey));
   }
 
-  private async getOrSetCache<T extends ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse>(
+  async getOperationsSummary(): Promise<DashboardOperationsSummaryResponse> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `dashboard:operations-summary:${tenantKey}`;
+    return this.getOrSetCache(cacheKey, async () => this.computeOperationsSummary(tenantKey));
+  }
+
+  private async getOrSetCache<T extends DashboardCachedValue>(
     key: string,
     producer: () => Promise<T>,
   ): Promise<T> {
@@ -145,7 +174,7 @@ export class DashboardService implements OnModuleDestroy {
       if (this.allowInMemoryFallbackCache) {
         this.writeFallbackCache(
           key,
-          parsed as ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+          parsed as DashboardCachedValue,
         );
       }
       return parsed;
@@ -159,7 +188,7 @@ export class DashboardService implements OnModuleDestroy {
     if (this.allowInMemoryFallbackCache) {
       this.writeFallbackCache(
         key,
-        value as ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+        value as DashboardCachedValue,
       );
     }
     if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
@@ -186,7 +215,7 @@ export class DashboardService implements OnModuleDestroy {
 
   private writeFallbackCache(
     key: string,
-    value: ReadinessResponse | CatalogHealthResponse | DashboardHealthResponse,
+    value: DashboardCachedValue,
   ): void {
     this.fallbackCache.set(key, {
       value,
@@ -441,6 +470,95 @@ export class DashboardService implements OnModuleDestroy {
         bucket,
         count: Number(distributionCounts[index] ?? 0),
       })),
+      asOf: new Date().toISOString(),
+    };
+  }
+
+  private async computeOperationsSummary(tenantKey: string): Promise<DashboardOperationsSummaryResponse> {
+    const connectorParams: unknown[] = [tenantKey];
+    const stubSlugs = resolveStubConnectorSlugs();
+    let hiddenStubWhere = "";
+
+    if (stubSlugs.length > 0) {
+      const placeholders = stubSlugs.map((slug) => {
+        connectorParams.push(slug);
+        return `$${connectorParams.length}`;
+      });
+      hiddenStubWhere = ` AND LOWER(cd.slug) NOT IN (${placeholders.join(", ")})`;
+    }
+
+    const [connectorRows, submissionRows, deadLetterRows, importRows] = await Promise.all([
+      this.prisma.tenant(tenantKey).$queryRawUnsafe<
+        Array<{ activeConnectors: number; installedConnectors: number }>
+      >(
+        `
+        SELECT
+          COUNT(*) FILTER (WHERE ci.status = 'ACTIVE')::int AS "activeConnectors",
+          COUNT(*)::int AS "installedConnectors"
+        FROM connector_installations ci
+        JOIN connector_definitions cd ON cd.id = ci.connector_id
+        WHERE ci.tenant_key = $1
+        ${hiddenStubWhere}
+        `,
+        ...connectorParams,
+      ),
+      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedSubmissionJobs: number }>>(
+        `
+        SELECT COUNT(*)::int AS "failedSubmissionJobs"
+        FROM (
+          SELECT cs.status
+          FROM connector_submissions cs
+          WHERE cs.tenant_key = $1
+          ORDER BY cs.submitted_at DESC, cs.id DESC
+          LIMIT 50
+        ) recent
+        WHERE UPPER(COALESCE(recent.status, '')) IN ('REJECTED', 'ERROR')
+        `,
+        tenantKey,
+      ),
+      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ deadLetterJobs: number }>>(
+        `
+        SELECT COUNT(*)::int AS "deadLetterJobs"
+        FROM (
+          SELECT mej.id
+          FROM "MarketplaceExportJob" mej
+          WHERE mej."tenantKey" = $1
+            AND mej.status = 'dead_letter'
+          ORDER BY mej."updatedAt" DESC, mej.id DESC
+          LIMIT 50
+        ) recent
+        `,
+        tenantKey,
+      ),
+      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedImportJobs: number }>>(
+        `
+        SELECT COUNT(*)::int AS "failedImportJobs"
+        FROM (
+          SELECT bij.status
+          FROM "BulkImportJob" bij
+          WHERE bij."tenantKey" = $1
+          ORDER BY bij."updatedAt" DESC, bij.id DESC
+          LIMIT 50
+        ) recent
+        WHERE recent.status IN ('failed', 'dead_letter')
+        `,
+        tenantKey,
+      ),
+    ]);
+
+    const activeConnectors = Number(connectorRows[0]?.activeConnectors ?? 0);
+    const installedConnectors = Number(connectorRows[0]?.installedConnectors ?? 0);
+    const failedSubmissionJobs = Number(submissionRows[0]?.failedSubmissionJobs ?? 0);
+    const deadLetterJobs = Number(deadLetterRows[0]?.deadLetterJobs ?? 0);
+    const failedImportJobs = Number(importRows[0]?.failedImportJobs ?? 0);
+
+    return {
+      activeConnectors,
+      installedConnectors,
+      failedImportJobs,
+      failedSubmissionJobs,
+      deadLetterJobs,
+      jobsNeedingRetry: failedSubmissionJobs + deadLetterJobs,
       asOf: new Date().toISOString(),
     };
   }

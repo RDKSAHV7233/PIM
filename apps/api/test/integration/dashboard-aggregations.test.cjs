@@ -294,6 +294,53 @@ async function run() {
     );
     assert(dashboardHealth.payload.trend.length >= 1, "dashboard health trend must have at least one point");
 
+    const operations1 = await apiRequest(baseUrl, "GET", "/dashboard/operations-summary", token);
+    assertStatus(operations1, 200, "dashboard operations summary first call");
+    assert(
+      typeof operations1.payload.activeConnectors === "number",
+      "dashboard operations summary activeConnectors must be number",
+    );
+    assert(
+      typeof operations1.payload.installedConnectors === "number",
+      "dashboard operations summary installedConnectors must be number",
+    );
+    assert(
+      typeof operations1.payload.failedImportJobs === "number",
+      "dashboard operations summary failedImportJobs must be number",
+    );
+    assert(
+      typeof operations1.payload.failedSubmissionJobs === "number",
+      "dashboard operations summary failedSubmissionJobs must be number",
+    );
+    assert(
+      typeof operations1.payload.deadLetterJobs === "number",
+      "dashboard operations summary deadLetterJobs must be number",
+    );
+    assert(
+      typeof operations1.payload.jobsNeedingRetry === "number",
+      "dashboard operations summary jobsNeedingRetry must be number",
+    );
+    assert(
+      typeof operations1.payload.asOf === "string",
+      "dashboard operations summary asOf must be string",
+    );
+    assert(
+      operations1.payload.jobsNeedingRetry ===
+        operations1.payload.failedSubmissionJobs + operations1.payload.deadLetterJobs,
+      "dashboard operations summary jobsNeedingRetry must equal failed submissions plus dead-letter jobs",
+    );
+    assert(
+      operations1.payload.installedConnectors >= operations1.payload.activeConnectors,
+      "dashboard operations summary installed connectors must be at least active connectors",
+    );
+
+    const operations2 = await apiRequest(baseUrl, "GET", "/dashboard/operations-summary", token);
+    assertStatus(operations2, 200, "dashboard operations summary second call");
+    assert(
+      operations2.payload.asOf === operations1.payload.asOf,
+      "dashboard operations summary second call should hit cache and keep same asOf within TTL",
+    );
+
     const usage = await apiRequest(baseUrl, "GET", "/billing/usage", token);
     assertStatus(usage, 200, "billing usage");
     assert(typeof usage.payload.planTier === "string", "billing usage must include planTier");
@@ -332,6 +379,7 @@ async function run() {
             "dashboard_readiness_endpoint_shape",
           "dashboard_catalog_health_endpoint_shape",
           "dashboard_health_snapshot_and_trend_endpoint_shape",
+          "dashboard_operations_summary_endpoint_shape",
           "dashboard_endpoints_cache_with_bounded_ttl",
           "billing_usage_matches_plan_usage_source_of_truth",
         ],

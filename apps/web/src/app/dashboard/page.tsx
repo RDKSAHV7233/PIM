@@ -7,13 +7,10 @@ import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getBillingUsage,
-  getBulkImportJobs,
   getDashboardHealth,
-  getDeadLetterSubmissions,
-  getInstalledConnectors,
+  getDashboardOperationsSummary,
   getProductList,
   getStats,
-  getSubmissions,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -41,24 +38,14 @@ export default async function DashboardPage() {
   const actorRole = await getServerActorRole();
 
   try {
-    const [stats, health, usage, connectors, submissionsResponse, deadLetterResponse, imports, products] = await Promise.all([
+    const [stats, health, usage, operationsSummary, products] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getDashboardHealth({ role: actorRole, authHeader }),
       getBillingUsage({ role: actorRole, authHeader }),
-      getInstalledConnectors({ role: actorRole, authHeader }),
-      getSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
-      getDeadLetterSubmissions({ limit: 200 }, { role: actorRole, authHeader }),
-      getBulkImportJobs({ role: actorRole, authHeader }),
+      getDashboardOperationsSummary({ role: actorRole, authHeader }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
-    const submissions = Array.isArray(submissionsResponse)
-      ? submissionsResponse
-      : submissionsResponse.items ?? [];
-    const deadLetterJobs = Array.isArray(deadLetterResponse)
-      ? deadLetterResponse
-      : deadLetterResponse.items ?? [];
-
-    const activeConnectors = connectors.filter((item) => item.status === "ACTIVE").length;
+    const activeConnectors = operationsSummary.activeConnectors;
     const blockingIssues = health.snapshot.openIssuesBlocking;
     const warningIssues = health.snapshot.openIssuesWarning;
     const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce(
@@ -72,12 +59,8 @@ export default async function DashboardPage() {
     const completeness =
       stats.products > 0 ? (health.snapshot.completeSkus / stats.products) * 100 : 0;
     const pendingApprovals = Number(stats.pendingApprovals ?? 0);
-    const failedImportJobs = imports.filter((job) => job.status === "failed" || job.status === "dead_letter").length;
-    const failedSubmissionJobs = submissions.filter((submission) => {
-      const status = String(submission.status ?? "").toUpperCase();
-      return status === "REJECTED" || status === "ERROR";
-    }).length;
-    const jobsNeedingRetry = failedSubmissionJobs + deadLetterJobs.length;
+    const failedImportJobs = operationsSummary.failedImportJobs;
+    const jobsNeedingRetry = operationsSummary.jobsNeedingRetry;
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -215,7 +198,7 @@ export default async function DashboardPage() {
             <KpiCard
               label="Active Channels"
               value={activeConnectors}
-              helper={`${connectors.length} installed`}
+              helper={`${operationsSummary.installedConnectors} installed`}
               tone={activeConnectors > 0 ? "info" : "warning"}
               href="/channels/connectors"
             />

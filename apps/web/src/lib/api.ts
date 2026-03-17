@@ -303,6 +303,16 @@ export interface DashboardHealthResponse {
   asOf: string;
 }
 
+export interface DashboardOperationsSummaryResponse {
+  activeConnectors: number;
+  installedConnectors: number;
+  failedImportJobs: number;
+  failedSubmissionJobs: number;
+  deadLetterJobs: number;
+  jobsNeedingRetry: number;
+  asOf: string;
+}
+
 export interface PlanLimitExceededPayload {
   error: "PLAN_LIMIT_EXCEEDED";
   resource: string;
@@ -1112,6 +1122,14 @@ export async function setBillingPlanTier(
 
 export async function getDashboardHealth(options?: ApiRequestOptions) {
   return fetchJson<DashboardHealthResponse>("/dashboard/health", undefined, options);
+}
+
+export async function getDashboardOperationsSummary(options?: ApiRequestOptions) {
+  return fetchJson<DashboardOperationsSummaryResponse>(
+    "/dashboard/operations-summary",
+    undefined,
+    options,
+  );
 }
 
 export async function getCategoryAttributes(categoryId: string, options?: ApiRequestOptions) {

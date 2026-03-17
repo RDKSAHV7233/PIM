@@ -27,4 +27,11 @@ export class DashboardController {
   getHealth() {
     return this.dashboardService.getHealth();
   }
+
+  @Get("operations-summary")
+  @ApiOperation({ summary: "Dashboard operations summary for current tenant" })
+  @ApiResponse({ status: 200, description: "Dashboard operations summary fetched" })
+  getOperationsSummary() {
+    return this.dashboardService.getOperationsSummary();
+  }
 }
