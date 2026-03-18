@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { createBulkImportJobAction } from "@/app/actions";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
+import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
-import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs } from "@/lib/api";
+import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
@@ -43,7 +45,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const jobs = await getBulkImportJobs({ role: actorRole, authHeader });
+    const [jobs, categories] = await Promise.all([
+      getBulkImportJobs({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+    ]);
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
       selectedStatus.length > 0
@@ -95,6 +100,118 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           />
           <KpiCard label="Retrying" value={statusCounts.retrying ?? 0} tone={(statusCounts.retrying ?? 0) > 0 ? "warning" : "default"} />
           <KpiCard label="Completed" value={statusCounts.completed ?? 0} tone={(statusCounts.completed ?? 0) > 0 ? "success" : "default"} />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <Card>
+            <CardTitle>Start Import</CardTitle>
+            {canWrite ? (
+              <form action={createBulkImportJobAction} className="space-y-4" suppressHydrationWarning>
+                <input
+                  type="hidden"
+                  name="mapping"
+                  value='{"title":"title","description":"description","brand":"brand","hsnCode":"hsnCode","gstRate":"gstRate","status":"status","attributes":"attributes"}'
+                />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span className="font-medium">Category</span>
+                    <select
+                      name="categoryId"
+                      required
+                      defaultValue={categories[0]?.id ?? ""}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      {categories.length === 0 ? (
+                        <option value="">No categories available</option>
+                      ) : (
+                        categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.path ?? category.name ?? category.id}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span className="font-medium">Source File</span>
+                    <input
+                      type="file"
+                      name="sourceFile"
+                      required
+                      accept=".csv,.json,.xlsx,.xls"
+                      className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span className="font-medium">Chunk Size</span>
+                    <input
+                      type="number"
+                      name="chunkSize"
+                      min={1}
+                      max={500}
+                      defaultValue={100}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span className="font-medium">Max Retries</span>
+                    <input
+                      type="number"
+                      name="maxRetries"
+                      min={1}
+                      max={10}
+                      defaultValue={3}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  <p className="font-medium text-slate-800">Accepted columns</p>
+                  <p>
+                    Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
+                  </p>
+                  <p>
+                    The <code>attributes</code> column should contain a JSON object for category-specific fields, for example <code>{'{"material":"cotton","color":"black"}'}</code>.
+                  </p>
+                </div>
+                <Button type="submit" disabled={categories.length === 0}>
+                  Upload Import File
+                </Button>
+              </form>
+            ) : (
+              <p className="text-sm text-slate-600">Import upload is read-only for your role.</p>
+            )}
+          </Card>
+
+          <Card>
+            <CardTitle>Sample Files</CardTitle>
+            <div className="space-y-3 text-sm text-slate-600">
+              <p>
+                Download a ready-to-edit sample to see the expected bulk import format before uploading your own file.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/api/imports/templates/sample.csv"
+                  className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Download sample CSV
+                </Link>
+                <Link
+                  href="/api/imports/templates/sample.json"
+                  className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Download sample JSON
+                </Link>
+              </div>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>CSV and spreadsheet uploads use the same canonical columns.</li>
+                <li>JSON imports should contain an array of row objects.</li>
+                <li>Start with one sample row, then add your own category-specific attributes.</li>
+              </ul>
+            </div>
+          </Card>
         </section>
 
         <Card>
