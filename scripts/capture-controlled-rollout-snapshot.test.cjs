@@ -28,9 +28,27 @@ function isoAtDayOffset(baseDate, offsetDays, hour = 12) {
 }
 
 function runSnapshot(args, cwd) {
-  return childProcess.spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
-    cwd,
-    encoding: "utf8",
+  return new Promise((resolve) => {
+    const child = childProcess.spawn(process.execPath, [SCRIPT_PATH, ...args], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("close", (code, signal) => {
+      resolve({
+        status: typeof code === "number" ? code : 1,
+        signal,
+        stdout,
+        stderr,
+      });
+    });
   });
 }
 
@@ -63,7 +81,10 @@ async function startHealthServer() {
   };
 }
 
-function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays) {
+function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays, options = {}) {
+  const pilotOffsetDays = Number.isInteger(options.pilotOffsetDays) ? options.pilotOffsetDays : -13;
+  const governanceOffsetDays = Number.isInteger(options.governanceOffsetDays) ? options.governanceOffsetDays : -13;
+
   for (let index = 0; index < gateDays.length; index += 1) {
     const offset = gateDays[index];
     const date = isoAtDayOffset(baseDate, offset, 9 + (index % 8));
@@ -80,7 +101,7 @@ function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays) {
   writeJson(path.join(gatesDir, "2026-03-03T19-52-18_PILOT_WORKFLOW_VALIDATION.json"), {
     environment: "staging",
     tenantId: "staging-smoke",
-    date: isoAtDayOffset(baseDate, -13, 19),
+    date: isoAtDayOffset(baseDate, pilotOffsetDays, 19),
     gitTag: "sha-pilot",
     runUrl: "https://github.com/example/pim1/actions/runs/2001",
     suite: "PILOT_WORKFLOW_VALIDATION",
@@ -89,7 +110,7 @@ function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays) {
   writeJson(path.join(gatesDir, "2026-03-03T19-53-20_PAYLOAD_GOVERNANCE_ENFORCE.json"), {
     environment: "staging",
     tenantId: "staging-smoke",
-    date: isoAtDayOffset(baseDate, -13, 20),
+    date: isoAtDayOffset(baseDate, governanceOffsetDays, 20),
     gitTag: "sha-gov",
     runUrl: "https://github.com/example/pim1/actions/runs/2002",
     suite: "PAYLOAD_GOVERNANCE_ENFORCE",
@@ -153,12 +174,12 @@ async function main() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-rollout-"));
   const gatesDir = path.join(tempRoot, "gates");
   const rolloutDir = path.join(tempRoot, "rollout");
-  const baseDate = new Date("2026-03-16T04:31:32.714Z");
+  const baseDate = new Date();
   const { server, apiBase } = await startHealthServer();
 
   try {
     seedWindow(gatesDir, rolloutDir, baseDate, [-13, -12, -11, -10, -9], [-13, -12, -11, -10, -9]);
-    const insufficientRun = runSnapshot(
+    const insufficientRun = await runSnapshot(
       [
         "--environment",
         "staging",
@@ -188,6 +209,48 @@ async function main() {
       insufficientJson.summary.broadPending.includes("Production SLO trend evidence covers 6 of 14 required days."),
       `Expected computed broad pending coverage message, got ${insufficientRun.stdout}`,
     );
+    assert(
+      Array.isArray(insufficientJson.summary.controlledPending) && insufficientJson.summary.controlledPending.length === 0,
+      `Expected no controlled blockers when pilot/governance evidence exists, got ${insufficientRun.stdout}`,
+    );
+
+    fs.rmSync(gatesDir, { recursive: true, force: true });
+    fs.rmSync(rolloutDir, { recursive: true, force: true });
+
+    seedWindow(gatesDir, rolloutDir, baseDate, [-13, -12, -11, -10, -9], [-13, -12, -11, -10, -9], {
+      pilotOffsetDays: -20,
+      governanceOffsetDays: -20,
+    });
+    const historicalEvidenceRun = await runSnapshot(
+      [
+        "--environment",
+        "staging",
+        "--tenantId",
+        "staging-smoke",
+        "--apiBase",
+        apiBase,
+        "--windowDays",
+        "14",
+        "--gatesDir",
+        gatesDir,
+        "--rolloutDir",
+        rolloutDir,
+      ],
+      tempRoot,
+    );
+    assert(
+      historicalEvidenceRun.status === 0,
+      `Expected historical-evidence snapshot to succeed, got status=${historicalEvidenceRun.status} stderr=${historicalEvidenceRun.stderr}`,
+    );
+    const historicalEvidenceJson = JSON.parse(historicalEvidenceRun.stdout);
+    assert(
+      Array.isArray(historicalEvidenceJson.summary.controlledPending) && historicalEvidenceJson.summary.controlledPending.length === 0,
+      `Expected pilot/governance evidence to remain valid outside the broad window, got ${historicalEvidenceRun.stdout}`,
+    );
+    assert(
+      historicalEvidenceJson.summary.broadPending.includes("Controlled rollout observation window covers 5 of 14 required days."),
+      `Expected broad coverage warning to remain time-bound, got ${historicalEvidenceRun.stdout}`,
+    );
 
     fs.rmSync(gatesDir, { recursive: true, force: true });
     fs.rmSync(rolloutDir, { recursive: true, force: true });
@@ -195,7 +258,7 @@ async function main() {
     const fullGateDays = Array.from({ length: 14 }, (_, index) => index - 13);
     const fullRolloutDays = Array.from({ length: 13 }, (_, index) => index - 13);
     seedWindow(gatesDir, rolloutDir, baseDate, fullGateDays, fullRolloutDays);
-    const completeRun = runSnapshot(
+    const completeRun = await runSnapshot(
       [
         "--environment",
         "staging",

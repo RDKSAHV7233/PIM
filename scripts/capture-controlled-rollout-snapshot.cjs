@@ -107,7 +107,7 @@ function loadGateArtifacts(environment, sinceUtcMs, gatesDir = GATES_DIR) {
   return entries;
 }
 
-function loadAllArtifactsInWindow(sinceUtcMs, gatesDir = GATES_DIR) {
+function loadArtifacts(gatesDir = GATES_DIR, sinceUtcMs = null) {
   if (!fs.existsSync(gatesDir)) {
     return [];
   }
@@ -131,7 +131,7 @@ function loadAllArtifactsInWindow(sinceUtcMs, gatesDir = GATES_DIR) {
       };
     })
     .filter((item) => item !== null)
-    .filter((item) => item.dateMs !== null && item.dateMs >= sinceUtcMs)
+    .filter((item) => item.dateMs !== null && (sinceUtcMs === null || item.dateMs >= sinceUtcMs))
     .sort((left, right) => (right.dateMs || 0) - (left.dateMs || 0));
 }
 
@@ -245,7 +245,8 @@ async function main() {
   const now = new Date();
   const since = new Date(now.getTime() - args.windowDays * 24 * 60 * 60 * 1000);
   const signoffArtifacts = loadGateArtifacts(args.environment, since.getTime(), args.gatesDir);
-  const allArtifacts = loadAllArtifactsInWindow(since.getTime(), args.gatesDir);
+  const allArtifactsInWindow = loadArtifacts(args.gatesDir, since.getTime());
+  const allRecordedArtifacts = loadArtifacts(args.gatesDir);
   const historicalRolloutSnapshots = loadRolloutSnapshots(args.environment, since.getTime(), args.rolloutDir);
   const consecutiveE10 = extractConsecutiveE10Runs(signoffArtifacts);
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
@@ -264,15 +265,15 @@ async function main() {
     health,
     gates: {
       artifactsInWindow: signoffArtifacts.length,
-      allEvidenceArtifactsInWindow: allArtifacts.length,
+      allEvidenceArtifactsInWindow: allArtifactsInWindow.length,
       consecutiveE10SignoffRuns: consecutiveE10,
       recentArtifacts: signoffArtifacts.slice(0, 10).map(toSummary),
     },
     controlledRollout: {
       criteria: {
         twoConsecutiveGates: consecutiveE10 >= 2,
-        pilotWorkflowEvidencePresent: hasArtifact(allArtifacts, "PILOT_WORKFLOW_VALIDATION"),
-        governanceEvidencePresent: hasArtifact(allArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
+        pilotWorkflowEvidencePresent: hasArtifact(allRecordedArtifacts, "PILOT_WORKFLOW_VALIDATION"),
+        governanceEvidencePresent: hasArtifact(allRecordedArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
         healthEndpointHealthy,
       },
       pending: [],
@@ -294,10 +295,10 @@ async function main() {
     snapshot.controlledRollout.pending.push("Need at least 2 consecutive E10 gate signoff artifacts.");
   }
   if (!snapshot.controlledRollout.criteria.pilotWorkflowEvidencePresent) {
-    snapshot.controlledRollout.pending.push("Pilot workflow validation artifact missing in current window.");
+    snapshot.controlledRollout.pending.push("Pilot workflow validation artifact missing from recorded evidence.");
   }
   if (!snapshot.controlledRollout.criteria.governanceEvidencePresent) {
-    snapshot.controlledRollout.pending.push("Payload governance enforcement artifact missing in current window.");
+    snapshot.controlledRollout.pending.push("Payload governance enforcement artifact missing from recorded evidence.");
   }
   if (!snapshot.controlledRollout.criteria.healthEndpointHealthy) {
     if (!health.ok) {

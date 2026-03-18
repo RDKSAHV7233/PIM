@@ -44,6 +44,8 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
   - Staging deploy run `23232412168` succeeded with the new `E2E smoke - post-deploy verification` step included in the deploy gate.
   - Latest deploy run `23233701810` also completed successfully after the OpenAPI refresh follow-up.
   - Generic `CI` workflow run `23233701847` is green again, so the engineering-quality lane is back to a usable baseline instead of failing on workflow/config drift.
+  - `capture-controlled-rollout-snapshot.cjs` now keeps the pilot workflow and payload-governance controlled-rollout proofs evergreen once recorded instead of aging them out with the 14-day broad-window calculation.
+  - Fresh snapshot [2026-03-18T13-22-10.340Z_CONTROLLED_ROLLOUT_SNAPSHOT.json](C:\Users\Om Computers\PIM1\docs\execution\rollout\2026-03-18T13-22-10.340Z_CONTROLLED_ROLLOUT_SNAPSHOT.json) shows `controlledRollout.pending = []`, `observationWindowDaysCovered = 5`, and `sloTrendDaysCovered = 6`.
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
