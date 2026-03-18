@@ -15,7 +15,21 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
       DATABASE_URL_POOLED: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
       DATABASE_URL_DIRECT: postgresql://postgres:postgres@localhost:5432/pim1?schema=public
+      JWT_SECRET: pim1-ci-jwt-secret-minimum-length-32
+      JWT_EXPIRY: 4h
+      CREDENTIAL_ENCRYPTION_KEY_V1: pim1-ci-encryption-key-v1-minimum-32
+      CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION: "1"
       REDIS_URL: redis://localhost:6379
+      R2_ACCOUNT_ID: local-ci
+      R2_ACCESS_KEY_ID: local-ci
+      R2_SECRET_ACCESS_KEY: local-ci
+      R2_BUCKET_NAME: pim1-ci
+      R2_PUBLIC_URL: https://example.com/pim1-ci
+      APP_ENV: development
+      AUTH_MODE: local
+      FEATURE_REAL_SPAPI_VALIDATION: "false"
+      QUEUE_BACKEND: memory
+      QUEUE_WORKER_ENABLED: "true"
     services:
       postgres:
         image: postgres:16
