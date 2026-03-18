@@ -68,6 +68,7 @@ type DashboardCachedValue =
   | DashboardOperationsSummaryResponse;
 
 const CACHE_TTL_SECONDS = 5 * 60;
+const STALE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 const SNAPSHOT_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SNAPSHOT_TREND_DAYS = 30;
 const REDIS_RETRY_BACKOFF_MS = 30_000;
@@ -107,6 +108,7 @@ export class DashboardService implements OnModuleDestroy {
   private redisConnecting: Promise<void> | null = null;
   private redisAvailable = false;
   private redisRetryAfterMs = 0;
+  private readonly catalogHealthRefreshes = new Map<string, Promise<void>>();
   private readonly dashboardHealthRefreshes = new Map<string, Promise<void>>();
   private readonly allowInMemoryFallbackCache = !isProductionAppEnv();
   private readonly fallbackCache = new Map<
@@ -127,8 +129,8 @@ export class DashboardService implements OnModuleDestroy {
 
   async getCatalogHealth(): Promise<CatalogHealthResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
-    const cacheKey = `dashboard:catalog-health:${tenantKey}`;
-    return this.getOrSetCache(cacheKey, async () => this.computeCatalogHealth(tenantKey));
+    const cacheKey = `dashboard:catalog-health:v2:${tenantKey}`;
+    return this.getCatalogHealthCached(tenantKey, cacheKey);
   }
 
   async getHealth(): Promise<DashboardHealthResponse> {
@@ -156,51 +158,36 @@ export class DashboardService implements OnModuleDestroy {
     return value;
   }
 
+  private async getCatalogHealthCached(
+    tenantKey: string,
+    cacheKey: string,
+  ): Promise<CatalogHealthResponse> {
+    const cached = await this.readCache<CatalogHealthResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const staleCacheKey = `${cacheKey}:stale`;
+    const stale = await this.readStaleCache<CatalogHealthResponse>(staleCacheKey);
+    if (stale) {
+      this.scheduleCatalogHealthRefresh(tenantKey, cacheKey, staleCacheKey);
+      return stale;
+    }
+
+    const value = await this.computeCatalogHealth(tenantKey);
+    await Promise.all([
+      this.writeCache(cacheKey, value),
+      this.writeStaleCache(staleCacheKey, value),
+    ]);
+    return value;
+  }
+
   private async readCache<T>(key: string): Promise<T | null> {
-    if (this.allowInMemoryFallbackCache) {
-      const fallback = this.readFallbackCache<T>(key);
-      if (fallback) {
-        return fallback;
-      }
-    }
-    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
-      return null;
-    }
-    try {
-      const raw = await this.redisClient.get(key);
-      if (!raw) {
-        return null;
-      }
-      const rawText = String(raw);
-      const parsed = JSON.parse(rawText) as T;
-      if (this.allowInMemoryFallbackCache) {
-        this.writeFallbackCache(
-          key,
-          parsed as DashboardCachedValue,
-        );
-      }
-      return parsed;
-    } catch {
-      this.markRedisUnavailable();
-      return null;
-    }
+    return this.readCacheValue<T>(key, CACHE_TTL_SECONDS);
   }
 
   private async writeCache<T>(key: string, value: T): Promise<void> {
-    if (this.allowInMemoryFallbackCache) {
-      this.writeFallbackCache(
-        key,
-        value as DashboardCachedValue,
-      );
-    }
-    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
-      return;
-    }
-    try {
-      await this.redisClient.setEx(key, CACHE_TTL_SECONDS, JSON.stringify(value));
-    } catch {
-      this.markRedisUnavailable();
-    }
+    await this.writeCacheValue(key, value, CACHE_TTL_SECONDS);
   }
 
   private async deleteCache(key: string): Promise<void> {
@@ -215,6 +202,14 @@ export class DashboardService implements OnModuleDestroy {
     } catch {
       this.markRedisUnavailable();
     }
+  }
+
+  private async readStaleCache<T>(key: string): Promise<T | null> {
+    return this.readCacheValue<T>(key, STALE_CACHE_TTL_SECONDS);
+  }
+
+  private async writeStaleCache<T>(key: string, value: T): Promise<void> {
+    await this.writeCacheValue(key, value, STALE_CACHE_TTL_SECONDS);
   }
 
   private readFallbackCache<T>(key: string): T | null {
@@ -232,11 +227,52 @@ export class DashboardService implements OnModuleDestroy {
   private writeFallbackCache(
     key: string,
     value: DashboardCachedValue,
+    ttlSeconds = CACHE_TTL_SECONDS,
   ): void {
     this.fallbackCache.set(key, {
       value,
-      expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000,
+      expiresAt: Date.now() + ttlSeconds * 1000,
     });
+  }
+
+  private async readCacheValue<T>(key: string, ttlSeconds: number): Promise<T | null> {
+    if (this.allowInMemoryFallbackCache) {
+      const fallback = this.readFallbackCache<T>(key);
+      if (fallback) {
+        return fallback;
+      }
+    }
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return null;
+    }
+    try {
+      const raw = await this.redisClient.get(key);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(String(raw)) as T;
+      if (this.allowInMemoryFallbackCache) {
+        this.writeFallbackCache(key, parsed as DashboardCachedValue, ttlSeconds);
+      }
+      return parsed;
+    } catch {
+      this.markRedisUnavailable();
+      return null;
+    }
+  }
+
+  private async writeCacheValue<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    if (this.allowInMemoryFallbackCache) {
+      this.writeFallbackCache(key, value as DashboardCachedValue, ttlSeconds);
+    }
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
+    } catch {
+      this.markRedisUnavailable();
+    }
   }
 
   private async ensureRedisAvailable(): Promise<boolean> {
@@ -289,6 +325,7 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.catalogHealthRefreshes.clear();
     this.dashboardHealthRefreshes.clear();
     if (this.redisClient) {
       await this.redisClient.quit().catch(() => undefined);
@@ -665,6 +702,32 @@ export class DashboardService implements OnModuleDestroy {
       asOf: snapshot.capturedAt,
       pendingApprovals: Number(pendingApprovals ?? 0),
     };
+  }
+
+  private scheduleCatalogHealthRefresh(
+    tenantKey: string,
+    cacheKey: string,
+    staleCacheKey: string,
+  ): void {
+    if (this.catalogHealthRefreshes.has(tenantKey)) {
+      return;
+    }
+
+    const refresh = (async () => {
+      try {
+        const value = await this.computeCatalogHealth(tenantKey);
+        await Promise.all([
+          this.writeCache(cacheKey, value),
+          this.writeStaleCache(staleCacheKey, value),
+        ]);
+      } catch {
+        // Best-effort refresh: keep serving the last catalog-health value if refresh fails.
+      } finally {
+        this.catalogHealthRefreshes.delete(tenantKey);
+      }
+    })();
+
+    this.catalogHealthRefreshes.set(tenantKey, refresh);
   }
 
   private scheduleDashboardHealthRefresh(tenantKey: string, cacheKey: string): void {
