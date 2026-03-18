@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-18 (workspace-admin user lifecycle closed; staging validation refreshed)
+Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
 
 ## P0 (Must close before production)
 
@@ -37,6 +37,13 @@ Last updated: 2026-03-18 (workspace-admin user lifecycle closed; staging validat
   - Latest validation against live staging evidence (2026-03-16) shows:
     - controlled rollout observation coverage: `5 / 14` required days
     - production SLO trend evidence coverage: `5 / 14` required days
+  - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-03-18):
+  - Full staging E2E workflow run `23231708622` succeeded with `107 / 121` pass, `0` fail, `14` skip, wall time `269.5s`.
+  - Fast smoke-only E2E workflow run `23232414142` succeeded with `28 / 30` pass, `0` fail, `2` skip, wall time `69.7s`.
+  - Staging deploy run `23232412168` succeeded with the new `E2E smoke - post-deploy verification` step included in the deploy gate.
+  - Latest deploy run `23233701810` also completed successfully after the OpenAPI refresh follow-up.
+  - Generic `CI` workflow run `23233701847` is green again, so the engineering-quality lane is back to a usable baseline instead of failing on workflow/config drift.
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
@@ -92,6 +99,18 @@ Last updated: 2026-03-18 (workspace-admin user lifecycle closed; staging validat
     - `gitTag=sha-ab4ffd9`
     - `runUrl=https://github.com/RDKSAHV7233/PIM1/actions/runs/23127921361`
   - Uploaded artifact `staging-gate-artifacts-23127921361` is present, digest-backed, and unexpired.
+- Validation evidence refreshed (2026-03-18):
+  - GitHub Actions run `23232412168` passed with:
+    - `Deploy to staging`
+    - `Staging smoke test`
+    - `Staging post-deploy verification (auth + trust boundary)`
+    - `E2E smoke - post-deploy verification`
+    - `Record staging gate artifact`
+    - `Capture controlled rollout snapshot`
+    - `Upload gate + rollout + smoke artifacts`
+  - Smoke gate summary from the same run:
+    - `TOTAL 30 checks [smoke] | 28 pass | 0 fail | 2 skip`
+    - `Wall time: 62.0s`
 
 ## P1 (Before scale / broad pilot)
 
