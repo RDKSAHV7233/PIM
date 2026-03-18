@@ -117,9 +117,10 @@ function assertStatus(result, expected, context) {
   }
 }
 
-async function login(baseUrl, userId) {
+async function login(baseUrl, userId, workspaceSlug) {
   const response = await apiRequest(baseUrl, "POST", "/auth/login", null, {
     userId,
+    workspaceSlug,
     password: process.env.PIM_AUTH_PASSWORD,
     expiresInMinutes: 30,
   });
@@ -199,6 +200,7 @@ async function run() {
   const disabledPort = 5400 + Math.floor(Math.random() * 50);
   const disabledBaseUrl = `http://127.0.0.1:${disabledPort}/api/v1`;
   const disabledTenant = `ondc-disabled-${runId}`;
+  const disabledWorkspaceSlug = `ondc-off-${runId}`.slice(0, 24);
   const disabledAdminUser = `ondc-admin-disabled-${runId}@example.com`;
   await withApi(
     {
@@ -208,11 +210,14 @@ async function run() {
       PIM_DEFAULT_TENANT_KEY: disabledTenant,
       FEATURE_ONDC_ENABLED: "false",
       PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-        [disabledAdminUser]: { tenantId: disabledTenant, role: "admin" },
+        [disabledAdminUser]: { tenantId: disabledTenant, role: "admin", workspaceSlug: disabledWorkspaceSlug },
+      }),
+      PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+        [disabledWorkspaceSlug]: { tenantId: disabledTenant, displayName: "ONDC Disabled" },
       }),
     },
     async () => {
-      const adminToken = await login(disabledBaseUrl, disabledAdminUser);
+      const adminToken = await login(disabledBaseUrl, disabledAdminUser, disabledWorkspaceSlug);
       const disabledRoute = await apiRequest(disabledBaseUrl, "GET", "/ondc/versions", adminToken);
       assertStatus(disabledRoute, 404, "ondc route should be absent when FEATURE_ONDC_ENABLED=false");
     },
@@ -221,6 +226,7 @@ async function run() {
   const enabledPort = 5450 + Math.floor(Math.random() * 50);
   const enabledBaseUrl = `http://127.0.0.1:${enabledPort}/api/v1`;
   const enabledTenant = `ondc-enabled-${runId}`;
+  const enabledWorkspaceSlug = `ondc-on-${runId}`.slice(0, 24);
   const enabledViewerUser = `ondc-viewer-${runId}@example.com`;
   const enabledAdminUser = `ondc-admin-${runId}@example.com`;
   await withApi(
@@ -231,16 +237,19 @@ async function run() {
       PIM_DEFAULT_TENANT_KEY: enabledTenant,
       FEATURE_ONDC_ENABLED: "true",
       PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-        [enabledViewerUser]: { tenantId: enabledTenant, role: "viewer" },
-        [enabledAdminUser]: { tenantId: enabledTenant, role: "admin" },
+        [enabledViewerUser]: { tenantId: enabledTenant, role: "viewer", workspaceSlug: enabledWorkspaceSlug },
+        [enabledAdminUser]: { tenantId: enabledTenant, role: "admin", workspaceSlug: enabledWorkspaceSlug },
+      }),
+      PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+        [enabledWorkspaceSlug]: { tenantId: enabledTenant, displayName: "ONDC Enabled" },
       }),
     },
     async () => {
-      const viewerToken = await login(enabledBaseUrl, enabledViewerUser);
+      const viewerToken = await login(enabledBaseUrl, enabledViewerUser, enabledWorkspaceSlug);
       const viewerResult = await apiRequest(enabledBaseUrl, "GET", "/ondc/versions", viewerToken);
       assertStatus(viewerResult, 403, "viewer should be denied ONDC admin route");
 
-      const adminToken = await login(enabledBaseUrl, enabledAdminUser);
+      const adminToken = await login(enabledBaseUrl, enabledAdminUser, enabledWorkspaceSlug);
       const adminResult = await apiRequest(enabledBaseUrl, "GET", "/ondc/versions", adminToken);
       assertStatus(adminResult, 200, "admin should be allowed ONDC versions");
       assert(Array.isArray(adminResult.payload), `expected ONDC versions array, got ${JSON.stringify(adminResult.payload)}`);
