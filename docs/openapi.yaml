@@ -142,8 +142,24 @@ paths:
       responses:
         "200":
           description: ""
-      tags:
+      tags: &a2
         - Audit
+  /api/v1/audit/events:
+    get:
+      operationId: AuditController_listEvents
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a2
+  /api/v1/audit/events/export:
+    get:
+      operationId: AuditController_exportEvents
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a2
   /api/v1/billing/usage:
     get:
       operationId: BillingController_usage
@@ -152,7 +168,7 @@ paths:
         "200":
           description: Plan usage fetched
       summary: Get current tenant plan usage
-      tags: &a2
+      tags: &a3
         - Billing
   /api/v1/billing/plan-profile:
     get:
@@ -162,7 +178,7 @@ paths:
         "200":
           description: Tenant plan profile fetched
       summary: Get current tenant plan profile
-      tags: *a2
+      tags: *a3
   /api/v1/billing/plan-tier:
     post:
       operationId: BillingController_setPlanTier
@@ -177,15 +193,20 @@ paths:
         "200":
           description: Tenant plan tier updated
       summary: Set tenant plan tier
-      tags: *a2
+      tags: *a3
   /api/v1/taxonomy/categories:
     get:
       operationId: TaxonomyController_listCategories
-      parameters: []
+      parameters:
+        - name: all
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: ""
-      tags: &a3
+      tags: &a4
         - Taxonomy
     post:
       operationId: TaxonomyController_createCategory
@@ -199,7 +220,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/taxonomy/categories/{id}:
     get:
       operationId: TaxonomyController_getCategory
@@ -212,7 +233,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
     patch:
       operationId: TaxonomyController_updateCategory
       parameters:
@@ -230,7 +251,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
     delete:
       operationId: TaxonomyController_deleteCategory
       parameters:
@@ -242,7 +263,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/taxonomy/categories/{id}/attributes:
     get:
       operationId: TaxonomyController_listAttributeDefinitions
@@ -255,7 +276,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
     post:
       operationId: TaxonomyController_createAttributeDefinition
       parameters:
@@ -273,7 +294,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/taxonomy/categories/attributes/{attributeId}:
     patch:
       operationId: TaxonomyController_updateAttributeDefinition
@@ -292,7 +313,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
     delete:
       operationId: TaxonomyController_deleteAttributeDefinition
       parameters:
@@ -304,7 +325,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a3
+      tags: *a4
   /api/v1/compliance/rules:
     get:
       operationId: ComplianceController_listRules
@@ -317,7 +338,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a4
+      tags: &a5
         - Compliance
     post:
       operationId: ComplianceController_createRule
@@ -331,7 +352,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a4
+      tags: *a5
   /api/v1/compliance/rules/{id}:
     patch:
       operationId: ComplianceController_updateRule
@@ -350,7 +371,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a4
+      tags: *a5
     delete:
       operationId: ComplianceController_deleteRule
       parameters:
@@ -362,7 +383,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a4
+      tags: *a5
   /api/v1/compliance/products/{id}/validate:
     post:
       operationId: ComplianceController_validateProduct
@@ -375,7 +396,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a4
+      tags: *a5
   /api/v1/compliance/products/{id}/issues:
     get:
       operationId: ComplianceController_getProductIssues
@@ -388,7 +409,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a4
+      tags: *a5
   /api/v1/issues/inbox:
     get:
       operationId: IssuesController_listInbox
@@ -397,7 +418,7 @@ paths:
         "200":
           description: Issue inbox fetched
       summary: List tenant-wide open compliance issues
-      tags: &a5
+      tags: &a6
         - Compliance
   /api/v1/issues/inbox/resolve:
     post:
@@ -413,7 +434,7 @@ paths:
         "201":
           description: Issue resolution applied
       summary: Resolve warning-level issues in bulk
-      tags: *a5
+      tags: *a6
   /api/v1/dashboard/readiness:
     get:
       operationId: DashboardController_getReadiness
@@ -422,7 +443,7 @@ paths:
         "200":
           description: Readiness summary fetched
       summary: Per-connector readiness summary for current tenant
-      tags: &a6
+      tags: &a7
         - Dashboard
   /api/v1/dashboard/catalog-health:
     get:
@@ -432,7 +453,7 @@ paths:
         "200":
           description: Catalog health fetched
       summary: Catalog health and completeness summary for current tenant
-      tags: *a6
+      tags: *a7
   /api/v1/dashboard/health:
     get:
       operationId: DashboardController_getHealth
@@ -441,7 +462,16 @@ paths:
         "200":
           description: Dashboard health snapshot fetched
       summary: Catalog health snapshot with 30-day trend
-      tags: *a6
+      tags: *a7
+  /api/v1/dashboard/operations-summary:
+    get:
+      operationId: DashboardController_getOperationsSummary
+      parameters: []
+      responses:
+        "200":
+          description: Dashboard operations summary fetched
+      summary: Dashboard operations summary for current tenant
+      tags: *a7
   /api/v1/metrics/kpi-trends:
     get:
       operationId: MetricsController_getKpiTrends
@@ -465,7 +495,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a7
+      tags: &a8
         - Connectors
   /api/v1/connectors/{slug}/install:
     post:
@@ -486,7 +516,7 @@ paths:
         "201":
           description: Connector installed
       summary: Install connector for tenant
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/installed:
     get:
       operationId: ConnectorInstallerController_listInstalled
@@ -495,7 +525,7 @@ paths:
         "200":
           description: Installed connectors fetched
       summary: List installed connectors
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/{id}/uninstall:
     post:
       operationId: ConnectorInstallerController_uninstall
@@ -508,7 +538,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/{slug}/install/{id}:
     delete:
       operationId: ConnectorInstallerController_uninstallBySlugAndId
@@ -527,7 +557,7 @@ paths:
         "200":
           description: Connector installation deleted
       summary: Delete connector installation record by slug + installation id
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/{id}/reconnect:
     post:
       operationId: ConnectorInstallerController_reconnect
@@ -540,7 +570,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/{id}/payload-preview:
     post:
       operationId: ConnectorInstallerController_payloadPreview
@@ -560,7 +590,7 @@ paths:
         "200":
           description: Payload preview generated
       summary: Generate payload preview for connector installation + product
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/permissions:
     get:
       operationId: ConnectorInstallerController_listPermissions
@@ -568,7 +598,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a7
+      tags: *a8
     post:
       operationId: ConnectorInstallerController_grantPermission
       parameters: []
@@ -581,7 +611,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a7
+      tags: *a8
   /api/v1/connectors/permissions/{id}:
     delete:
       operationId: ConnectorInstallerController_revokePermission
@@ -594,7 +624,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a7
+      tags: *a8
   /api/v1/marketplace/channels:
     get:
       operationId: MarketplaceController_listChannels
@@ -602,7 +632,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a8
+      tags: &a9
         - Marketplace
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions:
     get:
@@ -616,7 +646,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
     post:
       operationId: MarketplaceController_createConnectorMappingVersion
       parameters:
@@ -634,7 +664,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/validate:
     post:
       operationId: MarketplaceController_validateConnectorMappingVersion
@@ -652,7 +682,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/publish:
     post:
       operationId: MarketplaceController_publishConnectorMappingVersion
@@ -676,7 +706,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/rollback:
     post:
       operationId: MarketplaceController_rollbackConnectorMappingVersion
@@ -700,7 +730,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/versions/{versionId}/archive:
     post:
       operationId: MarketplaceController_archiveConnectorMappingVersion
@@ -724,7 +754,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/resolve:
     get:
       operationId: MarketplaceController_resolveConnectorMapping
@@ -737,7 +767,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/mappings/preflight:
     post:
       operationId: MarketplaceController_preflightConnectorMapping
@@ -756,7 +786,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/search:
     get:
       operationId: MarketplaceController_searchConnectorTaxonomy
@@ -769,7 +799,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/taxonomy/unmapped:
     get:
       operationId: MarketplaceController_listUnmappedConnectorTaxonomy
@@ -782,7 +812,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/connectors/{connectorSlug}/publish-readiness:
     post:
       operationId: MarketplaceController_evaluateConnectorPublishReadiness
@@ -801,7 +831,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/channels/{channel}/mapping:
     get:
       operationId: MarketplaceController_getChannelMapping
@@ -824,7 +854,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/categories/{id}/templates:
     get:
       operationId: MarketplaceController_listTemplates
@@ -842,7 +872,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
     post:
       operationId: MarketplaceController_createTemplate
       parameters:
@@ -860,7 +890,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/templates/{id}:
     get:
       operationId: MarketplaceController_getTemplate
@@ -873,7 +903,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
     patch:
       operationId: MarketplaceController_updateTemplate
       parameters:
@@ -891,7 +921,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
     delete:
       operationId: MarketplaceController_deleteTemplate
       parameters:
@@ -903,7 +933,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/templates/{id}/clone:
     post:
       operationId: MarketplaceController_cloneTemplate
@@ -922,7 +952,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/products/{id}/simulate:
     get:
       operationId: MarketplaceController_simulateProductQuery
@@ -940,7 +970,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
     post:
       operationId: MarketplaceController_simulateProductBody
       parameters:
@@ -958,7 +988,21 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
+  /api/v1/marketplace/readiness/batch:
+    post:
+      operationId: MarketplaceController_batchReadiness
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchMarketplaceReadinessDto"
+      responses:
+        "200":
+          description: ""
+      tags: *a9
   /api/v1/marketplace/products/{id}/export-jobs:
     post:
       operationId: MarketplaceController_createExportJob
@@ -980,7 +1024,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create marketplace export job
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/export-jobs:
     get:
       operationId: MarketplaceController_listExportJobs
@@ -990,11 +1034,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: templateSummary
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Export jobs fetched
       summary: List export jobs
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/export-job:
     post:
       operationId: MarketplaceController_createExportJobAlias
@@ -1011,7 +1060,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create export job (alias endpoint)
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/export-jobs/{id}:
     get:
       operationId: MarketplaceController_getExportJob
@@ -1024,7 +1073,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/export-jobs/{id}/process:
     post:
       operationId: MarketplaceController_processExportJob
@@ -1037,7 +1086,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/marketplace/export-jobs/{id}/requeue:
     post:
       operationId: MarketplaceController_requeueExportJob
@@ -1050,7 +1099,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a8
+      tags: *a9
   /api/v1/submissions:
     get:
       operationId: SubmissionsController_listSubmissions
@@ -1079,7 +1128,7 @@ paths:
         "200":
           description: Submissions fetched
       summary: List submissions
-      tags: &a9
+      tags: &a10
         - Marketplace
   /api/v1/submissions/dead-letter:
     get:
@@ -1089,7 +1138,7 @@ paths:
         "200":
           description: Dead-letter submissions fetched
       summary: List dead-letter submissions/jobs
-      tags: *a9
+      tags: *a10
   /api/v1/submissions/{id}:
     get:
       operationId: SubmissionsController_getSubmission
@@ -1103,7 +1152,7 @@ paths:
         "200":
           description: Submission detail fetched
       summary: Get submission detail
-      tags: *a9
+      tags: *a10
   /api/v1/submissions/{id}/issues:
     get:
       operationId: SubmissionsController_getSubmissionIssues
@@ -1117,7 +1166,21 @@ paths:
         "200":
           description: Submission issues fetched
       summary: List normalized issues for a submission
-      tags: *a9
+      tags: *a10
+  /api/v1/submissions/{id}/sync:
+    post:
+      operationId: SubmissionsController_syncSubmission
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Submission status synced
+      summary: Sync a submission status from the provider
+      tags: *a10
   /api/v1/submissions/{id}/retry:
     post:
       operationId: SubmissionsController_retrySubmission
@@ -1131,7 +1194,37 @@ paths:
         "201":
           description: Submission retry queued
       summary: Retry submission by requeuing underlying export job
-      tags: *a9
+      tags: *a10
+  /api/v1/notifications:
+    get:
+      operationId: NotificationsController_listNotifications
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: &a11
+        - Notifications
+  /api/v1/notifications/read-all:
+    patch:
+      operationId: NotificationsController_markAllRead
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a11
+  /api/v1/notifications/{id}/read:
+    patch:
+      operationId: NotificationsController_markRead
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a11
   /api/v1/bulk-import/jobs:
     post:
       operationId: BulkImportController_createJob
@@ -1145,7 +1238,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a10
+      tags: &a12
         - BulkImport
     get:
       operationId: BulkImportController_listJobs
@@ -1158,7 +1251,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/templates:
     post:
       operationId: BulkImportController_createTemplate
@@ -1172,7 +1265,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
     get:
       operationId: BulkImportController_listTemplates
       parameters:
@@ -1189,7 +1282,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/templates/{id}:
     get:
       operationId: BulkImportController_getTemplate
@@ -1207,7 +1300,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/mapping-suggestions:
     post:
       operationId: BulkImportController_suggestMapping
@@ -1221,7 +1314,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}:
     get:
       operationId: BulkImportController_getJob
@@ -1234,7 +1327,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/rows:
     get:
       operationId: BulkImportController_listRows
@@ -1257,7 +1350,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/error-report:
     get:
       operationId: BulkImportController_getErrorReport
@@ -1270,7 +1363,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/process:
     post:
       operationId: BulkImportController_processJob
@@ -1289,7 +1382,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/requeue-dlq:
     post:
       operationId: BulkImportController_requeueDlq
@@ -1308,7 +1401,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/process:
     post:
       operationId: BulkImportController_processRow
@@ -1326,7 +1419,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-import/jobs/{id}/rows/{rowId}/repair:
     post:
       operationId: BulkImportController_repairRow
@@ -1350,7 +1443,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a10
+      tags: *a12
   /api/v1/bulk-edit/preview:
     post:
       operationId: BulkEditController_preview
@@ -1364,7 +1457,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a11
+      tags: &a13
         - BulkEdit
   /api/v1/bulk-edit/apply:
     post:
@@ -1379,7 +1472,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a11
+      tags: *a13
   /api/v1/bulk-edit/operations:
     get:
       operationId: BulkEditController_listOperations
@@ -1392,7 +1485,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a11
+      tags: *a13
   /api/v1/bulk-edit/operations/{id}:
     get:
       operationId: BulkEditController_getOperation
@@ -1405,7 +1498,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a11
+      tags: *a13
   /api/v1/catalog/stats:
     get:
       operationId: CatalogController_stats
@@ -1413,17 +1506,22 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a12
+      tags: &a14
         - Catalog
   /api/v1/catalog/products:
     get:
       operationId: CatalogController_listProducts
-      parameters: []
+      parameters:
+        - name: slim
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Products fetched
       summary: List products
-      tags: *a12
+      tags: *a14
     post:
       operationId: CatalogController_createProduct
       parameters: []
@@ -1439,7 +1537,26 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a12
+      tags: *a14
+  /api/v1/catalog/products/search:
+    get:
+      operationId: CatalogController_searchProducts
+      parameters:
+        - name: q
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: limit
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product search results fetched
+      summary: Search products by title or SKU
+      tags: *a14
   /api/v1/catalog/products/{id}:
     get:
       operationId: CatalogController_getProduct
@@ -1453,7 +1570,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a12
+      tags: *a14
     patch:
       operationId: CatalogController_updateProduct
       parameters:
@@ -1472,7 +1589,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a12
+      tags: *a14
     delete:
       operationId: CatalogController_deleteProduct
       parameters:
@@ -1484,7 +1601,27 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a12
+      tags: *a14
+  /api/v1/catalog/products/{id}/review-decision:
+    post:
+      operationId: CatalogController_decideProductReview
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideProductReviewDto"
+      responses:
+        "201":
+          description: Review decision applied
+      summary: Approve or reject an in-review product
+      tags: *a14
   /api/v1/catalog/products/{id}/purge:
     delete:
       operationId: CatalogController_purgeProduct
@@ -1497,7 +1634,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a12
+      tags: *a14
   /api/v1/catalog/products/{id}/variants:
     get:
       operationId: CatalogController_listVariants
@@ -1510,7 +1647,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a12
+      tags: *a14
     post:
       operationId: CatalogController_createVariant
       parameters:
@@ -1528,7 +1665,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a12
+      tags: *a14
   /api/v1/catalog/variants/{id}:
     patch:
       operationId: CatalogController_updateVariant
@@ -1547,7 +1684,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a12
+      tags: *a14
     delete:
       operationId: CatalogController_deleteVariant
       parameters:
@@ -1559,7 +1696,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a12
+      tags: *a14
   /api/v1/products:
     get:
       operationId: ProductsController_listProducts
@@ -1568,7 +1705,7 @@ paths:
         "200":
           description: Products fetched
       summary: List products
-      tags: &a13
+      tags: &a15
         - Products
     post:
       operationId: ProductsController_createProduct
@@ -1585,7 +1722,7 @@ paths:
         "402":
           description: Plan limit exceeded
       summary: Create product
-      tags: *a13
+      tags: *a15
   /api/v1/products/{id}:
     get:
       operationId: ProductsController_getProduct
@@ -1599,7 +1736,7 @@ paths:
         "200":
           description: Product fetched
       summary: Get product by id
-      tags: *a13
+      tags: *a15
     patch:
       operationId: ProductsController_updateProduct
       parameters:
@@ -1618,7 +1755,7 @@ paths:
         "200":
           description: Product updated
       summary: Update product
-      tags: *a13
+      tags: *a15
   /api/v1/media/assets:
     post:
       operationId: MediaController_createAsset
@@ -1632,7 +1769,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: &a14
+      tags: &a16
         - Media
     get:
       operationId: MediaController_listAssets
@@ -1650,7 +1787,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a14
+      tags: *a16
   /api/v1/media/assets/{id}:
     get:
       operationId: MediaController_getAsset
@@ -1663,7 +1800,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a14
+      tags: *a16
   /api/v1/media/assets/{id}/validation:
     get:
       operationId: MediaController_validateAsset
@@ -1676,7 +1813,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a14
+      tags: *a16
   /api/v1/media/bulk-associations:
     post:
       operationId: MediaController_bulkAssociate
@@ -1690,7 +1827,22 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a14
+      tags: *a16
+  /api/v1/platform/tenants:
+    post:
+      operationId: PlatformAdminController_createTenant
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlatformTenantDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - PlatformAdmin
   /api/v1/rejection-intelligence/products/{id}/score:
     get:
       operationId: RejectionIntelligenceController_scoreProduct
@@ -1705,6 +1857,92 @@ paths:
           description: ""
       tags:
         - RejectionIntelligence
+  /api/v1/admin/workspace/users:
+    get:
+      operationId: WorkspaceUsersController_listUsers
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: &a17
+        - WorkspaceUsers
+    post:
+      operationId: WorkspaceUsersController_createUser
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceUserDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a17
+  /api/v1/admin/workspace/users/{userId}/role:
+    patch:
+      operationId: WorkspaceUsersController_updateUserRole
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceUserRoleDto"
+      responses:
+        "200":
+          description: ""
+      tags: *a17
+  /api/v1/admin/workspace/users/{userId}/lock:
+    post:
+      operationId: WorkspaceUsersController_lockUser
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockWorkspaceUserDto"
+      responses:
+        "200":
+          description: ""
+      tags: *a17
+  /api/v1/admin/workspace/users/{userId}/unlock:
+    post:
+      operationId: WorkspaceUsersController_unlockUser
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a17
+  /api/v1/admin/workspace/users/{userId}/deactivate:
+    post:
+      operationId: WorkspaceUsersController_deactivateUser
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a17
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -1717,7 +1955,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a15
+      tags: &a18
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -1731,7 +1969,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a15
+      tags: *a18
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -1744,7 +1982,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a15
+      tags: *a18
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -1757,7 +1995,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a15
+      tags: *a18
 info:
   title: PIM1 API
   description: PIM1 API OpenAPI specification
@@ -1856,6 +2094,9 @@ components:
     SimulateMarketplaceDto:
       type: object
       properties: {}
+    BatchMarketplaceReadinessDto:
+      type: object
+      properties: {}
     CreateExportJobDto:
       type: object
       properties: {}
@@ -1892,6 +2133,9 @@ components:
     UpdateProductDto:
       type: object
       properties: {}
+    DecideProductReviewDto:
+      type: object
+      properties: {}
     CreateVariantDto:
       type: object
       properties: {}
@@ -1902,5 +2146,17 @@ components:
       type: object
       properties: {}
     BulkMediaAssociationDto:
+      type: object
+      properties: {}
+    CreatePlatformTenantDto:
+      type: object
+      properties: {}
+    CreateWorkspaceUserDto:
+      type: object
+      properties: {}
+    UpdateWorkspaceUserRoleDto:
+      type: object
+      properties: {}
+    LockWorkspaceUserDto:
       type: object
       properties: {}

@@ -243,6 +243,34 @@
         ]
       }
     },
+    "/api/v1/audit/events": {
+      "get": {
+        "operationId": "AuditController_listEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/audit/events/export": {
+      "get": {
+        "operationId": "AuditController_exportEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
     "/api/v1/billing/usage": {
       "get": {
         "operationId": "BillingController_usage",
@@ -301,7 +329,16 @@
     "/api/v1/taxonomy/categories": {
       "get": {
         "operationId": "TaxonomyController_listCategories",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "all",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -742,6 +779,21 @@
           }
         },
         "summary": "Catalog health snapshot with 30-day trend",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dashboard/operations-summary": {
+      "get": {
+        "operationId": "DashboardController_getOperationsSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Dashboard operations summary fetched"
+          }
+        },
+        "summary": "Dashboard operations summary for current tenant",
         "tags": [
           "Dashboard"
         ]
@@ -1634,6 +1686,30 @@
         ]
       }
     },
+    "/api/v1/marketplace/readiness/batch": {
+      "post": {
+        "operationId": "MarketplaceController_batchReadiness",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchMarketplaceReadinessDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
     "/api/v1/marketplace/products/{id}/export-jobs": {
       "post": {
         "operationId": "MarketplaceController_createExportJob",
@@ -1677,6 +1753,14 @@
         "parameters": [
           {
             "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateSummary",
             "required": true,
             "in": "query",
             "schema": {
@@ -1903,6 +1987,30 @@
         ]
       }
     },
+    "/api/v1/submissions/{id}/sync": {
+      "post": {
+        "operationId": "SubmissionsController_syncSubmission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Submission status synced"
+          }
+        },
+        "summary": "Sync a submission status from the provider",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
     "/api/v1/submissions/{id}/retry": {
       "post": {
         "operationId": "SubmissionsController_retrySubmission",
@@ -1924,6 +2032,57 @@
         "summary": "Retry submission by requeuing underlying export job",
         "tags": [
           "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "NotificationsController_listNotifications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "patch": {
+        "operationId": "NotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
         ]
       }
     },
@@ -2414,7 +2573,16 @@
     "/api/v1/catalog/products": {
       "get": {
         "operationId": "CatalogController_listProducts",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "slim",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Products fetched"
@@ -2447,6 +2615,38 @@
           }
         },
         "summary": "Create product",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/search": {
+      "get": {
+        "operationId": "CatalogController_searchProducts",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product search results fetched"
+          }
+        },
+        "summary": "Search products by title or SKU",
         "tags": [
           "Catalog"
         ]
@@ -2524,6 +2724,40 @@
             "description": ""
           }
         },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{id}/review-decision": {
+      "post": {
+        "operationId": "CatalogController_decideProductReview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideProductReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Review decision applied"
+          }
+        },
+        "summary": "Approve or reject an in-review product",
         "tags": [
           "Catalog"
         ]
@@ -2880,6 +3114,30 @@
         ]
       }
     },
+    "/api/v1/platform/tenants": {
+      "post": {
+        "operationId": "PlatformAdminController_createTenant",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlatformTenantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PlatformAdmin"
+        ]
+      }
+    },
     "/api/v1/rejection-intelligence/products/{id}/score": {
       "get": {
         "operationId": "RejectionIntelligenceController_scoreProduct",
@@ -2900,6 +3158,154 @@
         },
         "tags": [
           "RejectionIntelligence"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/users": {
+      "get": {
+        "operationId": "WorkspaceUsersController_listUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      },
+      "post": {
+        "operationId": "WorkspaceUsersController_createUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/users/{userId}/role": {
+      "patch": {
+        "operationId": "WorkspaceUsersController_updateUserRole",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceUserRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/users/{userId}/lock": {
+      "post": {
+        "operationId": "WorkspaceUsersController_lockUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockWorkspaceUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/users/{userId}/unlock": {
+      "post": {
+        "operationId": "WorkspaceUsersController_unlockUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/users/{userId}/deactivate": {
+      "post": {
+        "operationId": "WorkspaceUsersController_deactivateUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
         ]
       }
     },
@@ -3125,6 +3531,10 @@
         "type": "object",
         "properties": {}
       },
+      "BatchMarketplaceReadinessDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateExportJobDto": {
         "type": "object",
         "properties": {}
@@ -3173,6 +3583,10 @@
         "type": "object",
         "properties": {}
       },
+      "DecideProductReviewDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateVariantDto": {
         "type": "object",
         "properties": {}
@@ -3186,6 +3600,22 @@
         "properties": {}
       },
       "BulkMediaAssociationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatePlatformTenantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateWorkspaceUserDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateWorkspaceUserRoleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LockWorkspaceUserDto": {
         "type": "object",
         "properties": {}
       }
