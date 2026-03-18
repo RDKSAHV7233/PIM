@@ -2249,6 +2249,29 @@
         ]
       }
     },
+    "/api/v1/admin/webhooks/{id}/test": {
+      "post": {
+        "operationId": "OutboundWebhooksController_sendTestDelivery",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      }
+    },
     "/api/v1/bulk-import/jobs": {
       "post": {
         "operationId": "BulkImportController_createJob",

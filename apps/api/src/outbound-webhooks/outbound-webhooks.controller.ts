@@ -69,6 +69,18 @@ export class OutboundWebhooksController {
     );
   }
 
+  @Post(":id/test")
+  @HttpCode(200)
+  sendTestDelivery(@Req() request: AuthenticatedRequest, @Param("id") endpointId: string) {
+    const actor = this.requireActor(request);
+    return this.outboundWebhooksService.sendTestDelivery(
+      actor.tenantId,
+      actor.userId,
+      actor.role,
+      decodeURIComponent(endpointId),
+    );
+  }
+
   @Delete(":id")
   @HttpCode(200)
   deleteEndpoint(@Req() request: AuthenticatedRequest, @Param("id") endpointId: string) {

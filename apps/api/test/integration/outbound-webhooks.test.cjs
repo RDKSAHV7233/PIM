@@ -308,6 +308,28 @@ async function run() {
     const viewerListAttempt = await apiRequest(baseUrl, "GET", "/admin/webhooks", viewerToken);
     assertStatus(viewerListAttempt, 403, "viewer denied outbound webhook admin route");
 
+    webhookState.received = null;
+    const sendTestWebhook = await apiRequest(baseUrl, "POST", `/admin/webhooks/${endpointId}/test`, adminToken);
+    assertStatus(sendTestWebhook, 200, "send outbound webhook test delivery");
+    const testDeliveryId = String(sendTestWebhook.payload?.id ?? "");
+    const testEventId = String(sendTestWebhook.payload?.eventId ?? "");
+    assert(testDeliveryId.length > 0, "missing test delivery id");
+    assert(testEventId.length > 0, "missing test event id");
+
+    const testReceived = await waitForWebhook(webhookState, 15_000);
+    assert(testReceived.method === "POST", `expected POST webhook test delivery, got ${testReceived.method}`);
+    assert(testReceived.payload && testReceived.payload.type === "approval_decision", "test webhook payload must be approval_decision");
+    assert(testReceived.payload && testReceived.payload.source === "test", "test webhook payload must be marked as test");
+    assert(testReceived.payload && testReceived.payload.id === testEventId, "test webhook payload id must match delivery event id");
+    const testTimestamp = String(testReceived.headers["x-pim1-webhook-timestamp"] ?? "");
+    const testSignature = String(testReceived.headers["x-pim1-webhook-signature"] ?? "");
+    assert(testTimestamp.length > 0, "missing test webhook timestamp header");
+    assert(testSignature.startsWith("sha256="), "missing test webhook signature prefix");
+    const expectedTestSignature = createHmac("sha256", signingSecret)
+      .update(`${testTimestamp}.${testReceived.bodyText}`)
+      .digest("hex");
+    assert(testSignature === `sha256=${expectedTestSignature}`, "test webhook signature mismatch");
+
     const createCategory = await apiRequest(baseUrl, "POST", "/taxonomy/categories", adminToken, {
       name: `Webhook Category ${runId}`,
     });
@@ -339,6 +361,7 @@ async function run() {
     });
     assertStatus(submitForReview, 200, "submit product for review");
 
+    webhookState.received = null;
     const approveProduct = await apiRequest(baseUrl, "POST", `/catalog/products/${productId}/review-decision`, adminToken, {
       status: "rejected",
       note: "reject for outbound webhook test",
@@ -361,7 +384,13 @@ async function run() {
     const listDeliveries = await apiRequest(baseUrl, "GET", "/admin/webhooks/deliveries", adminToken);
     assertStatus(listDeliveries, 200, "list outbound webhook deliveries");
     assert(Array.isArray(listDeliveries.payload), "delivery list payload must be an array");
-    const delivery = listDeliveries.payload.find((row) => row.endpointId === endpointId && row.eventType === "approval_decision");
+    const testDelivery = listDeliveries.payload.find((row) => row.id === testDeliveryId);
+    assert(testDelivery, "expected queued test delivery row");
+    assert(testDelivery.status === "delivered", `expected delivered test webhook row, got ${testDelivery.status}`);
+    assert(Number(testDelivery.responseStatus) === 204, `expected test responseStatus=204, got ${testDelivery.responseStatus}`);
+    const delivery = listDeliveries.payload.find(
+      (row) => row.endpointId === endpointId && row.eventType === "approval_decision" && row.id !== testDeliveryId,
+    );
     assert(delivery, "expected delivery row for approval_decision");
     assert(delivery.status === "delivered", `expected delivered webhook row, got ${delivery.status}`);
     assert(Number(delivery.responseStatus) === 204, `expected responseStatus=204, got ${delivery.responseStatus}`);
@@ -383,6 +412,7 @@ async function run() {
       WHERE tenant_key = $1
         AND action IN (
           'outbound_webhook.created',
+          'outbound_webhook.test_requested',
           'outbound_webhook.updated',
           'outbound_webhook.deleted'
         )
@@ -391,6 +421,7 @@ async function run() {
     );
     const actions = Array.isArray(auditRows) ? auditRows.map((row) => String(row.action ?? "")) : [];
     assert(actions.includes("outbound_webhook.created"), "expected outbound_webhook.created audit row");
+    assert(actions.includes("outbound_webhook.test_requested"), "expected outbound_webhook.test_requested audit row");
     assert(actions.includes("outbound_webhook.updated"), "expected outbound_webhook.updated audit row");
     assert(actions.includes("outbound_webhook.deleted"), "expected outbound_webhook.deleted audit row");
 
@@ -401,6 +432,7 @@ async function run() {
       validated: [
         "admin_can_manage_outbound_webhook_endpoints",
         "viewer_forbidden_from_outbound_webhook_admin_routes",
+        "admin_can_send_signed_outbound_webhook_test_deliveries",
         "approval_decision_triggers_signed_outbound_webhook_delivery",
         "delivery_history_records_successful_delivery",
         "webhook_admin_mutations_emit_audit_rows"

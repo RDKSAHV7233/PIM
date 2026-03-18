@@ -189,10 +189,11 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
     - list endpoints
     - create endpoint
     - pause/resume endpoint
+    - send test delivery
     - delete endpoint
     - list delivery history
   - Deliveries are queued through the existing worker infrastructure and signed with `X-PIM1-Webhook-Signature` (HMAC SHA-256 over `timestamp.body`).
-  - Admin UI now exposes `/admin/webhooks` for endpoint creation and delivery visibility.
+  - Admin UI now exposes `/admin/webhooks` for endpoint creation, test delivery, and delivery visibility.
   - Tenant-scoped API key program shipped for machine access to the protected API:
     - admin API under `/api/v1/admin/api-keys`
     - list keys
@@ -206,7 +207,6 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
     - `node apps/api/test/integration/api-keys.test.cjs`
   - Remaining scope for full closure:
     - broader outbound event coverage
-    - optional receiver/test tooling beyond the current admin-managed HTTP endpoint flow
 
 ### RISK-P2-002: Admin user lifecycle completeness
 - Severity: P2

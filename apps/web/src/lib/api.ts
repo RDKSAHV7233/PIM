@@ -1371,6 +1371,10 @@ export async function deleteOutboundWebhookEndpoint(endpointId: string, options?
   );
 }
 
+export async function sendOutboundWebhookTest(endpointId: string, options?: ApiRequestOptions) {
+  return postJson<OutboundWebhookDelivery>(`/admin/webhooks/${encodeURIComponent(endpointId)}/test`, {}, options);
+}
+
 export async function getOutboundWebhookDeliveries(
   input?: { endpointId?: string; status?: OutboundWebhookDelivery["status"]; limit?: number },
   options?: ApiRequestOptions,

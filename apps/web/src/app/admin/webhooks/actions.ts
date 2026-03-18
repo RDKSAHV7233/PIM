@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   createOutboundWebhookEndpoint,
   deleteOutboundWebhookEndpoint,
+  sendOutboundWebhookTest,
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -79,4 +80,14 @@ export async function deleteOutboundWebhookAction(formData: FormData) {
   await deleteOutboundWebhookEndpoint(endpointId, await requireAdminRequestOptions());
   revalidatePath("/admin/webhooks");
   redirectWithStatus("webhook-deleted");
+}
+
+export async function sendTestOutboundWebhookAction(formData: FormData) {
+  const endpointId = String(formData.get("endpointId") ?? "").trim();
+  if (!endpointId) {
+    throw new Error("Webhook endpoint is required.");
+  }
+  await sendOutboundWebhookTest(endpointId, await requireAdminRequestOptions());
+  revalidatePath("/admin/webhooks");
+  redirectWithStatus("webhook-test-queued");
 }

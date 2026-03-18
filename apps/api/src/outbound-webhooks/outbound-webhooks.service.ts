@@ -74,12 +74,13 @@ type DeliveryQueuePayload = {
   tenantKey: string;
   endpointId: string;
   deliveryId: string;
+  forceDelivery?: boolean;
 };
 
 type WebhookPayload = {
   id: string;
   type: NotificationEventType;
-  source: "notification";
+  source: "notification" | "test";
   occurredAt: string;
   tenantKey: string;
   userId: string;
@@ -329,21 +330,52 @@ export class OutboundWebhooksService {
       : [];
     const endpointNames = new Map(endpoints.map((row) => [row.id, row.name]));
 
-    return rows.map((row) => ({
-      id: row.id,
-      endpointId: row.endpointId,
-      endpointName: endpointNames.get(row.endpointId) ?? null,
-      eventType: row.eventType as NotificationEventType,
-      eventId: row.eventId,
-      status: row.status as OutboundWebhookDeliveryStatus,
-      attemptCount: row.attemptCount,
-      responseStatus: row.responseStatus,
-      errorMessage: row.errorMessage,
-      attemptedAt: row.attemptedAt?.toISOString() ?? null,
-      deliveredAt: row.deliveredAt?.toISOString() ?? null,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    }));
+    return rows.map((row) => this.mapDelivery(row, endpointNames.get(row.endpointId) ?? null));
+  }
+
+  async sendTestDelivery(
+    tenantKeyInput: string,
+    actorId: string,
+    actorRole: AppRole,
+    endpointId: string,
+  ): Promise<OutboundWebhookDeliveryRecord> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const endpoint = await this.requireEndpoint(tenantKey, endpointId);
+    const occurredAt = new Date().toISOString();
+    const eventId = randomUUID();
+    const payload = this.buildTestPayload({
+      eventId,
+      endpointId: endpoint.id,
+      endpointName: endpoint.name,
+      eventType: endpoint.eventType as NotificationEventType,
+      tenantKey,
+      actorId,
+      occurredAt,
+    });
+    const delivery = await this.createQueuedDelivery(
+      tenantKey,
+      endpoint.id,
+      endpoint.eventType as NotificationEventType,
+      eventId,
+      payload,
+      { forceDelivery: true },
+    );
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "outbound_webhook.test_requested",
+      resource: "OutboundWebhookEndpoint",
+      resourceId: endpoint.id,
+      metadata: {
+        eventId,
+        eventType: endpoint.eventType,
+        endpointName: endpoint.name,
+        targetUrl: endpoint.targetUrl,
+      },
+    });
+
+    return this.mapDelivery(delivery, endpoint.name);
   }
 
   async enqueueNotificationEvent(input: NotificationWebhookEventInput): Promise<void> {
@@ -365,25 +397,7 @@ export class OutboundWebhooksService {
 
     const payload = this.buildPayload(input);
     for (const endpoint of endpoints) {
-      const delivery = await this.prisma.tenant(tenantKey).outboundWebhookDelivery.create({
-        data: {
-          tenantKey,
-          endpointId: endpoint.id,
-          eventType: input.eventType,
-          eventId: input.notificationId,
-          status: "queued",
-          requestBody: payload as Prisma.InputJsonValue,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      await this.queueService.enqueue(QUEUE_NAMES.WEBHOOK_EVENT, {
-        tenantKey,
-        endpointId: endpoint.id,
-        deliveryId: delivery.id,
-      } satisfies DeliveryQueuePayload);
+      await this.createQueuedDelivery(tenantKey, endpoint.id, input.eventType, input.notificationId, payload);
     }
   }
 
@@ -433,7 +447,7 @@ export class OutboundWebhooksService {
       },
     });
 
-    if (!endpoint || !endpoint.isActive) {
+    if (!endpoint || (!endpoint.isActive && !payload.forceDelivery)) {
       await this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({
         where: { id: delivery.id },
         data: {
@@ -534,6 +548,78 @@ export class OutboundWebhooksService {
     };
   }
 
+  private buildTestPayload(input: {
+    eventId: string;
+    endpointId: string;
+    endpointName: string;
+    eventType: NotificationEventType;
+    tenantKey: string;
+    actorId: string;
+    occurredAt: string;
+  }): WebhookPayload {
+    return {
+      id: input.eventId,
+      type: input.eventType,
+      source: "test",
+      occurredAt: input.occurredAt,
+      tenantKey: input.tenantKey,
+      userId: input.actorId,
+      title: `PIM1 test delivery: ${input.endpointName}`,
+      message: `This is a test webhook delivery for ${input.eventType}.`,
+      actionUrl: null,
+      actionLabel: null,
+      metadata: {
+        test: true,
+        endpointId: input.endpointId,
+        endpointName: input.endpointName,
+        triggeredBy: input.actorId,
+      },
+    };
+  }
+
+  private async createQueuedDelivery(
+    tenantKey: string,
+    endpointId: string,
+    eventType: NotificationEventType,
+    eventId: string,
+    payload: WebhookPayload,
+    options?: { forceDelivery?: boolean },
+  ) {
+    const delivery = await this.prisma.tenant(tenantKey).outboundWebhookDelivery.create({
+      data: {
+        tenantKey,
+        endpointId,
+        eventType,
+        eventId,
+        status: "queued",
+        requestBody: payload as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        endpointId: true,
+        eventType: true,
+        eventId: true,
+        status: true,
+        attemptCount: true,
+        responseStatus: true,
+        errorMessage: true,
+        attemptedAt: true,
+        deliveredAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    await this.queueService.enqueue(QUEUE_NAMES.WEBHOOK_EVENT, {
+      tenantKey,
+      endpointId,
+      deliveryId: delivery.id,
+      forceDelivery: options?.forceDelivery === true,
+    } satisfies DeliveryQueuePayload);
+
+    return delivery;
+  }
+
   private normalizeTargetUrl(value: string): string {
     const normalized = String(value ?? "").trim();
     if (!normalized) {
@@ -616,6 +702,40 @@ export class OutboundWebhooksService {
       isActive: row.isActive,
       createdBy: row.createdBy,
       lastTriggeredAt: row.lastTriggeredAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private mapDelivery(
+    row: {
+      id: string;
+      endpointId: string;
+      eventType: string;
+      eventId: string;
+      status: string;
+      attemptCount: number;
+      responseStatus: number | null;
+      errorMessage: string | null;
+      attemptedAt: Date | null;
+      deliveredAt: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    endpointName: string | null,
+  ): OutboundWebhookDeliveryRecord {
+    return {
+      id: row.id,
+      endpointId: row.endpointId,
+      endpointName,
+      eventType: row.eventType as NotificationEventType,
+      eventId: row.eventId,
+      status: row.status as OutboundWebhookDeliveryStatus,
+      attemptCount: row.attemptCount,
+      responseStatus: row.responseStatus,
+      errorMessage: row.errorMessage,
+      attemptedAt: row.attemptedAt?.toISOString() ?? null,
+      deliveredAt: row.deliveredAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

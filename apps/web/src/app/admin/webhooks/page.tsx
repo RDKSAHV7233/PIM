@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   createOutboundWebhookAction,
   deleteOutboundWebhookAction,
+  sendTestOutboundWebhookAction,
   toggleOutboundWebhookAction,
 } from "./actions";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -81,6 +82,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
         {status === "webhook-created" ? <StatusBanner tone="success" message="Webhook endpoint created." /> : null}
         {status === "webhook-paused" ? <StatusBanner tone="info" message="Webhook endpoint paused." /> : null}
         {status === "webhook-resumed" ? <StatusBanner tone="success" message="Webhook endpoint resumed." /> : null}
+        {status === "webhook-test-queued" ? <StatusBanner tone="success" message="Webhook test delivery queued." /> : null}
         {status === "webhook-deleted" ? <StatusBanner tone="success" message="Webhook endpoint deleted." /> : null}
 
         {role === "admin" ? (
@@ -175,6 +177,12 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                       <td className="py-2">
                         {role === "admin" ? (
                           <div className="flex flex-wrap gap-2">
+                            <form action={sendTestOutboundWebhookAction}>
+                              <input type="hidden" name="endpointId" value={endpoint.id} />
+                              <button type="submit" className="rounded-md border border-sky-200 px-3 py-2 text-sm text-sky-700">
+                                Send test
+                              </button>
+                            </form>
                             <form action={toggleOutboundWebhookAction}>
                               <input type="hidden" name="endpointId" value={endpoint.id} />
                               <input type="hidden" name="isActive" value={endpoint.isActive ? "false" : "true"} />
