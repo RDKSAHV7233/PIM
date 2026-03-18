@@ -176,7 +176,7 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
 
 ### RISK-P2-001: Public API and outbound webhooks program
 - Severity: P2
-- Status: In Progress
+- Status: Closed
 - Owner: Platform Team
 - Validation evidence (2026-03-18):
   - Outbound webhook foundation shipped for tenant-managed notification events:
@@ -206,12 +206,13 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
     - `node apps/api/test/integration/outbound-webhooks.test.cjs`
     - `node apps/api/test/integration/api-keys.test.cjs`
   - Outbound webhook integration now proves signed delivery across multiple real event families:
+    - `import_completed`
     - `approval_decision`
     - `import_failed`
+    - `publish_succeeded`
     - `publish_failed`
     - plus admin-triggered test deliveries through `/api/v1/admin/webhooks/:id/test`
-  - Remaining scope for full closure:
-    - broader success-path outbound event coverage (`import_completed`, `publish_succeeded`)
+  - No remaining scope is required for the current public API + outbound webhooks program baseline.
 
 ### RISK-P2-002: Admin user lifecycle completeness
 - Severity: P2
