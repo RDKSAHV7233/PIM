@@ -89,9 +89,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-log-${{ github.sha }}-${{ github.run_id }}
-          path: |
-            .run-logs/e2e-ci-${{ github.run_id }}.log
-            .run-logs/e2e-result-*.json
+          path: .run-logs/**
           retention-days: 30
 
       - name: Fail if suite exit code non-zero

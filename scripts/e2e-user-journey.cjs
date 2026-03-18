@@ -34,8 +34,21 @@ const FAIL_ON_SKIP = argv.includes("--fail-on-skip") || readBooleanEnv("E2E_FAIL
 const resultTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const resultFilePath = path.join(process.cwd(), ".run-logs", `e2e-result-${resultTimestamp}.json`);
 
+function normalizeApiBaseUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+  const url = new URL(raw);
+  const normalizedPath = url.pathname.replace(/\/+$/, "");
+  if (!/\/api\/v1$/i.test(normalizedPath)) {
+    url.pathname = `${normalizedPath === "/" ? "" : normalizedPath}/api/v1`;
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
 const CONFIG = {
-  baseUrl: String(process.env.STAGING_BASE_URL ?? "").trim(),
+  baseUrl: normalizeApiBaseUrl(process.env.STAGING_BASE_URL),
   webUrl: String(process.env.STAGING_WEB_URL ?? "").trim(),
   workspace: String(process.env.STAGING_SMOKE_WORKSPACE ?? "").trim(),
   smokeUser: String(process.env.STAGING_SMOKE_USER ?? "").trim(),
