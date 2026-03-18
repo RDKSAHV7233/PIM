@@ -339,8 +339,8 @@
         {
           "storyId": "ST-OPS-NOTIFICATION-CENTER-003",
           "title": "Add per-user notification center for async import, publish, and approval events",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "ba58f81",
           "tests_passed": [
@@ -351,8 +351,8 @@
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Submission processing returned 500 after notification-center rollout because publish-status notification query used an unquoted camel-case column name.",
-          "regression_evidence": "Exact failing command: POST /api/v1/marketplace/export-jobs/:id/process during live smoke verification. Failing output snippet: Raw query failed. Code: `42703`. Message: `column j.failurereason does not exist`. Likely file: apps/api/src/notifications/notifications.service.ts."
+          "reopened_reason": "Notification drawer overflowed the viewport and allowed the dashboard shell to scroll behind it, causing notification actions to overlap the page content.",
+          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const center = execSync('git show HEAD:apps/web/src/components/nav/notification-center.tsx', { encoding: 'utf8' }); const missing = []; if (!center.includes('document.body.style.overflow = \\\"hidden\\\"')) missing.push('body scroll lock'); if (!center.includes('flex h-full w-full max-w-md flex-col')) missing.push('bounded flex drawer shell'); if (!center.includes('min-h-0 flex-1 overflow-y-auto')) missing.push('bounded internal scroll region'); if (missing.length === 0) { console.error('Expected notification drawer layout regression markers not found.'); process.exit(1); } console.error(`FAIL: Notification drawer can overflow the viewport and scroll the page behind the panel because the HEAD version is missing: ${missing.join(', ')}.`); process.exit(1); '@ | node -. Failing output snippet: FAIL: Notification drawer can overflow the viewport and scroll the page behind the panel because the HEAD version is missing: body scroll lock, bounded flex drawer shell, bounded internal scroll region. Likely file: apps/web/src/components/nav/notification-center.tsx."
         },
         {
           "storyId": "ST-OPS-QUEUE-DURABILITY-004",
