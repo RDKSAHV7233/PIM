@@ -5,6 +5,7 @@ const { PrismaClient, Prisma } = require("@prisma/client");
 const BOOTSTRAP_TABLES_WITH_MANUAL_TENANT_FILTER = new Set([
   "AuthIdentity",
   "WorkspaceDirectory",
+  "api_access_keys",
 ]);
 
 function parseTablesArg(argv) {

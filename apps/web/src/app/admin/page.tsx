@@ -21,6 +21,11 @@ const adminLinks = [
     href: "/admin/users",
   },
   {
+    title: "API Keys",
+    description: "Issue tenant-scoped machine credentials for the public API.",
+    href: "/admin/api-keys",
+  },
+  {
     title: "Connector Access",
     description: "Grant/revoke install, reconnect, and uninstall actions.",
     href: "/admin/connectors",

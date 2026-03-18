@@ -212,6 +212,24 @@ export interface WorkspaceUser {
   updatedAt: string;
 }
 
+export interface ApiAccessKey {
+  id: string;
+  label: string;
+  role: AppRole;
+  keyPrefix: string;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatedApiAccessKey extends ApiAccessKey {
+  plainTextKey: string;
+}
+
 export interface OutboundWebhookEndpoint {
   id: string;
   name: string;
@@ -1298,6 +1316,21 @@ export async function unlockWorkspaceUser(userId: string, options?: ApiRequestOp
 
 export async function deactivateWorkspaceUser(userId: string, options?: ApiRequestOptions) {
   return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`, {}, options);
+}
+
+export async function getApiAccessKeys(options?: ApiRequestOptions) {
+  return fetchJson<ApiAccessKey[]>("/admin/api-keys", undefined, options);
+}
+
+export async function createApiAccessKey(
+  dto: { label: string; role: AppRole; expiresAt?: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<CreatedApiAccessKey>("/admin/api-keys", dto, options);
+}
+
+export async function revokeApiAccessKey(keyId: string, options?: ApiRequestOptions) {
+  return postJson<ApiAccessKey>(`/admin/api-keys/${encodeURIComponent(keyId)}/revoke`, {}, options);
 }
 
 export async function getOutboundWebhookEndpoints(options?: ApiRequestOptions) {

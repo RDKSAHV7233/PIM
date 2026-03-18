@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { FastifyRequest } from "fastify";
+import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
+import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
 import { resolveDefaultRole } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
@@ -19,6 +21,8 @@ interface AuthenticatedRequest extends FastifyRequest {
   pimTenant?: string;
   pimUserId?: string;
   pimJwtClaims?: PimJwtClaims;
+  pimResolvedApiKey?: ResolvedApiKeyIdentity | null;
+  pimAuthType?: "user_jwt" | "api_key";
 }
 
 @Injectable()
@@ -26,6 +30,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtBlocklistService: JwtBlocklistService,
+    private readonly apiKeysService: ApiKeysService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -56,9 +61,24 @@ export class JwtAuthGuard implements CanActivate {
       request.pimTenant = normalizeTenantKey(claims.tenantId);
       request.pimRole = claims.role ?? resolveDefaultRole();
       request.pimJwtClaims = claims;
+      request.pimAuthType = "user_jwt";
       return true;
     }
 
-    throw new UnauthorizedException("Bearer token is required.");
+    const apiKey = extractApiKeyFromHeaders(request.headers as Record<string, string | string[] | undefined>);
+    if (apiKey) {
+      const resolved = request.pimResolvedApiKey ?? await this.apiKeysService.resolveApiKey(apiKey);
+      if (!resolved) {
+        throw new UnauthorizedException({ error: "INVALID_API_KEY" });
+      }
+      request.pimUserId = resolved.actorId;
+      request.pimTenant = normalizeTenantKey(resolved.tenantId);
+      request.pimRole = resolved.role ?? resolveDefaultRole();
+      request.pimAuthType = "api_key";
+      void this.apiKeysService.touchLastUsed(resolved.keyId);
+      return true;
+    }
+
+    throw new UnauthorizedException("Bearer token or API key is required.");
   }
 }

@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.module";
 import { AuthModule } from "./auth/auth.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
@@ -42,6 +43,7 @@ const FEATURE_ONDC_ENABLED =
     LoggingModule,
     QueueModule,
     TenantDirectoryModule,
+    ApiKeysModule,
     AuthModule,
     PrismaModule,
     AuditModule,
@@ -66,6 +68,7 @@ const FEATURE_ONDC_ENABLED =
     AutoSuggestionsModule,
   ],
   providers: [
+    TenantContextMiddleware,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

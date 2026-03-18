@@ -193,10 +193,18 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
     - list delivery history
   - Deliveries are queued through the existing worker infrastructure and signed with `X-PIM1-Webhook-Signature` (HMAC SHA-256 over `timestamp.body`).
   - Admin UI now exposes `/admin/webhooks` for endpoint creation and delivery visibility.
+  - Tenant-scoped API key program shipped for machine access to the protected API:
+    - admin API under `/api/v1/admin/api-keys`
+    - list keys
+    - create keys
+    - revoke keys
+    - admin role intentionally disallowed for API keys
+  - API key auth is now recognized by the shared request path via `x-pim-api-key` or `Authorization: ApiKey ...`, with tenant resolution before request handling and RBAC enforcement on protected routes.
+  - Admin UI now exposes `/admin/api-keys` for issuing and revoking machine credentials.
   - Integration proof:
     - `node apps/api/test/integration/outbound-webhooks.test.cjs`
+    - `node apps/api/test/integration/api-keys.test.cjs`
   - Remaining scope for full closure:
-    - public-auth/API-key program
     - broader outbound event coverage
     - optional receiver/test tooling beyond the current admin-managed HTTP endpoint flow
 

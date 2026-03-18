@@ -531,6 +531,25 @@ model AuthIdentity {
   @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_auth_identity_tenant_created_id")
 }
 
+model ApiAccessKey {
+  id         String    @id
+  tenantKey  String    @default("default")
+  label      String
+  role       String    @default("viewer")
+  keyPrefix  String    @map("key_prefix")
+  secretHash String    @map("secret_hash")
+  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdBy  String?   @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_api_access_keys_tenant_created_id")
+  @@index([tenantKey, revokedAt, expiresAt], map: "idx_api_access_keys_tenant_revoked_expires")
+  @@map("api_access_keys")
+}
+
 model WorkspaceDirectory {
   id            String   @id @default(cuid())
   tenantKey     String   @unique
