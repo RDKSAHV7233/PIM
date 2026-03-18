@@ -41,6 +41,11 @@
   - `auth-bootstrap-admin.md`
   - `credential-key-rotation.md`
   - `test-data-governance.md`
+- `docs/legal/`
+  - `terms-of-service.md`
+  - `privacy-policy.md`
+  - `data-retention-policy.md`
+  - `dpa.md`
 
 ## Archived (legacy / duplicate)
 - `unused/docs-legacy/2026-03-03/` (older and duplicate imported document variants)
