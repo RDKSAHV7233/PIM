@@ -197,8 +197,19 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
 
 ### RISK-P2-003: Catalog health query scaling optimization
 - Severity: P2
-- Status: Planned
+- Status: Closed
 - Owner: Backend
+- Validation evidence (2026-03-18):
+  - Implemented stale-while-refresh caching for `GET /api/v1/dashboard/catalog-health` in commit `f16536e` (`perf(dashboard): serve stale catalog health while refreshing`).
+  - Follow-up commit `d500469` aligned raw-SQL guard annotations so the same slice is green in the generic `CI` lane.
+  - Fresh cache remains bounded at 5 minutes, while a longer-lived stale cache now serves the last known catalog-health payload immediately and refreshes in the background instead of forcing callers onto the heavy aggregate query.
+  - Added regression coverage:
+    - `node apps/api/test/integration/dashboard-aggregations.test.cjs`
+    - `node apps/api/test/integration/dashboard-catalog-health-stale-refresh.test.cjs`
+    - `node apps/api/test/integration/dashboard-health-stale-refresh.test.cjs`
+  - Validation lanes:
+    - CI run `23235915363` -> pass
+    - Staging deploy run `23235915380` -> pass
 
 ## Governance
 - This file is the product/engineering shared risk source for production declaration.
