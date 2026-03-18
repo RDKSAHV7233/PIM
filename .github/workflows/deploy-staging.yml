@@ -95,6 +95,23 @@ jobs:
           fi
           node scripts/staging-postdeploy-check.cjs
 
+      - name: E2E smoke - post-deploy verification
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
+          USE_CURL_SHIM: "false"
+          E2E_SMOKE: "true"
+        run: |
+          mkdir -p .run-logs
+          set -o pipefail
+          node scripts/e2e-user-journey.cjs --smoke \
+            2>&1 | tee .run-logs/e2e-smoke-${GITHUB_RUN_ID}.log
+          exit ${PIPESTATUS[0]}
+
       - name: Record staging gate artifact
         shell: bash
         env:
@@ -130,11 +147,14 @@ jobs:
             --tenantId "${STAGING_SMOKE_TENANT_ID}" \
             --apiBase "${STAGING_BASE_URL}/api/v1"
 
-      - name: Upload staging gate artifacts
+      - name: Upload gate + rollout + smoke artifacts
         uses: actions/upload-artifact@v4
         with:
           name: staging-gate-artifacts-${{ github.run_id }}
           path: |
             docs/execution/gates/*.json
             docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json
+            .run-logs/e2e-smoke-*.log
+            .run-logs/e2e-result-*.json
+          include-hidden-files: true
           if-no-files-found: error

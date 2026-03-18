@@ -31,8 +31,50 @@ function readBooleanEnv(name) {
 
 const SECTION_FILTER = String(readFlagValue("--section") || process.env.E2E_SECTION || "").trim().toLowerCase();
 const FAIL_ON_SKIP = argv.includes("--fail-on-skip") || readBooleanEnv("E2E_FAIL_ON_SKIP");
+const SMOKE_MODE = argv.includes("--smoke") || readBooleanEnv("E2E_SMOKE");
 const resultTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const resultFilePath = path.join(process.cwd(), ".run-logs", `e2e-result-${resultTimestamp}.json`);
+const MODE_LABEL = SMOKE_MODE ? "smoke" : "full";
+const SMOKE_CHECK_KEYS = new Set([
+  "health:api_reachable",
+  "health:env_is_staging",
+  "health:queue_backend_bullmq",
+  "health:queue_worker_enabled",
+  "auth:admin_login",
+  "auth:invalid_password_rejected",
+  "auth:token_required_on_protected_route",
+  "taxonomy:create_category",
+  "taxonomy:create_attribute",
+  "catalog:create_product_draft",
+  "catalog:reject_non_draft_entry",
+  "catalog:get_product",
+  "catalog:validate_product",
+  "catalog:workflow_submit_for_review",
+  "catalog:workflow_approve",
+  "mappings:list_channels",
+  "mappings:get_channel_mapping",
+  "mappings:create_mapping_template",
+  "dashboard:dashboard_health",
+  "dashboard:billing_usage",
+  "users:list_workspace_users",
+  "users:create_workspace_user",
+  "users:lock_user",
+  "users:unlock_user",
+  "audit:audit_log_accessible",
+  "cleanup:delete_variant",
+  "cleanup:delete_product",
+  "cleanup:delete_attribute",
+  "cleanup:delete_category",
+  "cleanup:final_logout",
+]);
+
+function toCheckKey(section, name) {
+  return `${String(section ?? "").trim().toLowerCase()}:${String(name ?? "").trim()}`;
+}
+
+function isSmokeCheck(section, name) {
+  return SMOKE_CHECK_KEYS.has(toCheckKey(section, name));
+}
 
 function normalizeApiBaseUrl(value) {
   const raw = String(value ?? "").trim();
@@ -593,8 +635,8 @@ function getIssueInboxItems(body) {
 function buildChecks() {
   const checks = [];
   const cleanupChecks = [];
-  const add = (section, name, fn) => checks.push({ section, name, fn });
-  const addCleanup = (name, fn) => cleanupChecks.push({ section: "cleanup", name, fn });
+  const add = (section, name, fn) => checks.push({ section, name, fn, smoke: isSmokeCheck(section, name) });
+  const addCleanup = (name, fn) => cleanupChecks.push({ section: "cleanup", name, fn, smoke: isSmokeCheck("cleanup", name) });
   add("health", "api_reachable", async () => {
     const health = await getHealth();
     assert(String(health?.status).toLowerCase() === "ok", "health status is not ok");
@@ -2054,6 +2096,13 @@ function buildChecks() {
     if (!ctx.categoryId) {
       skip("category not created");
     }
+    if (ctx.templateId) {
+      const templateDeleteResult = await api("DELETE", `/marketplace/templates/${encodeURIComponent(ctx.templateId)}`, {
+        token: ctx.adminToken,
+      });
+      assertStatus(templateDeleteResult, [200, 204, 404], "DELETE /marketplace/templates/:id during category cleanup");
+      ctx.templateId = null;
+    }
     let result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
       token: ctx.adminToken,
     });
@@ -2118,6 +2167,13 @@ function buildChecks() {
     if (!ctx.adminToken) {
       skip("admin token unavailable");
     }
+    if (ctx.workspaceUserId) {
+      const deactivateResult = await api("POST", `/admin/workspace/users/${encodeUser(ctx.workspaceUserId)}/deactivate`, {
+        token: ctx.adminToken,
+      });
+      assertStatus(deactivateResult, [200, 404], "POST /admin/workspace/users/:userId/deactivate during cleanup");
+      ctx.workspaceUserId = null;
+    }
     const result = await api("POST", "/auth/logout", {
       token: ctx.adminToken,
     });
@@ -2130,17 +2186,19 @@ function buildChecks() {
 
 async function main() {
   const { checks, cleanupChecks } = buildChecks();
+  const activeChecks = SMOKE_MODE ? checks.filter((item) => item.smoke) : checks;
+  const activeCleanupChecks = SMOKE_MODE ? cleanupChecks.filter((item) => item.smoke) : cleanupChecks;
   const startedAt = Date.now();
   let fatalError = null;
 
   try {
-    for (const item of checks) {
+    for (const item of activeChecks) {
       await check(item.section, item.name, item.fn);
     }
   } catch (error) {
     fatalError = error;
   } finally {
-    for (const item of cleanupChecks) {
+    for (const item of activeCleanupChecks) {
       await check(item.section, item.name, item.fn);
     }
     if (fatalError) {
@@ -2166,6 +2224,7 @@ async function main() {
             timestamp: new Date().toISOString(),
             sha: process.env.GITHUB_SHA || "local",
             runId: process.env.GITHUB_RUN_ID || "local",
+            mode: MODE_LABEL,
             total: reportState.total,
             pass: reportState.pass,
             fail: reportState.fail,
@@ -2181,7 +2240,7 @@ async function main() {
     }
     console.log(DIVIDER);
     console.log(
-      `  TOTAL  ${reportState.total} checks  |  ${reportState.pass} pass  |  ${reportState.fail} fail  |  ${reportState.skip} skip`,
+      `  TOTAL  ${reportState.total} checks${SMOKE_MODE ? " [smoke]" : ""}  |  ${reportState.pass} pass  |  ${reportState.fail} fail  |  ${reportState.skip} skip`,
     );
     console.log(`  Wall time: ${wallSeconds}s`);
     console.log(DIVIDER);

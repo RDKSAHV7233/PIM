@@ -9,6 +9,10 @@ on:
         description: "Run only this section (for example: auth, catalog, users). Leave blank for the full suite."
         required: false
         default: ""
+      smoke:
+        description: "Run in smoke mode (fast subset, about 30 checks)"
+        required: false
+        default: "false"
       fail_on_skip:
         description: "Fail the job if any check is skipped"
         required: false
@@ -51,11 +55,15 @@ jobs:
           STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
           USE_CURL_SHIM: "false"
           E2E_SECTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.section || '' }}
+          E2E_SMOKE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.smoke || 'false' }}
           E2E_FAIL_ON_SKIP: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.fail_on_skip || 'false' }}
         run: |
           mkdir -p .run-logs
           set -o pipefail
           ARGS=()
+          if [ "$E2E_SMOKE" = "true" ]; then
+            ARGS+=(--smoke)
+          fi
           if [ -n "$E2E_SECTION" ]; then
             ARGS+=(--section "$E2E_SECTION")
           fi
