@@ -205,8 +205,13 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
   - Integration proof:
     - `node apps/api/test/integration/outbound-webhooks.test.cjs`
     - `node apps/api/test/integration/api-keys.test.cjs`
+  - Outbound webhook integration now proves signed delivery across multiple real event families:
+    - `approval_decision`
+    - `import_failed`
+    - `publish_failed`
+    - plus admin-triggered test deliveries through `/api/v1/admin/webhooks/:id/test`
   - Remaining scope for full closure:
-    - broader outbound event coverage
+    - broader success-path outbound event coverage (`import_completed`, `publish_succeeded`)
 
 ### RISK-P2-002: Admin user lifecycle completeness
 - Severity: P2

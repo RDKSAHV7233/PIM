@@ -224,6 +224,7 @@ async function run() {
   const workspaceSlug = `ow-${runId}`.slice(0, 24);
   const displayName = `Outbound Webhooks ${runId}`;
   const adminUserId = `outbound-admin-${runId}@example.com`;
+  const editorUserId = `outbound-editor-${runId}@example.com`;
   const viewerUserId = `outbound-viewer-${runId}@example.com`;
 
   const env = {
@@ -259,7 +260,9 @@ async function run() {
 
   let categoryId = null;
   let productId = null;
-  let endpointId = null;
+  let approvalEndpointId = null;
+  let importEndpointId = null;
+  let publishEndpointId = null;
 
   try {
     await waitForHealth(baseUrl, 60_000);
@@ -285,31 +288,65 @@ async function run() {
     });
     assertStatus(createViewer, 201, "create viewer for access gating");
 
+    const createEditor = await apiRequest(baseUrl, "POST", "/admin/workspace/users", adminToken, {
+      userId: editorUserId,
+      role: "editor",
+    });
+    assertStatus(createEditor, 201, "create editor for notification coverage");
+
     const viewerLogin = await login(baseUrl, workspaceSlug, viewerUserId);
     assertStatus(viewerLogin, 201, "viewer login");
     const viewerToken = String(viewerLogin.payload?.accessToken ?? "");
 
-    const createWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
+    const editorLogin = await login(baseUrl, workspaceSlug, editorUserId);
+    assertStatus(editorLogin, 201, "editor login");
+    const editorToken = String(editorLogin.payload?.accessToken ?? "");
+
+    const createApprovalWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
       name: "Approval decisions",
       eventType: "approval_decision",
       targetUrl: webhookUrl,
       signingSecret,
       isActive: true,
     });
-    assertStatus(createWebhook, 201, "create outbound webhook endpoint");
-    endpointId = String(createWebhook.payload?.id ?? "");
-    assert(endpointId.length > 0, "missing webhook endpoint id");
+    assertStatus(createApprovalWebhook, 201, "create approval webhook endpoint");
+    approvalEndpointId = String(createApprovalWebhook.payload?.id ?? "");
+    assert(approvalEndpointId.length > 0, "missing approval webhook endpoint id");
+
+    const createImportWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
+      name: "Import failures",
+      eventType: "import_failed",
+      targetUrl: webhookUrl,
+      signingSecret,
+      isActive: true,
+    });
+    assertStatus(createImportWebhook, 201, "create import_failed webhook endpoint");
+    importEndpointId = String(createImportWebhook.payload?.id ?? "");
+    assert(importEndpointId.length > 0, "missing import_failed webhook endpoint id");
+
+    const createPublishWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
+      name: "Publish failures",
+      eventType: "publish_failed",
+      targetUrl: webhookUrl,
+      signingSecret,
+      isActive: true,
+    });
+    assertStatus(createPublishWebhook, 201, "create publish_failed webhook endpoint");
+    publishEndpointId = String(createPublishWebhook.payload?.id ?? "");
+    assert(publishEndpointId.length > 0, "missing publish_failed webhook endpoint id");
 
     const listWebhooks = await apiRequest(baseUrl, "GET", "/admin/webhooks", adminToken);
     assertStatus(listWebhooks, 200, "list outbound webhooks");
     assert(Array.isArray(listWebhooks.payload), "webhook list payload must be an array");
-    assert(listWebhooks.payload.some((row) => row.id === endpointId), "created webhook endpoint must be listed");
+    assert(listWebhooks.payload.some((row) => row.id === approvalEndpointId), "approval webhook endpoint must be listed");
+    assert(listWebhooks.payload.some((row) => row.id === importEndpointId), "import webhook endpoint must be listed");
+    assert(listWebhooks.payload.some((row) => row.id === publishEndpointId), "publish webhook endpoint must be listed");
 
     const viewerListAttempt = await apiRequest(baseUrl, "GET", "/admin/webhooks", viewerToken);
     assertStatus(viewerListAttempt, 403, "viewer denied outbound webhook admin route");
 
     webhookState.received = null;
-    const sendTestWebhook = await apiRequest(baseUrl, "POST", `/admin/webhooks/${endpointId}/test`, adminToken);
+    const sendTestWebhook = await apiRequest(baseUrl, "POST", `/admin/webhooks/${approvalEndpointId}/test`, adminToken);
     assertStatus(sendTestWebhook, 200, "send outbound webhook test delivery");
     const testDeliveryId = String(sendTestWebhook.payload?.id ?? "");
     const testEventId = String(sendTestWebhook.payload?.eventId ?? "");
@@ -337,41 +374,77 @@ async function run() {
     categoryId = String(createCategory.payload?.id ?? "");
     assert(categoryId.length > 0, "missing category id");
 
-    const createProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
+    const importJob = await apiRequest(baseUrl, "POST", "/bulk-import/jobs", editorToken, {
+      categoryId,
+      sourceFormat: "json",
+      sourceName: "Broken catalog upload",
+      rows: [{}],
+      maxRetries: 1,
+    });
+    assertStatus(importJob, 201, "create bulk import job");
+
+    webhookState.received = null;
+    const processedImport = await apiRequest(baseUrl, "POST", `/bulk-import/jobs/${importJob.payload.id}/process`, editorToken, {
+      chunkSize: 10,
+    });
+    assertStatus(processedImport, 201, "process bulk import job");
+
+    const importReceived = await waitForWebhook(webhookState, 15_000);
+    assert(importReceived.method === "POST", `expected POST import_failed webhook delivery, got ${importReceived.method}`);
+    assert(importReceived.payload && importReceived.payload.type === "import_failed", "import webhook payload must be import_failed");
+    assert(importReceived.payload && importReceived.payload.userId === editorUserId.toLowerCase(), "import webhook payload must target the editor");
+    assert(
+      String(importReceived.payload?.metadata?.bulkJobId ?? "") === String(importJob.payload.id),
+      "import webhook metadata must include bulkJobId",
+    );
+    const importTimestamp = String(importReceived.headers["x-pim1-webhook-timestamp"] ?? "");
+    const importSignature = String(importReceived.headers["x-pim1-webhook-signature"] ?? "");
+    assert(importTimestamp.length > 0, "missing import webhook timestamp header");
+    assert(importSignature.startsWith("sha256="), "missing import webhook signature prefix");
+    const expectedImportSignature = createHmac("sha256", signingSecret)
+      .update(`${importTimestamp}.${importReceived.bodyText}`)
+      .digest("hex");
+    assert(importSignature === `sha256=${expectedImportSignature}`, "import webhook signature mismatch");
+
+    const createProduct = await apiRequest(baseUrl, "POST", "/catalog/products", editorToken, {
       title: `Webhook Product ${runId}`,
       brand: "WebhookBrand",
-      description: "Webhook integration validation product",
+      description: "Webhook integration validation product ready for approval",
       categoryId,
       status: "draft",
-      attributes: { pricing: { sellingPrice: 499 } },
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: {},
     });
     assertStatus(createProduct, 201, "create product");
     productId = String(createProduct.payload?.id ?? "");
     assert(productId.length > 0, "missing product id");
     const productVersion = Number(createProduct.payload?.version ?? 1);
 
-    const submitForReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${productId}`, adminToken, {
+    const submitForReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${productId}`, editorToken, {
       expectedVersion: productVersion,
       title: `Webhook Product ${runId}`,
       brand: "WebhookBrand",
-      description: "Webhook integration validation product",
+      description: "Webhook integration validation product ready for approval",
       categoryId,
-      attributes: { pricing: { sellingPrice: 499 } },
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: {},
       status: "in_review",
     });
     assertStatus(submitForReview, 200, "submit product for review");
 
     webhookState.received = null;
     const approveProduct = await apiRequest(baseUrl, "POST", `/catalog/products/${productId}/review-decision`, adminToken, {
-      status: "rejected",
-      note: "reject for outbound webhook test",
+      status: "approved",
+      note: "approve for outbound webhook test",
     });
-    assertStatus(approveProduct, 201, "reject product to trigger webhook");
+    assertStatus(approveProduct, 201, "approve product to trigger webhook");
 
     const received = await waitForWebhook(webhookState, 15_000);
     assert(received.method === "POST", `expected POST webhook delivery, got ${received.method}`);
     assert(received.payload && received.payload.type === "approval_decision", "webhook payload must be approval_decision");
-    assert(received.payload && received.payload.userId === adminUserId.toLowerCase(), "webhook payload must target the submitter");
+    assert(received.payload && received.payload.userId === editorUserId.toLowerCase(), "webhook payload must target the submitting editor");
     const timestamp = String(received.headers["x-pim1-webhook-timestamp"] ?? "");
     const signature = String(received.headers["x-pim1-webhook-signature"] ?? "");
     assert(timestamp.length > 0, "missing webhook timestamp header");
@@ -381,6 +454,42 @@ async function run() {
       .digest("hex");
     assert(signature === `sha256=${expectedSignature}`, "webhook signature mismatch");
 
+    const installConnector = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
+      accountAlias: `webhook-${runId}`,
+    });
+    assertStatus(installConnector, 201, "install flipkart connector");
+
+    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${productId}/export-jobs`, editorToken, {
+      channel: "flipkart",
+      maxRetries: 1,
+    });
+    assertStatus(exportJob, 201, "create export job");
+
+    webhookState.received = null;
+    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, editorToken);
+    assertStatus(processedExport, 201, "process export job");
+    assert(
+      ["dead_letter", "failed"].includes(String(processedExport.payload?.status ?? "")),
+      `expected failed or dead_letter export job, got ${String(processedExport.payload?.status)}`,
+    );
+
+    const publishReceived = await waitForWebhook(webhookState, 15_000);
+    assert(publishReceived.method === "POST", `expected POST publish_failed webhook delivery, got ${publishReceived.method}`);
+    assert(publishReceived.payload && publishReceived.payload.type === "publish_failed", "publish webhook payload must be publish_failed");
+    assert(publishReceived.payload && publishReceived.payload.userId === editorUserId.toLowerCase(), "publish webhook payload must target the editor");
+    assert(
+      String(publishReceived.payload?.metadata?.exportJobId ?? "") === String(exportJob.payload.id),
+      "publish webhook metadata must include exportJobId",
+    );
+    const publishTimestamp = String(publishReceived.headers["x-pim1-webhook-timestamp"] ?? "");
+    const publishSignature = String(publishReceived.headers["x-pim1-webhook-signature"] ?? "");
+    assert(publishTimestamp.length > 0, "missing publish webhook timestamp header");
+    assert(publishSignature.startsWith("sha256="), "missing publish webhook signature prefix");
+    const expectedPublishSignature = createHmac("sha256", signingSecret)
+      .update(`${publishTimestamp}.${publishReceived.bodyText}`)
+      .digest("hex");
+    assert(publishSignature === `sha256=${expectedPublishSignature}`, "publish webhook signature mismatch");
+
     const listDeliveries = await apiRequest(baseUrl, "GET", "/admin/webhooks/deliveries", adminToken);
     assertStatus(listDeliveries, 200, "list outbound webhook deliveries");
     assert(Array.isArray(listDeliveries.payload), "delivery list payload must be an array");
@@ -389,21 +498,37 @@ async function run() {
     assert(testDelivery.status === "delivered", `expected delivered test webhook row, got ${testDelivery.status}`);
     assert(Number(testDelivery.responseStatus) === 204, `expected test responseStatus=204, got ${testDelivery.responseStatus}`);
     const delivery = listDeliveries.payload.find(
-      (row) => row.endpointId === endpointId && row.eventType === "approval_decision" && row.id !== testDeliveryId,
+      (row) => row.endpointId === approvalEndpointId && row.eventType === "approval_decision" && row.id !== testDeliveryId,
     );
     assert(delivery, "expected delivery row for approval_decision");
     assert(delivery.status === "delivered", `expected delivered webhook row, got ${delivery.status}`);
     assert(Number(delivery.responseStatus) === 204, `expected responseStatus=204, got ${delivery.responseStatus}`);
+    const importDelivery = listDeliveries.payload.find(
+      (row) => row.endpointId === importEndpointId && row.eventType === "import_failed",
+    );
+    assert(importDelivery, "expected delivery row for import_failed");
+    assert(importDelivery.status === "delivered", `expected delivered import webhook row, got ${importDelivery.status}`);
+    assert(Number(importDelivery.responseStatus) === 204, `expected import responseStatus=204, got ${importDelivery.responseStatus}`);
+    const publishDelivery = listDeliveries.payload.find(
+      (row) => row.endpointId === publishEndpointId && row.eventType === "publish_failed",
+    );
+    assert(publishDelivery, "expected delivery row for publish_failed");
+    assert(publishDelivery.status === "delivered", `expected delivered publish webhook row, got ${publishDelivery.status}`);
+    assert(Number(publishDelivery.responseStatus) === 204, `expected publish responseStatus=204, got ${publishDelivery.responseStatus}`);
 
-    const updateWebhook = await apiRequest(baseUrl, "PATCH", `/admin/webhooks/${endpointId}`, adminToken, {
+    const updateWebhook = await apiRequest(baseUrl, "PATCH", `/admin/webhooks/${approvalEndpointId}`, adminToken, {
       isActive: false,
       name: "Approval decisions paused",
     });
     assertStatus(updateWebhook, 200, "deactivate outbound webhook endpoint");
     assert(updateWebhook.payload?.isActive === false, "webhook endpoint must be inactive after patch");
 
-    const deleteWebhook = await apiRequest(baseUrl, "DELETE", `/admin/webhooks/${endpointId}`, adminToken);
-    assertStatus(deleteWebhook, 200, "delete outbound webhook endpoint");
+    const deleteApprovalWebhook = await apiRequest(baseUrl, "DELETE", `/admin/webhooks/${approvalEndpointId}`, adminToken);
+    assertStatus(deleteApprovalWebhook, 200, "delete approval webhook endpoint");
+    const deleteImportWebhook = await apiRequest(baseUrl, "DELETE", `/admin/webhooks/${importEndpointId}`, adminToken);
+    assertStatus(deleteImportWebhook, 200, "delete import webhook endpoint");
+    const deletePublishWebhook = await apiRequest(baseUrl, "DELETE", `/admin/webhooks/${publishEndpointId}`, adminToken);
+    assertStatus(deletePublishWebhook, 200, "delete publish webhook endpoint");
 
     const auditRows = await prisma.$queryRawUnsafe(
       `
@@ -433,7 +558,9 @@ async function run() {
         "admin_can_manage_outbound_webhook_endpoints",
         "viewer_forbidden_from_outbound_webhook_admin_routes",
         "admin_can_send_signed_outbound_webhook_test_deliveries",
+        "import_failed_notifications_trigger_signed_outbound_webhooks",
         "approval_decision_triggers_signed_outbound_webhook_delivery",
+        "publish_failed_notifications_trigger_signed_outbound_webhooks",
         "delivery_history_records_successful_delivery",
         "webhook_admin_mutations_emit_audit_rows"
       ],

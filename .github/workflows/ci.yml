@@ -97,6 +97,9 @@ jobs:
       - name: Catalog completeness integration test
         run: npm run test:integration:catalog-completeness
 
+      - name: Outbound webhook integration test
+        run: node apps/api/test/integration/outbound-webhooks.test.cjs
+
       - name: OpenAPI spec freshness check
         run: npm run openapi:check
 
