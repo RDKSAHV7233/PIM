@@ -20,10 +20,10 @@ jobs:
       APP_ENV: staging
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: "npm"
@@ -148,7 +148,7 @@ jobs:
             --apiBase "${STAGING_BASE_URL}/api/v1"
 
       - name: Upload gate + rollout + smoke artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: staging-gate-artifacts-${{ github.run_id }}
           path: |
