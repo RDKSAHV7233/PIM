@@ -2,6 +2,11 @@
 /* eslint-disable no-console */
 const { PrismaClient, Prisma } = require("@prisma/client");
 
+const BOOTSTRAP_TABLES_WITH_MANUAL_TENANT_FILTER = new Set([
+  "AuthIdentity",
+  "WorkspaceDirectory",
+]);
+
 function parseTablesArg(argv) {
   const flag = argv.find((entry) => entry.startsWith("--tables="));
   if (flag) {
@@ -76,8 +81,13 @@ async function main() {
 
   try {
     const discovered = await discoverTenantTables(client);
+    const rlsEligibleTables = discovered.filter(
+      (table) => !BOOTSTRAP_TABLES_WITH_MANUAL_TENANT_FILTER.has(String(table)),
+    );
     const targetTables =
-      targetFilter === null ? discovered : discovered.filter((table) => targetFilter.includes(table));
+      targetFilter === null
+        ? rlsEligibleTables
+        : rlsEligibleTables.filter((table) => targetFilter.includes(table));
     const policyTables = await loadPolicyTables(client);
     const missing = targetTables.filter((table) => !policyTables.has(String(table).toLowerCase()));
 
@@ -86,6 +96,9 @@ async function main() {
         {
           checkedAt: new Date().toISOString(),
           discoveredTables: discovered,
+          excludedBootstrapTables: discovered.filter((table) =>
+            BOOTSTRAP_TABLES_WITH_MANUAL_TENANT_FILTER.has(String(table)),
+          ),
           checkedTables: targetTables,
           missingPolicies: missing,
         },
