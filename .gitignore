@@ -21,5 +21,6 @@ playwright-*.out
 *.tsbuildinfo
 storage/
 .runlogs/
+.run-logs/
 unused/temp/
 unused/pim1-files-*/

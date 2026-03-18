@@ -1,0 +1,101 @@
+name: E2E - Staging User Journey
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      section:
+        description: "Run only this section (for example: auth, catalog, users). Leave blank for the full suite."
+        required: false
+        default: ""
+      fail_on_skip:
+        description: "Fail the job if any check is skipped"
+        required: false
+        default: "false"
+
+concurrency:
+  group: e2e-staging
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  e2e:
+    name: E2E User Journey - Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run E2E suite
+        id: e2e
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
+          USE_CURL_SHIM: "false"
+          E2E_SECTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.section || '' }}
+          E2E_FAIL_ON_SKIP: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.fail_on_skip || 'false' }}
+        run: |
+          mkdir -p .run-logs
+          set -o pipefail
+          ARGS=()
+          if [ -n "$E2E_SECTION" ]; then
+            ARGS+=(--section "$E2E_SECTION")
+          fi
+          if [ "$E2E_FAIL_ON_SKIP" = "true" ]; then
+            ARGS+=(--fail-on-skip)
+          fi
+          node scripts/e2e-user-journey.cjs "${ARGS[@]}" 2>&1 | tee .run-logs/e2e-ci-${GITHUB_RUN_ID}.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Parse summary line
+        if: always()
+        id: summary
+        run: |
+          SUMMARY=$(grep -E '^  TOTAL' .run-logs/e2e-ci-${GITHUB_RUN_ID}.log | tail -1 || echo 'TOTAL unknown')
+          echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## E2E Staging Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Summary: ${{ steps.summary.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat .run-logs/e2e-ci-${GITHUB_RUN_ID}.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-log-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            .run-logs/e2e-ci-${{ github.run_id }}.log
+            .run-logs/e2e-result-*.json
+          retention-days: 30
+
+      - name: Fail if suite exit code non-zero
+        if: steps.e2e.outputs.exit_code != '0'
+        run: |
+          echo "E2E suite reported failures. See log artifact."
+          exit 1
