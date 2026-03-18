@@ -176,8 +176,29 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
 
 ### RISK-P2-001: Public API and outbound webhooks program
 - Severity: P2
-- Status: Planned
+- Status: In Progress
 - Owner: Platform Team
+- Validation evidence (2026-03-18):
+  - Outbound webhook foundation shipped for tenant-managed notification events:
+    - `import_completed`
+    - `import_failed`
+    - `publish_succeeded`
+    - `publish_failed`
+    - `approval_decision`
+  - New admin API under `/api/v1/admin/webhooks` supports:
+    - list endpoints
+    - create endpoint
+    - pause/resume endpoint
+    - delete endpoint
+    - list delivery history
+  - Deliveries are queued through the existing worker infrastructure and signed with `X-PIM1-Webhook-Signature` (HMAC SHA-256 over `timestamp.body`).
+  - Admin UI now exposes `/admin/webhooks` for endpoint creation and delivery visibility.
+  - Integration proof:
+    - `node apps/api/test/integration/outbound-webhooks.test.cjs`
+  - Remaining scope for full closure:
+    - public-auth/API-key program
+    - broader outbound event coverage
+    - optional receiver/test tooling beyond the current admin-managed HTTP endpoint flow
 
 ### RISK-P2-002: Admin user lifecycle completeness
 - Severity: P2

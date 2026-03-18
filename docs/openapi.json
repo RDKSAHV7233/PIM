@@ -2086,6 +2086,110 @@
         ]
       }
     },
+    "/api/v1/admin/webhooks": {
+      "get": {
+        "operationId": "OutboundWebhooksController_listEndpoints",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      },
+      "post": {
+        "operationId": "OutboundWebhooksController_createEndpoint",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOutboundWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/webhooks/deliveries": {
+      "get": {
+        "operationId": "OutboundWebhooksController_listDeliveries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/webhooks/{id}": {
+      "patch": {
+        "operationId": "OutboundWebhooksController_updateEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOutboundWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      },
+      "delete": {
+        "operationId": "OutboundWebhooksController_deleteEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OutboundWebhooks"
+        ]
+      }
+    },
     "/api/v1/bulk-import/jobs": {
       "post": {
         "operationId": "BulkImportController_createJob",
@@ -3540,6 +3644,14 @@
         "properties": {}
       },
       "CreateExportJobAliasDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateOutboundWebhookDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateOutboundWebhookDto": {
         "type": "object",
         "properties": {}
       },

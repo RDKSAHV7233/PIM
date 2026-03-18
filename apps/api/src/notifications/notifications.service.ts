@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
   CursorPaginationQuery,
@@ -8,14 +9,9 @@ import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
 import type { AppRole } from "../common/rbac/roles";
+import { OutboundWebhooksService } from "../outbound-webhooks/outbound-webhooks.service";
 import { PrismaService } from "../prisma/prisma.service";
-
-export type NotificationEventType =
-  | "import_completed"
-  | "import_failed"
-  | "publish_succeeded"
-  | "publish_failed"
-  | "approval_decision";
+import { type NotificationEventType } from "./notification-event.types";
 
 type NotificationListRow = {
   id: string;
@@ -47,7 +43,10 @@ const REVIEWER_VISIBLE_TYPES: readonly NotificationEventType[] = ["approval_deci
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly outboundWebhooksService: OutboundWebhooksService,
+  ) {}
 
   async listForUser(userId: string, role: AppRole, pagination?: CursorPaginationQuery) {
     const unreadCount = await this.countUnread(userId, role);
@@ -93,6 +92,7 @@ export class NotificationsService {
       params.push(limit + 1);
       const limitParam = params.length;
       const whereSql = `WHERE ${clauses.join(" AND ")}`;
+      // RLS-BYPASS: manual tenant filter
       const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
         `
         SELECT
@@ -136,6 +136,7 @@ export class NotificationsService {
     }
     params.push(20);
     const limitParam = params.length;
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
@@ -165,6 +166,7 @@ export class NotificationsService {
   }
 
   async markRead(notificationId: string, userId: string) {
+    // RLS-BYPASS: manual tenant filter
     const updated = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       UPDATE user_notifications
@@ -190,6 +192,7 @@ export class NotificationsService {
       params.push(eventFilter.slice() as unknown as string[]);
       clauses.push(`event_type = ANY($${params.length})`);
     }
+    // RLS-BYPASS: manual tenant filter
     const countRows = await this.prisma.tenant().$queryRawUnsafe<Array<{ count: bigint | number }>>(
       `
       WITH updated AS (
@@ -261,6 +264,7 @@ export class NotificationsService {
   }
 
   async emitPublishStatus(jobId: string, status: "completed" | "failed" | "dead_letter") {
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
@@ -357,30 +361,40 @@ export class NotificationsService {
   }
 
   private async createNotification(input: CreateNotificationInput) {
-    await this.prisma.tenant(input.tenantKey).$executeRawUnsafe(
-      `
-      INSERT INTO user_notifications (
-        id,
-        tenant_key,
-        user_id,
-        event_type,
-        title,
-        message,
-        action_url,
-        action_label,
-        metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-      `,
-      randomUUID(),
-      input.tenantKey,
-      input.userId,
-      input.eventType,
-      input.title,
-      input.message,
-      input.actionUrl ?? null,
-      input.actionLabel ?? null,
-      JSON.stringify(input.metadata ?? {}),
-    );
+    const created = await this.prisma.tenant(input.tenantKey).userNotification.create({
+      data: {
+        id: randomUUID(),
+        tenantKey: input.tenantKey,
+        userId: input.userId,
+        eventType: input.eventType,
+        title: input.title,
+        message: input.message,
+        actionUrl: input.actionUrl ?? null,
+        actionLabel: input.actionLabel ?? null,
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+      },
+    });
+
+    try {
+      await this.outboundWebhooksService.enqueueNotificationEvent({
+        tenantKey: input.tenantKey,
+        notificationId: created.id,
+        eventType: input.eventType,
+        userId: input.userId,
+        title: input.title,
+        message: input.message,
+        actionUrl: input.actionUrl ?? null,
+        actionLabel: input.actionLabel ?? null,
+        metadata: input.metadata ?? {},
+        createdAt: created.createdAt.toISOString(),
+      });
+    } catch {
+      // Outbound delivery must not break the primary notification path.
+    }
   }
 
   private async countUnread(userId: string, role: AppRole) {
@@ -390,6 +404,7 @@ export class NotificationsService {
       params.push(REVIEWER_VISIBLE_TYPES.slice() as unknown as string[]);
       clauses.push(`event_type = ANY($${params.length})`);
     }
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ count: bigint | number }>>(
       `
       SELECT COUNT(*)::bigint AS count
@@ -402,6 +417,7 @@ export class NotificationsService {
   }
 
   private async findWriteActor(resource: string, resourceId: string) {
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ actorId: string | null }>>(
       `
       SELECT actor_id AS "actorId"
@@ -419,6 +435,7 @@ export class NotificationsService {
   }
 
   private async findLatestSubmittedForReviewActor(productId: string) {
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ actorId: string | null }>>(
       `
       SELECT actor_id AS "actorId"

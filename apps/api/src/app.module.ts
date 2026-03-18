@@ -24,6 +24,7 @@ import { MediaModule } from "./media/media.module";
 import { MetricsModule } from "./metrics/metrics.module";
 import { OndcModule } from "./ondc/ondc.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { OutboundWebhooksModule } from "./outbound-webhooks/outbound-webhooks.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
 import { QueueModule } from "./queue/queue.module";
@@ -56,6 +57,7 @@ const FEATURE_ONDC_ENABLED =
     MarketplaceModule,
     MediaModule,
     MetricsModule,
+    OutboundWebhooksModule,
     NotificationsModule,
     PlatformAdminModule,
     RejectionIntelligenceModule,

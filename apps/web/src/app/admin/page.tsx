@@ -26,6 +26,11 @@ const adminLinks = [
     href: "/admin/connectors",
   },
   {
+    title: "Outbound Webhooks",
+    description: "Deliver import, publish, and approval events to external HTTP endpoints.",
+    href: "/admin/webhooks",
+  },
+  {
     title: "Privacy",
     description: "Consent, export, and account deletion governance controls.",
     href: "/admin/privacy",

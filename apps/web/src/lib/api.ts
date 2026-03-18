@@ -212,6 +212,34 @@ export interface WorkspaceUser {
   updatedAt: string;
 }
 
+export interface OutboundWebhookEndpoint {
+  id: string;
+  name: string;
+  eventType: "import_completed" | "import_failed" | "publish_succeeded" | "publish_failed" | "approval_decision";
+  targetUrl: string;
+  isActive: boolean;
+  createdBy: string | null;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OutboundWebhookDelivery {
+  id: string;
+  endpointId: string;
+  endpointName: string | null;
+  eventType: "import_completed" | "import_failed" | "publish_succeeded" | "publish_failed" | "approval_decision";
+  eventId: string;
+  status: "queued" | "delivered" | "failed" | "skipped";
+  attemptCount: number;
+  responseStatus: number | null;
+  errorMessage: string | null;
+  attemptedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface PaginatedResponse<T> {
   items: T[];
   nextCursor: string | null;
@@ -1270,6 +1298,62 @@ export async function unlockWorkspaceUser(userId: string, options?: ApiRequestOp
 
 export async function deactivateWorkspaceUser(userId: string, options?: ApiRequestOptions) {
   return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`, {}, options);
+}
+
+export async function getOutboundWebhookEndpoints(options?: ApiRequestOptions) {
+  return fetchJson<OutboundWebhookEndpoint[]>("/admin/webhooks", undefined, options);
+}
+
+export async function createOutboundWebhookEndpoint(
+  dto: {
+    name: string;
+    eventType: OutboundWebhookEndpoint["eventType"];
+    targetUrl: string;
+    signingSecret: string;
+    isActive?: boolean;
+  },
+  options?: ApiRequestOptions,
+) {
+  return postJson<OutboundWebhookEndpoint>("/admin/webhooks", dto, options);
+}
+
+export async function updateOutboundWebhookEndpoint(
+  endpointId: string,
+  dto: {
+    name?: string;
+    targetUrl?: string;
+    signingSecret?: string;
+    isActive?: boolean;
+  },
+  options?: ApiRequestOptions,
+) {
+  return patchJson<OutboundWebhookEndpoint>(`/admin/webhooks/${encodeURIComponent(endpointId)}`, dto, options);
+}
+
+export async function deleteOutboundWebhookEndpoint(endpointId: string, options?: ApiRequestOptions) {
+  return fetchJson<{ id: string; deleted: true }>(
+    `/admin/webhooks/${encodeURIComponent(endpointId)}`,
+    { method: "DELETE" },
+    options,
+  );
+}
+
+export async function getOutboundWebhookDeliveries(
+  input?: { endpointId?: string; status?: OutboundWebhookDelivery["status"]; limit?: number },
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (input?.endpointId) {
+    params.set("endpointId", input.endpointId);
+  }
+  if (input?.status) {
+    params.set("status", input.status);
+  }
+  if (typeof input?.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  const query = params.toString();
+  return fetchJson<OutboundWebhookDelivery[]>(`/admin/webhooks/deliveries${query ? `?${query}` : ""}`, undefined, options);
 }
 
 export async function grantConnectorPermission(

@@ -558,3 +558,44 @@ model UserNotification {
   @@index([tenantKey, userId, readAt, createdAt(sort: Desc)], map: "idx_user_notifications_tenant_user_read_created")
   @@map("user_notifications")
 }
+
+model OutboundWebhookEndpoint {
+  id                      String    @id @default(cuid())
+  tenantKey               String    @default("default") @map("tenant_key")
+  name                    String
+  eventType               String    @map("event_type")
+  targetUrl               String    @map("target_url")
+  signingSecretEncrypted  String    @map("signing_secret_encrypted")
+  signingSecretKeyVersion String    @map("signing_secret_key_version")
+  isActive                Boolean   @default(true) @map("is_active")
+  createdBy               String?   @map("created_by")
+  lastTriggeredAt         DateTime? @map("last_triggered_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantKey, eventType, isActive], map: "idx_outbound_webhook_endpoints_tenant_event_active")
+  @@index([tenantKey, createdAt(sort: Desc)], map: "idx_outbound_webhook_endpoints_tenant_created")
+  @@map("outbound_webhook_endpoints")
+}
+
+model OutboundWebhookDelivery {
+  id             String    @id @default(cuid())
+  tenantKey      String    @default("default") @map("tenant_key")
+  endpointId     String    @map("endpoint_id")
+  eventType      String    @map("event_type")
+  eventId        String    @map("event_id")
+  status         String    @default("queued")
+  attemptCount   Int       @default(0) @map("attempt_count")
+  requestBody    Json      @default("{}") @map("request_body")
+  responseStatus Int?      @map("response_status")
+  responseBody   String?   @map("response_body")
+  errorMessage   String?   @map("error_message")
+  attemptedAt    DateTime? @map("attempted_at")
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantKey, endpointId, createdAt(sort: Desc)], map: "idx_outbound_webhook_deliveries_endpoint_created")
+  @@index([tenantKey, eventType, status, createdAt(sort: Desc)], map: "idx_outbound_webhook_deliveries_event_status_created")
+  @@map("outbound_webhook_deliveries")
+}
