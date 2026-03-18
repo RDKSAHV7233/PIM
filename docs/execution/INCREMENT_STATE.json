@@ -339,15 +339,13 @@
         {
           "storyId": "ST-OPS-NOTIFICATION-CENTER-003",
           "title": "Add per-user notification center for async import, publish, and approval events",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "ba58f81",
+          "commit": "9cbe6b9",
           "tests_passed": [
-            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
-            "npm run build --workspace @pim1/api",
-            "node apps/api/test/integration/notifications-center.test.cjs",
-            "Live smoke verification: POST /api/v1/marketplace/products/:id/export-jobs -> 201; POST /api/v1/marketplace/export-jobs/:id/process -> 201 dead_letter after notification query fix",
+            "node apps/web/test/integration/notification-center-ui.test.cjs",
+            "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
