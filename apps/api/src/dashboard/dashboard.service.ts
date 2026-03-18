@@ -542,6 +542,7 @@ export class DashboardService implements OnModuleDestroy {
     }
 
     const [connectorRows, submissionRows, deadLetterRows, importRows] = await Promise.all([
+      // RLS-BYPASS: manual tenant filter
       this.prisma.tenant(tenantKey).$queryRawUnsafe<
         Array<{ activeConnectors: number; installedConnectors: number }>
       >(
@@ -556,6 +557,7 @@ export class DashboardService implements OnModuleDestroy {
         `,
         ...connectorParams,
       ),
+      // RLS-BYPASS: manual tenant filter
       this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedSubmissionJobs: number }>>(
         `
         SELECT COUNT(*)::int AS "failedSubmissionJobs"
@@ -570,6 +572,7 @@ export class DashboardService implements OnModuleDestroy {
         `,
         tenantKey,
       ),
+      // RLS-BYPASS: manual tenant filter
       this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ deadLetterJobs: number }>>(
         `
         SELECT COUNT(*)::int AS "deadLetterJobs"
@@ -584,6 +587,7 @@ export class DashboardService implements OnModuleDestroy {
         `,
         tenantKey,
       ),
+      // RLS-BYPASS: manual tenant filter
       this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedImportJobs: number }>>(
         `
         SELECT COUNT(*)::int AS "failedImportJobs"
