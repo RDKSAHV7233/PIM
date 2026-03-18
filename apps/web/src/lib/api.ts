@@ -200,6 +200,18 @@ export interface ConnectorPermission {
   updatedAt: string;
 }
 
+export interface WorkspaceUser {
+  id: string;
+  userId: string;
+  role: AppRole;
+  isActive: boolean;
+  lockedUntil: string | null;
+  isLocked: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface PaginatedResponse<T> {
   items: T[];
   nextCursor: string | null;
@@ -1223,6 +1235,41 @@ export async function getConnectorPermissions(
     ? `?connectorSlug=${encodeURIComponent(connectorSlug)}`
     : "";
   return fetchJson<ConnectorPermission[]>(`/connectors/permissions${query}`, undefined, options);
+}
+
+export async function getWorkspaceUsers(options?: ApiRequestOptions) {
+  return fetchJson<WorkspaceUser[]>("/admin/workspace/users", undefined, options);
+}
+
+export async function createWorkspaceUser(
+  dto: { userId: string; role: AppRole },
+  options?: ApiRequestOptions,
+) {
+  return postJson<WorkspaceUser>("/admin/workspace/users", dto, options);
+}
+
+export async function updateWorkspaceUserRole(
+  userId: string,
+  dto: { role: AppRole },
+  options?: ApiRequestOptions,
+) {
+  return patchJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/role`, dto, options);
+}
+
+export async function lockWorkspaceUser(
+  userId: string,
+  dto: { durationMinutes?: number; reason?: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/lock`, dto, options);
+}
+
+export async function unlockWorkspaceUser(userId: string, options?: ApiRequestOptions) {
+  return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/unlock`, {}, options);
+}
+
+export async function deactivateWorkspaceUser(userId: string, options?: ApiRequestOptions) {
+  return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`, {}, options);
 }
 
 export async function grantConnectorPermission(

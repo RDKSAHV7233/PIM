@@ -63,6 +63,7 @@ interface ResolvedLoginIdentity {
   userId: string;
   tenantId: string;
   role: AppRole;
+  lockedUntil: Date | null;
 }
 
 interface AuthIdentityRow {
@@ -70,6 +71,7 @@ interface AuthIdentityRow {
   tenantKey: string;
   role: string;
   isActive: boolean;
+  lockedUntil: Date | null;
 }
 
 export type LoginResult =
@@ -262,6 +264,13 @@ export class AuthService implements OnModuleDestroy {
       }
       const attemptsRemaining = Math.max(0, USER_ATTEMPT_LIMIT - lockState.failedAttempts);
       return { type: "invalid_credentials", attemptsRemaining };
+    }
+    if (identity.lockedUntil && identity.lockedUntil.getTime() > now) {
+      return {
+        type: "account_locked",
+        unlockAt: identity.lockedUntil.toISOString(),
+        maskedEmail: this.maskIdentity(identity.userId),
+      };
     }
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
       ? Math.min(MAX_LOGIN_EXPIRY_MINUTES, Math.max(1, Math.floor(dto.expiresInMinutes ?? DEFAULT_LOGIN_EXPIRY_MINUTES)))
@@ -777,6 +786,7 @@ export class AuthService implements OnModuleDestroy {
         userId: normalizedUserId,
         tenantId,
         role: defaultRole,
+        lockedUntil: null,
       };
     }
 
@@ -784,18 +794,19 @@ export class AuthService implements OnModuleDestroy {
   }
 
   private async resolveIdentityFromDatabase(normalizedUserId: string, tenantId: string): Promise<ResolvedLoginIdentity | null> {
-    const rows = await this.prisma.tenant().$queryRaw<AuthIdentityRow[]>(Prisma.sql`
-      SELECT
-        "userId" AS "userId",
-        "tenantKey" AS "tenantKey",
-        "role" AS "role",
-        "isActive" AS "isActive"
-      FROM "AuthIdentity"
-      WHERE "userId" = ${normalizedUserId}
-      AND "tenantKey" = ${tenantId}
-      LIMIT 1
-    `);
-    const row = rows[0];
+    const row = await this.prisma.tenant().authIdentity.findFirst({
+      where: {
+        tenantKey: tenantId,
+        userId: normalizedUserId,
+      },
+      select: {
+        userId: true,
+        tenantKey: true,
+        role: true,
+        isActive: true,
+        lockedUntil: true,
+      },
+    });
     if (!row || !row.isActive) {
       return null;
     }
@@ -804,6 +815,7 @@ export class AuthService implements OnModuleDestroy {
       userId: this.normalizeUserKey(row.userId),
       tenantId: normalizeTenantKey(row.tenantKey),
       role: normalizeAppRole(row.role) ?? "viewer",
+      lockedUntil: row.lockedUntil,
     };
   }
 
@@ -831,6 +843,7 @@ export class AuthService implements OnModuleDestroy {
           userId: normalizedUserId,
           tenantId,
           role,
+          lockedUntil: null,
         });
       }
     } catch (error: unknown) {

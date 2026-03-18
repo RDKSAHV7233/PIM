@@ -522,6 +522,7 @@ model AuthIdentity {
   userId    String   @unique
   role      String   @default("viewer")
   isActive  Boolean  @default(true)
+  lockedUntil DateTime?
   createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

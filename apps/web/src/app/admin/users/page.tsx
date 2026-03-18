@@ -1,15 +1,32 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import {
+  createWorkspaceUserAction,
+  deactivateWorkspaceUserAction,
+  lockWorkspaceUserAction,
+  unlockWorkspaceUserAction,
+  updateWorkspaceUserRoleAction,
+} from "@/app/admin/users/actions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
-import { ApiHttpError, getBillingUsage, getConnectorPermissions } from "@/lib/api";
+import {
+  ApiHttpError,
+  getBillingUsage,
+  getConnectorPermissions,
+  getWorkspaceUsers,
+} from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
+
+interface AdminUsersPageProps {
+  searchParams: Promise<Record<string, string | undefined>>;
+}
 
 const rolePermissions = [
   { role: "Admin", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "full" },
@@ -28,14 +45,50 @@ function toneForCapability(value: string) {
   return "neutral" as const;
 }
 
-export default async function AdminUsersPage() {
+function StatusBanner({ tone, message }: { tone: "success" | "error"; message: string }) {
+  const classes =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : "border-rose-200 bg-rose-50 text-rose-800";
+  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
+}
+
+function getUserStatus(user: { isActive: boolean; isLocked: boolean }) {
+  if (!user.isActive) {
+    return { label: "inactive", tone: "neutral" as const };
+  }
+  if (user.isLocked) {
+    return { label: "locked", tone: "danger" as const };
+  }
+  return { label: "active", tone: "success" as const };
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleString();
+}
+
+export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
+  const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const claims = await getServerSessionClaims();
+  const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
+  const status = String(query.status ?? "").trim();
+  const showInvite = String(query.showInvite ?? "").trim() === "true";
+  const canManageUsers = actorRole === "admin" && canEditWorkspace(actorRole);
 
   try {
-    const [usage, connectorPermissions] = await Promise.all([
+    const [usage, connectorPermissions, workspaceUsers] = await Promise.all([
       getBillingUsage({ role: actorRole, authHeader }),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
+      getWorkspaceUsers({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -47,21 +100,37 @@ export default async function AdminUsersPage() {
       <div className="space-y-5">
         <PageHeader
           title="Users & Roles"
-          description="Access model and governance view for workspace users."
+          description="Manage workspace access while keeping the role model and connector overrides visible in one place."
           breadcrumb={
             <>
               Dashboard / Admin / <span className="font-semibold text-slate-700">Users & Roles</span>
             </>
           }
           actions={
-            <Link
-              href="/admin/connectors"
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Connector Access
-            </Link>
+            <>
+              {canManageUsers ? (
+                <Link
+                  href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  {showInvite ? "Close Invite" : "Invite User"}
+                </Link>
+              ) : null}
+              <Link
+                href="/admin/connectors"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Connector Access
+              </Link>
+            </>
           }
         />
+
+        {status === "user-created" ? <StatusBanner tone="success" message="Workspace user invited." /> : null}
+        {status === "role-updated" ? <StatusBanner tone="success" message="User role updated." /> : null}
+        {status === "user-locked" ? <StatusBanner tone="success" message="User lock applied." /> : null}
+        {status === "user-unlocked" ? <StatusBanner tone="success" message="User unlocked." /> : null}
+        {status === "user-deactivated" ? <StatusBanner tone="success" message="User deactivated." /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
@@ -73,6 +142,151 @@ export default async function AdminUsersPage() {
             helper={`Role principals: ${byPrincipalType.role ?? 0}`}
           />
         </section>
+
+        {canManageUsers && showInvite ? (
+          <Card>
+            <CardTitle>Invite User</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              Add a workspace user with editor, reviewer, or viewer access. Admin promotion stays explicit after the user exists.
+            </p>
+            <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px_auto] md:items-end">
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">User ID</span>
+                <input
+                  type="text"
+                  name="userId"
+                  placeholder="name@example.com"
+                  className="rounded-md border border-slate-300 px-3 py-2"
+                  required
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Role</span>
+                <select name="role" defaultValue="viewer" className="rounded-md border border-slate-300 px-3 py-2">
+                  <option value="editor">Editor</option>
+                  <option value="reviewer">Reviewer</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </label>
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Create User
+              </button>
+            </form>
+          </Card>
+        ) : null}
+
+        <Card>
+          <CardTitle>Workspace Users</CardTitle>
+          {workspaceUsers.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-600">No users yet. Invite the first user above.</p>
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2">User ID</th>
+                    <th className="py-2">Role</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Locked Until</th>
+                    <th className="py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workspaceUsers.map((user) => {
+                    const statusChip = getUserStatus(user);
+                    const isSelf = user.userId === currentUserId;
+
+                    return (
+                      <tr key={user.id} className="border-t border-slate-200">
+                        <td className="py-2">
+                          <div className="space-y-1">
+                            <p className="font-medium text-slate-900">{user.userId}</p>
+                            <p className="text-xs text-slate-500">Created {formatDateTime(user.createdAt)}</p>
+                          </div>
+                        </td>
+                        <td className="py-2">
+                          {canManageUsers ? (
+                            <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
+                              <input type="hidden" name="userId" value={user.userId} />
+                              <select
+                                name="role"
+                                defaultValue={user.role}
+                                className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                                disabled={isSelf}
+                              >
+                                <option value="admin">Admin</option>
+                                <option value="editor">Editor</option>
+                                <option value="reviewer">Reviewer</option>
+                                <option value="viewer">Viewer</option>
+                              </select>
+                              <button
+                                type="submit"
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={isSelf}
+                              >
+                                Save
+                              </button>
+                            </form>
+                          ) : (
+                            <StatusChip label={user.role} tone="info" />
+                          )}
+                        </td>
+                        <td className="py-2">
+                          <StatusChip label={statusChip.label} tone={statusChip.tone} />
+                        </td>
+                        <td className="py-2 text-slate-600">{formatDateTime(user.lockedUntil)}</td>
+                        <td className="py-2">
+                          {canManageUsers ? (
+                            <div className="flex flex-wrap gap-2">
+                              {user.isLocked ? (
+                                <form action={unlockWorkspaceUserAction}>
+                                  <input type="hidden" name="userId" value={user.userId} />
+                                  <button
+                                    type="submit"
+                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Unlock
+                                  </button>
+                                </form>
+                              ) : (
+                                <form action={lockWorkspaceUserAction}>
+                                  <input type="hidden" name="userId" value={user.userId} />
+                                  <input type="hidden" name="durationMinutes" value="60" />
+                                  <button
+                                    type="submit"
+                                    className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                    disabled={isSelf || !user.isActive}
+                                  >
+                                    Lock 60m
+                                  </button>
+                                </form>
+                              )}
+                              <form action={deactivateWorkspaceUserAction}>
+                                <input type="hidden" name="userId" value={user.userId} />
+                                <button
+                                  type="submit"
+                                  className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  disabled={isSelf || !user.isActive}
+                                >
+                                  Deactivate
+                                </button>
+                              </form>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500">Read-only</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
 
         <Card>
           <CardTitle>Role Matrix</CardTitle>
