@@ -51,9 +51,14 @@ export class WorkspaceUsersService {
       where: {
         tenantKey: normalizedTenantId,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          id: "desc",
+        },
+      ],
       select: {
         id: true,
         userId: true,

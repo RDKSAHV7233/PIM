@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-16 (live Railway staging evidence captured and governance closeout refreshed)
+Last updated: 2026-03-18 (workspace-admin user lifecycle closed; staging validation refreshed)
 
 ## P0 (Must close before production)
 
@@ -162,8 +162,19 @@ Last updated: 2026-03-16 (live Railway staging evidence captured and governance 
 
 ### RISK-P2-002: Admin user lifecycle completeness
 - Severity: P2
-- Status: Planned
+- Status: Closed
 - Owner: Admin UX + Backend
+- Validation evidence (2026-03-18):
+  - Workspace-admin user lifecycle shipped in commit `df40d7f` (`feat(users): workspace-admin user management with persistent lock`).
+  - Staging deploy run `23227759485` passed with migrations, smoke, and post-deploy verification green.
+  - Live staging probe confirmed:
+    - `GET /admin/workspace/users` -> `200`
+    - response includes `lockedUntil`
+    - admin auth guard path is working
+  - Scope now includes:
+    - live workspace user table on `/admin/users`
+    - admin-only list/create/role-change/lock/unlock/deactivate API
+    - persistent DB-backed account lock honored at login
 
 ### RISK-P2-003: Catalog health query scaling optimization
 - Severity: P2

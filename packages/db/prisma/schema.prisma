@@ -528,6 +528,7 @@ model AuthIdentity {
   updatedAt DateTime @updatedAt
 
   @@index([tenantKey, role, isActive])
+  @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_auth_identity_tenant_created_id")
 }
 
 model WorkspaceDirectory {
