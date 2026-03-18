@@ -142,10 +142,11 @@ export interface RequestAccountExportInput {
 export interface RequestAccountExportResult {
   ok: true;
   jobId: string;
-  status: "queued";
+  status: "recorded";
   format: "json" | "csv";
   requestedAt: string;
   estimatedReadyInSeconds: number;
+  note: string;
 }
 
 export interface DeleteAccountInput {
@@ -495,10 +496,11 @@ export class AuthService implements OnModuleDestroy {
     const result: RequestAccountExportResult = {
       ok: true,
       jobId,
-      status: "queued",
+      status: "recorded",
       format: input.format ?? "json",
       requestedAt,
-      estimatedReadyInSeconds: 120,
+      estimatedReadyInSeconds: 0,
+      note: "Export fulfillment is currently a manual admin process.",
     };
 
     await this.prisma

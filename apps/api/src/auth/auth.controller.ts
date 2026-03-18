@@ -141,7 +141,7 @@ export class AuthController {
   }
 
   @Post("account/export")
-  @Roles(...APP_ROLES)
+  @Roles("admin")
   @HttpCode(202)
   async requestAccountExport(@Body() dto: RequestAccountExportDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);

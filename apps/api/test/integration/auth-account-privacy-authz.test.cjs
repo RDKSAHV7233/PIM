@@ -204,10 +204,7 @@ async function run() {
     const viewerExport = await apiRequest(baseUrl, "POST", "/auth/account/export", viewerToken, {
       format: "csv",
     });
-    assertStatus(viewerExport, 202, "Viewer should be allowed to request account export");
-    if (viewerExport.payload?.status !== "queued") {
-      throw new Error(`Viewer export did not return queued status. payload=${JSON.stringify(viewerExport.payload)}`);
-    }
+    assertStatus(viewerExport, 403, "Viewer should be denied account export");
 
     const viewerStatus = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", viewerToken);
     assertStatus(viewerStatus, 200, "Viewer should be allowed to read privacy status");
@@ -223,7 +220,7 @@ async function run() {
             "delete_requires_auth_401",
             "privacy_status_requires_auth_401",
             "consent_rejects_false_400",
-            "viewer_export_allowed_202",
+            "viewer_export_denied_403",
             "viewer_privacy_status_allowed_200",
           ],
           checkedAt: new Date().toISOString(),

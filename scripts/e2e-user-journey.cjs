@@ -1952,18 +1952,18 @@ function buildChecks() {
   });
 
   add("privacy", "account_export_request", async () => {
-    const result = await api("POST", "/auth/account/export", {
-      token: ctx.adminToken,
-      json: {
-        format: "json",
-      },
+      const result = await api("POST", "/auth/account/export", {
+        token: ctx.adminToken,
+        json: {
+          format: "json",
+        },
+      });
+      assertStatus(result, 202, "POST /auth/account/export");
+    assert(result.body?.status === "recorded", `unexpected status ${result.body?.status}`);
+      assert(result.body?.jobId, "account export job id missing");
+      ctx.exportPrivacyJobId = String(result.body.jobId);
+      return `jobId=${ctx.exportPrivacyJobId}`;
     });
-    assertStatus(result, 202, "POST /auth/account/export");
-    assert(result.body?.status === "queued", `unexpected status ${result.body?.status}`);
-    assert(result.body?.jobId, "account export job id missing");
-    ctx.exportPrivacyJobId = String(result.body.jobId);
-    return `jobId=${ctx.exportPrivacyJobId}`;
-  });
 
   add("privacy", "privacy_status_after_export", async () => {
     if (!ctx.exportPrivacyJobId) {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import type { AppRole } from "@/lib/api";
 
 type ExportFormat = "json" | "csv";
 
@@ -18,6 +19,7 @@ interface PrivacyStatusPayload {
     format: string;
     requestedAt: string;
     estimatedReadyInSeconds: number;
+    note?: string;
   } | null;
   latestDeletion: {
     ticketId: string;
@@ -39,7 +41,11 @@ function readCookie(name: string): string {
   return "";
 }
 
-export function DataPrivacyPageClient() {
+interface DataPrivacyPageClientProps {
+  actorRole: AppRole;
+}
+
+export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps) {
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
   const [exportMessage, setExportMessage] = useState("");
   const [deleteMessage, setDeleteMessage] = useState("");
@@ -94,6 +100,7 @@ export function DataPrivacyPageClient() {
       const payload = (await response.json().catch(() => ({}))) as {
         jobId?: string;
         estimatedReadyInSeconds?: number;
+        note?: string;
         error?: string;
       };
       if (!response.ok) {
@@ -101,14 +108,18 @@ export function DataPrivacyPageClient() {
           setExportMessage("Session expired. Please login again.");
           return;
         }
+        if (response.status === 403) {
+          setExportMessage("Only workspace admins can record export requests right now.");
+          return;
+        }
         setExportMessage(payload.error ?? "Unable to queue export.");
         return;
       }
       setExportMessage(
-        `Export queued (${payload.jobId ?? "n/a"}). Estimated ready in ${payload.estimatedReadyInSeconds ?? 120}s.`,
+        `Export request recorded (${payload.jobId ?? "n/a"}). ${payload.note ?? "A workspace admin will handle fulfillment manually."}`,
       );
     } catch {
-      setExportMessage("Network error while queuing export.");
+      setExportMessage("Network error while recording export request.");
     } finally {
       setWorking(null);
     }
@@ -166,7 +177,7 @@ export function DataPrivacyPageClient() {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Data and Privacy</h1>
         <p className="text-sm text-slate-600">
-          Manage data export and account deletion requests under DPDP compliance workflows.
+          Manage privacy status and account deletion workflows. Data export requests are currently handled as an internal admin process.
         </p>
       </header>
 
@@ -200,29 +211,38 @@ export function DataPrivacyPageClient() {
 
       <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-slate-900">Request data export</h2>
-        <form className="space-y-3" onSubmit={requestExport}>
-          <div className="space-y-1">
-            <label htmlFor="export-format" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Format
-            </label>
-            <select
-              id="export-format"
-              value={exportFormat}
-              onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        {actorRole === "admin" ? (
+          <form className="space-y-3" onSubmit={requestExport}>
+            <p className="text-sm text-slate-600">
+              This records a manual fulfillment request for the workspace admin team. No automated export worker is active yet.
+            </p>
+            <div className="space-y-1">
+              <label htmlFor="export-format" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Format
+              </label>
+              <select
+                id="export-format"
+                value={exportFormat}
+                onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              disabled={working !== null}
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
-              <option value="json">JSON</option>
-              <option value="csv">CSV</option>
-            </select>
-          </div>
-          <button
-            type="submit"
-            disabled={working !== null}
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
-            {working === "export" ? "Queuing export..." : "Queue export"}
-          </button>
-        </form>
+              {working === "export" ? "Recording request..." : "Record export request"}
+            </button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Data export fulfillment is currently managed by workspace admins only. Contact an admin if you need an account export recorded.
+          </p>
+        )}
         {exportMessage && <p className="text-sm text-slate-700">{exportMessage}</p>}
       </section>
 

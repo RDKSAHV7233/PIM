@@ -130,6 +130,12 @@ async function run() {
     PORT: String(port),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
+      [userId]: {
+        tenantId,
+        role: "admin",
+      },
+    }),
   };
 
   const stdoutBuffer = [];
@@ -183,8 +189,11 @@ async function run() {
       format: "json",
     });
     assertStatus(exportResult, 202, "Account export endpoint failed");
-    if (exportResult.payload?.status !== "queued") {
-      throw new Error(`Account export did not return queued status. payload=${JSON.stringify(exportResult.payload)}`);
+    if (exportResult.payload?.status !== "recorded") {
+      throw new Error(`Account export did not return recorded status. payload=${JSON.stringify(exportResult.payload)}`);
+    }
+    if (!String(exportResult.payload?.note ?? "").includes("manual")) {
+      throw new Error(`Account export should explain manual fulfillment. payload=${JSON.stringify(exportResult.payload)}`);
     }
 
     const badDeleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
@@ -212,7 +221,7 @@ async function run() {
     if (statusResult.payload?.latestConsent?.policyVersion !== "dpdp-v1") {
       throw new Error(`Privacy status missing latest consent. payload=${JSON.stringify(statusResult.payload)}`);
     }
-    if (statusResult.payload?.latestExport?.status !== "queued") {
+    if (statusResult.payload?.latestExport?.status !== "recorded") {
       throw new Error(`Privacy status missing latest export. payload=${JSON.stringify(statusResult.payload)}`);
     }
     if (statusResult.payload?.latestDeletion?.status !== "scheduled") {
@@ -244,7 +253,7 @@ async function run() {
           userId,
           validated: [
             "consent_acceptance_200",
-            "account_export_202_queued",
+            "account_export_202_recorded",
           "delete_account_confirmation_guard_400",
           "delete_account_202_scheduled",
           "privacy_status_200_with_latest_records",
