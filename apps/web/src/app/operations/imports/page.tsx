@@ -16,6 +16,60 @@ import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
 
+const IMPORT_FIELD_GUIDE = [
+  {
+    name: "title",
+    example: "Classic Cotton Tee",
+    notes: "Primary product name shown in catalog and product workbench.",
+  },
+  {
+    name: "description",
+    example: "Soft crew-neck t-shirt",
+    notes: "Plain text description for the base product record.",
+  },
+  {
+    name: "brand",
+    example: "PIM1",
+    notes: "Brand label used in product search and merchandising.",
+  },
+  {
+    name: "hsnCode",
+    example: "61091000",
+    notes: "Tax/shipping classification code as text.",
+  },
+  {
+    name: "gstRate",
+    example: "12",
+    notes: "Numeric GST rate. Use digits only, without % sign.",
+  },
+  {
+    name: "status",
+    example: "draft",
+    notes: "Use a valid workflow status for the imported row.",
+  },
+  {
+    name: "attributes",
+    example: '{"material":"cotton","color":"black","size":"M"}',
+    notes: "JSON object for category-specific attributes.",
+  },
+] as const;
+
+const SAMPLE_JSON_PREVIEW = `[
+  {
+    "title": "Classic Cotton Tee",
+    "description": "Soft crew-neck t-shirt",
+    "brand": "PIM1",
+    "hsnCode": "61091000",
+    "gstRate": 12,
+    "status": "draft",
+    "attributes": {
+      "material": "cotton",
+      "color": "black",
+      "size": "M"
+    }
+  }
+]`;
+
 interface OperationsImportsPageProps {
   searchParams: Promise<{
     status?: string;
@@ -210,6 +264,56 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 <li>JSON imports should contain an array of row objects.</li>
                 <li>Start with one sample row, then add your own category-specific attributes.</li>
               </ul>
+            </div>
+          </Card>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <Card>
+            <CardTitle>Import Format Guide</CardTitle>
+            <div className="space-y-3 text-sm text-slate-600">
+              <p>
+                CSV and Excel uploads should use the exact canonical column names below. JSON uploads should use the
+                same keys on each row object.
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Field</th>
+                      <th className="px-3 py-2">Example</th>
+                      <th className="px-3 py-2">How to use it</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {IMPORT_FIELD_GUIDE.map((field) => (
+                      <tr key={field.name} className="border-t border-slate-200">
+                        <td className="px-3 py-2 font-mono text-xs text-slate-900">{field.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{field.example}</td>
+                        <td className="px-3 py-2 text-slate-600">{field.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Keep the first row as headers for CSV and spreadsheet uploads.</li>
+                <li>Use one product row per line in CSV/XLSX, or one object per item in JSON.</li>
+                <li>Start with a single sample row first, then scale up after the mapping looks correct.</li>
+              </ul>
+            </div>
+          </Card>
+
+          <Card>
+            <CardTitle>JSON Example</CardTitle>
+            <div className="space-y-3 text-sm text-slate-600">
+              <p>
+                If you prefer JSON imports, upload an array of product row objects using the same field names as the
+                CSV sample.
+              </p>
+              <pre className="overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800">
+                <code>{SAMPLE_JSON_PREVIEW}</code>
+              </pre>
             </div>
           </Card>
         </section>
