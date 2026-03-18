@@ -55,7 +55,8 @@ export function AccountLockedPageClient({
         setMessage(authCopy.resendFailed);
         return;
       }
-      setMessage(authCopy.resendSent);
+      const payload = (await response.json().catch(() => null)) as { note?: string } | null;
+      setMessage(payload?.note || authCopy.resendSent);
     } catch {
       setMessage(authCopy.resendFailed);
     } finally {
@@ -68,7 +69,7 @@ export function AccountLockedPageClient({
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.lockedTitle}</h1>
         <p className="text-sm text-slate-700">
-          {authCopy.lockedBodyPrefix} <strong>{maskedEmail}</strong>.
+          <strong>{maskedEmail}</strong> {authCopy.lockedBodyPrefix}.
         </p>
         {lockedUntilText && (
           <p className="text-sm text-slate-600">

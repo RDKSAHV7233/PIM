@@ -173,7 +173,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -197,7 +197,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -3495,6 +3495,39 @@
         ]
       }
     },
+    "/api/v1/admin/workspace/users/{userId}/password": {
+      "post": {
+        "operationId": "WorkspaceUsersController_setUserPassword",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceUsers"
+        ]
+      }
+    },
     "/api/v1/auto-suggestions/products/{id}/title-suggestion": {
       "get": {
         "operationId": "AutoSuggestionsController_getTitleSuggestion",
@@ -3814,6 +3847,10 @@
         "properties": {}
       },
       "LockWorkspaceUserDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SetUserPasswordDto": {
         "type": "object",
         "properties": {}
       }

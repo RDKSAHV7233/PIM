@@ -1,0 +1,2 @@
+ALTER TABLE "AuthIdentity"
+ADD COLUMN IF NOT EXISTS "passwordHash" TEXT;

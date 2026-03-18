@@ -88,6 +88,7 @@ export class AuthController {
 
   @Public()
   @Post("resend-unlock")
+  @HttpCode(200)
   async resendUnlock(
     @Body() dto: ResendUnlockDto,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -101,6 +102,7 @@ export class AuthController {
 
   @Public()
   @Post("password-reset/request")
+  @HttpCode(200)
   async requestPasswordReset(
     @Body() dto: RequestPasswordResetDto,
     @Res({ passthrough: true }) reply: FastifyReply,

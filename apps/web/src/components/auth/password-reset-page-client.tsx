@@ -36,6 +36,13 @@ export function PasswordResetPageClient({ locale, initialEmail }: PasswordResetP
         setError(authCopy.resetError);
         return;
       }
+      const payload = (await response.json().catch(() => null)) as
+        | { adminResetAvailable?: boolean; requested?: boolean }
+        | null;
+      if (payload?.adminResetAvailable || payload?.requested === false) {
+        setMessage(authCopy.resetSuccess);
+        return;
+      }
       setMessage(authCopy.resetSuccess);
     } catch {
       setError(authCopy.resetError);

@@ -13,6 +13,7 @@ import { FastifyRequest } from "fastify";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
+import { SetUserPasswordDto } from "./dto/set-user-password.dto";
 import { UpdateWorkspaceUserRoleDto } from "./dto/update-workspace-user-role.dto";
 import { WorkspaceUsersService } from "./workspace-users.service";
 
@@ -102,6 +103,23 @@ export class WorkspaceUsersController {
       actor.userId,
       actor.role,
       decodeURIComponent(userId),
+    );
+  }
+
+  @Post(":userId/password")
+  @HttpCode(200)
+  setUserPassword(
+    @Param("userId") userId: string,
+    @Body() dto: SetUserPasswordDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actor = this.requireActor(request);
+    return this.workspaceUsersService.setUserPassword(
+      actor.tenantId,
+      actor.userId,
+      actor.role,
+      decodeURIComponent(userId),
+      dto.password,
     );
   }
 

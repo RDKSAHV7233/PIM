@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { type AppRole } from "../common/rbac/roles";
@@ -343,6 +344,48 @@ export class WorkspaceUsersService {
     });
 
     return this.mapWorkspaceUserRow(updated);
+  }
+
+  async setUserPassword(
+    tenantId: string,
+    actorId: string,
+    actorRole: AppRole,
+    targetUserId: string,
+    newPassword: string,
+  ): Promise<{ ok: true }> {
+    const normalizedTenantId = normalizeTenantKey(tenantId);
+    const normalizedActorId = this.normalizeUserId(actorId);
+    const normalizedTargetUserId = this.normalizeUserId(targetUserId);
+    const normalizedPassword = String(newPassword ?? "");
+
+    if (normalizedPassword.trim().length < 8) {
+      throw new BadRequestException({ error: "PASSWORD_TOO_SHORT", minLength: 8 });
+    }
+
+    const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
+    const passwordHash = await bcrypt.hash(normalizedPassword, 12);
+
+    await this.prisma.tenant(normalizedTenantId).authIdentity.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        passwordHash,
+      },
+    });
+
+    await this.auditService.record({
+      actorId: normalizedActorId,
+      actorRole,
+      action: "workspace_user.password_set",
+      resource: "AuthIdentity",
+      resourceId: existing.id,
+      metadata: {
+        targetUserId: existing.userId,
+      },
+    });
+
+    return { ok: true };
   }
 
   private async findTenantUserOrThrow(tenantId: string, targetUserId: string): Promise<AuthIdentityRecord> {

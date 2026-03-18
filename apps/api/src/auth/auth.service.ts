@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import * as bcrypt from "bcryptjs";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "redis";
 import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
@@ -64,6 +65,7 @@ interface ResolvedLoginIdentity {
   tenantId: string;
   role: AppRole;
   lockedUntil: Date | null;
+  passwordHash: string | null;
 }
 
 interface AuthIdentityRow {
@@ -72,6 +74,7 @@ interface AuthIdentityRow {
   role: string;
   isActive: boolean;
   lockedUntil: Date | null;
+  passwordHash: string | null;
 }
 
 export type LoginResult =
@@ -100,12 +103,14 @@ export interface ResendUnlockResult {
   ok: true;
   resent: boolean;
   retryAfterSeconds: number;
+  note?: string;
 }
 
 export interface RequestPasswordResetResult {
   ok: true;
   requested: boolean;
   retryAfterSeconds: number;
+  adminResetAvailable?: boolean;
 }
 
 export interface RecordConsentInput {
@@ -238,8 +243,8 @@ export class AuthService implements OnModuleDestroy {
       };
     }
 
-    const credentialOk = this.verifyCredential(dto);
-    if (!credentialOk) {
+    const identity = await this.resolveLoginIdentity(dto.userId, workspace.tenantId);
+    if (!identity) {
       const lockState = await this.recordFailedCredential(userKey, dto.userId, now);
       if (lockState.lockedUntilMs && lockState.lockedUntilMs > now) {
         return {
@@ -252,8 +257,8 @@ export class AuthService implements OnModuleDestroy {
       return { type: "invalid_credentials", attemptsRemaining };
     }
 
-    const identity = await this.resolveLoginIdentity(dto.userId, workspace.tenantId);
-    if (!identity) {
+    const credentialOk = await this.verifyPasswordForIdentity(dto.password, identity);
+    if (!credentialOk) {
       const lockState = await this.recordFailedCredential(userKey, dto.userId, now);
       if (lockState.lockedUntilMs && lockState.lockedUntilMs > now) {
         return {
@@ -311,7 +316,11 @@ export class AuthService implements OnModuleDestroy {
     scope: StepUpScope;
     ipAddress: string;
   }): Promise<StepUpResponse> {
-    if (!this.verifyPassword(input.password)) {
+    const identity = await this.resolveLoginIdentity(input.claims.sub, input.claims.tenantId);
+    const credentialOk = identity
+      ? await this.verifyPasswordForIdentity(input.password, identity)
+      : false;
+    if (!credentialOk) {
       await this.auditService.record({
         actorId: input.claims.sub,
         actorRole: input.claims.role ?? "viewer",
@@ -373,6 +382,7 @@ export class AuthService implements OnModuleDestroy {
         ok: true,
         resent: false,
         retryAfterSeconds: 0,
+        note: "Contact a workspace admin to unlock your account.",
       };
     }
 
@@ -388,14 +398,16 @@ export class AuthService implements OnModuleDestroy {
         ok: true,
         resent: false,
         retryAfterSeconds: Math.ceil(cooldownRemainingMs / 1000),
+        note: "Contact a workspace admin to unlock your account.",
       };
     }
     state.lastResendAtMs = now;
     this.userLocks.set(userKey, state);
     return {
       ok: true,
-      resent: true,
+      resent: false,
       retryAfterSeconds: 0,
+      note: "Contact a workspace admin to unlock your account.",
     };
   }
 
@@ -414,8 +426,9 @@ export class AuthService implements OnModuleDestroy {
 
     return {
       ok: true,
-      requested: true,
+      requested: false,
       retryAfterSeconds: 0,
+      adminResetAvailable: true,
     };
   }
 
@@ -787,6 +800,7 @@ export class AuthService implements OnModuleDestroy {
         tenantId,
         role: defaultRole,
         lockedUntil: null,
+        passwordHash: null,
       };
     }
 
@@ -805,6 +819,7 @@ export class AuthService implements OnModuleDestroy {
         role: true,
         isActive: true,
         lockedUntil: true,
+        passwordHash: true,
       },
     });
     if (!row || !row.isActive) {
@@ -816,6 +831,7 @@ export class AuthService implements OnModuleDestroy {
       tenantId: normalizeTenantKey(row.tenantKey),
       role: normalizeAppRole(row.role) ?? "viewer",
       lockedUntil: row.lockedUntil,
+      passwordHash: row.passwordHash ?? null,
     };
   }
 
@@ -844,6 +860,7 @@ export class AuthService implements OnModuleDestroy {
           tenantId,
           role,
           lockedUntil: null,
+          passwordHash: typeof candidate.passwordHash === "string" ? candidate.passwordHash : null,
         });
       }
     } catch (error: unknown) {
@@ -854,11 +871,17 @@ export class AuthService implements OnModuleDestroy {
     return directory;
   }
 
-  private verifyCredential(dto: LoginDto): boolean {
-    return this.verifyPassword(dto.password);
+  private async verifyPasswordForIdentity(
+    password: string,
+    identity: ResolvedLoginIdentity,
+  ): Promise<boolean> {
+    if (identity.passwordHash) {
+      return bcrypt.compare(password, identity.passwordHash);
+    }
+    return this.verifySharedPassword(password);
   }
 
-  private verifyPassword(password: string): boolean {
+  private verifySharedPassword(password: string): boolean {
     if (typeof password !== "string" || password.trim().length === 0) {
       return false;
     }
@@ -869,7 +892,12 @@ export class AuthService implements OnModuleDestroy {
       return false;
     }
     const expected = configuredPassword || "pim1-demo-password";
-    return password === expected;
+    const submittedBuffer = Buffer.from(password, "utf8");
+    const expectedBuffer = Buffer.from(expected, "utf8");
+    if (submittedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+    return timingSafeEqual(submittedBuffer, expectedBuffer);
   }
 
   private resolveStepUpExpirySeconds(): number {
@@ -980,8 +1008,9 @@ export class AuthService implements OnModuleDestroy {
       if (outcome === "OK") {
         return {
           ok: true,
-          resent: true,
+          resent: false,
           retryAfterSeconds: 0,
+          note: "Contact a workspace admin to unlock your account.",
         };
       }
       const ttlMs = Number(await this.redisClient.pTTL(resendKey));
@@ -990,6 +1019,7 @@ export class AuthService implements OnModuleDestroy {
         ok: true,
         resent: false,
         retryAfterSeconds: Math.max(1, Math.ceil(effectiveTtlMs / 1000)),
+        note: "Contact a workspace admin to unlock your account.",
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
