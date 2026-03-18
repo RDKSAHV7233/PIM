@@ -90,6 +90,7 @@ jobs:
         with:
           name: e2e-log-${{ github.sha }}-${{ github.run_id }}
           path: .run-logs/**
+          include-hidden-files: true
           retention-days: 30
 
       - name: Fail if suite exit code non-zero
