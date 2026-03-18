@@ -12,6 +12,7 @@ import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConnectorCap } from "../connector-framework/connector.interface";
+import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
   ConnectorDefinitionRecord,
@@ -142,12 +143,15 @@ export class ConnectorInstallerService {
       if (stubSlugs.has(slug.toLowerCase())) {
         continue;
       }
+      const launchPolicy = resolveConnectorLaunchPolicy(slug, parseCapabilities(row.capabilities));
       definitions.push({
         id: String(row.id),
         slug,
         displayName: String(row.displayName),
         authType: String(row.authType),
-        capabilities: parseCapabilities(row.capabilities),
+        capabilities: launchPolicy.surfacedCapabilities,
+        launchStage: launchPolicy.launchStage,
+        launchNote: launchPolicy.launchNote,
         marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
         connectorVersion: String(row.connectorVersion),
         isActive: Boolean(row.isActive),
@@ -370,6 +374,7 @@ export class ConnectorInstallerService {
       pageRows.map(async (row): Promise<ConnectorInstallationRecord> => {
         const slug = String(row.slug);
         const accountAlias = String(row.accountAlias);
+        const launchPolicy = resolveConnectorLaunchPolicy(slug, parseCapabilities(row.capabilities));
         return {
           id: String(row.id),
           tenantKey: String(row.tenantKey),
@@ -379,7 +384,9 @@ export class ConnectorInstallerService {
           accountAlias,
           externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
           status: String(row.status) as ConnectorInstallationRecord["status"],
-          capabilities: parseCapabilities(row.capabilities),
+          capabilities: launchPolicy.surfacedCapabilities,
+          launchStage: launchPolicy.launchStage,
+          launchNote: launchPolicy.launchNote,
           metadata: parseMetadata(row.metadata),
           installedAt: String(row.installedAt),
           installedBy: String(row.installedBy),

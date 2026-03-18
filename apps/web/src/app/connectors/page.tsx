@@ -131,6 +131,26 @@ function installationStatusTone(status: string): "neutral" | "success" | "warnin
   return "neutral";
 }
 
+function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | "warning" | "info" {
+  if (stage === "live") {
+    return "success";
+  }
+  if (stage === "manual") {
+    return "warning";
+  }
+  return "info";
+}
+
+function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
+  if (stage === "manual") {
+    return "guided rollout";
+  }
+  if (stage === "planned") {
+    return "not seller-ready";
+  }
+  return "live";
+}
+
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -200,6 +220,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     className="rounded-lg border border-slate-200 p-3"
                   >
                     <h3 className="text-sm font-semibold text-slate-900">{definition.displayName}</h3>
+                    <div className="mt-2">
+                      <StatusChip
+                        label={connectorLaunchLabel(definition.launchStage)}
+                        tone={connectorLaunchTone(definition.launchStage)}
+                      />
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       slug: <span className="font-mono">{definition.slug}</span>
                     </p>
@@ -212,8 +238,13 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     <p className="mt-1 text-xs text-slate-600">
                       Installed accounts: {installedForDefinition.length}
                     </p>
+                    {definition.launchNote ? (
+                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                        {definition.launchNote}
+                      </p>
+                    ) : null}
 
-                    {definition.actions?.install.allowed ? (
+                    {definition.launchStage === "live" && definition.actions?.install.allowed ? (
                       <form action={installConnectorAction} className="mt-3 space-y-2">
                         <input type="hidden" name="slug" value={definition.slug} />
                         <div className="space-y-1">
@@ -297,7 +328,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </form>
                     ) : (
                       <p className="mt-3 text-xs text-slate-500">
-                        {isPlanBlockedReason(definition.actions?.install.reason)
+                        {definition.launchStage !== "live"
+                          ? "Seller self-serve install is intentionally hidden until this connector is operationally ready."
+                          : isPlanBlockedReason(definition.actions?.install.reason)
                           ? (
                             <>
                               {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
@@ -354,6 +387,15 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-900">{installation.displayName}</div>
                           <div className="font-mono text-xs text-slate-500">{installation.slug}</div>
+                          <div className="mt-1">
+                            <StatusChip
+                              label={connectorLaunchLabel(installation.launchStage)}
+                              tone={connectorLaunchTone(installation.launchStage)}
+                            />
+                          </div>
+                          {installation.launchNote ? (
+                            <p className="mt-2 max-w-xs text-xs text-slate-500">{installation.launchNote}</p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5">{installation.accountAlias}</td>
                         <td className="px-3 py-2.5">{installation.externalAccountRef || "-"}</td>

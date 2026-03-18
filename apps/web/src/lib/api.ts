@@ -153,6 +153,8 @@ export interface ConnectorInstallation {
   externalAccountRef: string | null;
   status: "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED" | string;
   capabilities: string[];
+  launchStage: "live" | "manual" | "planned";
+  launchNote: string | null;
   metadata: Record<string, unknown>;
   installedAt: string;
   installedBy: string;
@@ -168,6 +170,8 @@ export interface ConnectorDefinition {
   displayName: string;
   authType: string;
   capabilities: string[];
+  launchStage: "live" | "manual" | "planned";
+  launchNote: string | null;
   marketplaceId: string | null;
   connectorVersion: string;
   isActive: boolean;

@@ -17,6 +17,7 @@ import {
   SubmissionStatusUpdate,
   ValidationResult,
 } from "./connector.interface";
+import { resolveConnectorLaunchPolicy } from "./connector-launch-policy";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorInstallationRecord } from "./connector.types";
 
@@ -98,6 +99,7 @@ export class ConnectorFrameworkService {
       return null;
     }
 
+    const launchPolicy = resolveConnectorLaunchPolicy(String(row.slug), parseCapabilities(row.capabilities));
     return {
       id: String(row.id),
       tenantKey: String(row.tenantKey),
@@ -107,7 +109,9 @@ export class ConnectorFrameworkService {
       accountAlias: String(row.accountAlias),
       externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
       status: String(row.status) as ConnectorInstallationRecord["status"],
-      capabilities: parseCapabilities(row.capabilities),
+      capabilities: launchPolicy.surfacedCapabilities,
+      launchStage: launchPolicy.launchStage,
+      launchNote: launchPolicy.launchNote,
       metadata: parseMetadata(row.metadata),
       installedAt: String(row.installedAt),
       installedBy: String(row.installedBy),

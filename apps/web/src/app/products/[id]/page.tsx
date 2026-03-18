@@ -834,7 +834,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
             </form>
           ) : canWrite ? (
             <p className="text-sm text-slate-600">
-              No installed connector is currently available for queued export jobs in this tenant.
+              No installed connector with publish capability is available for this tenant.
             </p>
           ) : (
             <p className="text-sm text-slate-600">Your role cannot queue export jobs.</p>
