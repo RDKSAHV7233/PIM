@@ -52,6 +52,17 @@ export function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [open]);
+
   const loadNotifications = useCallback(async () => {
     setLoading(true);
     try {
@@ -144,7 +155,7 @@ export function NotificationCenter() {
             aria-label="Close notifications"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute inset-y-0 right-0 w-full max-w-md border-l border-slate-200 bg-white shadow-2xl">
+          <aside className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Notifications</h2>
@@ -168,7 +179,7 @@ export function NotificationCenter() {
                 </button>
               </div>
             </div>
-            <div className="h-full overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {loading ? <p className="px-2 py-6 text-sm text-slate-500">Loading notifications...</p> : null}
               {!loading && !hasItems ? (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
