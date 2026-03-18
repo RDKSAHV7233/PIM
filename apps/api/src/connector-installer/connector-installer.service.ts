@@ -729,6 +729,7 @@ export class ConnectorInstallerService {
   }
 
   private async cleanupInstallationArtifacts(tenantKey: string, installationId: string): Promise<void> {
+    // RLS-BYPASS: manual tenant filter
     await this.prisma.tenant(tenantKey).$executeRawUnsafe(
       `
       DELETE FROM connector_credentials
@@ -738,6 +739,7 @@ export class ConnectorInstallerService {
       installationId,
     );
 
+    // RLS-BYPASS: manual tenant filter
     await this.prisma.tenant(tenantKey).$executeRawUnsafe(
       `
       DELETE FROM connector_installations
