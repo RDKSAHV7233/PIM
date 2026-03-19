@@ -19,7 +19,10 @@ interface PrivacyStatusPayload {
     format: string;
     requestedAt: string;
     estimatedReadyInSeconds: number;
-    note?: string;
+    completedAt: string | null;
+    failedAt: string | null;
+    errorMessage: string | null;
+    downloadAvailable: boolean;
   } | null;
   latestDeletion: {
     ticketId: string;
@@ -109,14 +112,14 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
           return;
         }
         if (response.status === 403) {
-          setExportMessage("Only workspace admins can record export requests right now.");
+          setExportMessage("You do not have permission to request an account export.");
           return;
         }
         setExportMessage(payload.error ?? "Unable to queue export.");
         return;
       }
       setExportMessage(
-        `Export request recorded (${payload.jobId ?? "n/a"}). ${payload.note ?? "A workspace admin will handle fulfillment manually."}`,
+        `Export requested (${payload.jobId ?? "n/a"}). ${payload.note ?? "We will email you when the export is ready."}`,
       );
     } catch {
       setExportMessage("Network error while recording export request.");
@@ -177,7 +180,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Data and Privacy</h1>
         <p className="text-sm text-slate-600">
-          Manage privacy status and account deletion workflows. Data export requests are currently handled as an internal admin process.
+          Manage privacy status and account deletion workflows. Account exports are prepared asynchronously and can be downloaded here when ready.
         </p>
       </header>
 
@@ -195,9 +198,28 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
             </p>
             <p>
               Latest export:{" "}
-              {status?.latestExport
-                ? `${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) at ${new Date(status.latestExport.requestedAt).toLocaleString()}`
-                : "No export request yet."}
+              {status?.latestExport ? (
+                <>
+                  {`${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) requested at ${new Date(status.latestExport.requestedAt).toLocaleString()}`}
+                  {status.latestExport.completedAt
+                    ? `, ready at ${new Date(status.latestExport.completedAt).toLocaleString()}`
+                    : ""}
+                  {status.latestExport.downloadAvailable ? (
+                    <>
+                      {" "}
+                      <a
+                        href={`/api/account/export/${encodeURIComponent(status.latestExport.jobId)}/download`}
+                        className="underline"
+                      >
+                        Download export
+                      </a>
+                    </>
+                  ) : null}
+                  {status.latestExport.errorMessage ? ` (${status.latestExport.errorMessage})` : ""}
+                </>
+              ) : (
+                "No export request yet."
+              )}
             </p>
             <p>
               Latest deletion:{" "}
@@ -211,38 +233,32 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
 
       <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-slate-900">Request data export</h2>
-        {actorRole === "admin" ? (
-          <form className="space-y-3" onSubmit={requestExport}>
-            <p className="text-sm text-slate-600">
-              This records a manual fulfillment request for the workspace admin team. No automated export worker is active yet.
-            </p>
-            <div className="space-y-1">
-              <label htmlFor="export-format" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Format
-              </label>
-              <select
-                id="export-format"
-                value={exportFormat}
-                onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="json">JSON</option>
-                <option value="csv">CSV</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={working !== null}
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {working === "export" ? "Recording request..." : "Record export request"}
-            </button>
-          </form>
-        ) : (
           <p className="text-sm text-slate-600">
-            Data export fulfillment is currently managed by workspace admins only. Contact an admin if you need an account export recorded.
+            Request an export of your account activity and privacy records. We will prepare the file in the background and email you when it is ready.
           </p>
-        )}
+        <form className="space-y-3" onSubmit={requestExport}>
+          <div className="space-y-1">
+            <label htmlFor="export-format" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Format
+            </label>
+            <select
+              id="export-format"
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="json">JSON</option>
+              <option value="csv">CSV</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={working !== null}
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {working === "export" ? "Requesting export..." : "Request export"}
+          </button>
+        </form>
         {exportMessage && <p className="text-sm text-slate-700">{exportMessage}</p>}
       </section>
 

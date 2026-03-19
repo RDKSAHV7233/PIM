@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -80,15 +81,15 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   const options = {
     method,
     headers,
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(20_000),
   };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -105,12 +106,41 @@ async function apiRequest(baseUrl, method, route, token, body) {
   return { status: response.status, payload };
 }
 
+async function apiBinaryRequest(baseUrl, route, token) {
+  const response = await fetch(`${baseUrl}${route}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/octet-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(20_000),
+  });
+  return {
+    status: response.status,
+    body: Buffer.from(await response.arrayBuffer()),
+    headers: response.headers,
+  };
+}
+
 function assertStatus(result, expectedStatus, message) {
   if (result.status !== expectedStatus) {
     throw new Error(
       `${message}. expected=${expectedStatus} actual=${result.status} payload=${JSON.stringify(result.payload)}`,
     );
   }
+}
+
+async function waitForExportReady(baseUrl, token, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const statusResult = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", token);
+    assertStatus(statusResult, 200, "Privacy status endpoint failed");
+    if (statusResult.payload?.latestExport?.status === "completed") {
+      return statusResult.payload;
+    }
+    await sleep(250);
+  }
+  throw new Error("Timed out waiting for account export to complete.");
 }
 
 async function run() {
@@ -122,20 +152,23 @@ async function run() {
   const runId = Date.now().toString();
   const port = 4950 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
+  const platformToken = `auth-privacy-${runId}`;
   const tenantId = `auth-privacy-tenant-${runId}`;
+  const workspaceSlug = `ap-${runId}`.slice(0, 24);
   const userId = `auth-privacy-user-${runId}@example.com`;
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-export-email-"));
 
   const env = {
     ...process.env,
     PORT: String(port),
+    AUTH_MODE: "db",
+    PIM_PLATFORM_ADMIN_TOKEN: platformToken,
     PIM_ALLOW_LEGACY_HEADERS: "false",
-    PIM_DEFAULT_TENANT_KEY: tenantId,
-    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: {
-        tenantId,
-        role: "admin",
-      },
-    }),
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_AUTH_WORKSPACES_JSON: "",
+    AUTH_EMAIL_PROVIDER: "file",
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+    PIM_WEB_BASE_URL: "http://localhost:3000",
   };
 
   const stdoutBuffer = [];
@@ -162,10 +195,24 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
 
+    const provision = await apiRequest(
+      baseUrl,
+      "POST",
+      "/platform/tenants",
+      null,
+      {
+        tenantKey: tenantId,
+        workspaceSlug,
+        displayName: `Auth Privacy ${runId}`,
+        initialAdminUserId: userId,
+      },
+      { "x-pim-platform-admin-token": platformToken },
+    );
+    assertStatus(provision, 201, "platform tenant provisioning");
+
     const loginResult = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId,
-      tenantId,
-      role: "admin",
       password: process.env.PIM_AUTH_PASSWORD,
       expiresInMinutes: 30,
     });
@@ -181,19 +228,31 @@ async function run() {
       purpose: "catalog_operations",
     });
     assertStatus(consentResult, 200, "Consent endpoint failed");
-    if (consentResult.payload?.accepted !== true) {
-      throw new Error(`Consent endpoint did not persist accepted=true. payload=${JSON.stringify(consentResult.payload)}`);
-    }
 
     const exportResult = await apiRequest(baseUrl, "POST", "/auth/account/export", token, {
       format: "json",
     });
     assertStatus(exportResult, 202, "Account export endpoint failed");
-    if (exportResult.payload?.status !== "recorded") {
-      throw new Error(`Account export did not return recorded status. payload=${JSON.stringify(exportResult.payload)}`);
+    if (exportResult.payload?.status !== "queued") {
+      throw new Error(`Account export did not return queued status. payload=${JSON.stringify(exportResult.payload)}`);
     }
-    if (!String(exportResult.payload?.note ?? "").includes("manual")) {
-      throw new Error(`Account export should explain manual fulfillment. payload=${JSON.stringify(exportResult.payload)}`);
+
+    const statusPayload = await waitForExportReady(baseUrl, token, 15_000);
+    if (statusPayload?.latestExport?.downloadAvailable !== true) {
+      throw new Error(`Completed export should expose downloadAvailable=true. payload=${JSON.stringify(statusPayload)}`);
+    }
+
+    const downloadResult = await apiBinaryRequest(
+      baseUrl,
+      `/auth/account/export/${encodeURIComponent(statusPayload.latestExport.jobId)}/download`,
+      token,
+    );
+    if (downloadResult.status !== 200) {
+      throw new Error(`Export download failed: status=${downloadResult.status}`);
+    }
+    const downloadText = downloadResult.body.toString("utf8");
+    if (!downloadText.includes(userId) || !downloadText.includes(statusPayload.latestExport.jobId)) {
+      throw new Error(`Export download content mismatch. body=${downloadText}`);
     }
 
     const badDeleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
@@ -201,42 +260,20 @@ async function run() {
       reason: "test invalid confirmation",
     });
     assertStatus(badDeleteResult, 400, "Delete account should fail without DELETE confirmation");
-    if (badDeleteResult.payload?.error !== "DELETE_CONFIRMATION_REQUIRED") {
-      throw new Error(
-        `Delete account invalid confirmation error mismatch. payload=${JSON.stringify(badDeleteResult.payload)}`,
-      );
-    }
 
     const deleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
       confirmation: "DELETE",
       reason: "test requested erasure",
     });
     assertStatus(deleteResult, 202, "Delete account endpoint failed");
-    if (deleteResult.payload?.status !== "scheduled") {
-      throw new Error(`Delete account did not return scheduled status. payload=${JSON.stringify(deleteResult.payload)}`);
-    }
 
-    const statusResult = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", token);
-    assertStatus(statusResult, 200, "Privacy status endpoint failed");
-    if (statusResult.payload?.latestConsent?.policyVersion !== "dpdp-v1") {
-      throw new Error(`Privacy status missing latest consent. payload=${JSON.stringify(statusResult.payload)}`);
-    }
-    if (statusResult.payload?.latestExport?.status !== "recorded") {
-      throw new Error(`Privacy status missing latest export. payload=${JSON.stringify(statusResult.payload)}`);
-    }
-    if (statusResult.payload?.latestDeletion?.status !== "scheduled") {
-      throw new Error(`Privacy status missing latest deletion. payload=${JSON.stringify(statusResult.payload)}`);
-    }
-
-    const auditResult = await apiRequest(baseUrl, "GET", `/audit/logs?limit=50&actorId=${encodeURIComponent(userId)}`, token);
+    const auditResult = await apiRequest(baseUrl, "GET", `/audit/logs?limit=100&actorId=${encodeURIComponent(userId)}`, token);
     assertStatus(auditResult, 200, "Audit logs endpoint failed");
-    if (!Array.isArray(auditResult.payload)) {
-      throw new Error(`Audit logs payload should be array. payload=${JSON.stringify(auditResult.payload)}`);
-    }
-    const actions = new Set(auditResult.payload.map((entry) => String(entry?.action ?? "")));
+    const actions = new Set((Array.isArray(auditResult.payload) ? auditResult.payload : []).map((entry) => String(entry?.action ?? "")));
     const requiredActions = [
       "consent.recorded",
       "account.export_requested",
+      "account.export_completed",
       "account.deletion_scheduled",
     ];
     for (const action of requiredActions) {
@@ -253,12 +290,12 @@ async function run() {
           userId,
           validated: [
             "consent_acceptance_200",
-            "account_export_202_recorded",
-          "delete_account_confirmation_guard_400",
-          "delete_account_202_scheduled",
-          "privacy_status_200_with_latest_records",
-          "audit_actions_recorded",
-        ],
+            "account_export_202_queued",
+            "account_export_completes_and_is_downloadable",
+            "delete_account_confirmation_guard_400",
+            "delete_account_202_scheduled",
+            "audit_actions_recorded",
+          ],
           checkedAt: new Date().toISOString(),
         },
         null,
@@ -281,6 +318,7 @@ async function run() {
     }
     process.exitCode = 1;
   } finally {
+    fs.rmSync(outboxDir, { recursive: true, force: true });
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
         try {

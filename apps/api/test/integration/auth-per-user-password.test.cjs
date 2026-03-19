@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
 const { PrismaClient } = require("@prisma/client");
@@ -125,6 +126,21 @@ async function login(baseUrl, workspaceSlug, userId, password = process.env.PIM_
   });
 }
 
+async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const files = fs.existsSync(outboxDir) ? fs.readdirSync(outboxDir) : [];
+    for (const file of files) {
+      const payload = JSON.parse(fs.readFileSync(path.join(outboxDir, file), "utf8"));
+      if (String(payload.to ?? "").trim().toLowerCase() === recipient.toLowerCase()) {
+        return payload;
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error(`Timed out waiting for auth email for ${recipient}`);
+}
+
 function createPrisma() {
   const url = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
   if (!url) {
@@ -150,6 +166,7 @@ async function run() {
   const targetUserId = `auth-target-${runId}@example.com`;
   const viewerUserId = `auth-viewer-${runId}@example.com`;
   const perUserPassword = "RadheAuth#2026";
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-email-"));
 
   const env = {
     ...process.env,
@@ -159,6 +176,9 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_AUTH_IDENTITIES_JSON: "",
     PIM_AUTH_WORKSPACES_JSON: "",
+    AUTH_EMAIL_PROVIDER: "file",
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+    PIM_WEB_BASE_URL: "http://localhost:3000",
   };
 
   const prisma = createPrisma();
@@ -263,8 +283,8 @@ async function run() {
       email: targetUserId,
     });
     assertStatus(passwordReset, 200, "password reset request response");
-    assert(passwordReset.payload?.requested === false, "password reset must not promise delivery");
-    assert(passwordReset.payload?.adminResetAvailable === true, "password reset must flag admin reset availability");
+    assert(passwordReset.payload?.requested === true, "password reset must queue delivery");
+    await waitForOutboxEmail(outboxDir, targetUserId, 10_000);
 
     const lockViewer = await apiRequest(
       baseUrl,
@@ -280,8 +300,8 @@ async function run() {
       workspaceSlug,
     });
     assertStatus(resendUnlock, 200, "resend unlock response");
-    assert(resendUnlock.payload?.resent === false, "resend unlock must not promise email delivery");
-    assert(String(resendUnlock.payload?.note ?? "").length > 0, "resend unlock must include admin contact note");
+    assert(resendUnlock.payload?.resent === true, "resend unlock must queue email delivery");
+    await waitForOutboxEmail(outboxDir, viewerUserId, 10_000);
 
     const viewerLogin = await login(baseUrl, workspaceSlug, viewerUserId);
     assertStatus(viewerLogin, 423, "locked viewer login rejected");
@@ -353,6 +373,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect().catch(() => undefined);
+    fs.rmSync(outboxDir, { recursive: true, force: true });
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
         try {

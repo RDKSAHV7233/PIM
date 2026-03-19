@@ -11,6 +11,8 @@ export interface AuthCopy {
   loginReasonSessionExpired: string;
   loginReasonForbidden: string;
   passwordLabel: string;
+  newPasswordLabel: string;
+  confirmPasswordLabel: string;
   roleLabel: string;
   signIn: string;
   signingIn: string;
@@ -32,10 +34,16 @@ export interface AuthCopy {
   backToLogin: string;
   resetTitle: string;
   resetSubtitle: string;
+  resetTokenSubtitle: string;
   resetSubmit: string;
   resetSubmitting: string;
+  resetConfirmSubmit: string;
+  resetConfirming: string;
   resetSuccess: string;
+  resetCompleteSuccess: string;
   resetError: string;
+  resetInvalidToken: string;
+  resetPasswordMismatch: string;
 }
 
 const EN_COPY: AuthCopy = {
@@ -49,6 +57,8 @@ const EN_COPY: AuthCopy = {
   loginReasonSessionExpired: "Your session expired. Please sign in again.",
   loginReasonForbidden: "Your account does not have access to that page.",
   passwordLabel: "Password",
+  newPasswordLabel: "New password",
+  confirmPasswordLabel: "Confirm new password",
   roleLabel: "Role",
   signIn: "Sign in",
   signingIn: "Signing in...",
@@ -61,19 +71,25 @@ const EN_COPY: AuthCopy = {
   rateLimitedBody: "Please wait before trying again.",
   rateLimitedRetryIn: "Retry in",
   lockedTitle: "This account has been locked for security.",
-  lockedBodyPrefix: "is locked. Contact your workspace admin for help.",
+  lockedBodyPrefix: "is locked. Request a recovery email to set a new password and regain access.",
   lockedUntilPrefix: "Unlock available after",
-  resendUnlock: "Request unlock help",
-  resendNeedsEmail: "Email is required so your workspace admin can identify the account.",
-  resendFailed: "Unable to submit your unlock request right now.",
-  resendSent: "Contact your workspace admin to unlock this account.",
+  resendUnlock: "Email me a recovery link",
+  resendNeedsEmail: "Email is required so we can send the recovery link.",
+  resendFailed: "Unable to send a recovery email right now.",
+  resendSent: "If the account exists, we sent a recovery email with the next steps.",
   backToLogin: "Back to login",
   resetTitle: "Reset your password",
-  resetSubtitle: "Enter your email to confirm the account. A workspace admin must set a new password for you.",
-  resetSubmit: "Request password help",
-  resetSubmitting: "Submitting...",
-  resetSuccess: "Password reset email is not available yet. Contact your workspace admin for a reset.",
+  resetSubtitle: "Enter your email to receive a password reset link.",
+  resetTokenSubtitle: "Set a new password to finish recovering access to your account.",
+  resetSubmit: "Send reset email",
+  resetSubmitting: "Sending...",
+  resetConfirmSubmit: "Set new password",
+  resetConfirming: "Updating password...",
+  resetSuccess: "If the account exists, a password reset email has been sent.",
+  resetCompleteSuccess: "Your password has been updated. You can sign in again now.",
   resetError: "Unable to process your request right now. Please try again.",
+  resetInvalidToken: "This reset link is invalid or has expired.",
+  resetPasswordMismatch: "The password confirmation does not match.",
 };
 
 const HI_COPY: AuthCopy = {

@@ -4,6 +4,7 @@ type AppEnv = "development" | "staging" | "production";
 type BoolText = "true" | "false";
 type AuthMode = "local" | "db";
 type QueueBackend = "memory" | "bullmq";
+type AuthEmailProvider = "file" | "resend";
 
 export interface ValidatedEnv {
   DATABASE_URL_POOLED: string;
@@ -21,8 +22,14 @@ export interface ValidatedEnv {
   R2_PUBLIC_URL: string;
   APP_ENV: AppEnv;
   AUTH_MODE: AuthMode;
+  AUTH_EMAIL_PROVIDER: AuthEmailProvider;
+  AUTH_EMAIL_FROM?: string;
+  AUTH_EMAIL_REPLY_TO?: string;
+  AUTH_EMAIL_RESEND_API_KEY?: string;
+  AUTH_EMAIL_OUTBOX_DIR?: string;
   CORS_ORIGINS: string[];
   PORT: number;
+  PIM_WEB_BASE_URL?: string;
   AMAZON_CLIENT_ID?: string;
   AMAZON_CLIENT_SECRET?: string;
   FLIPKART_CLIENT_ID?: string;
@@ -69,8 +76,14 @@ const EnvSchema = z.object({
   R2_PUBLIC_URL: UrlSchema,
   APP_ENV: z.enum(["development", "staging", "production"] as const),
   AUTH_MODE: z.enum(["local", "db"] as const).default("local"),
+  AUTH_EMAIL_PROVIDER: z.enum(["file", "resend"] as const).default("file"),
+  AUTH_EMAIL_FROM: z.string().optional(),
+  AUTH_EMAIL_REPLY_TO: z.string().optional(),
+  AUTH_EMAIL_RESEND_API_KEY: z.string().optional(),
+  AUTH_EMAIL_OUTBOX_DIR: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),
   PORT: z.coerce.number().int().min(1).default(4000),
+  PIM_WEB_BASE_URL: z.string().url().optional(),
   AMAZON_CLIENT_ID: z.string().optional(),
   AMAZON_CLIENT_SECRET: z.string().optional(),
   FLIPKART_CLIENT_ID: z.string().optional(),
@@ -150,6 +163,14 @@ export function validateEnv(): ValidatedEnv {
     }
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");
+    }
+    if (data.AUTH_EMAIL_PROVIDER === "resend") {
+      if (!String(data.AUTH_EMAIL_RESEND_API_KEY ?? "").trim()) {
+        issues.push("AUTH_EMAIL_RESEND_API_KEY: required when AUTH_EMAIL_PROVIDER=resend");
+      }
+      if (!String(data.AUTH_EMAIL_FROM ?? "").trim()) {
+        issues.push("AUTH_EMAIL_FROM: required when AUTH_EMAIL_PROVIDER=resend");
+      }
     }
 
     if (issues.length === 0) {

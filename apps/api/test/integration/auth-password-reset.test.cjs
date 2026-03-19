@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -56,8 +57,8 @@ function prepareEnv() {
   setDefaultEnv("R2_BUCKET_NAME", "pim1-local");
   setDefaultEnv("R2_PUBLIC_URL", "https://example.com/pim1-local");
   setDefaultEnv("APP_ENV", "development");
-  setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "pim1-demo-password");
 }
 
 function sleep(ms) {
@@ -80,30 +81,75 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const options = {
     method,
     headers,
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(20_000),
   };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(body);
   }
-
   const response = await fetch(`${baseUrl}${route}`, options);
   const text = await response.text();
-  let payload;
+  let payload = null;
   try {
     payload = text ? JSON.parse(text) : null;
   } catch {
     payload = text;
   }
-  return {
-    status: response.status,
-    payload,
-  };
+  return { status: response.status, payload };
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertStatus(result, expected, context) {
+  if (result.status !== expected) {
+    throw new Error(`${context} failed: expected ${expected}, got ${result.status}; payload=${JSON.stringify(result.payload)}`);
+  }
+}
+
+async function login(baseUrl, workspaceSlug, userId, password) {
+  return apiRequest(baseUrl, "POST", "/auth/login", null, {
+    workspaceSlug,
+    userId,
+    password,
+    expiresInMinutes: 30,
+  });
+}
+
+async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const files = fs.existsSync(outboxDir) ? fs.readdirSync(outboxDir) : [];
+    for (const file of files) {
+      const fullPath = path.join(outboxDir, file);
+      const parsed = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+      if (String(parsed.to ?? "").trim().toLowerCase() === recipient.toLowerCase()) {
+        return parsed;
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error(`Timed out waiting for auth email for ${recipient}`);
+}
+
+function extractResetToken(emailPayload) {
+  const source = `${String(emailPayload.text ?? "")}\n${String(emailPayload.html ?? "")}`;
+  const match = source.match(/\/login\/reset\?token=([^&\s\"]+)/i);
+  if (!match) {
+    throw new Error(`Unable to locate reset token in email payload=${JSON.stringify(emailPayload)}`);
+  }
+  return decodeURIComponent(match[1]);
 }
 
 async function run() {
@@ -115,12 +161,25 @@ async function run() {
   const runId = Date.now().toString();
   const port = 5000 + Math.floor(Math.random() * 70);
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
+  const platformToken = `auth-reset-${runId}`;
+  const tenantKey = `auth-reset-${runId}`;
+  const workspaceSlug = `ar-${runId}`.slice(0, 24);
+  const displayName = `Auth Reset ${runId}`;
+  const adminUserId = `auth-reset-admin-${runId}@example.com`;
+  const newPassword = "Recovery#2026";
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-email-"));
 
   const env = {
     ...process.env,
     PORT: String(port),
+    AUTH_MODE: "db",
+    PIM_PLATFORM_ADMIN_TOKEN: platformToken,
     PIM_ALLOW_LEGACY_HEADERS: "false",
-    PIM_DEFAULT_TENANT_KEY: `auth-reset-tenant-${runId}`,
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_AUTH_WORKSPACES_JSON: "",
+    AUTH_EMAIL_PROVIDER: "file",
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+    PIM_WEB_BASE_URL: "http://localhost:3000",
   };
 
   const stdoutBuffer = [];
@@ -133,34 +192,50 @@ async function run() {
 
   apiProcess.stdout.on("data", (chunk) => {
     stdoutBuffer.push(String(chunk));
-    if (stdoutBuffer.length > 200) {
-      stdoutBuffer.shift();
-    }
+    if (stdoutBuffer.length > 200) stdoutBuffer.shift();
   });
   apiProcess.stderr.on("data", (chunk) => {
     stderrBuffer.push(String(chunk));
-    if (stderrBuffer.length > 200) {
-      stderrBuffer.shift();
-    }
+    if (stderrBuffer.length > 200) stderrBuffer.shift();
   });
 
   try {
     await waitForHealth(baseUrl, 60_000);
 
-    const invalid = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", {});
-    if (invalid.status !== 400) {
-      throw new Error(`Expected 400 for invalid password reset request, got ${invalid.status}. payload=${JSON.stringify(invalid.payload)}`);
-    }
+    const provision = await apiRequest(
+      baseUrl,
+      "POST",
+      "/platform/tenants",
+      null,
+      { tenantKey, workspaceSlug, displayName, initialAdminUserId: adminUserId },
+      { "x-pim-platform-admin-token": platformToken },
+    );
+    assertStatus(provision, 201, "platform tenant provisioning");
 
-    const valid = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", {
-      email: `reset-user-${runId}@example.com`,
+    const invalid = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {});
+    assertStatus(invalid, 400, "invalid password reset request");
+
+    const requestReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {
+      email: adminUserId,
     });
-    if (valid.status !== 201 && valid.status !== 200) {
-      throw new Error(`Expected 200/201 for valid password reset request, got ${valid.status}. payload=${JSON.stringify(valid.payload)}`);
-    }
-    if (valid.payload?.ok !== true || valid.payload?.requested !== true) {
-      throw new Error(`Unexpected password reset response payload=${JSON.stringify(valid.payload)}`);
-    }
+    assertStatus(requestReset, 200, "password reset request");
+    assert(requestReset.payload?.requested === true, "password reset request should queue email delivery");
+
+    const emailPayload = await waitForOutboxEmail(outboxDir, adminUserId, 10_000);
+    const resetToken = extractResetToken(emailPayload);
+
+    const confirmReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/confirm", null, {
+      token: resetToken,
+      password: newPassword,
+    });
+    assertStatus(confirmReset, 200, "password reset confirm");
+    assert(confirmReset.payload?.reset === true, "password reset confirm should return reset=true");
+
+    const oldLogin = await login(baseUrl, workspaceSlug, adminUserId, process.env.PIM_AUTH_PASSWORD);
+    assertStatus(oldLogin, 401, "legacy password rejected after reset");
+
+    const newLogin = await login(baseUrl, workspaceSlug, adminUserId, newPassword);
+    assertStatus(newLogin, 201, "new password login succeeds");
 
     console.log(
       JSON.stringify(
@@ -168,7 +243,10 @@ async function run() {
           status: "ok",
           validated: [
             "password_reset_request_rejects_invalid_body",
-            "password_reset_request_accepts_valid_email",
+            "password_reset_request_queues_email",
+            "password_reset_confirm_updates_password",
+            "old_shared_password_rejected_after_reset",
+            "new_password_login_succeeds",
           ],
           checkedAt: new Date().toISOString(),
         },
@@ -192,21 +270,16 @@ async function run() {
     }
     process.exitCode = 1;
   } finally {
+    fs.rmSync(outboxDir, { recursive: true, force: true });
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
         try {
-          execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], {
-            stdio: "ignore",
-          });
+          execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], { stdio: "ignore" });
         } catch {
           // Ignore cleanup failures.
         }
       } else {
         apiProcess.kill("SIGTERM");
-        await sleep(500);
-        if (!apiProcess.killed) {
-          apiProcess.kill("SIGKILL");
-        }
       }
     }
   }

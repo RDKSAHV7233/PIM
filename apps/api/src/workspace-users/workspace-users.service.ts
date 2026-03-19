@@ -109,6 +109,7 @@ export class WorkspaceUsersService {
           tenantKey: normalizedTenantId,
           userId,
           role,
+          passwordHash: await this.resolveInitialPasswordHash(),
           createdBy: normalizedActorId,
         },
         select: {
@@ -428,6 +429,17 @@ export class WorkspaceUsersService {
       return 60;
     }
     return Math.min(10_080, Math.max(1, Math.floor(Number(value))));
+  }
+
+  private async resolveInitialPasswordHash(): Promise<string | null> {
+    const configuredPassword = String(process.env.PIM_AUTH_PASSWORD ?? "").trim();
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
+    const allowLocalDefault = appEnv === "development" || appEnv === "local" || appEnv === "test";
+    const sharedPassword = configuredPassword || (allowLocalDefault ? "pim1-demo-password" : "");
+    if (!sharedPassword) {
+      return null;
+    }
+    return bcrypt.hash(sharedPassword, 12);
   }
 
   private mapWorkspaceUserRow(row: AuthIdentityRecord): WorkspaceUserRow {

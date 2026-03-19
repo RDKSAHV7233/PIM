@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Req,
   Res,
@@ -15,6 +16,7 @@ import {
 import { FastifyRequest } from "fastify";
 import { FastifyReply } from "fastify";
 import { AuthService, LoginResponse } from "./auth.service";
+import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RecordConsentDto } from "./dto/record-consent.dto";
@@ -114,6 +116,13 @@ export class AuthController {
     return result;
   }
 
+  @Public()
+  @Post("password-reset/confirm")
+  @HttpCode(200)
+  async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
+    return this.authService.confirmPasswordReset(dto.token, dto.password);
+  }
+
   @Post("consent")
   @Roles(...APP_ROLES)
   @HttpCode(200)
@@ -141,7 +150,7 @@ export class AuthController {
   }
 
   @Post("account/export")
-  @Roles("admin")
+  @Roles(...APP_ROLES)
   @HttpCode(202)
   async requestAccountExport(@Body() dto: RequestAccountExportDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -151,6 +160,20 @@ export class AuthController {
       role: actor.role,
       format: dto.format,
     });
+  }
+
+  @Get("account/export/:jobId/download")
+  @Roles(...APP_ROLES)
+  async downloadAccountExport(
+    @Param("jobId") jobId: string,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const actor = this.requireActor(request);
+    const result = await this.authService.downloadAccountExport(jobId, actor.userId, actor.tenantId);
+    reply.header("Content-Type", result.contentType);
+    reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+    return result.content;
   }
 
   @Delete("account")

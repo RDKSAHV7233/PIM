@@ -20,5 +20,14 @@ export default async function ResetPage({ searchParams }: ResetPageProps) {
   const cookieStore = await cookies();
   const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
   const initialEmail = getString(params.email).trim();
-  return <PasswordResetPageClient locale={locale} initialEmail={initialEmail} />;
+  const initialToken = getString(params.token).trim();
+  const initialWorkspaceSlug = getString(params.workspace).trim().toLowerCase();
+  return (
+    <PasswordResetPageClient
+      locale={locale}
+      initialEmail={initialEmail}
+      initialToken={initialToken}
+      initialWorkspaceSlug={initialWorkspaceSlug}
+    />
+  );
 }

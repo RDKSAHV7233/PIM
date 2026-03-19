@@ -418,10 +418,28 @@ model AccountExportRequest {
   status                 String   @default("queued")
   requestedAt            DateTime @default(now()) @map("requested_at")
   estimatedReadyInSeconds Int     @default(120) @map("estimated_ready_in_seconds")
+  artifactPath           String?  @map("artifact_path")
+  artifactFileName       String?  @map("artifact_file_name")
+  completedAt            DateTime? @map("completed_at")
+  failedAt               DateTime? @map("failed_at")
+  errorMessage           String?  @map("error_message")
   createdAt              DateTime @default(now()) @map("created_at")
 
   @@index([tenantKey, userId, requestedAt(sort: Desc)], map: "idx_account_export_requests_tenant_user_requested")
   @@map("account_export_requests")
+}
+
+model AuthRecoveryToken {
+  id         String   @id
+  tenantKey  String   @default("default")
+  userId     String
+  purpose    String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantKey, userId, purpose, createdAt(sort: Desc)], map: "idx_auth_recovery_token_lookup")
 }
 
 model AccountDeletionRequest {

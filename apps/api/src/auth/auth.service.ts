@@ -1,14 +1,30 @@
-import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "redis";
 import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeAppRole, resolveDefaultRole } from "../common/rbac/role-utils";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
-import { normalizeTenantKey, normalizeWorkspaceSlug } from "../common/tenant/tenant.constants";
+import {
+  DEFAULT_TENANT_KEY,
+  normalizeTenantKey,
+  normalizeWorkspaceSlug,
+} from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { QUEUE_NAMES } from "../queue/queue.constants";
+import { QueueService } from "../queue/queue.service";
+import { AuthEmailService } from "./auth-email.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
@@ -26,6 +42,13 @@ const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
 const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
 const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
+const PASSWORD_RESET_EXPIRY_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_BYTES = 24;
+const DEFAULT_EXPORT_READY_SECONDS = 120;
+const EXPORT_STATUS_QUEUED = "queued";
+const EXPORT_STATUS_PROCESSING = "processing";
+const EXPORT_STATUS_COMPLETED = "completed";
+const EXPORT_STATUS_FAILED = "failed";
 
 function resolvePositiveIntegerEnv(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? "").trim(), 10);
@@ -77,6 +100,22 @@ interface AuthIdentityRow {
   passwordHash: string | null;
 }
 
+interface AccountExportJobPayload {
+  jobId: string;
+  tenantId: string;
+  userId: string;
+  format: "json" | "csv";
+}
+
+interface AuthEmailJobPayload {
+  tenantId: string;
+  userId: string;
+  kind: "password_reset" | "account_unlock" | "account_export_ready";
+  workspaceSlug?: string | null;
+  resetToken?: string;
+  jobId?: string;
+}
+
 export type LoginResult =
   | {
       type: "success";
@@ -111,6 +150,7 @@ export interface RequestPasswordResetResult {
   requested: boolean;
   retryAfterSeconds: number;
   adminResetAvailable?: boolean;
+  note?: string;
 }
 
 export interface RecordConsentInput {
@@ -142,7 +182,7 @@ export interface RequestAccountExportInput {
 export interface RequestAccountExportResult {
   ok: true;
   jobId: string;
-  status: "recorded";
+  status: "queued";
   format: "json" | "csv";
   requestedAt: string;
   estimatedReadyInSeconds: number;
@@ -179,6 +219,10 @@ export interface AccountPrivacyStatusResult {
     format: string;
     requestedAt: string;
     estimatedReadyInSeconds: number;
+    completedAt: string | null;
+    failedAt: string | null;
+    errorMessage: string | null;
+    downloadAvailable: boolean;
   } | null;
   latestDeletion: {
     ticketId: string;
@@ -210,7 +254,16 @@ export class AuthService implements OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly tenantDirectoryService: TenantDirectoryService,
-  ) {}
+    private readonly queueService: QueueService,
+    private readonly authEmailService: AuthEmailService,
+  ) {
+    this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
+      await this.processAuthEmailJob(payload);
+    });
+    this.queueService.process<AccountExportJobPayload>(QUEUE_NAMES.ACCOUNT_EXPORT, async (payload) => {
+      await this.processAccountExportJob(payload);
+    });
+  }
 
   async login(dto: LoginDto, ipAddress: string): Promise<LoginResult> {
     const now = Date.now();
@@ -278,6 +331,7 @@ export class AuthService implements OnModuleDestroy {
         maskedEmail: this.maskIdentity(identity.userId),
       };
     }
+    await this.backfillLegacyPasswordHash(identity, dto.password);
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
       ? Math.min(MAX_LOGIN_EXPIRY_MINUTES, Math.max(1, Math.floor(dto.expiresInMinutes ?? DEFAULT_LOGIN_EXPIRY_MINUTES)))
       : DEFAULT_LOGIN_EXPIRY_MINUTES;
@@ -371,49 +425,109 @@ export class AuthService implements OnModuleDestroy {
   }
 
   async resendUnlock(email: string, workspaceSlugInput: string): Promise<ResendUnlockResult> {
-    const userKey = this.composeLoginLockKey(
-      workspaceSlugInput || process.env.PIM_DEFAULT_WORKSPACE_SLUG || process.env.PIM_DEFAULT_TENANT_KEY || "",
-      this.normalizeUserKey(email),
-    );
+    const normalizedEmail = this.normalizeUserKey(email);
+    const workspaceSlug =
+      normalizeWorkspaceSlug(
+        workspaceSlugInput || process.env.PIM_DEFAULT_WORKSPACE_SLUG || process.env.PIM_DEFAULT_TENANT_KEY || "",
+      );
+    const userKey = this.composeLoginLockKey(workspaceSlug, normalizedEmail);
     const now = Date.now();
-    const state = await this.getActiveLock(userKey, email, now);
-
-    if (!state || !state.lockedUntilMs || state.lockedUntilMs <= now) {
-      return {
-        ok: true,
-        resent: false,
-        retryAfterSeconds: 0,
-        note: "Contact a workspace admin to unlock your account.",
-      };
-    }
 
     const redisResult = await this.applyResendCooldownRedis(userKey, now);
     if (redisResult) {
       return redisResult;
     }
 
-    const lastResendAtMs = state.lastResendAtMs ?? 0;
+    const state = await this.getActiveLock(userKey, email, now);
+    const lastResendAtMs = state?.lastResendAtMs ?? 0;
     const cooldownRemainingMs = Math.max(0, RESEND_COOLDOWN_MS - (now - lastResendAtMs));
     if (cooldownRemainingMs > 0) {
       return {
         ok: true,
         resent: false,
         retryAfterSeconds: Math.ceil(cooldownRemainingMs / 1000),
-        note: "Contact a workspace admin to unlock your account.",
+        note: "Please wait before requesting another recovery email.",
       };
     }
-    state.lastResendAtMs = now;
-    this.userLocks.set(userKey, state);
+
+    const workspace = workspaceSlug
+      ? await this.tenantDirectoryService.resolveWorkspaceSlug(workspaceSlug)
+      : null;
+    const identity = workspace ? await this.resolveLoginIdentity(normalizedEmail, workspace.tenantId) : null;
+
+    if (state) {
+      state.lastResendAtMs = now;
+      this.userLocks.set(userKey, state);
+    }
+
+    if (identity) {
+      const resetToken = await this.createRecoveryToken(identity, "password_reset");
+      await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
+        tenantId: identity.tenantId,
+        userId: identity.userId,
+        kind: "account_unlock",
+        workspaceSlug: workspace?.workspaceSlug ?? workspaceSlug,
+        resetToken,
+      } satisfies AuthEmailJobPayload);
+    }
+
+    await this.auditService.record({
+      actorId: normalizedEmail || "unknown",
+      actorRole: "public",
+      action: "auth.unlock_email_requested",
+      resource: "auth.recovery",
+      metadata: {
+        emailMasked: this.maskIdentity(normalizedEmail),
+        workspaceSlug,
+      },
+    });
+
     return {
       ok: true,
-      resent: false,
+      resent: true,
       retryAfterSeconds: 0,
-      note: "Contact a workspace admin to unlock your account.",
+      note: "If the account exists, we have emailed a recovery link that will let you unlock access by setting a new password.",
     };
   }
 
   async requestPasswordReset(email: string): Promise<RequestPasswordResetResult> {
     const normalizedEmail = this.normalizeUserKey(email);
+    let queued = false;
+
+    if (this.isDbAuthMode()) {
+      const identity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findUnique({
+        where: {
+          userId: normalizedEmail,
+        },
+        select: {
+          userId: true,
+          tenantKey: true,
+          role: true,
+          isActive: true,
+          lockedUntil: true,
+          passwordHash: true,
+        },
+      });
+      if (identity?.isActive) {
+        const resolvedIdentity: ResolvedLoginIdentity = {
+          userId: this.normalizeUserKey(identity.userId),
+          tenantId: normalizeTenantKey(identity.tenantKey),
+          role: normalizeAppRole(identity.role) ?? "viewer",
+          lockedUntil: identity.lockedUntil ?? null,
+          passwordHash: identity.passwordHash ?? null,
+        };
+        const resetToken = await this.createRecoveryToken(resolvedIdentity, "password_reset");
+        const workspace = await this.tenantDirectoryService.resolveTenantAlias(resolvedIdentity.tenantId);
+        await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
+          tenantId: resolvedIdentity.tenantId,
+          userId: resolvedIdentity.userId,
+          kind: "password_reset",
+          workspaceSlug: workspace?.workspaceSlug ?? null,
+          resetToken,
+        } satisfies AuthEmailJobPayload);
+        queued = true;
+      }
+    }
 
     await this.auditService.record({
       actorId: normalizedEmail || "unknown",
@@ -427,9 +541,100 @@ export class AuthService implements OnModuleDestroy {
 
     return {
       ok: true,
-      requested: false,
+      requested: queued,
       retryAfterSeconds: 0,
-      adminResetAvailable: true,
+      adminResetAvailable: !queued,
+      note: queued
+        ? "If the account exists, a recovery email has been sent."
+        : "Password reset email is only available for DB-backed accounts.",
+    };
+  }
+
+  async confirmPasswordReset(token: string, password: string): Promise<{
+    ok: true;
+    reset: true;
+    workspaceSlug: string | null;
+  }> {
+    const normalizedPassword = String(password ?? "");
+    if (normalizedPassword.trim().length < 8) {
+      throw new BadRequestException({ error: "PASSWORD_TOO_SHORT", minLength: 8 });
+    }
+
+    const recoveryToken = await this.prisma.tenant(DEFAULT_TENANT_KEY).authRecoveryToken.findUnique({
+      where: {
+        tokenHash: this.hashRecoveryToken(token),
+      },
+      select: {
+        id: true,
+        tenantKey: true,
+        userId: true,
+        purpose: true,
+        expiresAt: true,
+        usedAt: true,
+      },
+    });
+    if (!recoveryToken || recoveryToken.usedAt || recoveryToken.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException({ error: "PASSWORD_RESET_TOKEN_INVALID" });
+    }
+
+    const tenantId = normalizeTenantKey(recoveryToken.tenantKey);
+    const userId = this.normalizeUserKey(recoveryToken.userId);
+    const passwordHash = await bcrypt.hash(normalizedPassword, 12);
+
+    const identity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findFirst({
+      where: {
+        tenantKey: tenantId,
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!identity) {
+      throw new UnauthorizedException({ error: "PASSWORD_RESET_TOKEN_INVALID" });
+    }
+
+    await this.prisma.tenant(DEFAULT_TENANT_KEY).$transaction([
+      this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.update({
+        where: {
+          id: identity.id,
+        },
+        data: {
+          passwordHash,
+          lockedUntil: null,
+        },
+      }),
+      this.prisma.tenant(DEFAULT_TENANT_KEY).authRecoveryToken.update({
+        where: {
+          id: recoveryToken.id,
+        },
+        data: {
+          usedAt: new Date(),
+        },
+      }),
+    ]);
+
+    const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
+    if (workspace?.workspaceSlug) {
+      await this.clearUserFailures(this.composeLoginLockKey(workspace.workspaceSlug, userId));
+    }
+
+    await this.auditService.record({
+      actorId: userId,
+      actorRole: "public",
+      action: "auth.password_reset_completed",
+      resource: "AuthRecoveryToken",
+      resourceId: recoveryToken.id,
+      metadata: {
+        tenantId,
+        purpose: recoveryToken.purpose,
+      },
+    });
+
+    return {
+      ok: true,
+      reset: true,
+      workspaceSlug: workspace?.workspaceSlug ?? null,
     };
   }
 
@@ -496,11 +701,11 @@ export class AuthService implements OnModuleDestroy {
     const result: RequestAccountExportResult = {
       ok: true,
       jobId,
-      status: "recorded",
+      status: "queued",
       format: input.format ?? "json",
       requestedAt,
-      estimatedReadyInSeconds: 0,
-      note: "Export fulfillment is currently a manual admin process.",
+      estimatedReadyInSeconds: DEFAULT_EXPORT_READY_SECONDS,
+      note: "Your export has been queued. We will email you when it is ready to download.",
     };
 
     await this.prisma
@@ -524,7 +729,7 @@ export class AuthService implements OnModuleDestroy {
         userId,
         input.role,
         result.format,
-        result.status,
+        EXPORT_STATUS_QUEUED,
         requestedAt,
         result.estimatedReadyInSeconds,
       );
@@ -540,6 +745,13 @@ export class AuthService implements OnModuleDestroy {
         format: result.format,
       },
     });
+
+    await this.queueService.enqueue(QUEUE_NAMES.ACCOUNT_EXPORT, {
+      jobId,
+      tenantId,
+      userId,
+      format: result.format,
+    } satisfies AccountExportJobPayload);
 
     return result;
   }
@@ -575,7 +787,11 @@ export class AuthService implements OnModuleDestroy {
                 status,
                 format,
                 requested_at AS "requestedAt",
-                estimated_ready_in_seconds AS "estimatedReadyInSeconds"
+                estimated_ready_in_seconds AS "estimatedReadyInSeconds",
+                completed_at AS "completedAt",
+                failed_at AS "failedAt",
+                error_message AS "errorMessage",
+                (artifact_path IS NOT NULL AND completed_at IS NOT NULL) AS "downloadAvailable"
               FROM account_export_requests
               WHERE tenant_key = $1 AND user_id = $2
               ORDER BY requested_at DESC
@@ -618,6 +834,40 @@ export class AuthService implements OnModuleDestroy {
       latestConsent: first.latestConsent ?? null,
       latestExport: first.latestExport ?? null,
       latestDeletion: first.latestDeletion ?? null,
+    };
+  }
+
+  async downloadAccountExport(jobIdInput: string, userIdInput: string, tenantIdInput: string): Promise<{
+    fileName: string;
+    contentType: string;
+    content: Buffer;
+  }> {
+    const jobId = String(jobIdInput ?? "").trim();
+    const userId = this.normalizeUserKey(userIdInput);
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const exportRequest = await this.prisma.tenant(tenantId).accountExportRequest.findFirst({
+      where: {
+        id: jobId,
+        tenantKey: tenantId,
+        userId,
+      },
+      select: {
+        status: true,
+        format: true,
+        artifactPath: true,
+        artifactFileName: true,
+      },
+    });
+    if (!exportRequest || exportRequest.status !== EXPORT_STATUS_COMPLETED || !exportRequest.artifactPath) {
+      throw new NotFoundException({ error: "ACCOUNT_EXPORT_NOT_READY" });
+    }
+
+    const filePath = exportRequest.artifactPath;
+    const content = await fs.readFile(filePath);
+    return {
+      fileName: exportRequest.artifactFileName || path.basename(filePath),
+      contentType: exportRequest.format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
+      content,
     };
   }
 
@@ -873,6 +1123,438 @@ export class AuthService implements OnModuleDestroy {
     return directory;
   }
 
+  private async backfillLegacyPasswordHash(identity: ResolvedLoginIdentity, submittedPassword: string): Promise<void> {
+    if (!this.isDbAuthMode() || identity.passwordHash) {
+      return;
+    }
+    try {
+      const passwordHash = await bcrypt.hash(submittedPassword, 12);
+      await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.updateMany({
+        where: {
+          tenantKey: identity.tenantId,
+          userId: identity.userId,
+          passwordHash: null,
+        },
+        data: {
+          passwordHash,
+        },
+      });
+    } catch (error: unknown) {
+      this.logger.warn(`Failed to backfill legacy password hash for ${identity.userId}: ${this.toErrorMessage(error)}`);
+    }
+  }
+
+  private async createRecoveryToken(identity: ResolvedLoginIdentity, purpose: "password_reset"): Promise<string> {
+    const rawToken = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString("hex");
+    const tokenHash = this.hashRecoveryToken(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS);
+    const prisma = this.prisma.tenant(DEFAULT_TENANT_KEY);
+
+    await prisma.authRecoveryToken.updateMany({
+      where: {
+        tenantKey: identity.tenantId,
+        userId: identity.userId,
+        purpose,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    await prisma.authRecoveryToken.create({
+      data: {
+        id: `recovery_${randomUUID()}`,
+        tenantKey: identity.tenantId,
+        userId: identity.userId,
+        purpose,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    return rawToken;
+  }
+
+  private hashRecoveryToken(token: string): string {
+    return createHash("sha256").update(String(token ?? "").trim(), "utf8").digest("hex");
+  }
+
+  private async processAuthEmailJob(payload: AuthEmailJobPayload): Promise<void> {
+    const tenantId = normalizeTenantKey(payload.tenantId);
+    const userId = this.normalizeUserKey(payload.userId);
+    const workspace =
+      (payload.workspaceSlug
+        ? await this.tenantDirectoryService.resolveWorkspaceSlug(payload.workspaceSlug)
+        : null) ?? (await this.tenantDirectoryService.resolveTenantAlias(tenantId));
+    const workspaceSlug = workspace?.workspaceSlug ?? normalizeWorkspaceSlug(payload.workspaceSlug ?? tenantId);
+    const webBaseUrl = this.resolveWebBaseUrl();
+
+    if (payload.kind === "account_export_ready" && payload.jobId) {
+      const privacyUrl = `${webBaseUrl}/settings/privacy`;
+      await this.authEmailService.send({
+        to: userId,
+        subject: "Your PIM1 account export is ready",
+        text: `Your account export is ready. Sign in to PIM1 and open ${privacyUrl} to download it securely.`,
+        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to PIM1</a> and open Privacy settings to download it securely.</p>`,
+        category: "account_export_ready",
+        metadata: {
+          tenantId,
+          jobId: payload.jobId,
+        },
+      });
+      return;
+    }
+
+    if (!payload.resetToken) {
+      throw new Error(`Missing reset token for auth email kind=${payload.kind}`);
+    }
+
+    const resetUrl = `${webBaseUrl}/login/reset?token=${encodeURIComponent(payload.resetToken)}&email=${encodeURIComponent(userId)}&workspace=${encodeURIComponent(workspaceSlug)}`;
+    const isUnlock = payload.kind === "account_unlock";
+    const subject = isUnlock ? "Unlock your PIM1 account" : "Reset your PIM1 password";
+    const intro = isUnlock
+      ? "Your account was locked after repeated sign-in attempts. Use the link below to set a new password and regain access."
+      : "Use the link below to set a new password for your PIM1 account.";
+
+    await this.authEmailService.send({
+      to: userId,
+      subject,
+      text: `${intro}\n\nWorkspace: ${workspaceSlug}\nReset link: ${resetUrl}\n\nThis link expires in 30 minutes.`,
+      html: `<p>${intro}</p><p><strong>Workspace:</strong> ${this.escapeHtml(workspaceSlug)}</p><p><a href=\"${resetUrl}\">Set a new password</a></p><p>This link expires in 30 minutes.</p>`,
+      category: isUnlock ? "account_unlock" : "password_reset",
+      metadata: {
+        tenantId,
+        workspaceSlug,
+      },
+    });
+  }
+
+  private async processAccountExportJob(payload: AccountExportJobPayload): Promise<void> {
+    const tenantId = normalizeTenantKey(payload.tenantId);
+    const tenantPrisma = this.prisma.tenant(tenantId);
+
+    await tenantPrisma.accountExportRequest.updateMany({
+      where: {
+        id: payload.jobId,
+        tenantKey: tenantId,
+        userId: payload.userId,
+      },
+      data: {
+        status: EXPORT_STATUS_PROCESSING,
+        failedAt: null,
+        errorMessage: null,
+      },
+    });
+
+    try {
+      const exportDocument = await this.buildAccountExportDocument(payload.tenantId, payload.userId, payload.jobId);
+      const artifact = await this.writeAccountExportArtifact(payload.tenantId, payload.userId, payload.jobId, payload.format, exportDocument);
+
+      await tenantPrisma.accountExportRequest.updateMany({
+        where: {
+          id: payload.jobId,
+          tenantKey: tenantId,
+          userId: payload.userId,
+        },
+        data: {
+          status: EXPORT_STATUS_COMPLETED,
+          artifactPath: artifact.storagePath,
+          artifactFileName: artifact.fileName,
+          completedAt: new Date(),
+          failedAt: null,
+          errorMessage: null,
+          estimatedReadyInSeconds: 0,
+        },
+      });
+
+      await this.auditService.record({
+        actorId: payload.userId,
+        actorRole: "public",
+        action: "account.export_completed",
+        resource: "account_export_requests",
+        resourceId: payload.jobId,
+        metadata: {
+          tenantId,
+          format: payload.format,
+          fileName: artifact.fileName,
+        },
+      });
+
+      await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
+        tenantId,
+        userId: payload.userId,
+        kind: "account_export_ready",
+        jobId: payload.jobId,
+      } satisfies AuthEmailJobPayload);
+    } catch (error: unknown) {
+      const errorMessage = this.toErrorMessage(error);
+      await tenantPrisma.accountExportRequest.updateMany({
+        where: {
+          id: payload.jobId,
+          tenantKey: tenantId,
+          userId: payload.userId,
+        },
+        data: {
+          status: EXPORT_STATUS_FAILED,
+          failedAt: new Date(),
+          errorMessage,
+        },
+      });
+
+      await this.auditService.record({
+        actorId: payload.userId,
+        actorRole: "public",
+        action: "account.export_failed",
+        resource: "account_export_requests",
+        resourceId: payload.jobId,
+        metadata: {
+          tenantId,
+          format: payload.format,
+          errorMessage,
+        },
+      });
+
+      throw error;
+    }
+  }
+
+  private async buildAccountExportDocument(tenantIdInput: string, userIdInput: string, jobId: string): Promise<Record<string, unknown>> {
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const userId = this.normalizeUserKey(userIdInput);
+    const authIdentity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findFirst({
+      where: {
+        tenantKey: tenantId,
+        userId,
+      },
+      select: {
+        id: true,
+        tenantKey: true,
+        userId: true,
+        role: true,
+        isActive: true,
+        lockedUntil: true,
+        createdBy: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
+    const tenantPrisma = this.prisma.tenant(tenantId);
+    const consents = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `
+      SELECT
+        id,
+        accepted,
+        policy_version AS "policyVersion",
+        purpose,
+        consent_recorded_at AS "consentRecordedAt",
+        created_at AS "createdAt"
+      FROM account_consent_events
+      WHERE tenant_key = $1 AND user_id = $2
+      ORDER BY consent_recorded_at DESC
+      `,
+      tenantId,
+      userId,
+    );
+    const exportRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `
+      SELECT
+        id,
+        actor_role AS "actorRole",
+        format,
+        status,
+        requested_at AS "requestedAt",
+        estimated_ready_in_seconds AS "estimatedReadyInSeconds",
+        artifact_file_name AS "artifactFileName",
+        completed_at AS "completedAt",
+        failed_at AS "failedAt",
+        error_message AS "errorMessage"
+      FROM account_export_requests
+      WHERE tenant_key = $1 AND user_id = $2
+      ORDER BY requested_at DESC
+      `,
+      tenantId,
+      userId,
+    );
+    const deletionRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `
+      SELECT
+        id,
+        actor_role AS "actorRole",
+        reason,
+        status,
+        requested_at AS "requestedAt",
+        scheduled_for AS "scheduledFor"
+      FROM account_deletion_requests
+      WHERE tenant_key = $1 AND user_id = $2
+      ORDER BY requested_at DESC
+      `,
+      tenantId,
+      userId,
+    );
+    const notifications = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `
+      SELECT
+        id,
+        event_type AS "eventType",
+        title,
+        message,
+        action_url AS "actionUrl",
+        action_label AS "actionLabel",
+        read_at AS "readAt",
+        created_at AS "createdAt"
+      FROM user_notifications
+      WHERE tenant_key = $1 AND user_id = $2
+      ORDER BY created_at DESC
+      `,
+      tenantId,
+      userId,
+    );
+    const auditRows = await tenantPrisma.auditLog.findMany({
+      where: {
+        actorId: userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        action: true,
+        resource: true,
+        resourceId: true,
+        metadata: true,
+        createdAt: true,
+      },
+      take: 500,
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      jobId,
+      tenantId,
+      userId,
+      workspace: workspace
+        ? {
+            workspaceSlug: workspace.workspaceSlug,
+            displayName: workspace.displayName,
+          }
+        : null,
+      account: authIdentity
+        ? {
+            id: authIdentity.id,
+            userId: authIdentity.userId,
+            role: authIdentity.role,
+            isActive: authIdentity.isActive,
+            lockedUntil: authIdentity.lockedUntil?.toISOString() ?? null,
+            createdBy: authIdentity.createdBy,
+            createdAt: authIdentity.createdAt.toISOString(),
+            updatedAt: authIdentity.updatedAt.toISOString(),
+          }
+        : null,
+      consentEvents: consents,
+      exportRequests,
+      deletionRequests,
+      notifications,
+      auditLog: auditRows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  private async writeAccountExportArtifact(
+    tenantIdInput: string,
+    userIdInput: string,
+    jobId: string,
+    format: "json" | "csv",
+    exportDocument: Record<string, unknown>,
+  ): Promise<{ storagePath: string; fileName: string }> {
+    const tenantId = normalizeTenantKey(tenantIdInput).replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const userId = this.normalizeUserKey(userIdInput).replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const safeJobId = String(jobId ?? "").replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const extension = format === "csv" ? ".csv" : ".json";
+    const fileName = `${userId}-${safeJobId}${extension}`;
+    const storageDir = path.join(process.cwd(), "storage", "account-exports", tenantId);
+    await fs.mkdir(storageDir, { recursive: true });
+    const storagePath = path.join(storageDir, fileName);
+    const fileContents =
+      format === "csv"
+        ? this.renderAccountExportCsv(exportDocument)
+        : JSON.stringify(exportDocument, null, 2);
+    await fs.writeFile(storagePath, fileContents, "utf8");
+    return {
+      storagePath,
+      fileName,
+    };
+  }
+
+  private renderAccountExportCsv(exportDocument: Record<string, unknown>): string {
+    const rows = [
+      ["section", "recordId", "payloadJson"],
+    ];
+    const account = exportDocument["account"];
+    if (account && typeof account === "object") {
+      rows.push(["account", String((account as Record<string, unknown>).id ?? ""), JSON.stringify(account)]);
+    }
+    const workspace = exportDocument["workspace"];
+    if (workspace && typeof workspace === "object") {
+      rows.push(["workspace", "", JSON.stringify(workspace)]);
+    }
+    const appendRows = (section: string, items: unknown) => {
+      if (!Array.isArray(items)) {
+        return;
+      }
+      for (const item of items) {
+        const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        rows.push([
+          section,
+          String(record.id ?? record.jobId ?? record.ticketId ?? ""),
+          JSON.stringify(record),
+        ]);
+      }
+    };
+
+    appendRows("consentEvents", exportDocument["consentEvents"]);
+    appendRows("exportRequests", exportDocument["exportRequests"]);
+    appendRows("deletionRequests", exportDocument["deletionRequests"]);
+    appendRows("notifications", exportDocument["notifications"]);
+    appendRows("auditLog", exportDocument["auditLog"]);
+
+    return rows
+      .map((row) => row.map((value) => this.csvCell(value)).join(","))
+      .join("\n");
+  }
+
+  private csvCell(value: string): string {
+    const normalized = String(value ?? "");
+    return `"${normalized.replace(/"/g, "\"\"")}"`;
+  }
+
+  private resolveWebBaseUrl(): string {
+    const explicit = String(process.env.PIM_WEB_BASE_URL ?? "").trim().replace(/\/+$/, "");
+    if (explicit) {
+      return explicit;
+    }
+    const corsOrigins = String(process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (corsOrigins[0]) {
+      return corsOrigins[0].replace(/\/+$/, "");
+    }
+    return "http://localhost:3000";
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   private async verifyPasswordForIdentity(
     password: string,
     identity: ResolvedLoginIdentity,
@@ -1008,12 +1690,7 @@ export class AuthService implements OnModuleDestroy {
       const resendKey = this.userResendKey(userKey);
       const outcome = await this.redisClient.set(resendKey, String(now), { NX: true, PX: RESEND_COOLDOWN_MS });
       if (outcome === "OK") {
-        return {
-          ok: true,
-          resent: false,
-          retryAfterSeconds: 0,
-          note: "Contact a workspace admin to unlock your account.",
-        };
+        return null;
       }
       const ttlMs = Number(await this.redisClient.pTTL(resendKey));
       const effectiveTtlMs = ttlMs > 0 ? ttlMs : RESEND_COOLDOWN_MS;
@@ -1021,7 +1698,7 @@ export class AuthService implements OnModuleDestroy {
         ok: true,
         resent: false,
         retryAfterSeconds: Math.max(1, Math.ceil(effectiveTtlMs / 1000)),
-        note: "Contact a workspace admin to unlock your account.",
+        note: "Please wait before requesting another recovery email.",
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
@@ -1139,6 +1816,13 @@ export class AuthService implements OnModuleDestroy {
     }
     const first = trimmed.slice(0, 2);
     return `${first}***`;
+  }
+
+  private toErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message.trim();
+    }
+    return String(error ?? "unknown_error");
   }
 
   async onModuleDestroy(): Promise<void> {
