@@ -75,6 +75,20 @@ The on-call owner is responsible for:
 
 ## 6. Useful commands and references
 
+## 6. Staging email delivery
+
+The staging API requires a working email-delivery mode to boot. If `AUTH_EMAIL_PROVIDER=resend`, both `AUTH_EMAIL_RESEND_API_KEY` and `AUTH_EMAIL_FROM` must be present or startup will fail. That fail-closed behavior is intentional and should be treated as a config regression, not a bug in the app.
+
+To configure real staging delivery:
+1. Create a Resend API key scoped to sending only.
+2. Set `AUTH_EMAIL_RESEND_API_KEY=<key>` in Railway for the staging API service.
+3. Set `AUTH_EMAIL_FROM=noreply@<your-verified-domain>`.
+4. Redeploy and verify `GET /api/v1/health` returns `status: "ok"`.
+
+If you only need non-commercial staging to boot and do not need real delivery, set `AUTH_EMAIL_PROVIDER=console`. In `console` mode the app logs email payloads to stdout so content is visible in Railway logs. `file` mode is still blocked in staging because it writes to ephemeral disk and hides delivery output from operators.
+
+## 7. Useful commands and references
+
 - Public health check:
   - `curl https://api-staging-4faf.up.railway.app/api/v1/health`
 - Post-deploy verification:
