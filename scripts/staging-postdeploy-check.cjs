@@ -9,21 +9,44 @@ function requireEnv(name) {
   return value;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function requestJson(baseUrl, path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method ?? "GET",
-    headers: options.headers ?? {},
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: AbortSignal.timeout(20_000),
-  });
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text;
+  const retries = Number(options.retries ?? 0);
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: options.method ?? "GET",
+        headers: options.headers ?? {},
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: AbortSignal.timeout(20_000),
+      });
+      const text = await response.text();
+      let payload = null;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+      if ([502, 503, 504].includes(response.status) && attempt < retries) {
+        await wait(1_000 * (attempt + 1));
+        continue;
+      }
+      return { status: response.status, payload };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) {
+        throw error;
+      }
+      await wait(750 * (attempt + 1));
+    }
   }
-  return { status: response.status, payload };
+
+  throw lastError ?? new Error("request failed");
 }
 
 function assertStatus(result, expected, context) {
@@ -41,7 +64,7 @@ async function run() {
   const smokePassword = requireEnv("STAGING_SMOKE_PASSWORD");
   const expectedEnv = String(process.env.STAGING_EXPECTED_ENV ?? "staging").trim();
 
-  const health = await requestJson(baseUrl, "/api/v1/health");
+  const health = await requestJson(baseUrl, "/api/v1/health", { retries: 3 });
   assertStatus(health, 200, "health");
   if (!health.payload || health.payload.status !== "ok") {
     throw new Error(`health payload invalid: ${JSON.stringify(health.payload)}`);
@@ -63,6 +86,7 @@ async function run() {
       "x-pim-role": "admin",
       "x-pim-tenant": "forged-tenant",
     },
+    retries: 2,
   });
   if (![401, 403].includes(legacyHeaderProbe.status)) {
     throw new Error(
@@ -79,6 +103,7 @@ async function run() {
       password: smokePassword,
       expiresInMinutes: 30,
     },
+    retries: 2,
   });
   assertStatus(login, 201, "login");
   const token = String(login.payload?.accessToken ?? "");
@@ -90,6 +115,7 @@ async function run() {
     headers: {
       authorization: `Bearer ${token}`,
     },
+    retries: 2,
   });
   assertStatus(usage, 200, "billing usage");
 
@@ -97,6 +123,7 @@ async function run() {
     headers: {
       authorization: `Bearer ${token}`,
     },
+    retries: 2,
   });
   assertStatus(connectors, 200, "connectors installed");
 
@@ -105,6 +132,7 @@ async function run() {
     headers: {
       authorization: `Bearer ${token}`,
     },
+    retries: 2,
   });
   assertStatus(logout, 204, "logout");
 
@@ -112,6 +140,7 @@ async function run() {
     headers: {
       authorization: `Bearer ${token}`,
     },
+    retries: 2,
   });
   if (revokedUsage.status !== 401) {
     throw new Error(
