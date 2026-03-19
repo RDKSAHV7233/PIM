@@ -492,6 +492,7 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_credentials
@@ -525,6 +526,7 @@ export class FlipkartConnector implements ConnectorInterface {
     credentialType: string,
   ): Promise<CredentialRow | null> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     const rows = await db.$queryRawUnsafe<CredentialRow[]>(
       `
       SELECT
@@ -567,6 +569,7 @@ export class FlipkartConnector implements ConnectorInterface {
     const db = this.prismaDirect.getClient();
     const id = `${ctx.installationId}:${credentialType}`;
 
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       INSERT INTO connector_credentials (
@@ -716,6 +719,7 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private async invalidateAccessToken(ctx: ConnectorContext): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_credentials
