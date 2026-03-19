@@ -5,7 +5,7 @@
 - Owner: Product + Engineering
 - Status: Active baseline
 - Current implementation snapshot: `docs/execution/CURRENT_STATE.md`
-- Current repo head at last PRD alignment: `5a64683`
+- Current repo head at last PRD alignment: `d5dbc2d`
 
 ## 1. Product Summary
 PIM1 is an India-first, multi-tenant Product Information Management platform with a connector-first integration architecture. Core catalog and compliance live in PIM1; marketplace-specific execution lives in connectors (Amazon, Flipkart, Meesho, ONDC later).
@@ -44,6 +44,7 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 ## 4. Users and Roles
 - Admin: taxonomy, compliance, and platform controls.
 - Editor: day-to-day catalog operations and workflow updates.
+- Reviewer: product workflow approval decisions (approve/reject in_review products).
 - Viewer: read-only visibility and monitoring.
 - Marketplace Ops: connector setup, readiness checks, publish/export management.
 
@@ -114,9 +115,9 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 - INC-06 + INC-07: Rejection intelligence confidence modeling and workflow maturation.
 - INC-08+: ONDC architecture and adapter path after connector baseline stabilizes.
 
-### Current execution status snapshot (2026-03-08)
-- Completed: `INC-01`, `INC-02`, `INC-03`, `INC-04`, `INC-06`, `INC-07`, `INC-09`
-- In progress with pending release items: `INC-05`, `INC-08`
+### Current execution status snapshot (2026-03-19)
+- Completed: INC-01 through INC-07, INC-09 through INC-21
+- In progress: INC-08 (14-day rollout window in progress)
 - Source of truth: `docs/execution/INCREMENT_STATE.json`
 
 ## 12. Gate Criteria (Execution-Control)
@@ -144,9 +145,13 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 ## 15. Release Readiness
 PIM1 is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
 
-Current state on 2026-03-08:
-- controlled-release execution evidence exists in `docs/execution/gates/` and `docs/execution/rollout/`
-- release closure is not complete because `INC-05` and `INC-08` still carry pending release items in `docs/execution/INCREMENT_STATE.json`
+Current state on 2026-03-19:
+- Per-user bcrypt authentication is live; shared-password fallback retained for legacy identities during migration.
+- Legal document set exists under `docs/legal/`: ToS, privacy policy, data retention policy, DPA.
+- Connector honesty: amazon-in and meesho labeled with `implementationStatus` field; sellers see accurate capability descriptions.
+- E2E smoke gate (30 checks, ~65s) runs on every deploy; full suite (121 checks) runs nightly.
+- Controlled rollout observation window in progress: 5 of 14 required days as of 2026-03-19.
+- Release closure not yet declared; RISK-P0-001 remains open pending evidence window completion.
 
 ## 16. Source Inputs Used
 This PRD is consolidated from imported March 2026 architecture/execution documents, redesign notes, UI review, and in-repo product scope/backlog artifacts.

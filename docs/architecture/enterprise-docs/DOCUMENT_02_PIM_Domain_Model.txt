@@ -29,7 +29,7 @@ Core Entity Model:
 | TenantPlanProfile | tenantKey, planTier, effectiveFrom, updatedBy | Authoritative tenant plan source |
 | ConnectorPermission | tenantKey, principalType, principalId, connectorSlug, accountAlias, action | Connector action access control |
 | AuditLog | id, tenantKey, actorId, actorRole, action, resource, resourceId, metadata | Governance and traceability |
-| AuthIdentity | userId, tenantKey, role, passwordHash, lock fields, reset fields | Login identity model |
+| AuthIdentity | id, tenantKey, userId, role, isActive, passwordHash, lockedUntil, createdBy, createdAt, updatedAt | Login identity; passwordHash (bcrypt, nullable — null = legacy shared-password fallback); lockedUntil (admin-initiated lock, nullable); workspace user management via /admin/workspace/users |
 
 Migration-backed SQL Tables (runtime domain):
 Source: packages/db/prisma/migrations/20260304130000_connector_framework_tables/migration.sql
@@ -61,4 +61,3 @@ Source: apps/api/src/catalog/catalog.service.ts
 Missing Model Areas:
 Information not available in PIM1 project.
 - Product Family model
-
