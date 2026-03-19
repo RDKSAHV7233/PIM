@@ -282,6 +282,10 @@ function parseBody(text, contentType) {
   return trimmed;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getErrorMessageFromBody(body) {
   if (!body) {
     return "";
@@ -328,12 +332,30 @@ async function request(baseUrl, method, routeOrUrl, options = {}) {
     body = JSON.stringify(options.json);
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body,
-    redirect: "manual",
-  });
+  const retries = Number(options.retries ?? 0);
+  let response;
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body,
+        redirect: "manual",
+      });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) {
+        throw error;
+      }
+      await wait(300 * (attempt + 1));
+    }
+  }
+  if (!response) {
+    throw lastError ?? new Error("request failed");
+  }
 
   const text = await response.text();
   const contentType = response.headers?.get?.("content-type") ?? "";
@@ -690,10 +712,10 @@ function buildChecks() {
   });
 
   add("auth", "token_required_on_protected_route", async () => {
-    const result = await api("GET", "/catalog/products");
-    assertStatus(result, 401, "GET /catalog/products without token");
-    return "401 as expected";
-  });
+      const result = await api("GET", "/catalog/products", { retries: 2 });
+      assertStatus(result, 401, "GET /catalog/products without token");
+      return "401 as expected";
+    });
 
   add("auth", "step_up_issued", async () => {
     if (!ctx.adminToken) {
