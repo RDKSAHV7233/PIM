@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { NotificationItem, NotificationListResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,17 @@ function formatTimestamp(value: string) {
   });
 }
 
+function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
+  if (!container) {
+    return [];
+  }
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
+}
+
 export function NotificationCenter() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -52,20 +63,57 @@ export function NotificationCenter() {
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
+      if (previousFocusRef.current) {
+        previousFocusRef.current.focus();
+        previousFocusRef.current = null;
+      }
       return;
     }
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = getFocusableElements(drawerRef.current);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        drawerRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     }
     window.addEventListener("keydown", onKeyDown);
+    const focusTimer = window.setTimeout(() => {
+      const focusable = getFocusableElements(drawerRef.current);
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        drawerRef.current?.focus();
+      }
+    }, 0);
     return () => {
+      window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = originalOverflow;
     };
@@ -102,6 +150,20 @@ export function NotificationCenter() {
 
   async function markAllRead() {
     setSubmitting(true);
+    const previousItems = items;
+    const previousUnreadCount = unreadCount;
+    const readAt = new Date().toISOString();
+    setItems((current) =>
+      current.map((item) =>
+        item.readAt
+          ? item
+          : {
+              ...item,
+              readAt,
+            },
+      ),
+    );
+    setUnreadCount(0);
     try {
       const response = await fetch("/api/notifications", {
         method: "PATCH",
@@ -110,7 +172,9 @@ export function NotificationCenter() {
           ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
       });
-      if (response.ok) {
+      if (!response.ok) {
+        setItems(previousItems);
+        setUnreadCount(previousUnreadCount);
         await loadNotifications();
       }
     } finally {
@@ -120,21 +184,37 @@ export function NotificationCenter() {
 
   async function openNotification(item: NotificationItem) {
     setSubmitting(true);
+    if (!item.readAt) {
+      const readAt = new Date().toISOString();
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                readAt,
+              }
+            : entry,
+        ),
+      );
+      setUnreadCount((current) => Math.max(0, current - 1));
+    }
     try {
       if (!item.readAt) {
-        await fetch(`/api/notifications/${encodeURIComponent(item.id)}/read`, {
+        const response = await fetch(`/api/notifications/${encodeURIComponent(item.id)}/read`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
           },
         });
+        if (!response.ok) {
+          await loadNotifications();
+        }
       }
       setOpen(false);
       if (item.actionUrl) {
         router.push(item.actionUrl);
       }
-      await loadNotifications();
     } finally {
       setSubmitting(false);
     }
@@ -149,10 +229,12 @@ export function NotificationCenter() {
         onClick={() => setOpen(false)}
       />
       <aside
+        ref={drawerRef}
         className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Notifications"
+        tabIndex={-1}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -220,6 +302,7 @@ export function NotificationCenter() {
     <>
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen(true)}
         className="relative rounded-md border border-slate-200 bg-white px-2.5 py-2 text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
         aria-label="Open notifications"
