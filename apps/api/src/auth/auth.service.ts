@@ -1467,6 +1467,7 @@ export class AuthService implements OnModuleDestroy {
     });
     const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
     const tenantPrisma = this.prisma.tenant(tenantId);
+    // RLS-BYPASS: manual tenant filter
     const consents = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
@@ -1483,6 +1484,7 @@ export class AuthService implements OnModuleDestroy {
       tenantId,
       userId,
     );
+    // RLS-BYPASS: manual tenant filter
     const exportRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
@@ -1503,6 +1505,7 @@ export class AuthService implements OnModuleDestroy {
       tenantId,
       userId,
     );
+    // RLS-BYPASS: manual tenant filter
     const deletionRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
@@ -1519,6 +1522,7 @@ export class AuthService implements OnModuleDestroy {
       tenantId,
       userId,
     );
+    // RLS-BYPASS: manual tenant filter
     const notifications = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT
