@@ -28,6 +28,7 @@ try {
   assert(center.includes("Mark all read"), "notification center must expose mark all read");
   assert(center.includes("You're up to date"), "notification center must render empty state copy");
   assert(center.includes('document.body.style.overflow = "hidden"'), "notification center must lock body scroll while drawer is open");
+  assert(center.includes("createPortal(drawer, document.body)"), "notification drawer must render through a body portal");
   assert(center.includes("flex h-full w-full max-w-md flex-col"), "notification drawer must use a bounded flex column layout");
   assert(center.includes("min-h-0 flex-1 overflow-y-auto"), "notification drawer list must scroll inside the panel body");
   assert(route.includes("validateCsrf(request)"), "notifications PATCH route must enforce CSRF");
@@ -41,6 +42,7 @@ try {
       "notification_center_exposes_mark_all_read",
       "notification_empty_state_copy_present",
       "notification_drawer_locks_page_scroll",
+      "notification_drawer_uses_body_portal",
       "notification_drawer_uses_bounded_internal_scroll",
       "notification_routes_enforce_csrf",
     ],

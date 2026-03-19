@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { NotificationItem, NotificationListResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +59,14 @@ export function NotificationCenter() {
     }
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
     return () => {
+      window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = originalOverflow;
     };
   }, [open]);
@@ -132,6 +140,82 @@ export function NotificationCenter() {
     }
   }
 
+  const drawer = open ? (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        className="absolute inset-0 bg-slate-900/20"
+        aria-label="Close notifications"
+        onClick={() => setOpen(false)}
+      />
+      <aside
+        className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Notifications"
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Notifications</h2>
+            <p className="text-sm text-slate-500">{unreadCount > 0 ? `${unreadCount} unread` : "You're up to date"}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void markAllRead()}
+              disabled={submitting || unreadCount === 0}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark all read
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {loading ? <p className="px-2 py-6 text-sm text-slate-500">Loading notifications...</p> : null}
+          {!loading && !hasItems ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+              <p className="text-sm font-medium text-slate-700">You're up to date</p>
+              <p className="mt-1 text-sm text-slate-500">New import, publish, and approval updates will appear here.</p>
+            </div>
+          ) : null}
+          {!loading && hasItems ? (
+            <ul className="space-y-3">
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => void openNotification(item)}
+                    className={cn(
+                      "w-full rounded-xl border px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50",
+                      item.readAt ? "border-slate-200 bg-white" : "border-blue-200 bg-blue-50/60",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                        <p className="mt-1 text-sm text-slate-600">{item.message}</p>
+                        <p className="mt-2 text-xs text-slate-400">{formatTimestamp(item.createdAt)}</p>
+                      </div>
+                      {item.readAt ? null : <span className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-600" aria-hidden />}
+                    </div>
+                    {item.actionLabel ? <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-blue-700">{item.actionLabel}</p> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  ) : null;
+
   return (
     <>
       <button
@@ -147,76 +231,7 @@ export function NotificationCenter() {
           </span>
         ) : null}
       </button>
-      {open ? (
-        <div className="fixed inset-0 z-50">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/20"
-            aria-label="Close notifications"
-            onClick={() => setOpen(false)}
-          />
-          <aside className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">Notifications</h2>
-                <p className="text-sm text-slate-500">{unreadCount > 0 ? `${unreadCount} unread` : "You're up to date"}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void markAllRead()}
-                  disabled={submitting || unreadCount === 0}
-                  className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Mark all read
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              {loading ? <p className="px-2 py-6 text-sm text-slate-500">Loading notifications...</p> : null}
-              {!loading && !hasItems ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
-                  <p className="text-sm font-medium text-slate-700">You're up to date</p>
-                  <p className="mt-1 text-sm text-slate-500">New import, publish, and approval updates will appear here.</p>
-                </div>
-              ) : null}
-              {!loading && hasItems ? (
-                <ul className="space-y-3">
-                  {items.map((item) => (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => void openNotification(item)}
-                        className={cn(
-                          "w-full rounded-xl border px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50",
-                          item.readAt ? "border-slate-200 bg-white" : "border-blue-200 bg-blue-50/60",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                            <p className="mt-1 text-sm text-slate-600">{item.message}</p>
-                            <p className="mt-2 text-xs text-slate-400">{formatTimestamp(item.createdAt)}</p>
-                          </div>
-                          {item.readAt ? null : <span className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-600" aria-hidden />}
-                        </div>
-                        {item.actionLabel ? <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-blue-700">{item.actionLabel}</p> : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </aside>
-        </div>
-      ) : null}
+      {drawer ? createPortal(drawer, document.body) : null}
     </>
   );
 }
