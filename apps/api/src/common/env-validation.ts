@@ -4,7 +4,7 @@ type AppEnv = "development" | "staging" | "production";
 type BoolText = "true" | "false";
 type AuthMode = "local" | "db";
 type QueueBackend = "memory" | "bullmq";
-type AuthEmailProvider = "file" | "resend";
+type AuthEmailProvider = "file" | "console" | "resend";
 
 export interface ValidatedEnv {
   DATABASE_URL_POOLED: string;
@@ -78,7 +78,7 @@ const EnvSchema = z.object({
   R2_ENDPOINT: z.string().url().optional(),
   APP_ENV: z.enum(["development", "staging", "production"] as const),
   AUTH_MODE: z.enum(["local", "db"] as const).default("local"),
-  AUTH_EMAIL_PROVIDER: z.enum(["file", "resend"] as const).default("file"),
+  AUTH_EMAIL_PROVIDER: z.enum(["file", "console", "resend"] as const).default("file"),
   AUTH_EMAIL_FROM: z.string().optional(),
   AUTH_EMAIL_REPLY_TO: z.string().optional(),
   AUTH_EMAIL_RESEND_API_KEY: z.string().optional(),
@@ -164,12 +164,15 @@ export function validateEnv(): ValidatedEnv {
       issues.push("QUEUE_WORKER_ENABLED: staging/production must use QUEUE_WORKER_ENABLED=true");
     }
     if (
-      (data.APP_ENV === "staging" || data.APP_ENV === "production") &&
+      data.APP_ENV === "staging" &&
       (!String(data.AUTH_EMAIL_PROVIDER ?? "").trim() || data.AUTH_EMAIL_PROVIDER === "file")
     ) {
       issues.push(
-        'AUTH_EMAIL_PROVIDER: staging/production must use a real delivery provider such as "resend"; "file" mode is not allowed',
+        'AUTH_EMAIL_PROVIDER: staging must use "resend" or "console"; "file" mode is not allowed',
       );
+    }
+    if (data.APP_ENV === "production" && data.AUTH_EMAIL_PROVIDER !== "resend") {
+      issues.push('AUTH_EMAIL_PROVIDER: production must use "resend"; "console" and "file" are not allowed');
     }
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");

@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-type AuthEmailProvider = "file" | "resend";
+type AuthEmailProvider = "file" | "console" | "resend";
 
 export interface AuthEmailMessage {
   to: string;
@@ -16,6 +16,9 @@ export interface AuthEmailMessage {
 
 function resolveProvider(): AuthEmailProvider {
   const raw = String(process.env.AUTH_EMAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (raw === "console") {
+    return "console";
+  }
   return raw === "resend" ? "resend" : "file";
 }
 
@@ -31,6 +34,10 @@ export class AuthEmailService {
   async send(message: AuthEmailMessage): Promise<void> {
     if (this.provider === "resend") {
       await this.sendViaResend(message);
+      return;
+    }
+    if (this.provider === "console") {
+      this.logToConsole(message);
       return;
     }
     await this.writeOutboxFile(message);
@@ -76,6 +83,20 @@ export class AuthEmailService {
       const body = await response.text().catch(() => "");
       throw new Error(`Resend email delivery failed: ${response.status} ${body}`.trim());
     }
+  }
+
+  private logToConsole(message: AuthEmailMessage): void {
+    this.logger.log(
+      JSON.stringify(
+        {
+          provider: "console",
+          writtenAt: new Date().toISOString(),
+          ...message,
+        },
+        null,
+        2,
+      ),
+    );
   }
 
   private async writeOutboxFile(message: AuthEmailMessage): Promise<void> {
