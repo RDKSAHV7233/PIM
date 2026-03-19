@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const http = require("node:http");
 const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
@@ -122,6 +123,84 @@ async function apiBinaryRequest(baseUrl, route, token) {
   };
 }
 
+async function startFakeR2Server() {
+  const objects = new Map();
+  const server = http.createServer(async (request, response) => {
+    const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+    const parts = requestUrl.pathname.split("/").filter(Boolean);
+    const bucket = parts.shift();
+    const key = decodeURIComponent(parts.join("/"));
+    if (!bucket || !key) {
+      response.statusCode = 400;
+      response.end("missing bucket or key");
+      return;
+    }
+    const storageKey = `${bucket}/${key}`;
+
+    if (request.method === "PUT") {
+      const chunks = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks);
+      objects.set(storageKey, {
+        body,
+        contentType: String(request.headers["content-type"] ?? "application/octet-stream"),
+        contentDisposition: String(request.headers["content-disposition"] ?? ""),
+      });
+      response.statusCode = 200;
+      response.end("");
+      return;
+    }
+
+    const stored = objects.get(storageKey);
+    if (!stored) {
+      response.statusCode = 404;
+      response.end("");
+      return;
+    }
+
+    if (stored.contentType) {
+      response.setHeader("Content-Type", stored.contentType);
+    }
+    if (stored.contentDisposition) {
+      response.setHeader("Content-Disposition", stored.contentDisposition);
+    }
+
+    if (request.method === "HEAD") {
+      response.statusCode = 200;
+      response.end("");
+      return;
+    }
+    if (request.method === "GET") {
+      response.statusCode = 200;
+      response.end(stored.body);
+      return;
+    }
+
+    response.statusCode = 405;
+    response.end("");
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Unable to resolve fake R2 server address.");
+  }
+
+  return {
+    endpoint: `http://127.0.0.1:${address.port}`,
+    close: async () =>
+      new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
+}
+
 function assertStatus(result, expectedStatus, message) {
   if (result.status !== expectedStatus) {
     throw new Error(
@@ -157,6 +236,7 @@ async function run() {
   const workspaceSlug = `ap-${runId}`.slice(0, 24);
   const userId = `auth-privacy-user-${runId}@example.com`;
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-export-email-"));
+  const fakeR2 = await startFakeR2Server();
 
   const env = {
     ...process.env,
@@ -169,6 +249,7 @@ async function run() {
     AUTH_EMAIL_PROVIDER: "file",
     AUTH_EMAIL_OUTBOX_DIR: outboxDir,
     PIM_WEB_BASE_URL: "http://localhost:3000",
+    R2_ENDPOINT: fakeR2.endpoint,
   };
 
   const stdoutBuffer = [];
@@ -242,15 +323,29 @@ async function run() {
       throw new Error(`Completed export should expose downloadAvailable=true. payload=${JSON.stringify(statusPayload)}`);
     }
 
-    const downloadResult = await apiBinaryRequest(
+    const downloadResult = await apiRequest(
       baseUrl,
+      "GET",
       `/auth/account/export/${encodeURIComponent(statusPayload.latestExport.jobId)}/download`,
       token,
     );
     if (downloadResult.status !== 200) {
-      throw new Error(`Export download failed: status=${downloadResult.status}`);
+      throw new Error(`Export download request failed: status=${downloadResult.status} payload=${JSON.stringify(downloadResult.payload)}`);
     }
-    const downloadText = downloadResult.body.toString("utf8");
+    if (typeof downloadResult.payload?.downloadUrl !== "string" || downloadResult.payload.downloadUrl.length === 0) {
+      throw new Error(`Export download did not return a pre-signed URL. payload=${JSON.stringify(downloadResult.payload)}`);
+    }
+    if (Number(downloadResult.payload?.expiresInSeconds) !== 900) {
+      throw new Error(`Expected export download URL expiry=900. payload=${JSON.stringify(downloadResult.payload)}`);
+    }
+    const signedDownload = await fetch(downloadResult.payload.downloadUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!signedDownload.ok) {
+      throw new Error(`Pre-signed export download failed: status=${signedDownload.status}`);
+    }
+    const downloadText = await signedDownload.text();
     if (!downloadText.includes(userId) || !downloadText.includes(statusPayload.latestExport.jobId)) {
       throw new Error(`Export download content mismatch. body=${downloadText}`);
     }
@@ -291,7 +386,7 @@ async function run() {
           validated: [
             "consent_acceptance_200",
             "account_export_202_queued",
-            "account_export_completes_and_is_downloadable",
+            "account_export_completes_and_returns_presigned_download",
             "delete_account_confirmation_guard_400",
             "delete_account_202_scheduled",
             "audit_actions_recorded",
@@ -319,6 +414,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     fs.rmSync(outboxDir, { recursive: true, force: true });
+    await fakeR2.close().catch(() => undefined);
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
         try {

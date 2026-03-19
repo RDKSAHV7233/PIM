@@ -171,9 +171,16 @@ export class AuthController {
   ) {
     const actor = this.requireActor(request);
     const result = await this.authService.downloadAccountExport(jobId, actor.userId, actor.tenantId);
-    reply.header("Content-Type", result.contentType);
-    reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
-    return result.content;
+    if (result.kind === "binary") {
+      reply.header("Content-Type", result.contentType);
+      reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+      return result.content;
+    }
+    if (result.kind === "unavailable") {
+      reply.status(HttpStatus.ACCEPTED);
+      return result;
+    }
+    return result;
   }
 
   @Delete("account")

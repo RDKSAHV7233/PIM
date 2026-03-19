@@ -184,6 +184,9 @@ async function runCaseStagingRequiresBullmq(baseEnv) {
     APP_ENV: "staging",
     AUTH_MODE: "db",
     CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "resend",
+    AUTH_EMAIL_FROM: "noreply@example.com",
+    AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
     QUEUE_BACKEND: "memory",
     PIM_AUTH_IDENTITIES_JSON: "",
   };
@@ -229,6 +232,9 @@ async function runCaseStagingRequiresWorkerEnabled(baseEnv) {
     APP_ENV: "staging",
     AUTH_MODE: "db",
     CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "resend",
+    AUTH_EMAIL_FROM: "noreply@example.com",
+    AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
     QUEUE_BACKEND: "bullmq",
     QUEUE_WORKER_ENABLED: "false",
     PIM_AUTH_IDENTITIES_JSON: "",
@@ -268,6 +274,102 @@ async function runCaseStagingRequiresWorkerEnabled(baseEnv) {
   }
 }
 
+async function runCaseStagingRequiresRealEmailProvider(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5475 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "file",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "true",
+    PIM_AUTH_IDENTITIES_JSON: "",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail when AUTH_EMAIL_PROVIDER=file, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail when AUTH_EMAIL_PROVIDER=file, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("AUTH_EMAIL_PROVIDER")) {
+    throw new Error(`Expected startup failure output to mention AUTH_EMAIL_PROVIDER. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
+async function runCaseStagingRequiresResendCredentials(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5490 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "resend",
+    AUTH_EMAIL_FROM: "",
+    AUTH_EMAIL_RESEND_API_KEY: "",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "true",
+    PIM_AUTH_IDENTITIES_JSON: "",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail when resend email env is incomplete, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail when resend email env is incomplete, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("AUTH_EMAIL_RESEND_API_KEY") || !mergedOutput.includes("AUTH_EMAIL_FROM")) {
+    throw new Error(`Expected startup failure output to mention resend credentials. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -277,6 +379,8 @@ async function run() {
   await runCaseMissingJwtSecret(baseEnv);
   await runCaseStagingRequiresBullmq(baseEnv);
   await runCaseStagingRequiresWorkerEnabled(baseEnv);
+  await runCaseStagingRequiresRealEmailProvider(baseEnv);
+  await runCaseStagingRequiresResendCredentials(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
@@ -287,6 +391,8 @@ async function run() {
           "missing_env_exits_with_error",
           "staging_requires_bullmq_queue_backend",
           "staging_requires_queue_worker_enabled",
+          "staging_requires_real_email_provider",
+          "staging_requires_resend_credentials",
           "valid_env_starts_api",
         ],
         checkedAt: new Date().toISOString(),

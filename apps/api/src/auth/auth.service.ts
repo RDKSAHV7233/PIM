@@ -2,14 +2,11 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
   OnModuleDestroy,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "redis";
 import { AuditService } from "../audit/audit.service";
@@ -25,6 +22,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
+import { AuthExportStorageService } from "./auth-export-storage.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
@@ -44,6 +42,8 @@ const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
 const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
 const PASSWORD_RESET_EXPIRY_MS = 30 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_BYTES = 24;
+const RESET_ATTEMPT_LIMIT = 3;
+const RESET_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_EXPORT_READY_SECONDS = 120;
 const EXPORT_STATUS_QUEUED = "queued";
 const EXPORT_STATUS_PROCESSING = "processing";
@@ -147,10 +147,7 @@ export interface ResendUnlockResult {
 
 export interface RequestPasswordResetResult {
   ok: true;
-  requested: boolean;
   retryAfterSeconds: number;
-  adminResetAvailable?: boolean;
-  note?: string;
 }
 
 export interface RecordConsentInput {
@@ -232,10 +229,29 @@ export interface AccountPrivacyStatusResult {
   } | null;
 }
 
+export type AccountExportDownloadResult =
+  | {
+      kind: "ready";
+      downloadUrl: string;
+      expiresInSeconds: number;
+    }
+  | {
+      kind: "binary";
+      fileName: string;
+      contentType: string;
+      content: Buffer;
+    }
+  | {
+      kind: "unavailable";
+      status: "unavailable";
+      reason: string;
+    };
+
 @Injectable()
 export class AuthService implements OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
   private readonly ipAttempts = new Map<string, IpAttemptState>();
+  private readonly passwordResetAttempts = new Map<string, IpAttemptState>();
   private readonly userLocks = new Map<string, UserLockState>();
   private readonly identityDirectory = this.loadIdentityDirectory();
   private redisClient: ReturnType<typeof createClient> | null = null;
@@ -256,6 +272,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly tenantDirectoryService: TenantDirectoryService,
     private readonly queueService: QueueService,
     private readonly authEmailService: AuthEmailService,
+    private readonly authExportStorageService: AuthExportStorageService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
       await this.processAuthEmailJob(payload);
@@ -492,7 +509,9 @@ export class AuthService implements OnModuleDestroy {
 
   async requestPasswordReset(email: string): Promise<RequestPasswordResetResult> {
     const normalizedEmail = this.normalizeUserKey(email);
-    let queued = false;
+    const now = Date.now();
+    const rateLimit = await this.checkAndIncrementResetRateLimit(normalizedEmail, now);
+    let identityFound = false;
 
     if (this.isDbAuthMode()) {
       const identity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findUnique({
@@ -508,7 +527,8 @@ export class AuthService implements OnModuleDestroy {
           passwordHash: true,
         },
       });
-      if (identity?.isActive) {
+      identityFound = Boolean(identity);
+      if (identity?.isActive && rateLimit.allowed) {
         const resolvedIdentity: ResolvedLoginIdentity = {
           userId: this.normalizeUserKey(identity.userId),
           tenantId: normalizeTenantKey(identity.tenantKey),
@@ -525,7 +545,6 @@ export class AuthService implements OnModuleDestroy {
           workspaceSlug: workspace?.workspaceSlug ?? null,
           resetToken,
         } satisfies AuthEmailJobPayload);
-        queued = true;
       }
     }
 
@@ -536,17 +555,14 @@ export class AuthService implements OnModuleDestroy {
       resource: "auth.password_reset",
       metadata: {
         emailMasked: this.maskIdentity(normalizedEmail),
+        identityFound,
+        rateLimited: !rateLimit.allowed,
       },
     });
 
     return {
       ok: true,
-      requested: queued,
-      retryAfterSeconds: 0,
-      adminResetAvailable: !queued,
-      note: queued
-        ? "If the account exists, a recovery email has been sent."
-        : "Password reset email is only available for DB-backed accounts.",
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
     };
   }
 
@@ -837,11 +853,11 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
-  async downloadAccountExport(jobIdInput: string, userIdInput: string, tenantIdInput: string): Promise<{
-    fileName: string;
-    contentType: string;
-    content: Buffer;
-  }> {
+  async downloadAccountExport(
+    jobIdInput: string,
+    userIdInput: string,
+    tenantIdInput: string,
+  ): Promise<AccountExportDownloadResult> {
     const jobId = String(jobIdInput ?? "").trim();
     const userId = this.normalizeUserKey(userIdInput);
     const tenantId = normalizeTenantKey(tenantIdInput);
@@ -859,15 +875,32 @@ export class AuthService implements OnModuleDestroy {
       },
     });
     if (!exportRequest || exportRequest.status !== EXPORT_STATUS_COMPLETED || !exportRequest.artifactPath) {
-      throw new NotFoundException({ error: "ACCOUNT_EXPORT_NOT_READY" });
+      return {
+        kind: "unavailable",
+        status: "unavailable",
+        reason: "Export not yet ready or has expired.",
+      };
     }
 
-    const filePath = exportRequest.artifactPath;
-    const content = await fs.readFile(filePath);
+    const download = await this.authExportStorageService.resolveAccountExportDownload({
+      artifactPath: exportRequest.artifactPath,
+      format: exportRequest.format === "csv" ? "csv" : "json",
+      fileName: exportRequest.artifactFileName || `${jobId}.${exportRequest.format === "csv" ? "csv" : "json"}`,
+    });
+    if (download.kind === "binary") {
+      return download;
+    }
+    if (download.kind === "unavailable") {
+      return {
+        kind: "unavailable",
+        status: "unavailable",
+        reason: download.reason,
+      };
+    }
     return {
-      fileName: exportRequest.artifactFileName || path.basename(filePath),
-      contentType: exportRequest.format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
-      content,
+      kind: "ready",
+      downloadUrl: download.downloadUrl,
+      expiresInSeconds: download.expiresInSeconds,
     };
   }
 
@@ -976,6 +1009,89 @@ export class AuthService implements OnModuleDestroy {
     const ttlMs = Number(await client.pTTL(key));
     const effectiveTtlMs = ttlMs > 0 ? ttlMs : this.ipWindowMs;
     return Math.max(1, Math.ceil(effectiveTtlMs / 1000));
+  }
+
+  private async checkAndIncrementResetRateLimit(
+    email: string,
+    now: number,
+  ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+    await this.ensureRedisConnection();
+    if (this.redisAvailable && this.redisClient) {
+      try {
+        return await this.checkAndIncrementResetRateLimitRedis(email);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error ?? "unknown error");
+        this.markRedisUnavailable(`Failed to evaluate password reset rate limit in Redis: ${message}`);
+      }
+    }
+    return this.checkAndIncrementResetRateLimitInMemory(email, now);
+  }
+
+  private checkAndIncrementResetRateLimitInMemory(
+    email: string,
+    now: number,
+  ): { allowed: boolean; retryAfterSeconds: number } {
+    const emailKey = this.normalizeUserKey(email) || "unknown";
+    const existing = this.passwordResetAttempts.get(emailKey);
+    if (!existing || now - existing.windowStartMs >= RESET_WINDOW_MS) {
+      this.passwordResetAttempts.set(emailKey, {
+        windowStartMs: now,
+        attempts: 1,
+      });
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    if (existing.attempts >= RESET_ATTEMPT_LIMIT) {
+      const remainingMs = Math.max(0, RESET_WINDOW_MS - (now - existing.windowStartMs));
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
+      };
+    }
+
+    existing.attempts += 1;
+    this.passwordResetAttempts.set(emailKey, existing);
+    return {
+      allowed: true,
+      retryAfterSeconds: 0,
+    };
+  }
+
+  private async checkAndIncrementResetRateLimitRedis(
+    email: string,
+  ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+    const client = this.redisClient;
+    if (!client) {
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+    const emailKey = this.normalizeUserKey(email) || "unknown";
+    const key = this.resetRateKey(emailKey);
+    const attempts = Number(await client.incr(key));
+    if (attempts === 1) {
+      await client.pExpire(key, RESET_WINDOW_MS);
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+    if (attempts <= RESET_ATTEMPT_LIMIT) {
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+    const ttlMs = Number(await client.pTTL(key));
+    const effectiveTtlMs = ttlMs > 0 ? ttlMs : RESET_WINDOW_MS;
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil(effectiveTtlMs / 1000)),
+    };
   }
 
   private async getActiveLock(userKey: string, rawIdentity: string, now: number): Promise<UserLockState | null> {
@@ -1249,7 +1365,17 @@ export class AuthService implements OnModuleDestroy {
 
     try {
       const exportDocument = await this.buildAccountExportDocument(payload.tenantId, payload.userId, payload.jobId);
-      const artifact = await this.writeAccountExportArtifact(payload.tenantId, payload.userId, payload.jobId, payload.format, exportDocument);
+      const artifactContents =
+        payload.format === "csv"
+          ? this.renderAccountExportCsv(exportDocument)
+          : JSON.stringify(exportDocument, null, 2);
+      const artifact = await this.authExportStorageService.storeAccountExportArtifact({
+        tenantId: payload.tenantId,
+        userId: payload.userId,
+        jobId: payload.jobId,
+        format: payload.format,
+        fileContents: artifactContents,
+      });
 
       await tenantPrisma.accountExportRequest.updateMany({
         where: {
@@ -1460,32 +1586,6 @@ export class AuthService implements OnModuleDestroy {
         ...row,
         createdAt: row.createdAt.toISOString(),
       })),
-    };
-  }
-
-  private async writeAccountExportArtifact(
-    tenantIdInput: string,
-    userIdInput: string,
-    jobId: string,
-    format: "json" | "csv",
-    exportDocument: Record<string, unknown>,
-  ): Promise<{ storagePath: string; fileName: string }> {
-    const tenantId = normalizeTenantKey(tenantIdInput).replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const userId = this.normalizeUserKey(userIdInput).replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const safeJobId = String(jobId ?? "").replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const extension = format === "csv" ? ".csv" : ".json";
-    const fileName = `${userId}-${safeJobId}${extension}`;
-    const storageDir = path.join(process.cwd(), "storage", "account-exports", tenantId);
-    await fs.mkdir(storageDir, { recursive: true });
-    const storagePath = path.join(storageDir, fileName);
-    const fileContents =
-      format === "csv"
-        ? this.renderAccountExportCsv(exportDocument)
-        : JSON.stringify(exportDocument, null, 2);
-    await fs.writeFile(storagePath, fileContents, "utf8");
-    return {
-      storagePath,
-      fileName,
     };
   }
 
@@ -1721,6 +1821,10 @@ export class AuthService implements OnModuleDestroy {
 
   private userResendKey(userKey: string): string {
     return `${this.redisKeyPrefix()}login:user:${userKey}:resend`;
+  }
+
+  private resetRateKey(emailKey: string): string {
+    return `${this.redisKeyPrefix()}reset:${emailKey}`;
   }
 
   private redisKeyPrefix(): string {

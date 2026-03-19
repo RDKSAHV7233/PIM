@@ -40,9 +40,10 @@ export class AuthEmailService {
     const apiKey = String(process.env.AUTH_EMAIL_RESEND_API_KEY ?? "").trim();
     const from = String(process.env.AUTH_EMAIL_FROM ?? "").trim();
     if (!apiKey || !from) {
-      this.logger.warn("AUTH_EMAIL_PROVIDER=resend but AUTH_EMAIL_RESEND_API_KEY or AUTH_EMAIL_FROM is missing. Falling back to file outbox.");
-      await this.writeOutboxFile(message);
-      return;
+      this.logger.error(
+        "AUTH_EMAIL_PROVIDER=resend but AUTH_EMAIL_RESEND_API_KEY or AUTH_EMAIL_FROM is missing. Email delivery is misconfigured.",
+      );
+      throw new Error("EMAIL_PROVIDER_MISCONFIGURED");
     }
 
     const payload: Record<string, unknown> = {

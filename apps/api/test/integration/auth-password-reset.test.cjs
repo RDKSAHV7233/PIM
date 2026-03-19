@@ -103,7 +103,7 @@ async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}
   } catch {
     payload = text;
   }
-  return { status: response.status, payload };
+  return { status: response.status, payload, headers: response.headers };
 }
 
 function assert(condition, message) {
@@ -131,12 +131,17 @@ async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const files = fs.existsSync(outboxDir) ? fs.readdirSync(outboxDir) : [];
+    const matches = [];
     for (const file of files) {
       const fullPath = path.join(outboxDir, file);
       const parsed = JSON.parse(fs.readFileSync(fullPath, "utf8"));
       if (String(parsed.to ?? "").trim().toLowerCase() === recipient.toLowerCase()) {
-        return parsed;
+        matches.push({ file, parsed });
       }
+    }
+    if (matches.length > 0) {
+      matches.sort((left, right) => left.file.localeCompare(right.file));
+      return matches[matches.length - 1].parsed;
     }
     await sleep(200);
   }
@@ -219,7 +224,39 @@ async function run() {
       email: adminUserId,
     });
     assertStatus(requestReset, 200, "password reset request");
-    assert(requestReset.payload?.requested === true, "password reset request should queue email delivery");
+    const missingReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {
+      email: "nobody@nowhere.example",
+    });
+    assertStatus(missingReset, 200, "password reset request for missing identity");
+    assert(
+      JSON.stringify(requestReset.payload) === JSON.stringify(missingReset.payload),
+      `password reset request responses must be non-enumerating. existing=${JSON.stringify(requestReset.payload)} missing=${JSON.stringify(missingReset.payload)}`,
+    );
+    assert(
+      JSON.stringify(requestReset.payload) === JSON.stringify({ ok: true, retryAfterSeconds: 0 }),
+      `password reset response shape mismatch. payload=${JSON.stringify(requestReset.payload)}`,
+    );
+
+    const secondReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {
+      email: adminUserId,
+    });
+    assertStatus(secondReset, 200, "second password reset request");
+    const thirdReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {
+      email: adminUserId,
+    });
+    assertStatus(thirdReset, 200, "third password reset request");
+    const rateLimitedReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/request", null, {
+      email: adminUserId,
+    });
+    assertStatus(rateLimitedReset, 200, "rate-limited password reset request");
+    assert(
+      Number(rateLimitedReset.payload?.retryAfterSeconds) > 0,
+      `expected retryAfterSeconds > 0 when password reset rate limited. payload=${JSON.stringify(rateLimitedReset.payload)}`,
+    );
+    assert(
+      String(rateLimitedReset.headers.get("x-ratelimit-retry-after") ?? "").trim().length > 0,
+      "expected X-RateLimit-Retry-After header when password reset rate limited",
+    );
 
     const emailPayload = await waitForOutboxEmail(outboxDir, adminUserId, 10_000);
     const resetToken = extractResetToken(emailPayload);
@@ -243,6 +280,8 @@ async function run() {
           status: "ok",
           validated: [
             "password_reset_request_rejects_invalid_body",
+            "password_reset_request_is_non_enumerating",
+            "password_reset_request_rate_limited_after_three_attempts",
             "password_reset_request_queues_email",
             "password_reset_confirm_updates_password",
             "old_shared_password_rejected_after_reset",

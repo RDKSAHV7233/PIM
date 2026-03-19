@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { AppRole } from "@/lib/api";
 
 type ExportFormat = "json" | "csv";
@@ -58,31 +58,43 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
   const [statusError, setStatusError] = useState("");
   const [status, setStatus] = useState<PrivacyStatusPayload | null>(null);
 
-  useEffect(() => {
-    async function loadStatus() {
-      try {
-        const response = await fetch("/api/account/privacy-status", {
-          method: "GET",
-        });
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => ({}))) as { error?: string };
-          if (response.status === 401) {
-            setStatusError("Session expired. Please login again.");
-            return;
-          }
-          setStatusError(payload.error ?? "Unable to load privacy status.");
+  const loadStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/account/privacy-status", {
+        method: "GET",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (response.status === 401) {
+          setStatusError("Session expired. Please login again.");
           return;
         }
-        const payload = (await response.json()) as PrivacyStatusPayload;
-        setStatus(payload);
-        setStatusError("");
-      } catch {
-        setStatusError("Network error while loading privacy status.");
+        setStatusError(payload.error ?? "Unable to load privacy status.");
+        return;
       }
+      const payload = (await response.json()) as PrivacyStatusPayload;
+      setStatus(payload);
+      setStatusError("");
+    } catch {
+      setStatusError("Network error while loading privacy status.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  useEffect(() => {
+    const exportStatus = status?.latestExport?.status;
+    if (exportStatus !== "queued" && exportStatus !== "processing") {
+      return undefined;
     }
 
-    void loadStatus();
-  }, []);
+    const timer = setInterval(() => {
+      void loadStatus();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [loadStatus, status?.latestExport?.status]);
 
   async function requestExport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -121,6 +133,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
       setExportMessage(
         `Export requested (${payload.jobId ?? "n/a"}). ${payload.note ?? "We will email you when the export is ready."}`,
       );
+      await loadStatus();
     } catch {
       setExportMessage("Network error while recording export request.");
     } finally {

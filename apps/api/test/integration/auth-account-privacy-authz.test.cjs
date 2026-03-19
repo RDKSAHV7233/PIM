@@ -137,7 +137,7 @@ async function run() {
 
   const runId = Date.now().toString();
   const port = 5050 + Math.floor(Math.random() * 100);
-  const baseUrl = `http://127.0.0.1:${port}/api/v1`;
+  const baseUrl = `http://localhost:${port}/api/v1`;
   const tenantId = `auth-privacy-authz-${runId}`;
 
   const env = {

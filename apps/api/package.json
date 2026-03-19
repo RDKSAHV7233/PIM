@@ -10,6 +10,8 @@
     "credentials:rotate:script": "node -r ts-node/register ../../scripts/rotate-credentials.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1012.0",
+    "@aws-sdk/s3-request-presigner": "^3.1012.0",
     "@fastify/static": "^9.0.0",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",

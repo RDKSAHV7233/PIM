@@ -130,11 +130,16 @@ async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const files = fs.existsSync(outboxDir) ? fs.readdirSync(outboxDir) : [];
+    const matches = [];
     for (const file of files) {
       const payload = JSON.parse(fs.readFileSync(path.join(outboxDir, file), "utf8"));
       if (String(payload.to ?? "").trim().toLowerCase() === recipient.toLowerCase()) {
-        return payload;
+        matches.push({ file, payload });
       }
+    }
+    if (matches.length > 0) {
+      matches.sort((left, right) => left.file.localeCompare(right.file));
+      return matches[matches.length - 1].payload;
     }
     await sleep(200);
   }
@@ -283,7 +288,10 @@ async function run() {
       email: targetUserId,
     });
     assertStatus(passwordReset, 200, "password reset request response");
-    assert(passwordReset.payload?.requested === true, "password reset must queue delivery");
+    assert(
+      JSON.stringify(passwordReset.payload) === JSON.stringify({ ok: true, retryAfterSeconds: 0 }),
+      `password reset response shape mismatch. payload=${JSON.stringify(passwordReset.payload)}`,
+    );
     await waitForOutboxEmail(outboxDir, targetUserId, 10_000);
 
     const lockViewer = await apiRequest(
