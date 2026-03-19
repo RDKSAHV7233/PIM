@@ -123,6 +123,20 @@ paths:
         "200":
           description: ""
       tags: *a3
+  /api/v1/auth/password-reset/confirm:
+    post:
+      operationId: AuthController_confirmPasswordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmPasswordResetDto"
+      responses:
+        "200":
+          description: ""
+      tags: *a3
   /api/v1/auth/consent:
     post:
       operationId: AuthController_recordConsent
@@ -157,6 +171,19 @@ paths:
               $ref: "#/components/schemas/RequestAccountExportDto"
       responses:
         "202":
+          description: ""
+      tags: *a3
+  /api/v1/auth/account/export/{jobId}/download:
+    get:
+      operationId: AuthController_downloadAccountExport
+      parameters:
+        - name: jobId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
           description: ""
       tags: *a3
   /api/v1/auth/account:
@@ -2148,6 +2175,9 @@ components:
       type: object
       properties: {}
     RequestPasswordResetDto:
+      type: object
+      properties: {}
+    ConfirmPasswordResetDto:
       type: object
       properties: {}
     RecordConsentDto:
