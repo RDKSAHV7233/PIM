@@ -1,6 +1,6 @@
 ﻿# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
+Last updated: 2026-03-19 (daily rollout evidence refreshed)
 
 ## P0 (Must close before production)
 
@@ -25,7 +25,8 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
   - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
-  - Latest snapshot: artifact bundle `staging-gate-artifacts-23127921361` -> `rollout/2026-03-16T04-31-32.714Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23281517455`
+  - Latest snapshot: `docs/execution/rollout/2026-03-19T05-39-08.859Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
 - Implementation update (2026-03-16):
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
@@ -46,6 +47,14 @@ Last updated: 2026-03-18 (staging smoke gate + CI baseline refreshed)
   - Generic `CI` workflow run `23233701847` is green again, so the engineering-quality lane is back to a usable baseline instead of failing on workflow/config drift.
   - `capture-controlled-rollout-snapshot.cjs` now keeps the pilot workflow and payload-governance controlled-rollout proofs evergreen once recorded instead of aging them out with the 14-day broad-window calculation.
   - Fresh snapshot [2026-03-18T13-22-10.340Z_CONTROLLED_ROLLOUT_SNAPSHOT.json](C:\Users\Om Computers\PIM1\docs\execution\rollout\2026-03-18T13-22-10.340Z_CONTROLLED_ROLLOUT_SNAPSHOT.json) shows `controlledRollout.pending = []`, `observationWindowDaysCovered = 5`, and `sloTrendDaysCovered = 6`.
+  - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-03-19):
+  - Daily rollout evidence workflow run `23281517455` succeeded and persisted the latest snapshot into the repo.
+  - Snapshot [2026-03-19T05-39-08.859Z_CONTROLLED_ROLLOUT_SNAPSHOT.json](C:\Users\Om Computers\PIM1\docs\execution\rollout\2026-03-19T05-39-08.859Z_CONTROLLED_ROLLOUT_SNAPSHOT.json) shows:
+    - `health.ok = true`
+    - `controlledRollout.pending = []`
+    - `observationWindowDaysCovered = 6 / 14`
+    - `sloTrendDaysCovered = 7 / 14`
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.

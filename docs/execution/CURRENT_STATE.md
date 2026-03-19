@@ -1,7 +1,7 @@
 # PIM1 Current State
 
 - Date: 2026-03-19
-- Repo HEAD: `d5dbc2d`
+- Repo HEAD: `b3d2578`
 - Scope: canonical snapshot of the current PIM1 implementation, execution ledger, and reviewer-facing documentation state
 
 ## 1. Canonical Source-of-Truth Files
@@ -65,7 +65,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 | INC-05 | Ops and Observability | completed | locked stories present; post-deploy verification risk closed |
 | INC-06 | Decision Dashboards | completed | locked stories present |
 | INC-07 | Governance and Compliance | completed | locked stories present |
-| INC-08 | Release Readiness | in_progress | delivery complete, rollout observation window in progress (5/14 days as of 2026-03-19) |
+| INC-08 | Release Readiness | in_progress | delivery complete, rollout observation window in progress (6/14 days as of 2026-03-19) |
 | INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | locked stories present |
 | INC-10 | Flipkart Publish Connector v1 | completed | locked stories present; connector implementation complete |
 | INC-11 | Workspace Login and Tenant Discovery | completed | locked stories present |
@@ -84,7 +84,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS_RISK_REGISTER.md`
 
 - `INC-05` / `RISK-P0-003`: post-deploy verification pipeline is now live and green on CI. Gate artifact recording is operational. Status: **closed** in the risk register.
-- `INC-08` / `RISK-P0-001`: live staging health proof confirmed. Controlled rollout observation window in progress: **5 of 14 required days** as of 2026-03-19. No code blockers remain; window is time-gated only.
+- `INC-08` / `RISK-P0-001`: live staging health proof confirmed. Controlled rollout observation window is now **6 of 14 required days**, and production SLO trend evidence is **7 of 14 required days**, as of the latest 2026-03-19 rollout snapshot. No code blockers remain; window is time-gated only.
 - `INC-10`: Flipkart connector implementation is complete in the increment ledger. It is no longer tracked as an open release item in `docs/execution/INCREMENT_STATE.json`.
 
 ## 6. Current Documentation State
@@ -103,12 +103,12 @@ Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS
   - `npm run build --workspace @pim1/api`
 
 ## 8. Recent Governance Events
-- `86abab7` — per-user bcrypt auth, honest reset/unlock flows, admin password-set endpoint
-- `d3ac876` — connector `implementationStatus` field; amazon-in and meesho labeled as stub/partial
-- `b0fdca2` — `api.ts` split by domain (2034 lines -> 10 domain files + barrel)
-- `bd47041` — product detail page split (1322 lines -> 144-line shell + tab components)
-- `a4b6095` — legal docs created: ToS, privacy policy, data retention policy, DPA
-- `ca268ca` — security threat model, incident response, on-call guide
+- `b6aa161` -- auth/privacy hardening: non-enumerating password reset, R2-backed export delivery, and fail-closed email delivery
+- `34dacc8` -- add `console` email mode for staging while keeping production email delivery `resend`-only
+- `b3d2578` -- retry transient staging post-deploy verification failures so rollout evidence is less noisy
+- `d3ac876` -- connector `implementationStatus` field; amazon-in and meesho labeled as stub/partial
+- `b0fdca2` -- `api.ts` split by domain (2034 lines -> 10 domain files + barrel)
+- `bd47041` -- product detail page split (1322 lines -> 144-line shell + tab components)
 
 ## 9. Reviewer Guidance
 - For product review: start with `docs/product/PRD.md`
