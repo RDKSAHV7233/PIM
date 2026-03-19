@@ -11,7 +11,10 @@ import { AppRole } from "../common/rbac/roles";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ConnectorCap } from "../connector-framework/connector.interface";
+import {
+  ConnectorCap,
+  ConnectorImplementationStatus,
+} from "../connector-framework/connector.interface";
 import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
@@ -115,6 +118,14 @@ export class ConnectorInstallerService {
     return getTenantKeyFromContext();
   }
 
+  private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
+    try {
+      return this.connectorRegistry.getConnector(slug).implementationStatus ?? "full";
+    } catch {
+      return "full";
+    }
+  }
+
   async listAvailableDefinitions(actor: ConnectorActor): Promise<ConnectorDefinitionRecord[]> {
     const stubSlugs = new Set(resolveStubConnectorSlugs());
     // RLS-BYPASS: manual tenant filter
@@ -150,6 +161,7 @@ export class ConnectorInstallerService {
         displayName: String(row.displayName),
         authType: String(row.authType),
         capabilities: launchPolicy.surfacedCapabilities,
+        implementationStatus: this.resolveImplementationStatus(slug),
         launchStage: launchPolicy.launchStage,
         launchNote: launchPolicy.launchNote,
         marketplaceId: row.marketplaceId ? String(row.marketplaceId) : null,
@@ -385,6 +397,7 @@ export class ConnectorInstallerService {
           externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
           status: String(row.status) as ConnectorInstallationRecord["status"],
           capabilities: launchPolicy.surfacedCapabilities,
+          implementationStatus: this.resolveImplementationStatus(slug),
           launchStage: launchPolicy.launchStage,
           launchNote: launchPolicy.launchNote,
           metadata: parseMetadata(row.metadata),

@@ -23,8 +23,19 @@ function run() {
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
+    source.includes("function connectorStatusNote(") &&
+      source.includes("Credential validation and publish are not yet available for this connector.") &&
+      source.includes("Meesho uses Excel export only."),
+    "Connectors page must render implementation-status notes for stub and partial connectors.",
+  );
+  assert(
     source.includes("installation.launchStage") && source.includes("installation.launchNote"),
     "Installed connectors table must surface launch-stage honesty messaging.",
+  );
+  assert(
+    source.includes('label: "CONNECTED (limited)"') &&
+      source.includes('implementationStatus === "stub"'),
+    "Installed stub connectors must show CONNECTED (limited) instead of ACTIVE.",
   );
 
   console.log(
@@ -35,6 +46,8 @@ function run() {
           "connector_page_hides_non_live_install_forms",
           "connector_page_surfaces_launch_honesty_notes",
           "installed_connector_rows_show_launch_stage",
+          "connector_page_surfaces_implementation_status_notes",
+          "installed_stub_connectors_show_connected_limited",
         ],
         checkedAt: new Date().toISOString(),
       },

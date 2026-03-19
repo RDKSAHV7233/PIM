@@ -117,6 +117,22 @@ function formatActionBlockedReason(reason: string | null | undefined): string {
   return `Action blocked: ${reason}`;
 }
 
+function connectorStatusNote(
+  slug: string,
+  implementationStatus: string | undefined,
+): string | null {
+  if (implementationStatus === "stub") {
+    return "Credential validation and publish are not yet available for this connector. You can install it to prepare your mapping, but submissions will not process until the connector is fully implemented.";
+  }
+  if (implementationStatus === "partial") {
+    if (slug === "meesho") {
+      return "Meesho uses Excel export only. After exporting, upload the file manually in Meesho Supplier Panel. Direct publish is not supported by Meesho.";
+    }
+    return "This connector has limited functionality. Check the channel guide for details.";
+  }
+  return null;
+}
+
 function installationStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
   const normalized = String(status ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE") {
@@ -149,6 +165,23 @@ function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
     return "not seller-ready";
   }
   return "live";
+}
+
+function resolveInstalledStatusPresentation(
+  status: string,
+  implementationStatus: string | undefined,
+): { label: string; tone: "neutral" | "success" | "warning" | "danger" | "info" } {
+  const normalizedStatus = String(status ?? "").trim().toUpperCase();
+  if (normalizedStatus === "ACTIVE" && implementationStatus === "stub") {
+    return {
+      label: "CONNECTED (limited)",
+      tone: "warning",
+    };
+  }
+  return {
+    label: status,
+    tone: installationStatusTone(status),
+  };
 }
 
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
@@ -213,6 +246,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 const installedForDefinition = installations.filter(
                   (installation) => installation.connectorId === definition.id,
                 );
+                const statusNote = connectorStatusNote(definition.slug, definition.implementationStatus);
 
                 return (
                   <section
@@ -241,6 +275,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     {definition.launchNote ? (
                       <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
                         {definition.launchNote}
+                      </p>
+                    ) : null}
+                    {statusNote ? (
+                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                        {statusNote}
                       </p>
                     ) : null}
 
@@ -377,6 +416,14 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 <tbody>
                   {installations.map((installation) => {
                     const mappedChannel = mapConnectorSlugToChannel(installation.slug);
+                    const statusNote = connectorStatusNote(
+                      installation.slug,
+                      installation.implementationStatus,
+                    );
+                    const displayStatus = resolveInstalledStatusPresentation(
+                      installation.status,
+                      installation.implementationStatus,
+                    );
                     const mappingHref =
                       mappedChannel && firstProductId
                         ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
@@ -396,11 +443,16 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           {installation.launchNote ? (
                             <p className="mt-2 max-w-xs text-xs text-slate-500">{installation.launchNote}</p>
                           ) : null}
+                          {statusNote ? (
+                            <p className="mt-2 max-w-xs rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                              {statusNote}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5">{installation.accountAlias}</td>
                         <td className="px-3 py-2.5">{installation.externalAccountRef || "-"}</td>
                         <td className="px-3 py-2.5">
-                          <StatusChip label={installation.status} tone={installationStatusTone(installation.status)} />
+                          <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
                         </td>
                         <td className="px-3 py-2.5 text-xs">{installation.capabilities.join(", ") || "-"}</td>
                         <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(installation.installedAt).toLocaleString()}</td>

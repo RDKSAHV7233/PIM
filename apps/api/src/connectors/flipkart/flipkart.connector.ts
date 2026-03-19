@@ -99,6 +99,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export class FlipkartConnector implements ConnectorInterface {
   readonly slug = "flipkart";
   readonly displayName = "Flipkart";
+  readonly implementationStatus = "full" as const;
   readonly capabilities: ConnectorCap[] = [
     "PUBLISH",
     "VALIDATE",

@@ -9,6 +9,8 @@ export type ConnectorCap =
   | 'WEBHOOK_RECEIVE'
   | 'EXCEL_EXPORT';
 
+export type ConnectorImplementationStatus = 'full' | 'partial' | 'stub';
+
 // ─────────────────────────────────────────────
 // CONTEXT — injected into every connector call
 // ─────────────────────────────────────────────
@@ -101,6 +103,13 @@ export interface ConnectorInterface {
   readonly slug: string;
   readonly displayName: string;
   readonly capabilities: ConnectorCap[];
+  /**
+   * Describes the current implementation completeness of this connector.
+   * - 'full'    - credential validation and publish are implemented and tested
+   * - 'partial' - some capabilities are implemented (for example export-only)
+   * - 'stub'    - capabilities are declared but not implemented; returns safe defaults
+   */
+  readonly implementationStatus?: ConnectorImplementationStatus;
 
   // ── Required methods ────────────────────────────────────────────────
 

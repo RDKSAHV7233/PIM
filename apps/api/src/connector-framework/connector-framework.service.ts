@@ -12,6 +12,7 @@ import {
 import {
   ConnectorCap,
   ConnectorContext,
+  ConnectorImplementationStatus,
   ProductPayload,
   SubmissionRef,
   SubmissionStatusUpdate,
@@ -64,6 +65,14 @@ export class ConnectorFrameworkService {
     private readonly registry: ConnectorRegistry,
   ) {}
 
+  private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
+    try {
+      return this.registry.getConnector(slug).implementationStatus ?? "full";
+    } catch {
+      return "full";
+    }
+  }
+
   async getInstallation(tenantKey: string, slug: string): Promise<ConnectorInstallationRecord | null> {
     // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
@@ -110,6 +119,7 @@ export class ConnectorFrameworkService {
       externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
       status: String(row.status) as ConnectorInstallationRecord["status"],
       capabilities: launchPolicy.surfacedCapabilities,
+      implementationStatus: this.resolveImplementationStatus(String(row.slug)),
       launchStage: launchPolicy.launchStage,
       launchNote: launchPolicy.launchNote,
       metadata: parseMetadata(row.metadata),

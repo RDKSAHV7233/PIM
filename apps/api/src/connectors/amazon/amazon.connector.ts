@@ -23,6 +23,7 @@ import {
 export class AmazonConnector implements ConnectorInterface {
   readonly slug = 'amazon-in';
   readonly displayName = 'Amazon India';
+  readonly implementationStatus = 'stub' as const;
   readonly capabilities: ConnectorCap[] = [
     'PUBLISH',
     'VALIDATE',

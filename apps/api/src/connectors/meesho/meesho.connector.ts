@@ -18,6 +18,7 @@ import {
 export class MeeshoConnector implements ConnectorInterface {
   readonly slug = 'meesho';
   readonly displayName = 'Meesho';
+  readonly implementationStatus = 'partial' as const;
   readonly capabilities: ConnectorCap[] = [
     'VALIDATE',
     'EXCEL_EXPORT',

@@ -1,4 +1,9 @@
-import { ConnectorCap, ProductPayload, ValidationResult } from "./connector.interface";
+import {
+  ConnectorCap,
+  ConnectorImplementationStatus,
+  ProductPayload,
+  ValidationResult,
+} from "./connector.interface";
 import { ConnectorLaunchStage } from "./connector-launch-policy";
 
 export type ConnectorInstallationStatus = "ACTIVE" | "PAUSED" | "CREDENTIAL_EXPIRED" | "DISABLED";
@@ -9,6 +14,7 @@ export interface ConnectorDefinitionRecord {
   displayName: string;
   authType: string;
   capabilities: ConnectorCap[];
+  implementationStatus: ConnectorImplementationStatus;
   launchStage: ConnectorLaunchStage;
   launchNote: string | null;
   marketplaceId: string | null;
@@ -40,6 +46,7 @@ export interface ConnectorInstallationRecord {
   externalAccountRef: string | null;
   status: ConnectorInstallationStatus;
   capabilities: ConnectorCap[];
+  implementationStatus: ConnectorImplementationStatus;
   launchStage: ConnectorLaunchStage;
   launchNote: string | null;
   metadata: Record<string, unknown>;
