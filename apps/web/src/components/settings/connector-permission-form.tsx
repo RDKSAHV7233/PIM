@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { AppRole, ConnectorDefinition } from "@/lib/api";
 
 const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
@@ -103,9 +104,7 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
         <p className="text-xs text-slate-500">Leave blank to apply this permission to all aliases for the selected connector.</p>
       </div>
       <div className="flex items-end">
-        <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">
-          Grant
-        </button>
+        <PendingSubmitButton type="submit" idleLabel="Grant" pendingLabel="Granting..." />
       </div>
     </form>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { deleteCategoryAction } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 interface CategoryDeleteButtonProps {
   categoryId: string;
@@ -35,18 +36,15 @@ export function CategoryDeleteButton({
       <input type="hidden" name="categoryId" value={categoryId} />
       <input type="hidden" name="confirmDelete" value="yes" />
       <input type="hidden" name="returnTo" value={returnTo} />
-      <button
+      <PendingSubmitButton
         type="submit"
+        variant="secondary"
         disabled={disabled}
         title={disabledReason ?? "Delete category"}
-        className={`rounded-md border px-2 py-1 text-xs font-semibold ${
-          disabled
-            ? "cursor-not-allowed border-slate-200 text-slate-400"
-            : "border-red-200 text-red-700 hover:bg-red-50"
-        }`}
-      >
-        Delete
-      </button>
+        className={disabled ? "border-slate-200 text-slate-400" : "border-red-200 text-red-700 hover:bg-red-50"}
+        idleLabel="Delete"
+        pendingLabel="Deleting..."
+      />
     </form>
   );
 }

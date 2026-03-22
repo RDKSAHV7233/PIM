@@ -5,9 +5,9 @@ import {
   processExportJobAction,
   requeueExportJobAction,
 } from "@/app/actions";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
@@ -108,9 +108,12 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                   <option value="true">Acknowledge fallback usage</option>
                 </Select>
               </div>
-              <Button type="submit" disabled={!data.canQueueExportWithAck}>
-                Queue channel export
-              </Button>
+              <PendingSubmitButton
+                type="submit"
+                disabled={!data.canQueueExportWithAck}
+                idleLabel="Queue channel export"
+                pendingLabel="Queueing export..."
+              />
             </form>
           ) : data.canWrite ? (
             <p className="text-sm text-slate-600">
@@ -151,7 +154,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                     ))}
                   </Select>
                 </div>
-                <Button type="submit">Run simulator</Button>
+                <PendingSubmitButton type="submit" idleLabel="Run simulator" pendingLabel="Running simulator..." />
               </form>
 
               <div className="grid gap-3 md:grid-cols-4">
@@ -268,9 +271,12 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 </Select>
               </div>
               <div />
-              <Button type="submit" className="w-fit">
-                Save template
-              </Button>
+              <PendingSubmitButton
+                type="submit"
+                className="w-fit"
+                idleLabel="Save template"
+                pendingLabel="Saving template..."
+              />
             </form>
           ) : !data.mappingManagerInstallation ? (
             <p className="text-sm text-slate-600">Your role cannot save mapping templates.</p>
@@ -362,9 +368,12 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                                 <RoleHiddenInput role={data.actorRole} />
                                 <input type="hidden" name="jobId" value={job.id} />
                                 <input type="hidden" name="productId" value={data.productId} />
-                                <Button type="submit" className="px-2.5 py-1.5 text-xs">
-                                  Process
-                                </Button>
+                                <PendingSubmitButton
+                                  type="submit"
+                                  className="px-2.5 py-1.5 text-xs"
+                                  idleLabel="Process"
+                                  pendingLabel="Processing..."
+                                />
                               </form>
                             ) : null}
                             {data.canWrite &&
@@ -373,9 +382,13 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                                 <RoleHiddenInput role={data.actorRole} />
                                 <input type="hidden" name="jobId" value={job.id} />
                                 <input type="hidden" name="productId" value={data.productId} />
-                                <Button type="submit" variant="secondary" className="px-2.5 py-1.5 text-xs">
-                                  Requeue
-                                </Button>
+                                <PendingSubmitButton
+                                  type="submit"
+                                  variant="secondary"
+                                  className="px-2.5 py-1.5 text-xs"
+                                  idleLabel="Requeue"
+                                  pendingLabel="Requeueing..."
+                                />
                               </form>
                             ) : null}
                           </div>

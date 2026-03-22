@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createCategoryAction } from "@/app/actions";
 import { CategoryDeleteButton } from "@/components/catalog/category-delete-button";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
 import { ApiHttpError, getCategoryTree, getProductList } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -206,7 +206,11 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
                   ))}
                 </Select>
               </div>
-              <Button type="submit">Create category</Button>
+              <PendingSubmitButton
+                type="submit"
+                idleLabel="Create category"
+                pendingLabel="Creating category..."
+              />
             </form>
           </Card>
         ) : null}

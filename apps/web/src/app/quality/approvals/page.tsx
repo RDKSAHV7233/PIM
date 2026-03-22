@@ -2,10 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { decideProductReviewAction } from "@/app/actions";
 import { ApiHttpError, getIssueInbox, getProductList, getStats } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KpiCard } from "@/components/ui/kpi-card";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -219,17 +219,23 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                   <input type="hidden" name="productId" value={product.id} />
                                   <input type="hidden" name="status" value="approved" />
                                   <input type="hidden" name="returnTo" value={returnTo} />
-                                  <Button type="submit" disabled={!canApprove}>
-                                    Approve
-                                  </Button>
+                                  <PendingSubmitButton
+                                    type="submit"
+                                    disabled={!canApprove}
+                                    idleLabel="Approve"
+                                    pendingLabel="Approving..."
+                                  />
                                 </form>
                                 <form action={decideProductReviewAction}>
                                   <input type="hidden" name="productId" value={product.id} />
                                   <input type="hidden" name="status" value="rejected" />
                                   <input type="hidden" name="returnTo" value={returnTo} />
-                                  <Button type="submit" variant="secondary">
-                                    Reject
-                                  </Button>
+                                  <PendingSubmitButton
+                                    type="submit"
+                                    variant="secondary"
+                                    idleLabel="Reject"
+                                    pendingLabel="Rejecting..."
+                                  />
                                 </form>
                               </div>
                               {!canApprove ? (

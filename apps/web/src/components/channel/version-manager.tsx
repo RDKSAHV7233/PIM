@@ -5,9 +5,9 @@ import {
   rollbackConnectorMappingVersionAction,
   validateConnectorMappingVersionAction,
 } from "@/app/actions";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, ConnectorMappingVersion } from "@/lib/api";
 import {
@@ -29,6 +29,7 @@ function ProtectedMappingActionForm({
   disabled,
   label,
   open,
+  pendingLabel,
   redirectTo,
   versionId,
   children,
@@ -40,15 +41,14 @@ function ProtectedMappingActionForm({
   disabled: boolean;
   label: string;
   open?: boolean;
+  pendingLabel: string;
   redirectTo: string;
   versionId: string;
   children?: ReactNode;
 }) {
   if (disabled) {
     return (
-      <Button type="button" variant="secondary" className="text-xs" disabled>
-        {label}
-      </Button>
+      <PendingSubmitButton type="button" variant="secondary" className="text-xs" disabled idleLabel={label} pendingLabel={pendingLabel} />
     );
   }
 
@@ -77,9 +77,7 @@ function ProtectedMappingActionForm({
           <p className="text-xs text-slate-500">{description}</p>
         </div>
         {children}
-        <Button type="submit" className="text-xs">
-          {label}
-        </Button>
+        <PendingSubmitButton type="submit" className="text-xs" idleLabel={label} pendingLabel={pendingLabel} />
       </form>
     </details>
   );
@@ -172,9 +170,14 @@ export function VersionManagerCard({
                           <input type="hidden" name="connectorSlug" value={connectorSlug} />
                           <input type="hidden" name="versionId" value={version.id} />
                           <input type="hidden" name="redirectTo" value={redirectTo} />
-                          <Button type="submit" variant="secondary" className="text-xs" disabled={version.lifecycleState !== "draft"}>
-                            Validate
-                          </Button>
+                          <PendingSubmitButton
+                            type="submit"
+                            variant="secondary"
+                            className="text-xs"
+                            disabled={version.lifecycleState !== "draft"}
+                            idleLabel="Validate"
+                            pendingLabel="Validating..."
+                          />
                         </form>
                         <ProtectedMappingActionForm
                           action={publishConnectorMappingVersionAction}
@@ -184,6 +187,7 @@ export function VersionManagerCard({
                           disabled={version.lifecycleState !== "validated"}
                           label="Publish"
                           open={stepUpAction === "publish" && stepUpVersionId === version.id}
+                          pendingLabel="Publishing..."
                           redirectTo={redirectTo}
                           versionId={version.id}
                         >
@@ -197,6 +201,7 @@ export function VersionManagerCard({
                           disabled={version.lifecycleState === "archived"}
                           label="Archive"
                           open={stepUpAction === "archive" && stepUpVersionId === version.id}
+                          pendingLabel="Archiving..."
                           redirectTo={redirectTo}
                           versionId={version.id}
                         >
@@ -216,6 +221,7 @@ export function VersionManagerCard({
                             disabled={false}
                             label="Rollback"
                             open={stepUpAction === "rollback" && stepUpVersionId === version.id}
+                            pendingLabel="Rolling back..."
                             redirectTo={redirectTo}
                             versionId={version.id}
                           >

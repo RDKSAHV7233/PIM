@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
@@ -363,7 +364,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                             </div>
                           </>
                         ) : null}
-                        <Button type="submit">Install connector</Button>
+                        <PendingSubmitButton
+                          type="submit"
+                          idleLabel="Install connector"
+                          pendingLabel="Installing connector..."
+                        />
                       </form>
                     ) : (
                       <p className="mt-3 text-xs text-slate-500">
@@ -482,9 +487,13 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                               <>
                                 <form action={reconnectConnectorAction}>
                                   <input type="hidden" name="installationId" value={installation.id} />
-                                  <Button type="submit" variant="secondary" className="text-xs">
-                                    Reconnect
-                                  </Button>
+                                  <PendingSubmitButton
+                                    type="submit"
+                                    variant="secondary"
+                                    className="text-xs"
+                                    idleLabel="Reconnect"
+                                    pendingLabel="Reconnecting..."
+                                  />
                                 </form>
                               </>
                             ) : null}
@@ -492,9 +501,13 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                               <>
                                 <form action={uninstallConnectorAction}>
                                   <input type="hidden" name="installationId" value={installation.id} />
-                                  <Button type="submit" variant="secondary" className="text-xs">
-                                    Disable
-                                  </Button>
+                                  <PendingSubmitButton
+                                    type="submit"
+                                    variant="secondary"
+                                    className="text-xs"
+                                    idleLabel="Disable"
+                                    pendingLabel="Disabling..."
+                                  />
                                 </form>
                               </>
                             ) : null}
@@ -512,9 +525,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                                   />
                                   Confirm permanent delete
                                 </label>
-                                <Button type="submit" className="text-xs">
-                                  Delete Record
-                                </Button>
+                                <PendingSubmitButton
+                                  type="submit"
+                                  className="text-xs"
+                                  idleLabel="Delete Record"
+                                  pendingLabel="Deleting record..."
+                                />
                               </form>
                             ) : null}
                             {!installation.actions?.reconnect.allowed ? (
