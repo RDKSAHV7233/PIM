@@ -348,7 +348,6 @@ export class AuthService implements OnModuleDestroy {
         maskedEmail: this.maskIdentity(identity.userId),
       };
     }
-    await this.backfillLegacyPasswordHash(identity, dto.password);
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
       ? Math.min(MAX_LOGIN_EXPIRY_MINUTES, Math.max(1, Math.floor(dto.expiresInMinutes ?? DEFAULT_LOGIN_EXPIRY_MINUTES)))
       : DEFAULT_LOGIN_EXPIRY_MINUTES;
@@ -1239,27 +1238,6 @@ export class AuthService implements OnModuleDestroy {
     return directory;
   }
 
-  private async backfillLegacyPasswordHash(identity: ResolvedLoginIdentity, submittedPassword: string): Promise<void> {
-    if (!this.isDbAuthMode() || identity.passwordHash) {
-      return;
-    }
-    try {
-      const passwordHash = await bcrypt.hash(submittedPassword, 12);
-      await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.updateMany({
-        where: {
-          tenantKey: identity.tenantId,
-          userId: identity.userId,
-          passwordHash: null,
-        },
-        data: {
-          passwordHash,
-        },
-      });
-    } catch (error: unknown) {
-      this.logger.warn(`Failed to backfill legacy password hash for ${identity.userId}: ${this.toErrorMessage(error)}`);
-    }
-  }
-
   private async createRecoveryToken(identity: ResolvedLoginIdentity, purpose: "password_reset"): Promise<string> {
     const rawToken = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString("hex");
     const tokenHash = this.hashRecoveryToken(rawToken);
@@ -1665,6 +1643,9 @@ export class AuthService implements OnModuleDestroy {
   ): Promise<boolean> {
     if (identity.passwordHash) {
       return bcrypt.compare(password, identity.passwordHash);
+    }
+    if (this.isDbAuthMode()) {
+      throw new UnauthorizedException({ error: "AUTH_CREDENTIAL_MIGRATION_INCOMPLETE" });
     }
     return this.verifySharedPassword(password);
   }

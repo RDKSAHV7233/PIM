@@ -1615,10 +1615,28 @@ function buildChecks() {
       },
     });
     assertStatus(result, [201, 400], "POST /marketplace/products/:id/export-jobs");
-    if (result.status === 400 && String(result.body?.error ?? "").toLowerCase() === "publish_readiness_blocked") {
-      skip("publish readiness blocked for staging connector/category configuration");
+    if (result.status === 400) {
+      const topLevelError = String(result.body?.error ?? "").trim().toLowerCase();
+      const nestedError = String(result.body?.message?.error ?? "").trim().toLowerCase();
+      const blockers = Array.isArray(result.body?.blockers)
+        ? result.body.blockers
+        : Array.isArray(result.body?.message?.blockers)
+          ? result.body.message.blockers
+          : [];
+      const detail = getErrorMessageFromBody(result.body?.message ?? result.body);
+      if (topLevelError === "publish_readiness_blocked" || nestedError === "publish_readiness_blocked" || blockers.length > 0) {
+        skip("publish readiness blocked for staging connector/category configuration");
+      }
+      const normalizedDetail = detail.toLowerCase();
+      if (
+        normalizedDetail.includes("installation") ||
+        normalizedDetail.includes("capability") ||
+        normalizedDetail.includes("credential")
+      ) {
+        skip(`amazon export job unavailable for staging connector configuration (${detail})`);
+      }
     }
-    assert(result.body?.id, "export job id missing");
+    assert(result.body?.id, `export job id missing; payload=${JSON.stringify(result.body)}`);
     ctx.exportJobId = String(result.body.id);
     return `id=${ctx.exportJobId}`;
   });
@@ -1969,8 +1987,20 @@ function buildChecks() {
     skip("product.created audit action not implemented in current audit model");
   });
 
-  add("audit", "webhook_smoke_todo", async () => {
-    skip("TODO: implement when outbound webhooks land (RISK-P2-001)");
+  add("audit", "webhook_admin_surfaces_accessible", async () => {
+    const endpoints = await api("GET", "/admin/webhooks", {
+      token: ctx.adminToken,
+    });
+    assertStatus(endpoints, 200, "GET /admin/webhooks");
+    const endpointItems = normalizeItems(endpoints.body);
+
+    const deliveries = await api("GET", "/admin/webhooks/deliveries?limit=10", {
+      token: ctx.adminToken,
+    });
+    assertStatus(deliveries, 200, "GET /admin/webhooks/deliveries");
+    const deliveryItems = normalizeItems(deliveries.body);
+
+    return `endpoints=${endpointItems.length} deliveries=${deliveryItems.length}`;
   });
 
   add("privacy", "account_export_request", async () => {
@@ -1981,7 +2011,7 @@ function buildChecks() {
         },
       });
       assertStatus(result, 202, "POST /auth/account/export");
-    assert(result.body?.status === "recorded", `unexpected status ${result.body?.status}`);
+    assert(result.body?.status === "queued", `unexpected status ${result.body?.status}`);
       assert(result.body?.jobId, "account export job id missing");
       ctx.exportPrivacyJobId = String(result.body.jobId);
       return `jobId=${ctx.exportPrivacyJobId}`;

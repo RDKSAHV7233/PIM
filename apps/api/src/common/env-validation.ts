@@ -107,6 +107,7 @@ export function validateEnv(): ValidatedEnv {
 
   const parsed = EnvSchema.safeParse(envInput);
   const issues: string[] = [];
+  const warnings: string[] = [];
 
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
@@ -186,7 +187,22 @@ export function validateEnv(): ValidatedEnv {
       }
     }
 
+    const sharedPassword = String(envInput.PIM_AUTH_PASSWORD ?? "").trim();
+    if (
+      (data.APP_ENV === "staging" || data.APP_ENV === "production") &&
+      sharedPassword &&
+      sharedPassword.toLowerCase() !== "disabled"
+    ) {
+      warnings.push(
+        "PIM_AUTH_PASSWORD: shared-password fallback should be disabled in staging/production once DB credential migration is complete",
+      );
+    }
+
     if (issues.length === 0) {
+      for (const warning of warnings) {
+        // eslint-disable-next-line no-console
+        console.warn(`STARTUP WARNING - ${warning}`);
+      }
       return {
         ...data,
         CORS_ORIGINS: corsOrigins,

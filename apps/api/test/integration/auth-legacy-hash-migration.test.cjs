@@ -199,13 +199,17 @@ async function run() {
     });
 
     const legacyLogin = await login(baseUrl, workspaceSlug, legacyUserLogin);
-    assertStatus(legacyLogin, 201, "legacy login with shared password");
+    assertStatus(legacyLogin, 401, "legacy login blocked before migration");
+    assert(
+      String(legacyLogin.payload?.error ?? "") === "AUTH_CREDENTIAL_MIGRATION_INCOMPLETE",
+      `expected migration-incomplete auth error, got ${JSON.stringify(legacyLogin.payload)}`,
+    );
 
     const loginUser = await prisma.authIdentity.findUnique({
       where: { userId: legacyUserLogin },
       select: { passwordHash: true },
     });
-    assert(Boolean(loginUser?.passwordHash), "legacy login should backfill passwordHash on successful login");
+    assert(loginUser?.passwordHash === null, "legacy login must not backfill passwordHash after fallback removal");
 
     const beforeScript = await prisma.authIdentity.findUnique({
       where: { userId: legacyUserScript },
@@ -233,12 +237,16 @@ async function run() {
     });
     assert(Boolean(scriptUser?.passwordHash), "migration script should backfill passwordHash for remaining legacy rows");
 
+    const migratedLogin = await login(baseUrl, workspaceSlug, legacyUserLogin);
+    assertStatus(migratedLogin, 201, "legacy login succeeds after migration script");
+
     console.log(JSON.stringify({
       status: "ok",
       tenantKey,
       validated: [
-        "successful_legacy_login_backfills_password_hash",
+        "legacy_login_rejected_until_migrated",
         "migration_script_backfills_remaining_legacy_hashes",
+        "migrated_identity_can_login_with_bcrypt_hash",
       ],
       checkedAt: new Date().toISOString(),
     }, null, 2));

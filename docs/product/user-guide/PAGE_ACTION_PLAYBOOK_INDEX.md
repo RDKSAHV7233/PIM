@@ -9,7 +9,7 @@ This index focuses on **how to perform actions** page-by-page.
 | `/admin` | Admin | [admin_playbook.md](./playbooks/admin_playbook.md) | Read-only / navigation |
 | `/admin/plan` | Plan and Usage | [admin__plan_playbook.md](./playbooks/admin__plan_playbook.md) | `setPlanTierAction` |
 | `/admin/privacy` | Information not available in PIM1 project. | [admin__privacy_playbook.md](./playbooks/admin__privacy_playbook.md) | Read-only / navigation |
-| `/admin/users` | Users & Roles | [admin__users_playbook.md](./playbooks/admin__users_playbook.md) | Read-only / navigation |
+| `/admin/users` | Users & Roles | [admin__users_playbook.md](./playbooks/admin__users_playbook.md) | Live management surface — invite user, change role, lock, unlock, deactivate. Admin role required. |
 | `/admin/workspace` | Workspace Settings | [admin__workspace_playbook.md](./playbooks/admin__workspace_playbook.md) | Read-only / navigation |
 | `/ai` | AI Optimization | [ai_playbook.md](./playbooks/ai_playbook.md) | `applyAiRepairAction` |
 | `/catalog/attributes` | Attributes | [catalog__attributes_playbook.md](./playbooks/catalog__attributes_playbook.md) | `createAttributeDefinitionAction` |
