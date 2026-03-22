@@ -19,8 +19,8 @@
         {
           "storyId": "ST-UI-001",
           "title": "Products tab default landing and bookmarkable",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "db09908",
           "tests_passed": [
@@ -427,8 +427,8 @@
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Start import submits the bulk import process action but leaves the imports page looking unchanged because the server action never redirects or revalidates /operations/imports after kickoff.",
-          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const source = execSync('git show HEAD:apps/web/src/app/actions.ts', { encoding: 'utf8' }); const start = source.indexOf('export async function processBulkImportJobAction'); const end = source.indexOf('export async function requeueBulkImportDlqAction'); const slice = source.slice(start, end); if (!slice.includes('await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {')) { console.error('Expected process submit marker not found.'); process.exit(1); } if (slice.includes('redirect(returnTo);') || slice.includes('revalidatePath(\"/operations/imports\")')) { console.error('Expected missing imports refresh marker not found.'); process.exit(1); } console.error('FAIL: Start import submits the process action but does not redirect or revalidate /operations/imports, so the page can appear unchanged after click. Likely file: apps/web/src/app/actions.ts.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Start import submits the process action but does not redirect or revalidate /operations/imports, so the page can appear unchanged after click. Likely file: apps/web/src/app/actions.ts."
+          "reopened_reason": "Import actions still provide no visible loading feedback while their server actions are running, making Start import and Upload Import File feel broken even when the requests are in flight.",
+          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const page = execSync('git show HEAD:apps/web/src/app/operations/imports/page.tsx', { encoding: 'utf8' }); if (!page.includes('Start import') || !page.includes('Upload Import File')) { console.error('Expected import action labels not found.'); process.exit(1); } if (page.includes('PendingSubmitButton') || page.includes('Starting import...') || page.includes('Uploading and starting import...')) { console.error('Expected missing pending-submit marker not found.'); process.exit(1); } console.error('FAIL: Operations Imports action buttons have no pending/loading UX, so users get no visible feedback after clicking Start import or Upload Import File. Likely file: apps/web/src/app/operations/imports/page.tsx.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Operations Imports action buttons have no pending/loading UX, so users get no visible feedback after clicking Start import or Upload Import File. Likely file: apps/web/src/app/operations/imports/page.tsx."
         },
         {
           "storyId": "ST-ISSUE-INBOX-WORKFLOW-001",
