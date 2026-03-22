@@ -1000,11 +1000,16 @@
         {
           "storyId": "ST-REL-E2E-SMOKE-016",
           "title": "Keep staging E2E smoke product creation from dying on smoke-tenant plan caps",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": [],
+          "commit": "f851389",
+          "tests_passed": [
+            "node scripts/e2e-user-journey.test.cjs",
+            "node --check scripts/e2e-user-journey.cjs",
+            "node scripts/e2e-user-journey.cjs --dry-run --smoke --section catalog",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
           "scope": [
             "scripts/e2e-user-journey.cjs",
             "scripts/e2e-user-journey.test.cjs",
