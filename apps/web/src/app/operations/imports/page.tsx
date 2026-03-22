@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createBulkImportJobAction } from "@/app/actions";
+import { createBulkImportJobAction, processBulkImportJobAction } from "@/app/actions";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -355,6 +355,15 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                       <td className="py-2">{job.deadLetterRows}</td>
                       <td className="py-2">
                         <div className="flex flex-wrap gap-2">
+                          {canWrite && String(job.status).toLowerCase() === "queued" ? (
+                            <form action={processBulkImportJobAction}>
+                              <input type="hidden" name="jobId" value={job.id} />
+                              <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                              <Button type="submit" variant="secondary">
+                                Start import
+                              </Button>
+                            </form>
+                          ) : null}
                           <Link
                             href={`/operations/imports?bulkJobId=${encodeURIComponent(job.id)}${hideTestData ? "" : "&hideTestData=false"}`}
                             className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
