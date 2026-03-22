@@ -414,12 +414,13 @@
         {
           "storyId": "ST-WORKFLOW-LIFECYCLE-001",
           "title": "Enforce product workflow lifecycle across catalog create, update, bulk import, and bulk edit",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "db537b7",
+          "commit": "b33d6e4",
           "tests_passed": [
             "node apps/web/test/integration/bulk-import-auto-start-ui.test.cjs",
+            "node apps/web/test/integration/bulk-import-start-button-ui.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
