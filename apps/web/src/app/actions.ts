@@ -1356,6 +1356,9 @@ export async function createBulkImportJobAction(formData: FormData) {
     chunkSize,
     maxRetries,
   });
+  await postJsonForAction(formData, `/bulk-import/jobs/${createdJob.id}/process`, {
+    chunkSize,
+  });
   redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
 }
 
