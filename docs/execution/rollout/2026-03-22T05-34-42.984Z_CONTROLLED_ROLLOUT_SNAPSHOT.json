@@ -1,0 +1,155 @@
+{
+  "capturedAt": "2026-03-22T05:34:42.984Z",
+  "environment": "staging",
+  "tenantId": "staging-smoke",
+  "apiBase": "https://api-staging-4faf.up.railway.app/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "env": "staging",
+      "auth": {
+        "mode": "db",
+        "identitySource": "database"
+      },
+      "db_pool": {
+        "active": 0,
+        "idle": 0,
+        "waiting": 0,
+        "applicationName": "pim1-api"
+      },
+      "queues": {
+        "auth-email": {
+          "waiting": 0,
+          "active": 0,
+          "pausedLanes": 0,
+          "lanes": {
+            "default": {
+              "waiting": 0,
+              "active": 0,
+              "pausedUntil": null
+            }
+          }
+        },
+        "account-export": {
+          "waiting": 0,
+          "active": 0,
+          "pausedLanes": 0,
+          "lanes": {
+            "default": {
+              "waiting": 0,
+              "active": 0,
+              "pausedUntil": null
+            }
+          }
+        },
+        "webhook-event": {
+          "waiting": 0,
+          "active": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "connector-submission": {
+          "waiting": 0,
+          "active": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        }
+      },
+      "queueRuntime": {
+        "backend": "bullmq",
+        "workerEnabled": true
+      }
+    }
+  },
+  "gates": {
+    "artifactsInWindow": 7,
+    "allEvidenceArtifactsInWindow": 7,
+    "consecutiveE10SignoffRuns": 0,
+    "recentArtifacts": [
+      {
+        "file": "2026-03-22T05-34-42.934Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-22T05:34:42.934Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23396591019",
+        "gitTag": "sha-6c954d1"
+      },
+      {
+        "file": "2026-03-21T05-14-17.678Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-21T05:14:17.678Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23372718755",
+        "gitTag": "sha-f47a64e"
+      },
+      {
+        "file": "2026-03-20T05-31-22.893Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-20T05:31:22.893Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23330462307",
+        "gitTag": "sha-7b5e49b"
+      },
+      {
+        "file": "2026-03-19T05-39-08.811Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-19T05:39:08.811Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23281517455",
+        "gitTag": "sha-85eeed3"
+      },
+      {
+        "file": "2026-03-18T05-43-06.177Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-18T05:43:06.177Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23230923394",
+        "gitTag": "sha-bd79bc4"
+      },
+      {
+        "file": "2026-03-17T05-38-20.699Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-17T05:38:20.699Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23180173799",
+        "gitTag": "sha-77c49e2"
+      },
+      {
+        "file": "2026-03-16T05-19-42.111Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "staging-smoke",
+        "date": "2026-03-16T05:19:42.111Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23129106401",
+        "gitTag": "sha-69e1ad8"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": false,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true,
+      "healthEndpointHealthy": true
+    },
+    "pending": [
+      "Need at least 2 consecutive E10 gate signoff artifacts."
+    ]
+  },
+  "broadRollout": {
+    "criteria": {
+      "observationWindowDaysCovered": 7,
+      "observationWindowDaysRequired": 14,
+      "observationWindowComplete": false,
+      "sloTrendDaysCovered": 7,
+      "sloTrendDaysRequired": 14,
+      "sloTrendWindowComplete": false
+    },
+    "pending": [
+      "Controlled rollout observation window covers 7 of 14 required days.",
+      "Production SLO trend evidence covers 7 of 14 required days."
+    ]
+  }
+}
