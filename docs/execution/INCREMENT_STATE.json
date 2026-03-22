@@ -130,11 +130,12 @@
         {
           "storyId": "ST-UI-PENDING-FEEDBACK-006",
           "title": "Add visible pending feedback to seller-facing and operator server-action buttons",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "f81587e",
+          "commit": "df33091",
           "tests_passed": [
+            "npx playwright test apps/web/test/e2e/pending-feedback.spec.js --config=playwright.config.cjs",
             "node apps/web/test/integration/pending-feedback-rollout-ui.test.cjs",
             "node apps/web/test/integration/bulk-import-pending-button-ui.test.cjs",
             "node apps/web/test/integration/bulk-import-process-action-ui.test.cjs",
