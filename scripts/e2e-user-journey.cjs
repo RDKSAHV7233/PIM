@@ -525,31 +525,78 @@ async function patchProduct(productId, changes, token = ctx.adminToken) {
   });
 }
 
+async function ensureEnterprisePlanTier(reason) {
+  if (ctx.cache.enterprisePlanTierReady) {
+    return ctx.cache.enterprisePlanTierReady;
+  }
+  const result = await api("POST", "/billing/plan-tier", {
+    token: ctx.adminToken,
+    json: {
+      planTier: "ENTERPRISE",
+    },
+  });
+  assertStatus(result, [200, 201], "POST /billing/plan-tier");
+  ctx.cache.enterprisePlanTierReady = {
+    planTier: String(result.body?.planTier ?? "ENTERPRISE"),
+    reason,
+  };
+  return ctx.cache.enterprisePlanTierReady;
+}
+
+async function withEnterprisePlanRetry(label, requestFactory) {
+  let result = await requestFactory();
+  if (result.status !== 402 || String(result.body?.error ?? "").trim() !== "PLAN_LIMIT_EXCEEDED") {
+    return result;
+  }
+  await ensureEnterprisePlanTier(label);
+  result = await requestFactory();
+  return result;
+}
+
 async function createDraftProduct(label, overrides = {}, token = ctx.adminToken) {
   const categoryId = ctx.categoryId ?? (await ensureAnyCategoryId());
   const title = `${label} ${runTag}`;
-  const result = await api("POST", "/catalog/products", {
-    token,
-    json: {
-      title,
-      brand: "E2EBrand",
-      description: "E2E automated product for staging validation.",
-      categoryId,
-      hsnCode: "6205",
-      gstRate: 18,
-      attributes: {
-        pricing: {
-          sellingPrice: 499,
-        },
+  const productPayload = {
+    title,
+    brand: "E2EBrand",
+    description: "E2E automated product for staging validation.",
+    categoryId,
+    hsnCode: "6205",
+    gstRate: 18,
+    attributes: {
+      pricing: {
+        sellingPrice: 499,
       },
-      status: "draft",
-      ...overrides,
     },
-  });
+    status: "draft",
+    ...overrides,
+  };
+  const result = await withEnterprisePlanRetry("catalog:create_product_draft", () =>
+    api("POST", "/catalog/products", {
+      token,
+      json: productPayload,
+    }),
+  );
   assertStatus(result, 201, "POST /catalog/products");
   assert(result.body?.id, "created product id missing");
   ctx.createdProductIds.push(String(result.body.id));
   return rememberProduct(result.body);
+}
+
+async function createNonDraftProductExpectingWorkflowError() {
+  const payload = {
+    title: `E2E Invalid Product ${runTag}`,
+    brand: "E2EBrand",
+    description: "Invalid workflow entry product.",
+    categoryId: ctx.categoryId,
+    status: "active",
+  };
+  return withEnterprisePlanRetry("catalog:reject_non_draft_entry", () =>
+    api("POST", "/catalog/products", {
+      token: ctx.adminToken,
+      json: payload,
+    }),
+  );
 }
 
 async function createApprovalReadyProduct(label, token = ctx.adminToken) {
@@ -954,16 +1001,7 @@ function buildChecks() {
     if (!ctx.categoryId) {
       skip("category not created");
     }
-    const result = await api("POST", "/catalog/products", {
-      token: ctx.adminToken,
-      json: {
-        title: `E2E Invalid Product ${runTag}`,
-        brand: "E2EBrand",
-        description: "Invalid workflow entry product.",
-        categoryId: ctx.categoryId,
-        status: "active",
-      },
-    });
+    const result = await createNonDraftProductExpectingWorkflowError();
     assertStatus(result, 400, "POST /catalog/products non-draft entry");
     assert(result.body?.code === "WORKFLOW_ENTRY_INVALID", `unexpected code ${result.body?.code}`);
     return "workflow entry rejected";
