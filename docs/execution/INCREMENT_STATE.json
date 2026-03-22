@@ -130,8 +130,8 @@
         {
           "storyId": "ST-UI-PENDING-FEEDBACK-006",
           "title": "Add visible pending feedback to seller-facing and operator server-action buttons",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "f81587e",
           "tests_passed": [
@@ -144,9 +144,9 @@
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const files = [ 'apps/web/src/app/connectors/page.tsx', 'apps/web/src/app/quality/approvals/page.tsx', 'apps/web/src/app/catalog/categories/page.tsx', 'apps/web/src/app/products/[id]/_components/channels-tab.tsx', 'apps/web/src/components/channel/version-manager.tsx', 'apps/web/src/components/catalog/category-delete-button.tsx', 'apps/web/src/components/settings/connector-permission-form.tsx' ]; const offenders = files.filter((file) => { const source = execSync(`git show HEAD:${file}`, { encoding: 'utf8' }); return source.includes('type=\"submit\"') && !source.includes('PendingSubmitButton'); }); if (offenders.length === 0) { console.error('Expected missing pending feedback markers not found.'); process.exit(1); } console.error(`FAIL: Server-action buttons still lack visible pending feedback in: ${offenders.join(', ')}`); process.exit(1); '@ | node -. Failing output snippet: FAIL: Server-action buttons still lack visible pending feedback in the main seller-facing and operator workflows."
+          "reopened_by": "codex",
+          "reopened_reason": "Pending feedback rollout still lacks browser-level validation for the actual bulk import upload and queued start interactions users click in production.",
+          "regression_evidence": "Exact failing command: @' const fs = require('node:fs'); const target = 'apps/web/test/e2e/pending-feedback.spec.js'; if (fs.existsSync(target)) { console.error('Expected missing browser validation spec not found.'); process.exit(1); } console.error('FAIL: Pending feedback rollout has no browser-level Playwright validation for bulk import upload/start actions.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Pending feedback rollout has no browser-level Playwright validation for bulk import upload/start actions."
         }
       ]
     },
