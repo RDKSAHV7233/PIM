@@ -119,9 +119,23 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       return accumulator;
     }, {});
 
-    const hideToggleHref = hideTestData
+  const hideToggleHref = hideTestData
       ? "/operations/imports?hideTestData=false"
       : "/operations/imports";
+    const buildImportsHref = (bulkJobId?: string) => {
+      const search = new URLSearchParams();
+      if (selectedStatus) {
+        search.set("status", selectedStatus);
+      }
+      if (!hideTestData) {
+        search.set("hideTestData", "false");
+      }
+      if (bulkJobId) {
+        search.set("bulkJobId", bulkJobId);
+      }
+      const queryString = search.toString();
+      return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
+    };
 
     return (
       <div className="space-y-5">
@@ -359,13 +373,14 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                             <form action={processBulkImportJobAction}>
                               <input type="hidden" name="jobId" value={job.id} />
                               <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                              <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
                               <Button type="submit" variant="secondary">
                                 Start import
                               </Button>
                             </form>
                           ) : null}
                           <Link
-                            href={`/operations/imports?bulkJobId=${encodeURIComponent(job.id)}${hideTestData ? "" : "&hideTestData=false"}`}
+                            href={buildImportsHref(job.id)}
                             className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
                           >
                             View rows

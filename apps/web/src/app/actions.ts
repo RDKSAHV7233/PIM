@@ -1405,10 +1405,16 @@ export async function processBulkImportJobAction(formData: FormData) {
   if (!jobId) {
     throw new Error("Bulk import job id is required.");
   }
+  const returnTo = resolveReturnToPath(
+    formData,
+    `/operations/imports?bulkJobId=${encodeURIComponent(jobId)}`,
+  );
   await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
     chunkSize,
   });
   revalidatePath("/");
+  revalidatePath("/operations/imports");
+  redirect(returnTo);
 }
 
 export async function requeueBulkImportDlqAction(formData: FormData) {

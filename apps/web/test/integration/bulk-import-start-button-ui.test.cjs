@@ -39,6 +39,10 @@ try {
     "Start import form must submit the current chunk size",
   );
   assert(
+    page.includes('<input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />'),
+    "Start import form must submit a returnTo path so the imports page visibly refreshes after processing starts",
+  );
+  assert(
     page.includes("Start import"),
     "imports page must expose Start import button text",
   );
@@ -55,6 +59,7 @@ try {
           "imports_page_imports_process_action",
           "queued_jobs_render_start_import_button",
           "start_import_submits_job_id_and_chunk_size",
+          "start_import_submits_return_path",
           "view_rows_action_retained",
         ],
       },
