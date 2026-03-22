@@ -19,8 +19,8 @@
         {
           "storyId": "ST-UI-001",
           "title": "Products tab default landing and bookmarkable",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
           "commit": "db09908",
           "tests_passed": [
@@ -417,10 +417,11 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "b33d6e4",
+          "commit": "77c3e32",
           "tests_passed": [
             "node apps/web/test/integration/bulk-import-auto-start-ui.test.cjs",
             "node apps/web/test/integration/bulk-import-start-button-ui.test.cjs",
+            "node apps/web/test/integration/bulk-import-process-action-ui.test.cjs",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
