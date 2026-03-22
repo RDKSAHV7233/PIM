@@ -414,8 +414,8 @@
         {
           "storyId": "ST-WORKFLOW-LIFECYCLE-001",
           "title": "Enforce product workflow lifecycle across catalog create, update, bulk import, and bulk edit",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "6326749",
           "tests_passed": [
@@ -425,9 +425,9 @@
             "npm run test:integration:bulk-edit-empty-scope",
             "npm run test:integration:catalog-completeness"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "Bulk import uploads only created queued jobs and redirected, leaving imports stuck at Waiting to start with no automatic processing path from the upload flow.",
+          "regression_evidence": "Exact failing command: @' const { execSync } = require('node:child_process'); const source = execSync('git show HEAD:apps/web/src/app/actions.ts', { encoding: 'utf8' }); const createStart = source.indexOf('export async function createBulkImportJobAction'); const processStart = source.indexOf('export async function createBulkImportTemplateAction'); const slice = source.slice(createStart, processStart); const hasCreate = slice.includes('\"/bulk-import/jobs\"'); const hasProcess = slice.includes('/bulk-import/jobs/${createdJob.id}/process'); if (!hasCreate) { console.error('Expected bulk import create marker not found.'); process.exit(1); } if (hasProcess) { console.error('Expected missing process marker not found.'); process.exit(1); } console.error('FAIL: Bulk import upload only creates a queued job and redirects without starting processing. Failing output snippet: createBulkImportJobAction posts to /bulk-import/jobs but never posts to /bulk-import/jobs/${createdJob.id}/process. Likely files: apps/web/src/app/actions.ts, apps/web/src/app/operations/imports/page.tsx.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: Bulk import upload only creates a queued job and redirects without starting processing. Failing output snippet: createBulkImportJobAction posts to /bulk-import/jobs but never posts to /bulk-import/jobs/${createdJob.id}/process. Likely files: apps/web/src/app/actions.ts, apps/web/src/app/operations/imports/page.tsx."
         },
         {
           "storyId": "ST-ISSUE-INBOX-WORKFLOW-001",
