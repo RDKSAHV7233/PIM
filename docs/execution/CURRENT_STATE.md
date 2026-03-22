@@ -1,7 +1,7 @@
 # PIM1 Current State
 
-- Date: 2026-03-22
-- Repo HEAD: `b84077b`
+- Date: 2026-03-23
+- Repo HEAD: `0be8f44`
 - Scope: canonical snapshot of the current PIM1 implementation, execution ledger, and reviewer-facing documentation state
 
 ## 1. Canonical Source-of-Truth Files
@@ -65,7 +65,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 | INC-05 | Ops and Observability | completed | locked stories present; post-deploy verification risk closed |
 | INC-06 | Decision Dashboards | completed | locked stories present |
 | INC-07 | Governance and Compliance | completed | locked stories present |
-| INC-08 | Release Readiness | in_progress | delivery complete; latest verified remote evidence re-opened the E10 continuity gate and broad rollout evidence remains at 6/14 days (SLO 7/14) from the 2026-03-20 snapshot |
+| INC-08 | Release Readiness | in_progress | delivery complete; latest checked-in evidence still blocks controlled rollout continuity and broad rollout evidence stands at 7/14 days (SLO 7/14) from the 2026-03-22 snapshot |
 | INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | locked stories present |
 | INC-10 | Flipkart Publish Connector v1 | completed | locked stories present; connector implementation complete |
 | INC-11 | Workspace Login and Tenant Discovery | completed | locked stories present |
@@ -84,7 +84,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS_RISK_REGISTER.md`
 
 - `INC-05` / `RISK-P0-003`: post-deploy verification pipeline is now live and green on CI. Gate artifact recording is operational. Status: **closed** in the risk register.
-- `INC-08` / `RISK-P0-001`: latest verified remote evidence on `origin/main` (`f47a64e`) includes snapshot `2026-03-20T05-31-22.940Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`, which shows controlled rollout continuity is no longer clear: `consecutiveE10SignoffRuns = 1` and `controlledRollout.pending` contains `Need at least 2 consecutive E10 gate signoff artifacts.` Broad rollout evidence remains at **6 of 14 required days**, with production SLO trend evidence at **7 of 14 required days**. Scheduled staging E2E run `23328562994` failed the same day and must be triaged before the board is advanced again.
+- `INC-08` / `RISK-P0-001`: latest checked-in evidence is snapshot `2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` from daily evidence run `23396591019`. It shows `health.ok = true`, `consecutiveE10SignoffRuns = 0`, and `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.` Broad rollout evidence is now **7 of 14 required days**, with production SLO trend evidence also at **7 of 14 required days**. The March 20 scheduled E2E failure has since been reconciled by green staging reruns (`23410221080`, `23410453415`); the remaining blocker is rollout evidence continuity plus the 14-day observation window.
 - `INC-10`: Flipkart connector implementation is complete in the increment ledger. It is no longer tracked as an open release item in `docs/execution/INCREMENT_STATE.json`.
 
 ## 6. Current Documentation State
@@ -103,13 +103,13 @@ Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS
   - `npm run build --workspace @pim1/api`
 
 ## 8. Recent Governance Events
-- `f47a64e` -- remote rollout evidence commit recorded the 2026-03-20 snapshot; latest evidence re-opened the controlled-gate continuity check
+- `0be8f44` -- relock pending feedback rollout story after browser-level bulk import E2E validation
+- `df33091` -- browser validation for pending feedback on bulk import actions
+- `79c54a4` -- stabilize staging catalog and webhook checks; March 20 failing E2E checks are now closed
+- `6c954d1` -- daily rollout evidence persisted the 2026-03-22 snapshot (`7/14` broad-window progress, E10 continuity still pending)
+- `f47a64e` -- daily rollout evidence persisted the 2026-03-21 snapshot and confirmed controlled continuity remained open
 - `b6aa161` -- auth/privacy hardening: non-enumerating password reset, R2-backed export delivery, and fail-closed email delivery
 - `34dacc8` -- add `console` email mode for staging while keeping production email delivery `resend`-only
-- `b3d2578` -- retry transient staging post-deploy verification failures so rollout evidence is less noisy
-- `d3ac876` -- connector `implementationStatus` field; amazon-in and meesho labeled as stub/partial
-- `b0fdca2` -- `api.ts` split by domain (2034 lines -> 10 domain files + barrel)
-- `bd47041` -- product detail page split (1322 lines -> 144-line shell + tab components)
 
 ## 9. Reviewer Guidance
 - For product review: start with `docs/product/PRD.md`

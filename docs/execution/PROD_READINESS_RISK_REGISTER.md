@@ -1,6 +1,6 @@
-﻿# PIM1 Production Readiness Risk Register
+# PIM1 Production Readiness Risk Register
 
-Last updated: 2026-03-22 (remote evidence + failed scheduled E2E reconciled)
+Last updated: 2026-03-23 (latest daily evidence + green staging reruns reconciled)
 
 ## P0 (Must close before production)
 
@@ -15,7 +15,7 @@ Last updated: 2026-03-22 (remote evidence + failed scheduled E2E reconciled)
   - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
   - Completed: live staging workflow run `23127921361` captured a healthy staging snapshot with `/api/v1/health` returning `env=staging`, queue runtime `backend=bullmq`, and `workerEnabled=true`.
   - Completed: artifact `staging-gate-artifacts-23127921361` uploaded with digest `sha256:c2de34cd35af3cbac223b77885c37c8755424e6cdc3ea64a5ae3599fb615d537`.
-  - Remaining: controlled rollout broad window not complete (14-day/SLO evidence).
+  - Remaining: fresh consecutive E10 signoff continuity is not yet restored, and the 14-day/SLO broad-rollout evidence window is still incomplete.
 - Exit criteria:
   1. Two consecutive E10 signoff artifacts recorded.
   2. `/api/v1/health` reports `env=staging` in staging.
@@ -25,8 +25,8 @@ Last updated: 2026-03-22 (remote evidence + failed scheduled E2E reconciled)
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
   - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
-  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23330462307`
-  - Latest snapshot: `docs/execution/rollout/2026-03-20T05-31-22.940Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23396591019`
+  - Latest snapshot: `docs/execution/rollout/2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
 - Implementation update (2026-03-16):
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
@@ -65,6 +65,27 @@ Last updated: 2026-03-22 (remote evidence + failed scheduled E2E reconciled)
     - `observationWindowDaysCovered = 6 / 14`
     - `sloTrendDaysCovered = 7 / 14`
   - Scheduled staging E2E run `23328562994` failed the same day with `2` failing checks (`create_export_job`, `account_export_request`) and must be triaged before rollout governance is described as time-gated only again.
+  - Remaining: restore controlled-gate continuity and continue the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-03-21):
+  - Daily rollout evidence workflow run `23372718755` succeeded and persisted snapshot `docs/execution/rollout/2026-03-21T05-14-17.711Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`.
+  - Latest snapshot showed:
+    - `health.ok = true`
+    - `consecutiveE10SignoffRuns = 0`
+    - `controlledRollout.pending = ["Need at least 2 consecutive E10 gate signoff artifacts."]`
+    - `observationWindowDaysCovered = 6 / 14`
+    - `sloTrendDaysCovered = 6 / 14`
+  - Remaining: restore controlled-gate continuity and continue the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-03-22):
+  - Daily rollout evidence workflow run `23396591019` succeeded and persisted snapshot `docs/execution/rollout/2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`.
+  - Latest snapshot shows:
+    - `health.ok = true`
+    - `consecutiveE10SignoffRuns = 0`
+    - `controlledRollout.pending = ["Need at least 2 consecutive E10 gate signoff artifacts."]`
+    - `observationWindowDaysCovered = 7 / 14`
+    - `sloTrendDaysCovered = 7 / 14`
+  - Staging deploy run `23410221080` passed on commit `79c54a4`, including migrations, smoke, post-deploy trust-boundary checks, and post-deploy E2E smoke.
+  - Full staging E2E rerun `23410453415` passed on the same commit with `108 / 121` pass, `0` fail, `13` skip.
+  - The previously failing March 20 checks (`create_export_job`, `account_export_request`) are now closed. `create_export_job` now skips honestly when staging connector/category readiness prevents export-job creation.
   - Remaining: restore controlled-gate continuity and continue the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
