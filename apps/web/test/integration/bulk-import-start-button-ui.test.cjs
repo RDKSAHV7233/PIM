@@ -27,6 +27,10 @@ try {
     "imports page must gate Start import to writable queued jobs",
   );
   assert(
+    page.includes('import { PendingSubmitButton } from "@/components/ui/pending-submit-button";'),
+    "imports page must import PendingSubmitButton for action feedback",
+  );
+  assert(
     page.includes('<form action={processBulkImportJobAction}>'),
     "imports page must render a Start import form wired to processBulkImportJobAction",
   );
@@ -43,8 +47,12 @@ try {
     "Start import form must submit a returnTo path so the imports page visibly refreshes after processing starts",
   );
   assert(
-    page.includes("Start import"),
-    "imports page must expose Start import button text",
+    page.includes('idleLabel="Start import"'),
+    "imports page must expose Start import button text through PendingSubmitButton",
+  );
+  assert(
+    page.includes('pendingLabel="Starting import..."'),
+    "Start import button must show a pending label while the action runs",
   );
   assert(
     page.includes("View rows"),
@@ -60,6 +68,7 @@ try {
           "queued_jobs_render_start_import_button",
           "start_import_submits_job_id_and_chunk_size",
           "start_import_submits_return_path",
+          "start_import_uses_pending_button_feedback",
           "view_rows_action_retained",
         ],
       },

@@ -5,6 +5,7 @@ import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -244,9 +245,12 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                     The <code>attributes</code> column should contain a JSON object for category-specific fields, for example <code>{'{"material":"cotton","color":"black"}'}</code>.
                   </p>
                 </div>
-                <Button type="submit" disabled={categories.length === 0}>
-                  Upload Import File
-                </Button>
+                <PendingSubmitButton
+                  type="submit"
+                  disabled={categories.length === 0}
+                  idleLabel="Upload Import File"
+                  pendingLabel="Uploading and starting import..."
+                />
               </form>
             ) : (
               <p className="text-sm text-slate-600">Import upload is read-only for your role.</p>
@@ -374,9 +378,12 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                               <input type="hidden" name="jobId" value={job.id} />
                               <input type="hidden" name="chunkSize" value={job.chunkSize} />
                               <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
-                              <Button type="submit" variant="secondary">
-                                Start import
-                              </Button>
+                              <PendingSubmitButton
+                                type="submit"
+                                variant="secondary"
+                                idleLabel="Start import"
+                                pendingLabel="Starting import..."
+                              />
                             </form>
                           ) : null}
                           <Link
