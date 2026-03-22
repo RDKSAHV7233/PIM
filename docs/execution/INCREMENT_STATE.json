@@ -996,6 +996,28 @@
             "deploy-staging ignores evidence-only bot commits so daily evidence capture does not recursively redeploy staging.",
             "Broad-rollout blockers are now driven by measured evidence-day coverage rather than manual-only collection."
           ]
+        },
+        {
+          "storyId": "ST-REL-E2E-SMOKE-016",
+          "title": "Keep staging E2E smoke product creation from dying on smoke-tenant plan caps",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": [],
+          "scope": [
+            "scripts/e2e-user-journey.cjs",
+            "scripts/e2e-user-journey.test.cjs",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The staging E2E smoke script detects a product-creation PLAN_LIMIT_EXCEEDED response and upgrades the dedicated smoke tenant to ENTERPRISE before retrying once.",
+            "The non-draft workflow-entry rejection path uses the same plan-capacity retry so it still validates the intended 400 behavior after a stale plan cap.",
+            "A guard test prevents the enterprise-retry logic from being removed accidentally."
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": "Exact failing command: gh run view 23411517787 --repo RDKSAHV7233/PIM1 --log-failed. Failing output snippet: E2E smoke - post-deploy verification -> POST /catalog/products expected 201 got 402 (PLAN_LIMIT_EXCEEDED) and POST /catalog/products non-draft entry expected 400 got 402 (PLAN_LIMIT_EXCEEDED). Likely file: scripts/e2e-user-journey.cjs."
         }
       ]
     },
