@@ -986,11 +986,25 @@ function buildChecks() {
     if (!ctx.productId) {
       skip("product not created");
     }
-    const result = await api("GET", "/catalog/products?slim=true&limit=10", { token: ctx.adminToken });
-    assertStatus(result, 200, "GET /catalog/products?slim=true");
-    const items = maybeItems(result.body);
-    assert(items.some((item) => String(item.id) === ctx.productId), "product not found in slim list");
-    return `count=${items.length}`;
+    let cursor = "";
+    let pageCount = 0;
+    while (pageCount < 5) {
+      const query = cursor
+        ? `/catalog/products?slim=true&limit=200&cursor=${encodeURIComponent(cursor)}`
+        : "/catalog/products?slim=true&limit=200";
+      const result = await api("GET", query, { token: ctx.adminToken });
+      assertStatus(result, 200, "GET /catalog/products?slim=true");
+      const items = maybeItems(result.body);
+      if (items.some((item) => String(item.id) === ctx.productId)) {
+        return `count=${items.length} page=${pageCount + 1}`;
+      }
+      cursor = String(result.body?.nextCursor ?? "").trim();
+      if (!cursor) {
+        break;
+      }
+      pageCount += 1;
+    }
+    assert(false, "product not found in slim list");
   });
 
   add("catalog", "search_products", async () => {

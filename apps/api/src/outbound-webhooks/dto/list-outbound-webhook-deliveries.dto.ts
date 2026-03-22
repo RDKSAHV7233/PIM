@@ -1,3 +1,4 @@
+import { Type } from "class-transformer";
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class ListOutboundWebhookDeliveriesDto {
@@ -10,6 +11,7 @@ export class ListOutboundWebhookDeliveriesDto {
   status?: "queued" | "delivered" | "failed" | "skipped";
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(200)
