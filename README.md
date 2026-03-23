@@ -65,6 +65,8 @@ Current repo state:
 - Product source index: `docs/product/PRD_SOURCES.md`
 - Current implementation/execution snapshot: `docs/execution/CURRENT_STATE.md`
 - Backlog: `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md`
+- Consolidated user guide: `docs/pim-user-guide.md`
+- Admin setup checklist: `docs/admin-setup-checklist.md`
 - Connector docs SSOT: `docs/connectors/README.md`
 - Connector current-state baseline: `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 - User guides: `docs/product/user-guide/` (supporting operational guides, not sole implementation truth)

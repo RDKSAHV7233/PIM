@@ -1,7 +1,7 @@
 # PIM1 Connector Recipes
 
 Status: Active workflow examples  
-Date: 2026-03-08  
+Date: 2026-03-23  
 Audience: Connector engineers and reviewers
 
 ## 1. Purpose
@@ -14,6 +14,12 @@ For API/context overview, use:
 
 For repo implementation details, use:
 - `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+
+Current connector reality:
+- `flipkart` is the live publish-capable reference path
+- `amazon-in` is still a stub
+- `meesho` is still export-only in design, but export generation is not yet complete
+- broad rollout evidence is still incomplete under `INC-08`
 
 ## 2. Recipe: Export-Only Connector
 

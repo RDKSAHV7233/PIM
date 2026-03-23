@@ -1,7 +1,7 @@
 # PIM1 Connector Developer Guide
 
 Status: Active developer-facing connector guide  
-Date: 2026-03-08  
+Date: 2026-03-23  
 Audience: Connector engineers integrating with the current PIM1 platform
 
 ## 1. Start Here
@@ -13,15 +13,16 @@ Use this guide if you need to:
 - understand step-up re-authentication on high-risk mapping actions
 
 This guide is intentionally API-first and task-first.
+It is the main day-to-day connector guide and should answer normal implementation
+questions without forcing you into another doc first.
 
-If you need repo implementation details, use:
-- `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
-
-If you need workflow examples, use:
-- `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
-
-If you need rollout/gate truth, use:
-- `docs/execution/INCREMENT_STATE.json`
+Use the deeper docs only when you specifically need them:
+- repo implementation details and ownership surfaces:
+  `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- recipe-style worked examples:
+  `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+- rollout/gate truth:
+  `docs/execution/INCREMENT_STATE.json`
 
 ## 2. Connector Model at a Glance
 
@@ -36,7 +37,27 @@ Current connector truths:
 - canonical editable mapping path is `/channels/mappings`
 - legacy `/connectors/[installationId]/mapping` is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
-- broad rollout is still blocked by open release gates
+- broad rollout evidence is still incomplete under `INC-08`
+
+### Current connector matrix
+
+Use this as the current implementation-level reality check before you design a flow:
+
+- `flipkart`
+  - implementation status: `full`
+  - capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`
+  - current role: reference implementation for a live publish-capable connector
+- `amazon-in`
+  - implementation status: `stub`
+  - declared capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`, `WEBHOOK_RECEIVE`
+  - current role: honest placeholder only; do not design seller-facing flows as if publish is live
+- `meesho`
+  - implementation status: `partial`
+  - capabilities: `VALIDATE`, `EXCEL_EXPORT`
+  - current role: export-only connector model, but export generation is not yet complete
+- `ondc`
+  - current role: separate admin and non-production workflow, feature-gated behind `FEATURE_ONDC_ENABLED`
+  - do not treat it as a normal seller-facing marketplace connector flow
 
 ## 3. Choose the Right Connector Flow
 
@@ -51,6 +72,9 @@ Expected shape:
 4. process/export artifact
 5. expose status to the user as export, not publish
 
+The current real example is:
+- `meesho`
+
 ### Publish-capable connector
 
 Use this model when a channel supports direct submission/publish attempts.
@@ -61,6 +85,18 @@ Expected shape:
 3. create publish/export job
 4. process queued work
 5. surface completed or failed status with a visible reason
+
+The current real example is:
+- `flipkart`
+
+### What every connector flow must get right
+
+Regardless of connector type:
+- capability checks must be truthful
+- readiness blockers must appear before the high-risk action
+- export-only flows must never be labeled `Publish`
+- failed jobs must show an actionable reason, not only a generic status
+- `/channels/mappings` remains the editable mapping surface
 
 ## 4. API Conventions
 
@@ -120,6 +156,13 @@ When documentation and code disagree, trust this order:
 - `GET /api/v1/marketplace/export-jobs/{id}`
 - `POST /api/v1/marketplace/export-jobs/{id}/process`
 - `POST /api/v1/marketplace/export-jobs/{id}/requeue`
+
+### Capability gating rule
+
+Current runtime behavior:
+- if an installation does not include `PUBLISH`, publish attempts must not proceed
+- export-only connectors should still use the job pipeline, but the user-facing action/result must stay export-oriented
+- `STATUS_SYNC` is optional and only applies where the connector can genuinely poll or sync upstream submission state
 
 Use:
 - `docs/openapi.yaml`
@@ -205,6 +248,15 @@ Canonical mapping UX:
 3. update category-scoped mapping
 4. validate and publish when ready
 
+### Path D: Add or review a connector flow safely
+
+1. Confirm the connector's real `implementationStatus`
+2. Confirm whether it is publish-capable or export-only
+3. Make sure the UI action label matches that capability
+4. Check that readiness blockers surface before the job is created
+5. Check failure and retry behavior in the job result surface
+6. Validate that the connector does not bypass step-up on protected mapping actions
+
 ## 10. What Is Not Current Capability
 
 Do not plan against these as live features:
@@ -223,14 +275,26 @@ After connector-facing doc or contract changes, verify:
 - relevant web tests for mapping path, step-up UI, and structured editor
 - `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"`
 
+For connector implementation changes, also verify:
+- capability-specific behavior still matches the connector's declared capabilities
+- export-only flows still say `Export` in UI copy and result states
+- publish-capable flows still surface actionable failure reasons
+- connector status in docs still matches code reality
+
 ## 12. Release Reality
 
 Connector functionality is materially implemented.
 Broad rollout is still not complete.
 
-Current open gates:
-- `INC-05`
-- `INC-08`
+Current open release item:
+- `INC-08` / `RISK-P0-001`
+
+Latest checked-in execution truth:
+- snapshot `2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+- `consecutiveE10SignoffRuns = 0`
+- `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.`
+- broad rollout evidence: `7 / 14` days
+- SLO trend evidence: `7 / 14` days
 
 That means:
 - internal and controlled connector work can proceed
@@ -248,8 +312,14 @@ They predate:
 - step-up re-authentication
 - canonical `/channels/mappings` guidance
 
-## 14. Next Docs
+## 14. Deep Dive Docs
 
-For deeper detail:
-- internal implementation detail: `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
-- workflow examples: `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+Use these when you need more depth than the main guide:
+- internal implementation detail and code ownership surfaces:
+  `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- worked workflow examples and recipe-style sequences:
+  `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+
+You should not need to open them for ordinary connector onboarding or basic
+API-flow understanding. They are supporting deep dives, not the primary entry
+point.

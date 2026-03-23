@@ -29,6 +29,10 @@ function run() {
     "Connectors page must render implementation-status notes for stub and partial connectors.",
   );
   assert(
+    !source.includes("You can install it to prepare your mapping"),
+    "Stub connector copy must not claim self-serve install is possible when the install form is hidden.",
+  );
+  assert(
     source.includes("installation.launchStage") && source.includes("installation.launchNote"),
     "Installed connectors table must surface launch-stage honesty messaging.",
   );

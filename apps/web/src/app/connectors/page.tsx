@@ -123,7 +123,7 @@ function connectorStatusNote(
   implementationStatus: string | undefined,
 ): string | null {
   if (implementationStatus === "stub") {
-    return "Credential validation and publish are not yet available for this connector. You can install it to prepare your mapping, but submissions will not process until the connector is fully implemented.";
+    return "Credential validation and publish are not yet available for this connector. Seller self-serve install remains hidden until the connector is fully implemented.";
   }
   if (implementationStatus === "partial") {
     if (slug === "meesho") {

@@ -1,7 +1,7 @@
 # PIM1 Connector Internal Implementation Guide
 
 Status: Active internal engineering guide  
-Date: 2026-03-08  
+Date: 2026-03-23  
 Audience: Engineers changing connector internals in the PIM1 repository
 
 ## 1. Purpose
@@ -43,14 +43,14 @@ Historical context only:
 
 ### Current-state summary
 
-As of 2026-03-08:
+As of 2026-03-23:
 - mapping lifecycle exists
 - rollback exists
 - step-up re-authentication exists for high-risk mapping actions
 - canonical editable mapping path is `/channels/mappings`
 - legacy connector mapping path is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
-- broad rollout readiness is still blocked by open release gates
+- broad rollout readiness is still blocked under `INC-08` rollout evidence
 
 ### Runtime model
 
@@ -251,8 +251,14 @@ If connector lifecycle behavior changes, also verify:
 Connector implementation maturity is ahead of broad rollout readiness.
 
 Current release gate reality:
-- `INC-05` is still open
-- `INC-08` is still open
+- `INC-08` / `RISK-P0-001` is still open
+
+Latest checked-in execution truth:
+- snapshot `2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+- `consecutiveE10SignoffRuns = 0`
+- `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.`
+- broad rollout evidence: `7 / 14` days
+- SLO trend evidence: `7 / 14` days
 
 That means:
 - connector development can continue in controlled/internal mode

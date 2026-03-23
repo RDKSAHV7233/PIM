@@ -237,7 +237,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                       <td className="py-2">{delivery.attemptCount}</td>
                       <td className="py-2 text-xs text-slate-600">
                         {delivery.responseStatus ?? "-"}
-                        {delivery.errorMessage ? ` · ${delivery.errorMessage}` : ""}
+                        {delivery.errorMessage ? ` - ${delivery.errorMessage}` : ""}
                       </td>
                       <td className="py-2 text-xs text-slate-600">
                         {delivery.attemptedAt ? new Date(delivery.attemptedAt).toLocaleString() : "-"}
@@ -262,3 +262,4 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
     throw error;
   }
 }
+

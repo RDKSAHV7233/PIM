@@ -1,7 +1,7 @@
 # PIM1 Connector Documentation Index
 
 Status: Canonical connector-documentation entry point  
-Date: 2026-03-08
+Date: 2026-03-23
 
 ## Purpose
 
@@ -95,14 +95,14 @@ Current note:
 
 ## Current connector state summary
 
-As of 2026-03-08:
+As of 2026-03-23:
 - mapping lifecycle exists
 - rollback exists
 - step-up re-auth exists for high-risk mapping actions
 - canonical editable mapping path is `/channels/mappings`
 - legacy connector mapping path is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
-- broad rollout readiness is still blocked by open release gates
+- broad rollout readiness is still blocked under `INC-08` rollout evidence
 
 For implementation and current-state guidance, use:
 - `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
