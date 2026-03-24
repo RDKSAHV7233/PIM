@@ -1,6 +1,6 @@
 {
   "meta": {
-    "project": "PIM1",
+    "project": "TEJ PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
     "lastUpdated": "2026-03-18",
     "schemaVersion": "1.1",
@@ -70,7 +70,7 @@
           ],
           "reopened_by": "codex",
           "reopened_reason": "Fix Product Workbench create-product workflow mismatch where the UI offered non-draft initial statuses even though the backend enforces draft-only workflow entry.",
-          "regression_evidence": "Exact failing command: @' const base = 'http://127.0.0.1:4000/api/v1'; const loginResp = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceSlug: 'default', userId: 'admin@pim1.local', password: 'pim1-demo-password' }) }); const login = await loginResp.json(); const authHeaders = { Authorization: `Bearer ${login.accessToken}` }; const catsResp = await fetch(`${base}/taxonomy/categories`, { headers: authHeaders }); const cats = await catsResp.json(); const cat = Array.isArray(cats) ? cats[0] : (Array.isArray(cats.items) ? cats.items[0] : null); if (!cat) throw new Error('NO_CATEGORY_FOUND'); const createResp = await fetch(`${base}/catalog/products`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Workflow Entry Proof Product', description: 'proof', brand: 'PIM1', categoryId: cat.id, status: 'active', attributes: { pricing: { sellingPrice: 999 } } }) }); const body = await createResp.text(); console.log('CREATE_STATUS=' + createResp.status); console.log(body); '@ | node --input-type=module -. Failing output snippet: CREATE_STATUS=400 {\"code\":\"WORKFLOW_ENTRY_INVALID\",\"message\":\"New products must enter workflow in draft status.\",\"source\":\"create_product\",\"allowedStatus\":\"draft\",\"receivedStatus\":\"active\"}. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
+          "regression_evidence": "Exact failing command: @' const base = 'http://127.0.0.1:4000/api/v1'; const loginResp = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceSlug: 'default', userId: 'admin@pim1.local', password: 'TEJ PIM-demo-password' }) }); const login = await loginResp.json(); const authHeaders = { Authorization: `Bearer ${login.accessToken}` }; const catsResp = await fetch(`${base}/taxonomy/categories`, { headers: authHeaders }); const cats = await catsResp.json(); const cat = Array.isArray(cats) ? cats[0] : (Array.isArray(cats.items) ? cats.items[0] : null); if (!cat) throw new Error('NO_CATEGORY_FOUND'); const createResp = await fetch(`${base}/catalog/products`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Workflow Entry Proof Product', description: 'proof', brand: 'TEJ PIM', categoryId: cat.id, status: 'active', attributes: { pricing: { sellingPrice: 999 } } }) }); const body = await createResp.text(); console.log('CREATE_STATUS=' + createResp.status); console.log(body); '@ | node --input-type=module -. Failing output snippet: CREATE_STATUS=400 {\"code\":\"WORKFLOW_ENTRY_INVALID\",\"message\":\"New products must enter workflow in draft status.\",\"source\":\"create_product\",\"allowedStatus\":\"draft\",\"receivedStatus\":\"active\"}. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
@@ -242,7 +242,7 @@
           ],
           "reopened_by": "",
           "reopened_reason": "User requested restoration of UI and connector work moved to unused.",
-          "regression_evidence": "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-pim1-transfer-2026-03-06"
+          "regression_evidence": "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-TEJ PIM-transfer-2026-03-06"
         },
         {
           "storyId": "ST-REPO-MERGE-001",
@@ -675,7 +675,7 @@
           "commit": "e49c0dd",
           "tests_passed": [
             "npm run test:staging:postdeploy-check",
-            "$env:STAGING_BASE_URL='http://127.0.0.1:4000'; $env:STAGING_SMOKE_WORKSPACE='default'; $env:STAGING_SMOKE_USER='admin@pim1.local'; $env:STAGING_SMOKE_PASSWORD='pim1-demo-password'; $env:STAGING_EXPECTED_ENV='development'; node scripts/staging-postdeploy-check.cjs",
+            "$env:STAGING_BASE_URL='http://127.0.0.1:4000'; $env:STAGING_SMOKE_WORKSPACE='default'; $env:STAGING_SMOKE_USER='admin@pim1.local'; $env:STAGING_SMOKE_PASSWORD='TEJ PIM-demo-password'; $env:STAGING_EXPECTED_ENV='development'; node scripts/staging-postdeploy-check.cjs",
             "node --check scripts/staging-postdeploy-check.cjs",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
@@ -1059,7 +1059,7 @@
       "stories": [
         {
           "storyId": "ST-CON-MAP-CTOPO-001",
-          "title": "Phase A1/A2/B/C baseline activation in PIM1",
+          "title": "Phase A1/A2/B/C baseline activation in TEJ PIM",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1163,7 +1163,7 @@
           ],
           "reopened_by": "user",
           "reopened_reason": "Reopen INC-09 for MFA because mapping-domain work is closed and the remaining connector-domain gap is bounded security step-up only.",
-          "regression_evidence": "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active PIM1."
+          "regression_evidence": "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active TEJ PIM."
         },
         {
           "storyId": "ST-CON-STEPUP-WEB-001",
@@ -1324,7 +1324,7 @@
             "Flipkart v1 capability is locked as publish-capable.",
             "Taxonomy strategy is locked to imported or snapshotted provider taxonomy.",
             "Operation model is locked to one unified seller-facing publish action.",
-            "Installation and credential contract is documented against current PIM1 connector installation surfaces.",
+            "Installation and credential contract is documented against current TEJ PIM connector installation surfaces.",
             "Response normalization and idempotency key contracts are explicitly documented."
           ]
         },
@@ -1651,7 +1651,7 @@
           "commit": "d81eb45",
           "reopened_by": "codex",
           "reopened_reason": "Fix connector definitions endpoint regression causing /channels/mappings to fail with a 500 when install action matrices are resolved.",
-          "regression_evidence": "Exact failing command: $login = Invoke-RestMethod -Uri 'http://127.0.0.1:4000/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body (@{workspaceSlug='default'; userId='admin@pim1.local'; password='pim1-demo-password'} | ConvertTo-Json); $headers=@{ Authorization = \"Bearer $($login.accessToken)\" }; Invoke-WebRequest -Uri 'http://127.0.0.1:4000/api/v1/connectors/definitions' -Headers $headers -ErrorAction Stop. Failing output snippet: DEFINITIONS_STATUS=500 and backend stack shows PrismaClientKnownRequestError P2037: Too many database connections opened during ConnectorPermissionService.buildDefinitionActions -> PlanUsageService.checkLimit/recomputeUsage. Likely files: apps/api/src/connector-installer/connector-installer.service.ts, apps/api/src/connector-installer/connector-permission.service.ts, apps/api/src/billing/plan-usage.service.ts.",
+          "regression_evidence": "Exact failing command: $login = Invoke-RestMethod -Uri 'http://127.0.0.1:4000/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body (@{workspaceSlug='default'; userId='admin@pim1.local'; password='TEJ PIM-demo-password'} | ConvertTo-Json); $headers=@{ Authorization = \"Bearer $($login.accessToken)\" }; Invoke-WebRequest -Uri 'http://127.0.0.1:4000/api/v1/connectors/definitions' -Headers $headers -ErrorAction Stop. Failing output snippet: DEFINITIONS_STATUS=500 and backend stack shows PrismaClientKnownRequestError P2037: Too many database connections opened during ConnectorPermissionService.buildDefinitionActions -> PlanUsageService.checkLimit/recomputeUsage. Likely files: apps/api/src/connector-installer/connector-installer.service.ts, apps/api/src/connector-installer/connector-permission.service.ts, apps/api/src/billing/plan-usage.service.ts.",
           "scope": [
             "apps/api/src/connector-installer/connector-permission.service.ts",
             "apps/api/src/connector-installer/connector-installer.service.ts",
@@ -1795,7 +1795,7 @@
       "stories": [
         {
           "storyId": "ST-TEST-PRODUCT-001",
-          "title": "Reorganize current PIM1 tests into product-facing acceptance suites with UI UX coverage",
+          "title": "Reorganize current TEJ PIM tests into product-facing acceptance suites with UI UX coverage",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1819,9 +1819,9 @@
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
-            "PIM1 exposes product-oriented test suite entry points for shell, catalog, publish, operations, governance, and UI UX validation.",
+            "TEJ PIM exposes product-oriented test suite entry points for shell, catalog, publish, operations, governance, and UI UX validation.",
             "The product shell has explicit UI UX acceptance coverage for current topbar and sidebar affordances.",
-            "The full product suite passes against the current workspace-scoped login model and current PIM1 feature set.",
+            "The full product suite passes against the current workspace-scoped login model and current TEJ PIM feature set.",
             "A committed test strategy document maps product capabilities to the maintained suite entry points."
           ],
           "tests_passed": [
@@ -1884,7 +1884,7 @@
       "stories": [
         {
           "storyId": "ST-TEST-E2E-001",
-          "title": "Add Playwright browser coverage for current PIM1 user workflows",
+          "title": "Add Playwright browser coverage for current TEJ PIM user workflows",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1912,7 +1912,7 @@
             "Playwright can start isolated API and web test servers against the current workspace-scoped login model.",
             "Browser E2E coverage exists for workspace login, product archive/category delete UI, reviewer approval decisions, and notification center behavior.",
             "Shared web helpers tolerate empty successful responses and do not swallow successful redirect control flow during server actions.",
-            "The full Playwright suite passes on current PIM1 behavior.",
+            "The full Playwright suite passes on current TEJ PIM behavior.",
             "Playwright runtime logs do not pollute the working tree."
           ],
           "tests_passed": [

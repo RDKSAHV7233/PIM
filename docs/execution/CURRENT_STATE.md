@@ -1,8 +1,8 @@
-# PIM1 Current State
+# TEJ PIM Current State
 
 - Date: 2026-03-23
 - Repo HEAD: `0be8f44`
-- Scope: canonical snapshot of the current PIM1 implementation, execution ledger, and reviewer-facing documentation state
+- Scope: canonical snapshot of the current TEJ PIM implementation, execution ledger, and reviewer-facing documentation state
 
 ## 1. Canonical Source-of-Truth Files
 - Product baseline: `docs/product/PRD.md`

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { PimLocale } from "@/lib/locale";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
 interface PasswordResetPageClientProps {
@@ -103,6 +104,7 @@ export function PasswordResetPageClient({
   return (
     <div className="mx-auto max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6">
       <header className="space-y-1">
+        <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.resetTitle}</h1>
         <p className="text-sm text-slate-600">{isConfirmMode ? authCopy.resetTokenSubtitle : authCopy.resetSubtitle}</p>
       </header>

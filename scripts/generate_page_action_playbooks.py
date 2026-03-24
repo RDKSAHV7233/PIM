@@ -203,7 +203,7 @@ def make_playbook(route: str, page_path: Path, interaction: Interaction, title: 
     lines.append("## Page")
     lines.append(f"- Route: `{route}`")
     lines.append(f"- Source: `{page_path.as_posix()}`")
-    lines.append(f"- Title: {title or 'Information not available in PIM1 project.'}")
+    lines.append(f"- Title: {title or 'Information not available in TEJ PIM project.'}")
     lines.append("")
 
     lines.append("## What this page is used for")
@@ -260,23 +260,23 @@ def make_playbook(route: str, page_path: Path, interaction: Interaction, title: 
             lines.append("")
 
     lines.append("## Input and control reference")
-    lines.append("- Buttons: " + (", ".join(f"`{x}`" for x in interaction.button_labels[:20]) if interaction.button_labels else "Information not available in PIM1 project."))
-    lines.append("- Visible labels: " + (", ".join(f"`{x}`" for x in interaction.label_texts[:20]) if interaction.label_texts else "Information not available in PIM1 project."))
-    lines.append("- Field names (technical): " + (", ".join(f"`{x}`" for x in interaction.input_names[:20]) if interaction.input_names else "Information not available in PIM1 project."))
-    lines.append("- Select names: " + (", ".join(f"`{x}`" for x in interaction.select_names[:20]) if interaction.select_names else "Information not available in PIM1 project."))
-    lines.append("- Placeholders: " + (", ".join(f"`{x}`" for x in interaction.placeholders[:12]) if interaction.placeholders else "Information not available in PIM1 project."))
-    lines.append("- Links: " + (", ".join(f"`{x}`" for x in interaction.links[:20]) if interaction.links else "Information not available in PIM1 project."))
+    lines.append("- Buttons: " + (", ".join(f"`{x}`" for x in interaction.button_labels[:20]) if interaction.button_labels else "Information not available in TEJ PIM project."))
+    lines.append("- Visible labels: " + (", ".join(f"`{x}`" for x in interaction.label_texts[:20]) if interaction.label_texts else "Information not available in TEJ PIM project."))
+    lines.append("- Field names (technical): " + (", ".join(f"`{x}`" for x in interaction.input_names[:20]) if interaction.input_names else "Information not available in TEJ PIM project."))
+    lines.append("- Select names: " + (", ".join(f"`{x}`" for x in interaction.select_names[:20]) if interaction.select_names else "Information not available in TEJ PIM project."))
+    lines.append("- Placeholders: " + (", ".join(f"`{x}`" for x in interaction.placeholders[:12]) if interaction.placeholders else "Information not available in TEJ PIM project."))
+    lines.append("- Links: " + (", ".join(f"`{x}`" for x in interaction.links[:20]) if interaction.links else "Information not available in TEJ PIM project."))
     lines.append("")
 
     lines.append("## Related components")
-    lines.append("- " + (", ".join(f"`{x}`" for x in interaction.component_refs[:12]) if interaction.component_refs else "Information not available in PIM1 project."))
+    lines.append("- " + (", ".join(f"`{x}`" for x in interaction.component_refs[:12]) if interaction.component_refs else "Information not available in TEJ PIM project."))
     lines.append("")
 
     lines.append("## Validation source")
     lines.append("- Derived from route source + first-level component source imports.")
     lines.append("- No behavior is added beyond validated code references.")
     if route in {"/channels/mappings", "/connectors/[installationId]/mapping", "/products/[id]"}:
-        lines.append("- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current PIM1 UX.")
+        lines.append("- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current TEJ PIM UX.")
     lines.append("")
     return "\n".join(lines)
 
@@ -291,7 +291,7 @@ def first_heading_or_title(content: str) -> str:
         t = clean_jsx_text(h1.group(1))
         if t:
             return t
-    return "Information not available in PIM1 project."
+    return "Information not available in TEJ PIM project."
 
 
 def out_name_for_route(route: str) -> str:
@@ -307,7 +307,7 @@ def build():
     pages = sorted(APP_DIR.glob(ROUTE_PATTERN), key=lambda p: p.as_posix())
 
     index_lines: List[str] = []
-    index_lines.append("# PIM1 Page Action Playbook Index")
+    index_lines.append("# TEJ PIM Page Action Playbook Index")
     index_lines.append("")
     index_lines.append("This index focuses on **how to perform actions** page-by-page.")
     index_lines.append("")
@@ -342,7 +342,7 @@ def build():
 
     # Rewrite functionality guide in procedural format
     func_lines: List[str] = []
-    func_lines.append("# PIM1 Functionality Runbook (How-To)")
+    func_lines.append("# TEJ PIM Functionality Runbook (How-To)")
     func_lines.append("")
     func_lines.append("This document explains how to perform core workflows across pages.")
     func_lines.append("")
@@ -434,7 +434,7 @@ def build():
 
     # update README
     readme = []
-    readme.append("# PIM1 User Guide Bundle")
+    readme.append("# TEJ PIM User Guide Bundle")
     readme.append("")
     readme.append("This folder now includes procedural, action-oriented documentation.")
     readme.append("")
@@ -449,7 +449,7 @@ def build():
     readme.append("- Source scope: `apps/web/src/app/**/page.tsx` + first-level imported components")
     readme.append("")
     readme.append("## Validation policy")
-    readme.append("- Uses only validated code references from current PIM1 source.")
+    readme.append("- Uses only validated code references from current TEJ PIM source.")
     readme.append("- If control labels are dynamic/not explicit, playbooks keep wording generic and reference action IDs.")
 
     (OUT_DIR / "README.md").write_text("\n".join(readme) + "\n", encoding="utf-8")

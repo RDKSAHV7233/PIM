@@ -2152,8 +2152,8 @@ paths:
           description: ""
       tags: *a20
 info:
-  title: PIM1 API
-  description: PIM1 API OpenAPI specification
+  title: TEJ PIM API
+  description: TEJ PIM API OpenAPI specification
   version: 1.0.0
   contact: {}
 tags: []

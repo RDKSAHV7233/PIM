@@ -26,7 +26,7 @@ export class AuditController {
   @Header("Content-Type", "text/csv; charset=utf-8")
   async exportEvents(@Query() query: ListAuditEventsDto, @Res({ passthrough: true }) response: FastifyReply) {
     const stamp = new Date().toISOString().slice(0, 10);
-    response.header("Content-Disposition", `attachment; filename="pim1-audit-events-${stamp}.csv"`);
+    response.header("Content-Disposition", `attachment; filename="tej-pim-audit-events-${stamp}.csv"`);
     return this.auditService.exportEventsCsv(query);
   }
 }

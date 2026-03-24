@@ -27,12 +27,12 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Category Name`, `Parent Category`
 - Field names (technical): `name`
 - Select names: `parentId`
 - Placeholders: `e.g. Men's Shirts`
-- Links: Information not available in PIM1 project.
+- Links: Information not available in TEJ PIM project.
 
 ## Related components
 - `ui/button`, `ui/card`, `ui/input`, `ui/select`

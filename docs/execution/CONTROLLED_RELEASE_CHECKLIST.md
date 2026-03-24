@@ -1,4 +1,4 @@
-# PIM1 Controlled Release Checklist
+# TEJ PIM Controlled Release Checklist
 
 - Source: `docs/product/PRD.md` (sections 12, 13, 15)
 - Execution source of truth: `docs/execution/INCREMENT_STATE.json`

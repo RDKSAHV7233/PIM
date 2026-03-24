@@ -1,4 +1,4 @@
-# PIM1 User Guide Bundle
+# TEJ PIM User Guide Bundle
 
 This folder now includes procedural, action-oriented documentation.
 
@@ -13,5 +13,5 @@ This folder now includes procedural, action-oriented documentation.
 - Source scope: `apps/web/src/app/**/page.tsx` + first-level imported components
 
 ## Validation policy
-- Uses only validated code references from current PIM1 source.
+- Uses only validated code references from current TEJ PIM source.
 - If control labels are dynamic/not explicit, playbooks keep wording generic and reference action IDs.

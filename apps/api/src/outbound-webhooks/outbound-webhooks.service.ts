@@ -564,7 +564,7 @@ export class OutboundWebhooksService {
       occurredAt: input.occurredAt,
       tenantKey: input.tenantKey,
       userId: input.actorId,
-      title: `PIM1 test delivery: ${input.endpointName}`,
+      title: `TEJ PIM test delivery: ${input.endpointName}`,
       message: `This is a test webhook delivery for ${input.eventType}.`,
       actionUrl: null,
       actionLabel: null,

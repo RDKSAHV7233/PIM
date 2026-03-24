@@ -1,4 +1,4 @@
-# PIM1 Local UI Package - Contract Reference
+# TEJ PIM Local UI Package - Contract Reference
 
 Date: 2026-03-06
 

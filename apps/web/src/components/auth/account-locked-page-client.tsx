@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PimLocale } from "@/lib/locale";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
 interface AccountLockedPageClientProps {
@@ -67,6 +68,7 @@ export function AccountLockedPageClient({
   return (
     <div className="mx-auto max-w-md space-y-5 rounded-lg border border-red-200 bg-white p-6">
       <header className="space-y-2">
+        <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.lockedTitle}</h1>
         <p className="text-sm text-slate-700">
           <strong>{maskedEmail}</strong> {authCopy.lockedBodyPrefix}.

@@ -1,4 +1,4 @@
-# PIM1 Functionality Runbook (How-To)
+# TEJ PIM Functionality Runbook (How-To)
 
 This document explains how to perform core workflows across pages.
 

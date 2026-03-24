@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { sanitizeNextPath } from "@/lib/auth-redirect";
 import { PimLocale } from "@/lib/locale";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
 function formatCountdown(totalSeconds: number): string {
@@ -154,6 +155,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       suppressHydrationWarning
     >
       <header className="space-y-1">
+        <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.loginTitle}</h1>
         <p className="text-sm text-slate-600">{authCopy.loginSubtitle}</p>
       </header>

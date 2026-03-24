@@ -1,6 +1,6 @@
-# PIM1 Admin Setup Checklist
+# TEJ PIM Admin Setup Checklist
 
-This checklist is for workspace admins setting up a tenant in the current PIM1 application.
+This checklist is for workspace admins setting up a tenant in the current TEJ PIM application.
 
 Use this document when you want a shorter, action-focused setup guide.
 Use the full guide for detailed workflows: `docs/pim-user-guide.md`.

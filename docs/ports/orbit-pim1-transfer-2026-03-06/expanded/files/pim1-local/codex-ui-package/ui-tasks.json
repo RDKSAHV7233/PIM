@@ -484,7 +484,7 @@
         "acceptance": [
           "Full-page step (not modal). Step label: 'Data & Privacy'",
           "Three plain-English paragraphs: what we collect, how we use it, your rights. NO legalese.",
-          "Checkbox UNCHECKED by default (R16). 'Continue to PIM1' disabled until ticked.",
+          "Checkbox UNCHECKED by default (R16). 'Continue to TEJ PIM' disabled until ticked.",
           "'I don't consent — delete my account' link visible. Calls DELETE /api/v1/account on confirm. Redirects to /goodbye.",
           "On consent: POST /api/v1/auth/consent with { consentVersion: N }",
           "consentRequired: true in auth response → redirect to consent step regardless of nav target (R17)",
@@ -531,7 +531,7 @@
         "files": ["src/app/(app)/bulk/page.tsx", "src/components/bulk/ImportFlow.tsx"],
         "acceptance": [
           "Step 1: CSV/Excel upload with column preview",
-          "Step 2: column mapping UI — map uploaded columns to PIM1 fields",
+          "Step 2: column mapping UI — map uploaded columns to TEJ PIM fields",
           "Step 3: validation preview — highlight rows with errors",
           "Step 4: submit POST /api/v1/bulk/import. Shows job ID.",
           "HTTP 402 on import → PlanLimitModal (R6)"

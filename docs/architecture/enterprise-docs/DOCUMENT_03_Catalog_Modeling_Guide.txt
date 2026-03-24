@@ -4,7 +4,7 @@ Purpose:
 Describe catalog structure.
 
 Scope:
-Catalog data structures, classification, attribute modeling, variant structure, and enrichment flow implemented in PIM1.
+Catalog data structures, classification, attribute modeling, variant structure, and enrichment flow implemented in TEJ PIM.
 
 Content:
 Catalog Structure:
@@ -49,10 +49,10 @@ Channel Catalog Mapping:
 Source: schema.prisma and marketplace.controller.ts
 
 Localization Model:
-Information not available in PIM1 project.
+Information not available in TEJ PIM project.
 
 Product Family Structure:
-Information not available in PIM1 project.
+Information not available in TEJ PIM project.
 
 Product Enrichment Workflow (implemented):
 1. Create or update product.

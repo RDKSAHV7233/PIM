@@ -16,11 +16,11 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Hide test data`
-- Field names (technical): Information not available in PIM1 project.
-- Select names: Information not available in PIM1 project.
-- Placeholders: Information not available in PIM1 project.
+- Field names (technical): Information not available in TEJ PIM project.
+- Select names: Information not available in TEJ PIM project.
+- Placeholders: Information not available in TEJ PIM project.
 - Links: `/operations/bulk-edit`, `/quality/issues`, `/quality/approvals`, `/admin/plan`
 
 ## Related components

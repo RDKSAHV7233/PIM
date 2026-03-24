@@ -1,5 +1,5 @@
 // apps/api/src/connector-framework/connector.interface.ts
-// PIM1 — Connector Contract — DO NOT change method signatures without updating all connector stubs
+// TEJ PIM — Connector Contract — DO NOT change method signatures without updating all connector stubs
 // Review findings applied: normaliseError returns ConnectorIssue (not string)
 
 export type ConnectorCap =

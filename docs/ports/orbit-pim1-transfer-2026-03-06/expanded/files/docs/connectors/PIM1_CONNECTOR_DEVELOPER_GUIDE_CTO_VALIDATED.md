@@ -1,4 +1,4 @@
-# PIM1 Connector Developer Guide (CTO Validated, Single Source of Truth)
+# TEJ PIM Connector Developer Guide (CTO Validated, Single Source of Truth)
 
 Date: 2026-03-06  
 Canonical file: `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE_CTO_VALIDATED.md`
@@ -12,33 +12,33 @@ If another document overlaps this scope, that document must only reference this 
 
 ## 2) CTO + PO Readiness Summary
 
-- Architecture readiness: **pass (PIM1-scoped runtime binding by design)**
+- Architecture readiness: **pass (TEJ PIM-scoped runtime binding by design)**
 - Platform contracts: **pass with adapter contract** (connector-runtime contracts are strong; PIM-facing compatibility endpoints now exist via backend + adapter path)
 - Developer workflow: **pass for internal teams, partial for external developer program**
 
 Decision: proceed with controlled connector development.
 
-Runtime binding note for PIM1:
+Runtime binding note for TEJ PIM:
 - Current runtime binding is intentionally limited to connectors with implemented runtime classes (`flipkart`, `whatsapp`, `tally`) in `src/connectors/runtime/loader.ts`.
-- For PIM1 product scope, this is a controlled-launch decision, not a product blocker.
+- For TEJ PIM product scope, this is a controlled-launch decision, not a product blocker.
 - It becomes a blocker only for a fully externalized connector marketplace where arbitrary third-party connectors must load dynamically.
 
 ## 2.1) Platform Contract Closure (E2E Connector Flow)
 
 Current state:
 - Connector runtime and ingest remain production-shaped.
-- Compatibility endpoints expected by the PIM1 UI package are now present in this backend route surface.
+- Compatibility endpoints expected by the TEJ PIM UI package are now present in this backend route surface.
 - Product/media fetch is handled through a strict adapter contract (`PIM1_ADAPTER_BASE_URL`) and fails closed when not configured.
 
-CTO/PO decision for PIM1:
-- Contract blocker is closed for current PIM1 release line.
+CTO/PO decision for TEJ PIM:
+- Contract blocker is closed for current TEJ PIM release line.
 - Externalized connector program still requires upstream PIM API availability in environments where product/media data is not hosted by this backend.
 
 ## 3) Capability Matrix (Product Checklist)
 
 | Capability | Status | Evidence |
 |---|---|---|
-| Canonical product schema | PARTIAL | Product schema/types are in local PIM1 package: `pim1-local/codex-ui-package/src/types/api.ts:31`; not found in current backend route surface under `src/**`. |
+| Canonical product schema | PARTIAL | Product schema/types are in local TEJ PIM package: `TEJ PIM-local/codex-ui-package/src/types/api.ts:31`; not found in current backend route surface under `src/**`. |
 | Product fetch API | EXISTS (adapter-backed) | Compatibility endpoint: `GET /products` in `src/auth/protected-routes.ts`; upstream adapter contract in `src/auth/pim1-adapter.ts`. |
 | Media fetch API | EXISTS (adapter-backed) | Compatibility endpoint: `GET /media/:id` in `src/auth/protected-routes.ts`; upstream adapter contract in `src/auth/pim1-adapter.ts`. |
 | Connector installation model | EXISTS | Compatibility endpoints: `GET /connectors/installed`, `POST /connectors/:slug/install`, `DELETE /connectors/:slug/install/:id` in `src/auth/protected-routes.ts`. |
@@ -46,15 +46,15 @@ CTO/PO decision for PIM1:
 | Job execution framework | EXISTS | `executions`, `execution_events`, queue, DLQ: `db/01-schema.sql:242`, `db/01-schema.sql:255`, `db/01-schema.sql:286`, `db/01-schema.sql:317`; worker runtime: `src/auth/execution-worker.ts:17`. |
 | Submission logs | EXISTS | Compatibility endpoints: `GET /submissions`, `GET /submissions/stats` in `src/auth/protected-routes.ts` (execution-backed). |
 | Retry/requeue system | EXISTS | Requeue/DLQ replay paths: `src/auth/execution-repository.ts:426`, `src/auth/execution-repository.ts:495`, `src/auth/protected-routes.ts:1308`, `src/auth/protected-routes.ts:1352`. |
-| Attribute mapping UI | MISSING (mounted UI) / PLANNED | Planned in `pim1-local/codex-ui-package/ui-tasks.json:534`; not mounted in current `admin-ui` flow. |
-| Category mapping UI | MISSING (mounted UI) / PLANNED | Planned in `pim1-local/codex-ui-package/ui-tasks.json:529` and `:534`; not mounted in current `admin-ui` flow. |
+| Attribute mapping UI | MISSING (mounted UI) / PLANNED | Planned in `TEJ PIM-local/codex-ui-package/ui-tasks.json:534`; not mounted in current `admin-ui` flow. |
+| Category mapping UI | MISSING (mounted UI) / PLANNED | Planned in `TEJ PIM-local/codex-ui-package/ui-tasks.json:529` and `:534`; not mounted in current `admin-ui` flow. |
 | Connector event ingestion | EXISTS | Canonical schema + handler: `src/auth/protected-routes.ts:114`, `src/auth/protected-routes.ts:1549`; normalization: `src/auth/protected-routes.ts:270`; idempotency uniqueness: `db/01-schema.sql:309`. |
 
 ## 4) Authoritative Current Backend Connector Contracts
 
 - Event ingestion:
   - `POST /connectors/events` (`src/auth/protected-routes.ts:1549`)
-- PIM1 compatibility:
+- TEJ PIM compatibility:
   - `GET /products` (adapter-backed)
   - `GET /media/:id` (adapter-backed)
   - `GET /submissions`
@@ -78,9 +78,9 @@ CTO/PO decision for PIM1:
   - `GET /admin/connectors/:id/config` (`src/auth/protected-routes.ts:1773`)
   - `/admin/connectors/:id/circuit-breaker*` (`src/auth/protected-routes.ts:1796`)
 
-## 5) Target Profile Mapping (PIM1 Local Package -> Current Backend)
+## 5) Target Profile Mapping (TEJ PIM Local Package -> Current Backend)
 
-| PIM1 package reference | Current backend mapping | Status |
+| TEJ PIM package reference | Current backend mapping | Status |
 |---|---|---|
 | `GET /api/v1/connectors/installed` | `GET /internal/connectors/health` + tenant config surfaces | mapped (semantic adapter) |
 | `POST /api/v1/connectors/:slug/install` | `POST /connectors/:slug/install` | implemented |
@@ -123,7 +123,7 @@ Results:
 ## 9) Documentation Blocker Closure
 
 - Architecture suite exists in repo: `docs/architecture/PIM1_ENTERPRISE_DOCUMENTATION_SUITE.md`.
-- Local package has explicit pointer to this canonical guide via `pim1-local/codex-ui-package/API_CONTRACT_UNIFIED.md`.
+- Local package has explicit pointer to this canonical guide via `TEJ PIM-local/codex-ui-package/API_CONTRACT_UNIFIED.md`.
 
 ## 10) Change Policy
 

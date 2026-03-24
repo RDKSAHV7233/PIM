@@ -1,7 +1,7 @@
-# PIM1 Connector Current State (2026-03-08)
+# TEJ PIM Connector Current State (2026-03-08)
 
 Status: compatibility pointer only  
-Scope: current PIM1 repository  
+Scope: current TEJ PIM repository  
 
 This file has been folded into the canonical connector guide.
 

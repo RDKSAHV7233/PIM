@@ -4,7 +4,7 @@
 - Repo head at alignment: `5a64683`
 
 ## 1. Canonical current-state sources
-These files describe the current active PIM1 baseline and should be read first.
+These files describe the current active TEJ PIM baseline and should be read first.
 
 1. `README.md`
 2. `docs/STRUCTURE.md`

@@ -1,6 +1,6 @@
-﻿# PIM1 Product Requirements Document (PRD)
+# TEJ PIM Product Requirements Document (PRD)
 
-- Product: PIM1
+- Product: TEJ PIM
 - Version: 1.0 (March 2026 consolidation)
 - Owner: Product + Engineering
 - Status: Active baseline
@@ -8,7 +8,7 @@
 - Current repo head at last PRD alignment: `d5dbc2d`
 
 ## 1. Product Summary
-PIM1 is an India-first, multi-tenant Product Information Management platform with a connector-first integration architecture. Core catalog and compliance live in PIM1; marketplace-specific execution lives in connectors (Amazon, Flipkart, Meesho, ONDC later).
+TEJ PIM is an India-first, multi-tenant Product Information Management platform with a connector-first integration architecture. Core catalog and compliance live in TEJ PIM; marketplace-specific execution lives in connectors (Amazon, Flipkart, Meesho, ONDC later).
 
 ## 2. Problem Statement
 Sellers and catalog teams currently manage fragmented product data across spreadsheets and channel-specific portals. This causes:
@@ -143,7 +143,7 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 - Mitigation: template hash verification and scheduled validation scripts.
 
 ## 15. Release Readiness
-PIM1 is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
+TEJ PIM is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
 
 Current state on 2026-03-19:
 - Per-user bcrypt authentication is live; shared-password fallback retained for legacy identities during migration.

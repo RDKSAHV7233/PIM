@@ -37,10 +37,10 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Connector`, `Principal Type`, `Principal Id`, `Action`, `Account Alias (optional)`
 - Field names (technical): `principalId`, `accountAlias`, `permissionId`
-- Select names: Information not available in PIM1 project.
+- Select names: Information not available in TEJ PIM project.
 - Placeholders: `e.g. editor or user@tenant`, `* (all aliases)`
 - Links: `/dashboard`, `/admin`
 

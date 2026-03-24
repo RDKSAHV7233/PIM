@@ -3,7 +3,7 @@
 ## Page
 - Route: `/consent`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/consent/page.tsx`
-- Title: Information not available in PIM1 project.
+- Title: Information not available in TEJ PIM project.
 
 ## What this page is used for
 - Read/monitor data and navigate to downstream workflow pages.
@@ -16,11 +16,11 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `I consent to processing product and catalog data for marketplace publishing, compliance validation, and audit logging as described in the DPDP notice.`
-- Field names (technical): Information not available in PIM1 project.
-- Select names: Information not available in PIM1 project.
-- Placeholders: Information not available in PIM1 project.
+- Field names (technical): Information not available in TEJ PIM project.
+- Select names: Information not available in TEJ PIM project.
+- Placeholders: Information not available in TEJ PIM project.
 - Links: `/login`
 
 ## Related components

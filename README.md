@@ -1,4 +1,4 @@
-# PIM1 Monorepo
+# TEJ PIM Monorepo
 
 India-first PIM SaaS foundation on locked stack:
 - Web: Next.js 15 + TypeScript + Tailwind

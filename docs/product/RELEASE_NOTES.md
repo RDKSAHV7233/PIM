@@ -1,4 +1,4 @@
-# PIM1 Release Notes
+# TEJ PIM Release Notes
 
 ---
 

@@ -1,4 +1,4 @@
-﻿# Page User Guide
+# Page User Guide
 
 ## Route
 - /channels/connectors/[installationId]
@@ -19,10 +19,10 @@
   - getInstalledConnectors
   - getSubmissions
 - Mutation actions used on this page:
-  - Information not available in PIM1 project.
+  - Information not available in TEJ PIM project.
 
 ## User Actions
-- Information not available in PIM1 project.
+- Information not available in TEJ PIM project.
 
 ## Notes
 - This document is generated from current route source and only contains validated references.

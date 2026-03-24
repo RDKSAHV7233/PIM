@@ -1,4 +1,4 @@
-﻿# Page User Guide
+# Page User Guide
 
 ## Route
 - /channels/mappings
@@ -12,7 +12,7 @@
 ## Purpose
 - Canonical lifecycle mapping workspace for channel publishing.
 - Use this page to create, validate, publish, archive, and rollback mapping versions.
-- This is the only editable mapping surface in the current PIM1 UX.
+- This is the only editable mapping surface in the current TEJ PIM UX.
 
 ## Functionality (Validated from Page Imports/Actions)
 - Data retrieval/API helpers used on this page:

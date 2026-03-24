@@ -16,11 +16,11 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Product`, `Channel`
-- Field names (technical): Information not available in PIM1 project.
+- Field names (technical): Information not available in TEJ PIM project.
 - Select names: `productId`, `channel`
-- Placeholders: Information not available in PIM1 project.
+- Placeholders: Information not available in TEJ PIM project.
 - Links: `/quality/issues`
 
 ## Related components

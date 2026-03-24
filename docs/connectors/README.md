@@ -1,11 +1,11 @@
-# PIM1 Connector Documentation Index
+# TEJ PIM Connector Documentation Index
 
 Status: Canonical connector-documentation entry point  
 Date: 2026-03-23
 
 ## Purpose
 
-This file is the entry point for connector-development documentation in PIM1.
+This file is the entry point for connector-development documentation in TEJ PIM.
 
 Use this page first to determine:
 - which connector documents are current

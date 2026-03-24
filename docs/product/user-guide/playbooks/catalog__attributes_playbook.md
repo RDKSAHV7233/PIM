@@ -27,11 +27,11 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Category`, `Display Name`, `Key`, `Data Type`, `Applies To`, `Required`, `Allowed Values (JSON array)`
 - Field names (technical): `categoryId`, `name`, `key`
 - Select names: `categoryId`, `dataType`, `appliesTo`, `required`
-- Placeholders: Information not available in PIM1 project.
+- Placeholders: Information not available in TEJ PIM project.
 - Links: `/catalog/categories`, `/catalog/products`
 
 ## Related components

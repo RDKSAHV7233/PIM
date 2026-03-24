@@ -15,8 +15,8 @@ async function generate(): Promise<void> {
   );
 
   const config = new DocumentBuilder()
-    .setTitle("PIM1 API")
-    .setDescription("PIM1 API OpenAPI specification")
+    .setTitle("TEJ PIM API")
+    .setDescription("TEJ PIM API OpenAPI specification")
     .setVersion("1.0.0")
     .addBearerAuth()
     .build();

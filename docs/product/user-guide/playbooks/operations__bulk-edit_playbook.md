@@ -37,12 +37,12 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Category`, `Status`, `Brand Contains`, `Product IDs`, `Updates`, `I have reviewed the preview and I am ready to apply these changes.`
 - Field names (technical): `bulkEditProductIds`, `bulkEditUpdates`, `bulkEditBrandContains`, `categoryId`, `status`, `brandContains`, `productIds`, `updates`
 - Select names: `bulkEditCategoryId`, `bulkEditStatus`
 - Placeholders: `Optional, comma or newline separated`
-- Links: Information not available in PIM1 project.
+- Links: Information not available in TEJ PIM project.
 
 ## Related components
 - `bulk-edit/bulk-edit-diff-preview`, `ui/button`, `ui/card`, `ui/input`, `ui/select`, `ui/textarea`

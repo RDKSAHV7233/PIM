@@ -1,4 +1,4 @@
-# PIM1 Tenant Login Spec
+# TEJ PIM Tenant Login Spec
 
 Status: Locked and implemented
 Implementation commit: `32538a9`
@@ -7,13 +7,13 @@ Date: 2026-03-10
 
 ## 1. Purpose
 
-This document locks the v1 tenant routing and login model for PIM1.
+This document locks the v1 tenant routing and login model for TEJ PIM.
 
 It is grounded in the shipped workspace-scoped login implementation and records the decisions that must remain stable unless a new increment explicitly changes them.
 
 ## 2. Current Baseline
 
-PIM1 is backend multi-tenant and session single-workspace-per-session.
+TEJ PIM is backend multi-tenant and session single-workspace-per-session.
 
 Already built before this slice:
 - `tenantId` in JWT/session claims

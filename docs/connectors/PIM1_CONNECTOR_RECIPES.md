@@ -1,4 +1,4 @@
-# PIM1 Connector Recipes
+# TEJ PIM Connector Recipes
 
 Status: Active workflow examples  
 Date: 2026-03-23  
@@ -6,7 +6,7 @@ Audience: Connector engineers and reviewers
 
 ## 1. Purpose
 
-Use this file for concrete workflow examples on top of the current PIM1 connector model.
+Use this file for concrete workflow examples on top of the current TEJ PIM connector model.
 
 This file is recipe-oriented.
 For API/context overview, use:

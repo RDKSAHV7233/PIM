@@ -1,4 +1,4 @@
-# PIM1 Increment-First Delivery Model
+# TEJ PIM Increment-First Delivery Model
 
 Date: 2026-03-05  
 Scope: Replace legacy stage-driven execution language with functional increments.

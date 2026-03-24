@@ -47,7 +47,7 @@ export interface AuthCopy {
 }
 
 const EN_COPY: AuthCopy = {
-  loginTitle: "Sign in to PIM1",
+  loginTitle: "Sign in to TEJ PIM",
   loginSubtitle: "Use your account credentials to continue.",
   workspaceLabel: "Workspace",
   workspacePlaceholder: "your-company",

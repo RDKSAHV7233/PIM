@@ -1,4 +1,4 @@
-﻿# Page User Guide
+# Page User Guide
 
 ## Route
 - /channels/submissions
@@ -18,7 +18,7 @@
   - getSubmissions
 
 ## User Actions
-- Information not available in PIM1 project.
+- Information not available in TEJ PIM project.
 
 ## Notes
 - This document is generated from current route source and only contains validated references.

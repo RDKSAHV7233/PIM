@@ -1,26 +1,26 @@
-# PIM1 Terms of Service
+# TEJ PIM Terms of Service
 
 - Document owner: Product + Legal + CTO
 - Status: Active baseline for controlled rollout
 - Last updated: 2026-03-19
 
 ## 1. Scope
-These Terms of Service govern access to and use of PIM1, a multi-tenant product information management platform operated by the PIM1 service operator identified in the applicable order form, onboarding record, or pilot agreement.
+These Terms of Service govern access to and use of TEJ PIM, a multi-tenant product information management platform operated by the TEJ PIM service operator identified in the applicable order form, onboarding record, or pilot agreement.
 
 These terms apply to:
-- customer organizations using PIM1;
+- customer organizations using TEJ PIM;
 - individual users acting on behalf of those organizations; and
 - pilot or controlled-rollout participants unless superseded by a written agreement.
 
 ## 2. Service Description
-PIM1 provides:
+TEJ PIM provides:
 - product, category, attribute, and variant management;
 - compliance and readiness validation;
 - connector-driven marketplace export and submission workflows;
 - audit, privacy, and workspace administration tooling; and
 - related reporting, notification, and operational workflows.
 
-PIM1 is currently offered under a controlled-rollout model. Some features may be labeled beta, staged, export-only, or manual-fulfillment depending on connector or compliance status.
+TEJ PIM is currently offered under a controlled-rollout model. Some features may be labeled beta, staged, export-only, or manual-fulfillment depending on connector or compliance status.
 
 ## 3. Accounts and Workspace Access
 Customer access is tenant-scoped and workspace-scoped.
@@ -39,22 +39,22 @@ The operator may suspend or restrict access where needed to protect:
 
 ## 4. Acceptable Use
 Customers must not:
-- use PIM1 for unlawful, fraudulent, or misleading activity;
+- use TEJ PIM for unlawful, fraudulent, or misleading activity;
 - attempt to bypass tenant isolation, access control, rate limits, or audit controls;
 - upload malicious code or unsafe payloads;
 - interfere with platform availability or connector integrations; or
-- use PIM1 to process data they are not authorized to control.
+- use TEJ PIM to process data they are not authorized to control.
 
 ## 5. Customer Responsibilities
 The customer is responsible for:
-- the accuracy, legality, and completeness of catalog and marketplace data submitted through PIM1;
+- the accuracy, legality, and completeness of catalog and marketplace data submitted through TEJ PIM;
 - obtaining all rights and permissions needed for the data it uploads;
 - reviewing connector-specific requirements before publication;
 - maintaining internal approval processes for high-risk catalog changes; and
 - nominating workspace administrators to manage user lifecycle and password recovery.
 
 ## 6. Service Availability and Change Management
-PIM1 is operated on a best-effort controlled-rollout basis unless a separate SLA is agreed in writing.
+TEJ PIM is operated on a best-effort controlled-rollout basis unless a separate SLA is agreed in writing.
 
 The operator may:
 - deploy fixes, security patches, and connector updates;
@@ -111,7 +111,7 @@ Customers may stop using the service subject to any agreed notice or data-export
 
 ## 12. Intellectual Property
 The operator retains all rights in:
-- PIM1 software;
+- TEJ PIM software;
 - documentation;
 - workflows;
 - connector framework design; and
@@ -128,7 +128,7 @@ Confidentiality obligations do not apply to information that:
 - must be disclosed by law or regulatory process.
 
 ## 14. Warranty Disclaimer
-Except as expressly agreed in writing, PIM1 is provided on an "as is" and "as available" basis.
+Except as expressly agreed in writing, TEJ PIM is provided on an "as is" and "as available" basis.
 
 During controlled rollout, the operator does not guarantee:
 - uninterrupted availability;

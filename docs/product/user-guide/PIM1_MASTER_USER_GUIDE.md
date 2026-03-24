@@ -1,16 +1,16 @@
-# PIM1 Master User Guide
+# TEJ PIM Master User Guide
 
 - Version: 1.1
 - Date: 2026-03-09
 - Repo validation baseline: `0ae974c`
-- Basis: strict current-code-only validation against route files, page components, UI helpers, and route-bound server actions used by the current PIM1 application
+- Basis: strict current-code-only validation against route files, page components, UI helpers, and route-bound server actions used by the current TEJ PIM application
 - Validation mode: current-code-only
 - Current documented route inventory source: `apps/web/src/app/`
 
 ## 1. Document Overview
 
 ### Purpose of the document
-This guide explains how to use the current PIM1 application page by page. It is intended to support live operations, onboarding, QA verification, product reviews, implementation planning, support troubleshooting, and user training. The guide is grounded in current PIM1 route files, page components, and route-bound UI behavior verified directly from code.
+This guide explains how to use the current TEJ PIM application page by page. It is intended to support live operations, onboarding, QA verification, product reviews, implementation planning, support troubleshooting, and user training. The guide is grounded in current TEJ PIM route files, page components, and route-bound UI behavior verified directly from code.
 
 ### Who should use it
 - Admins configuring plan, privacy, access, and connector permissions
@@ -23,7 +23,7 @@ This guide explains how to use the current PIM1 application page by page. It is 
 - Product, design, engineering, onboarding, support, and QA teams
 
 ### User roles covered
-PIM1 currently implements three technical roles:
+TEJ PIM currently implements three technical roles:
 - `admin`
 - `editor`
 - `viewer`
@@ -47,10 +47,10 @@ This guide covers:
 - current implemented pages under Dashboard, Products, Catalog, Channels, Quality, Operations, and Settings (`/admin/*` governance routes)
 - current auth routes
 - current product-detail tabs and embedded workflows
-- pages requested in the brief that are not standalone routes in PIM1 today
+- pages requested in the brief that are not standalone routes in TEJ PIM today
 - legacy redirect surfaces that still exist but are no longer the main entry points
 
-This guide does not invent new pages, new roles, new workflows, or future-state UX that is not present in the current PIM1 project.
+This guide does not invent new pages, new roles, new workflows, or future-state UX that is not present in the current TEJ PIM project.
 
 ### Key assumptions
 - The guide reflects the current implemented shell from `apps/web/src/components/nav/app-sidebar.tsx`.
@@ -59,11 +59,11 @@ This guide does not invent new pages, new roles, new workflows, or future-state 
 - Several requested items are not standalone pages in the current product. Those are explicitly marked as one of:
   - `Implemented inside another page`
   - `Legacy redirect`
-  - `Information not available in current PIM1 project`
+  - `Information not available in current TEJ PIM project`
 - Additional locale support is deferred. English is the only supported visible UI language in the current scope.
 
 ### Navigation principles of the product
-PIM1 is organized into seven operating zones:
+TEJ PIM is organized into seven operating zones:
 - `Dashboard`: what needs attention now
 - `Products`: catalog workbench and product creation surface
 - `Catalog`: category, attribute, and media definitions
@@ -73,17 +73,17 @@ PIM1 is organized into seven operating zones:
 - `Settings` / admin routes: plan, users, connector access, privacy, audit, workspace
 
 ### How to read the guide
-- Start with sections 1 to 4 if you are new to PIM1.
+- Start with sections 1 to 4 if you are new to TEJ PIM.
 - Use section 5 for route-level operation details.
 - Use section 7 for end-to-end journeys.
 - Use section 8 for role-specific training.
 - Use section 9 for support and exception handling.
-- When a requested page is not implemented, follow the related-page guidance to the actual PIM1 surface.
+- When a requested page is not implemented, follow the related-page guidance to the actual TEJ PIM surface.
 
 ## 2. Product Overview
 
-### What PIM1 is
-PIM1 is a multi-tenant product information management and marketplace operations application. It helps India-focused sellers and catalog teams manage product records, attributes, categories, variants, media, validation issues, completeness, approval queues, imports, bulk edits, channel mappings, connector submissions, and governance settings in one web workspace.
+### What TEJ PIM is
+TEJ PIM is a multi-tenant product information management and marketplace operations application. It helps India-focused sellers and catalog teams manage product records, attributes, categories, variants, media, validation issues, completeness, approval queues, imports, bulk edits, channel mappings, connector submissions, and governance settings in one web workspace.
 
 ### Business problems it solves
 - fragmented product data spread across spreadsheets and marketplace-specific formats
@@ -167,8 +167,8 @@ PIM1 is a multi-tenant product information management and marketplace operations
 | View audit log summary page | Yes | Yes | Yes |
 
 ### Approval rights
-- Current PIM1 has approval visibility through `in_review` status and Quality pages.
-- A dedicated separate approval-role permission model is not available in current PIM1.
+- Current TEJ PIM has approval visibility through `in_review` status and Quality pages.
+- A dedicated separate approval-role permission model is not available in current TEJ PIM.
 - Final approval actions are not implemented as a standalone decision console.
 
 ### Import/export rights
@@ -195,7 +195,7 @@ PIM1 is a multi-tenant product information management and marketplace operations
 
 ### Header
 - Sticky top header across authenticated pages
-- Product name link: `PIM1`
+- Product name link: `TEJ PIM`
 - Role badge visible when a server session is present
 - Logout button visible when an auth token is present
 
@@ -272,7 +272,7 @@ Current production sidebar sections are:
 - Connector-action denial messages include server reason strings translated into UI copy
 
 ### Unsaved changes behavior
-- Product edit and similar workflows are form-submit based; there is no global unsaved-changes modal validated in current PIM1
+- Product edit and similar workflows are form-submit based; there is no global unsaved-changes modal validated in current TEJ PIM
 - Best practice is to submit before navigating away
 
 ### Audit/history access patterns
@@ -283,7 +283,7 @@ Current production sidebar sections are:
 ## 5. Page-by-Page Detailed User Guide
 ## Login
 ### A. Purpose
-- Provides the primary entry point into PIM1.
+- Provides the primary entry point into TEJ PIM.
 - Used by Admin, Editor, and Viewer users.
 - Primary business objective: authenticate the user and route them into the correct application shell.
 
@@ -398,7 +398,7 @@ Current production sidebar sections are:
 
 ### G. Business rules
 - Reset request UI should not reveal whether the email exists.
-- Reset is request-based; full reset completion page is not surfaced as a separate validated route in current PIM1.
+- Reset is request-based; full reset completion page is not surfaced as a separate validated route in current TEJ PIM.
 
 ### H. Validations and edge cases
 - Email required
@@ -417,7 +417,7 @@ Current production sidebar sections are:
 
 ## MFA / OTP verification if applicable
 ### A. Purpose
-- Information not available as a standalone MFA or OTP page in current PIM1.
+- Information not available as a standalone MFA or OTP page in current TEJ PIM.
 - Current high-risk confirmation is implemented as password-based step-up re-authentication inside `/channels/mappings`.
 
 ### B. When users come here
@@ -454,7 +454,7 @@ Current production sidebar sections are:
 ## Session expired / unauthorized page
 ### A. Purpose
 - No dedicated standalone session-expired page exists.
-- PIM1 routes unauthorized or expired sessions back to login with a reason code.
+- TEJ PIM routes unauthorized or expired sessions back to login with a reason code.
 
 ### B. When users come here
 - Accessing a protected page without a valid session
@@ -551,18 +551,18 @@ For each action:
 
 ## Notifications / alerts center
 ### A. Purpose
-- Implemented as a topbar notification center in current PIM1.
+- Implemented as a topbar notification center in current TEJ PIM.
 - Used to review recent async import, publish, and approval events without navigating into each operational page first.
 
 ### B-K.
 - Use the bell icon in the authenticated header to open the notification panel.
 - The panel supports unread counts, direct action links, and mark-read behavior.
-- Current PIM1 does not implement a separate full-page notifications route.
+- Current TEJ PIM does not implement a separate full-page notifications route.
 
 ## User profile / account settings
 ### A. Purpose
-- Information not available as a standalone page in current PIM1.
-- PIM1 does not currently implement a dedicated profile editor, account-preferences page, or account-settings console.
+- Information not available as a standalone page in current TEJ PIM.
+- TEJ PIM does not currently implement a dedicated profile editor, account-preferences page, or account-settings console.
 
 ### B-K.
 - Do not treat `/admin/privacy` as a profile page. It is a separate Data and Privacy workflow for export and deletion requests.
@@ -922,7 +922,7 @@ For each action:
 - Objective: review per-variant MRP, selling price, and inventory.
 
 ### B-K.
-- There is no separate pricing or inventory route in current PIM1.
+- There is no separate pricing or inventory route in current TEJ PIM.
 
 ## Audit/history tab
 ### A. Purpose
@@ -943,7 +943,7 @@ For each action:
 
 ## Related products / bundles if applicable
 ### A. Purpose
-- Information not available in current PIM1 project.
+- Information not available in current TEJ PIM project.
 - No standalone related-products or bundles UI was validated.
 
 ### B-K.
@@ -968,7 +968,7 @@ For each action:
 
 ## Product duplicate flow
 ### A. Purpose
-- Information not available in current PIM1 project.
+- Information not available in current TEJ PIM project.
 - No validated duplicate-product action or route was found.
 
 ### B-K.
@@ -980,7 +980,7 @@ For each action:
 - Product status supports `archived`, but a dedicated delete/archive flow is not validated in the current UI.
 
 ### B-K.
-- Use status changes where available. Permanent delete flow for products is not documented in current PIM1.
+- Use status changes where available. Permanent delete flow for products is not documented in current TEJ PIM.
 ## Category list
 ### A. Purpose
 - Taxonomy review page at `/catalog/categories`.
@@ -1044,15 +1044,15 @@ For each action:
 ## Category create/edit page
 ### A. Purpose
 - Category creation is embedded in the Category List page.
-- Separate edit page is not validated in current PIM1.
+- Separate edit page is not validated in current TEJ PIM.
 
 ### B-K.
 - Create: use the inline `Create Category` form on `/catalog/categories`.
-- Edit: Information not available in current PIM1 project as a dedicated page.
+- Edit: Information not available in current TEJ PIM project as a dedicated page.
 
 ## Category tree / hierarchy page
 ### A. Purpose
-- Information not available as a standalone tree page in current PIM1.
+- Information not available as a standalone tree page in current TEJ PIM.
 - Hierarchy is represented by `Parent Category` selection and `Path` column.
 
 ### B-K.
@@ -1129,10 +1129,10 @@ For each action:
 
 ## Attribute group management
 ### A. Purpose
-- Information not available in current PIM1 project as a standalone attribute-group UI.
+- Information not available in current TEJ PIM project as a standalone attribute-group UI.
 
 ### B-K.
-- Current PIM1 manages attributes individually, scoped by category and applies-to.
+- Current TEJ PIM manages attributes individually, scoped by category and applies-to.
 
 ## Attribute create/edit page
 ### A. Purpose
@@ -1141,7 +1141,7 @@ For each action:
 
 ### B-K.
 - Create: use `Add Attribute Definition`.
-- Edit: Information not available in current PIM1 project.
+- Edit: Information not available in current TEJ PIM project.
 
 ## Attribute assignment to categories
 ### A. Purpose
@@ -1275,7 +1275,7 @@ For each action:
 
 ## Media tagging / organization
 ### A. Purpose
-- Information not available in current PIM1 project as a standalone tagging or folder-management page.
+- Information not available in current TEJ PIM project as a standalone tagging or folder-management page.
 
 ### B-K.
 - Current Media page focuses on upload, association, and validation.
@@ -1485,7 +1485,7 @@ For each action:
 - Workflow-level history is split across Product Activity, Jobs, Submissions, and Admin Audit summary.
 
 ### B-K.
-- There is no single combined workflow-history route in current PIM1.
+- There is no single combined workflow-history route in current TEJ PIM.
 
 ## Bulk edit landing page
 ### A. Purpose
@@ -1614,7 +1614,7 @@ For each action:
 
 ## File upload / import mapping page
 ### A. Purpose
-- Information not available as a separate upload/mapping route in current PIM1.
+- Information not available as a separate upload/mapping route in current TEJ PIM.
 - Current import UI begins at monitoring and repair, not file upload wizard steps.
 
 ### B-K.
@@ -1636,7 +1636,7 @@ For each action:
 
 ## Export page / export history page
 ### A. Purpose
-- Information not available as a standalone export page in current PIM1.
+- Information not available as a standalone export page in current TEJ PIM.
 - Channel submission/export activity is tracked through Product Detail > Channels, Channels Submissions, and Operations Jobs.
 
 ### B-K.
@@ -1895,7 +1895,7 @@ For each action:
 
 ## Reports home
 ### A. Purpose
-- Legacy redirect in current PIM1.
+- Legacy redirect in current TEJ PIM.
 - `/reports` redirects to Dashboard rather than serving a standalone reports center.
 
 ### B-K.
@@ -1924,7 +1924,7 @@ For each action:
 
 ## Approval turnaround report
 ### A. Purpose
-- Information not available as a standalone turnaround report in current PIM1.
+- Information not available as a standalone turnaround report in current TEJ PIM.
 
 ### B-K.
 - Use Approval Queue KPIs and workflow counts as current visibility.
@@ -1978,7 +1978,7 @@ For each action:
 
 ## User create / edit page
 ### A. Purpose
-- Information not available in current PIM1 project as a standalone page.
+- Information not available in current TEJ PIM project as a standalone page.
 
 ### B-K.
 - Current Users & Roles page is visibility-focused, not a full user-management console.
@@ -2002,7 +2002,7 @@ For each action:
 
 ## Approval settings
 ### A. Purpose
-- Information not available as a separate settings page in current PIM1.
+- Information not available as a separate settings page in current TEJ PIM.
 
 ### B-K.
 - Approval visibility is operational, not currently governed through a standalone settings editor.
@@ -2037,7 +2037,7 @@ For each action:
 
 ## Notification settings
 ### A. Purpose
-- Information not available in current PIM1 project.
+- Information not available in current TEJ PIM project.
 
 ### B-K.
 - Not implemented as a user-facing settings page.
@@ -2051,7 +2051,7 @@ For each action:
 
 ## API / token settings if applicable
 ### A. Purpose
-- Information not available in current PIM1 project as a user-facing page.
+- Information not available in current TEJ PIM project as a user-facing page.
 
 ### B-K.
 - Not implemented.
@@ -2111,9 +2111,9 @@ For each action:
 ## 6. Pages Covered in Detail
 
 This guide covers every requested page or requested functional surface using one of three classifications:
-- `Standalone page`: a real current PIM1 route
+- `Standalone page`: a real current TEJ PIM route
 - `Implemented inside another page`: the functionality exists but is embedded in another route or tab
-- `Information not available in current PIM1 project`: no validated user-facing page was found
+- `Information not available in current TEJ PIM project`: no validated user-facing page was found
 
 ### Core navigation / shell coverage
 - Login -> Standalone page
@@ -2127,14 +2127,14 @@ This guide covers every requested page or requested functional surface using one
 ### Catalog coverage
 - Product list / saved views / product create -> Standalone page with embedded flows
 - Product detail overview / edit / tabs / audit activity -> Standalone page with tabbed workspace
-- Product duplicate / dedicated archive-delete page -> Information not available in current PIM1 project
-- Related products / bundles -> Information not available in current PIM1 project
+- Product duplicate / dedicated archive-delete page -> Information not available in current TEJ PIM project
+- Related products / bundles -> Information not available in current TEJ PIM project
 
 ### Category and attribute coverage
 - Category list / create -> Standalone page with embedded create flow
 - Category edit / tree page -> Not standalone
 - Attribute list / create / category assignment / mandatory-vs-optional / variant attribute setup -> Standalone page with embedded governance controls
-- Attribute group management / standalone validation rule page -> Information not available in current PIM1 project
+- Attribute group management / standalone validation rule page -> Information not available in current TEJ PIM project
 
 ### Media coverage
 - Media library / upload / validation / product-media linking -> Standalone page
@@ -2157,7 +2157,7 @@ This guide covers every requested page or requested functional surface using one
 ### Reporting and admin coverage
 - Reports home and report pages -> Redirected or implemented through existing operational pages, not as a dedicated reporting module
 - Admin overview / plan / users / connector access / privacy / audit -> Standalone pages
-- User create-edit / workflow settings / notification settings / API token settings -> Information not available in current PIM1 project
+- User create-edit / workflow settings / notification settings / API token settings -> Information not available in current TEJ PIM project
 
 ## 7. Page Flow Mapping
 
@@ -2190,7 +2190,7 @@ This guide covers every requested page or requested functional surface using one
   - product saved, validated, and ready for submission or review
 
 ### End-to-end journey for bulk import
-- Start page: current PIM1 import operations start at `/operations/imports`
+- Start page: current TEJ PIM import operations start at `/operations/imports`
 - Navigation path:
   1. Monitor import jobs
   2. Open selected job rows with `bulkJobId`
@@ -2274,7 +2274,7 @@ This guide covers every requested page or requested functional surface using one
 - Completion criteria:
   - update applied successfully
 - Rollback note:
-  - a dedicated bulk-edit rollback page is not validated in current PIM1
+  - a dedicated bulk-edit rollback page is not validated in current TEJ PIM
 
 ### End-to-end journey for admin setup and user onboarding
 - Start page: `/admin`
@@ -2446,11 +2446,11 @@ This guide covers every requested page or requested functional surface using one
 
 ## 10. Glossary
 
-- Product: the primary catalog record managed in PIM1
+- Product: the primary catalog record managed in TEJ PIM
 - Parent product: the main product record that can own variants
 - Variant: a child SKU with its own inventory, pricing, status, and attributes
 - Attribute: structured product or variant field defined per category
-- Attribute group: Information not available in current PIM1 project as a standalone user-facing concept
+- Attribute group: Information not available in current TEJ PIM project as a standalone user-facing concept
 - Taxonomy: the category structure used to organize products and scope attributes
 - Completeness: percentage indicator of how complete a product is
 - Channel readiness: product ability to move toward channel submission based on quality, mapping, and channel checks
@@ -2468,12 +2468,12 @@ This guide covers every requested page or requested functional surface using one
 
 ## 11. Final Deliverable Quality Rules Applied to This Guide
 
-- The guide reflects current validated PIM1 routes and embedded workflows only, and Section 12 maps each page/functionality claim to source files.
+- The guide reflects current validated TEJ PIM routes and embedded workflows only, and Section 12 maps each page/functionality claim to source files.
 - Requested pages that do not exist as standalone surfaces are marked clearly rather than invented.
 - Permissions are described in terms of current technical roles: `admin`, `editor`, `viewer`.
 - Operational examples use realistic catalog, marketplace, and governance scenarios.
 - Field descriptions focus on what is visible and actionable in the current UI.
-- Where information is missing from current PIM1, the guide states that directly.
+- Where information is missing from current TEJ PIM, the guide states that directly.
 
 ## 12. Validation Appendix: Page Claim to Source Map
 

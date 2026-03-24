@@ -37,12 +37,12 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Mapping Name`, `Category`, `Node Type`, `Version`, `Required Fields`, `Field Mapping`, `Discovery Metadata`, `Default Mapping`, `Product`, `Mapping`
 - Field names (technical): `requiredFields`, `fieldMap`, `discoveryMetadata`, `name`
 - Select names: `categoryId`, `nodeType`, `version`, `isDefault`, `productId`, `mappingId`
 - Placeholders: `e.g. ONDC Apparel Mapping`
-- Links: Information not available in PIM1 project.
+- Links: Information not available in TEJ PIM project.
 
 ## Related components
 - `ui/button`, `ui/card`, `ui/input`, `ui/select`, `ui/textarea`

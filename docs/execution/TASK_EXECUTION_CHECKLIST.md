@@ -1,4 +1,4 @@
-# PIM1 Task Execution Checklist (Anti-Loop)
+# TEJ PIM Task Execution Checklist (Anti-Loop)
 
 Use this before starting any task and before replying with "continue".
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 function readCookie(name: string): string {
   const prefix = `${name}=`;
@@ -63,9 +64,10 @@ export function ConsentPageClient() {
   return (
     <div className="mx-auto max-w-xl space-y-5 rounded-lg border border-slate-200 bg-white p-6">
       <header className="space-y-1">
+        <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">Consent required</h1>
         <p className="text-sm text-slate-600">
-          Before using PIM1, confirm that you agree to data processing under our DPDP policy.
+          Before using TEJ PIM, confirm that you agree to data processing under our DPDP policy.
         </p>
       </header>
 

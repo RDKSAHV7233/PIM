@@ -1,4 +1,4 @@
-# PIM1 AI-to-Code Increment Execution Pack
+# TEJ PIM AI-to-Code Increment Execution Pack
 
 Date: 2026-03-05  
 Mode: Increment-first, practical execution  

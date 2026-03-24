@@ -1,8 +1,8 @@
-# PIM1 Connector Internal Implementation Guide
+# TEJ PIM Connector Internal Implementation Guide
 
 Status: Active internal engineering guide  
 Date: 2026-03-23  
-Audience: Engineers changing connector internals in the PIM1 repository
+Audience: Engineers changing connector internals in the TEJ PIM repository
 
 ## 1. Purpose
 
@@ -13,7 +13,7 @@ Use it for:
 - connector lifecycle changes
 - mapping/readiness integration work
 - connector UX integration work
-- code review against the current PIM1 connector model
+- code review against the current TEJ PIM connector model
 
 Do not use older external artifacts as implementation authority. They are historical only.
 
@@ -54,7 +54,7 @@ As of 2026-03-23:
 
 ### Runtime model
 
-PIM1 uses a hybrid connector runtime.
+TEJ PIM uses a hybrid connector runtime.
 
 Current behavior:
 - connector implementations are compiled into the Nest app
@@ -202,7 +202,7 @@ Primary files:
 
 When building connector features:
 
-1. Use current PIM1 paths only.
+1. Use current TEJ PIM paths only.
 2. Treat `/channels/mappings` as the only editable mapping surface.
 3. Treat old template routes/surfaces as transition-only unless explicitly retired.
 4. Keep capability truth aligned across backend and UI.

@@ -71,7 +71,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
       <div className="space-y-5">
         <PageHeader
           title="Outbound Webhooks"
-          description="Send PIM1 notification events to tenant-managed HTTP endpoints."
+          description="Send TEJ PIM notification events to tenant-managed HTTP endpoints."
           breadcrumb={
             <>
               Dashboard / Admin / <span className="font-semibold text-slate-700">Outbound Webhooks</span>
@@ -116,7 +116,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                   name="targetUrl"
                   required
                   className="w-full rounded-md border border-slate-200 px-3 py-2"
-                  placeholder="https://example.com/webhooks/pim1"
+                  placeholder="https://example.com/webhooks/tej-pim"
                 />
               </label>
               <label className="space-y-1 text-sm">
@@ -131,7 +131,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
               </label>
               <div className="md:col-span-2 xl:col-span-4 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 <span>
-                  PIM1 signs each delivery with <code>x-pim1-webhook-signature</code> using HMAC SHA-256 over
+                  TEJ PIM signs each delivery with <code>x-pim1-webhook-signature</code> using HMAC SHA-256 over
                   <code>{" timestamp.body"}</code>.
                 </span>
                 <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white">

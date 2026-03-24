@@ -1,11 +1,11 @@
-# PIM1 Product Test Strategy
+# TEJ PIM Product Test Strategy
 
-Status: Current-state product test architecture for PIM1  
+Status: Current-state product test architecture for TEJ PIM  
 Last updated: 2026-03-11
 
 ## Purpose
 
-PIM1 already has many integration tests, but they were accumulated by technical slice. The product now needs a stable, product-facing test surface that answers a different question:
+TEJ PIM already has many integration tests, but they were accumulated by technical slice. The product now needs a stable, product-facing test surface that answers a different question:
 
 - can a seller log in and operate the shell?
 - can catalog teams author and fix products?
@@ -43,7 +43,7 @@ That keeps the suite anchored to a buildable current-state product before featur
 Goal:
 - authenticated shell is usable
 - topbar navigation is present
-- sidebar reflects current PIM1 information architecture
+- sidebar reflects current TEJ PIM information architecture
 
 Coverage:
 - `apps/web/test/integration/auth-shell-ui.test.cjs`
@@ -110,7 +110,7 @@ Coverage:
 
 ## UI/UX Validation Model
 
-PIM1 does not currently use a browser-driven visual regression stack in this suite. Current UI/UX regression protection is a combination of:
+TEJ PIM does not currently use a browser-driven visual regression stack in this suite. Current UI/UX regression protection is a combination of:
 
 - source-structure assertions on shipped page/component files
 - build validation

@@ -1,12 +1,12 @@
-# PIM1 Flipkart v1 Implementation Plan
+# TEJ PIM Flipkart v1 Implementation Plan
 
 Status: Contract locked for implementation
 Date: 2026-03-10
-Audience: Product, platform, and connector engineers implementing Flipkart v1 on current PIM1
+Audience: Product, platform, and connector engineers implementing Flipkart v1 on current TEJ PIM
 
 ## 1. Scope
 
-This plan defines the implementation contract for Flipkart v1 in PIM1.
+This plan defines the implementation contract for Flipkart v1 in TEJ PIM.
 
 It is intentionally strict. It freezes the decisions that must not drift during implementation:
 - connector capability model
@@ -17,11 +17,11 @@ It is intentionally strict. It freezes the decisions that must not drift during 
 - response normalization contract
 - seller-facing UI truth
 
-This is a PIM1 implementation plan, not a generic marketplace architecture note.
+This is a TEJ PIM implementation plan, not a generic marketplace architecture note.
 
-## 2. Validated PIM1 Surfaces
+## 2. Validated TEJ PIM Surfaces
 
-Flipkart v1 will build on these existing PIM1 surfaces:
+Flipkart v1 will build on these existing TEJ PIM surfaces:
 
 ### Installation and connector framework
 - `apps/api/src/connector-installer/connector-installer.controller.ts`
@@ -100,7 +100,7 @@ Flipkart v1 does not introduce separate seller-facing actions for:
 - sync inventory
 
 ### 3.5 Mapping model
-Flipkart v1 reuses the current PIM1 lifecycle mapping system.
+Flipkart v1 reuses the current TEJ PIM lifecycle mapping system.
 
 It does not create:
 - a second mapping editor
@@ -121,7 +121,7 @@ Real provider validation is deferred until:
 
 ## 4. Installation and Credential Contract
 
-Flipkart installation must use the existing PIM1 connector installation model.
+Flipkart installation must use the existing TEJ PIM connector installation model.
 
 The Flipkart installation contract must expose:
 - `clientId`
@@ -138,13 +138,13 @@ Credential split:
   - access token / refresh token if applicable
 
 Rules:
-- credentials must be stored through current PIM1 encrypted connector credential flow
+- credentials must be stored through current TEJ PIM encrypted connector credential flow
 - no env-driven production shortcut
 - test connection must validate real credential shape and provider reachability when sandbox credentials exist
 
 ## 5. Taxonomy Contract
 
-Flipkart taxonomy must be stored inside PIM1-owned persistence.
+Flipkart taxonomy must be stored inside TEJ PIM-owned persistence.
 
 The taxonomy snapshot model must support:
 - category id

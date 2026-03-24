@@ -27,11 +27,11 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in PIM1 project.
+- Buttons: Information not available in TEJ PIM project.
 - Visible labels: `Plan Tier`
-- Field names (technical): Information not available in PIM1 project.
-- Select names: Information not available in PIM1 project.
-- Placeholders: Information not available in PIM1 project.
+- Field names (technical): Information not available in TEJ PIM project.
+- Select names: Information not available in TEJ PIM project.
+- Placeholders: Information not available in TEJ PIM project.
 - Links: `/dashboard`, `/admin`
 
 ## Related components

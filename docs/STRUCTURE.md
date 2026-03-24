@@ -1,4 +1,4 @@
-# PIM1 Documentation Structure (Canonical)
+# TEJ PIM Documentation Structure (Canonical)
 
 - Current canonical snapshot: `docs/execution/CURRENT_STATE.md`
 - Connector documentation entry point: `docs/connectors/README.md`
@@ -36,7 +36,7 @@
   - regenerated against the current mapping lifecycle and canonical `/channels/mappings` flow
   - supporting reference only; not the primary connector implementation truth over PRD/code/INCREMENT state
 - `docs/ports/`
-  - `orbit-pim1-transfer-2026-03-06/` (historical transfer pack retained for traceability; not current implementation truth)
+  - `orbit-TEJ PIM-transfer-2026-03-06/` (historical transfer pack retained for traceability; not current implementation truth)
 - `docs/runbooks/`
   - `auth-bootstrap-admin.md`
   - `credential-key-rotation.md`

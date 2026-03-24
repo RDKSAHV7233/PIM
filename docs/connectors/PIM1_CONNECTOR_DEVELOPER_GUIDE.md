@@ -1,14 +1,14 @@
-# PIM1 Connector Developer Guide
+# TEJ PIM Connector Developer Guide
 
 Status: Active developer-facing connector guide  
 Date: 2026-03-23  
-Audience: Connector engineers integrating with the current PIM1 platform
+Audience: Connector engineers integrating with the current TEJ PIM platform
 
 ## 1. Start Here
 
 Use this guide if you need to:
 - understand the connector API surface
-- integrate a channel with current PIM1 mapping/readiness behavior
+- integrate a channel with current TEJ PIM mapping/readiness behavior
 - choose the right connector flow for export-only vs publish-capable channels
 - understand step-up re-authentication on high-risk mapping actions
 
@@ -26,7 +26,7 @@ Use the deeper docs only when you specifically need them:
 
 ## 2. Connector Model at a Glance
 
-Current PIM1 connector behavior:
+Current TEJ PIM connector behavior:
 - connectors run inside a hybrid compiled registry
 - mapping lifecycle is versioned
 - publish-readiness is evaluated before high-risk actions
@@ -206,7 +206,7 @@ It is not a general MFA platform.
 
 ## 8. Connector UX Expectations
 
-PIM1 is product-first.
+TEJ PIM is product-first.
 
 Connector UX should support:
 - product readiness correction

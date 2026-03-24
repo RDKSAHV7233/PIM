@@ -1288,9 +1288,9 @@ export class AuthService implements OnModuleDestroy {
       const privacyUrl = `${webBaseUrl}/settings/privacy`;
       await this.authEmailService.send({
         to: userId,
-        subject: "Your PIM1 account export is ready",
-        text: `Your account export is ready. Sign in to PIM1 and open ${privacyUrl} to download it securely.`,
-        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to PIM1</a> and open Privacy settings to download it securely.</p>`,
+        subject: "Your TEJ PIM account export is ready",
+        text: `Your account export is ready. Sign in to TEJ PIM and open ${privacyUrl} to download it securely.`,
+        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to TEJ PIM</a> and open Privacy settings to download it securely.</p>`,
         category: "account_export_ready",
         metadata: {
           tenantId,
@@ -1306,10 +1306,10 @@ export class AuthService implements OnModuleDestroy {
 
     const resetUrl = `${webBaseUrl}/login/reset?token=${encodeURIComponent(payload.resetToken)}&email=${encodeURIComponent(userId)}&workspace=${encodeURIComponent(workspaceSlug)}`;
     const isUnlock = payload.kind === "account_unlock";
-    const subject = isUnlock ? "Unlock your PIM1 account" : "Reset your PIM1 password";
+    const subject = isUnlock ? "Unlock your TEJ PIM account" : "Reset your TEJ PIM password";
     const intro = isUnlock
       ? "Your account was locked after repeated sign-in attempts. Use the link below to set a new password and regain access."
-      : "Use the link below to set a new password for your PIM1 account.";
+      : "Use the link below to set a new password for your TEJ PIM account.";
 
     await this.authEmailService.send({
       to: userId,
@@ -1813,8 +1813,8 @@ export class AuthService implements OnModuleDestroy {
   }
 
   private redisKeyPrefix(): string {
-    const configured = String(process.env.PIM_AUTH_REDIS_KEY_PREFIX ?? "pim1:auth:").trim();
-    return configured.length > 0 ? configured : "pim1:auth:";
+    const configured = String(process.env.PIM_AUTH_REDIS_KEY_PREFIX ?? "PIM1:auth:").trim();
+    return configured.length > 0 ? configured : "PIM1:auth:";
   }
 
   private isRedisDisabled(): boolean {

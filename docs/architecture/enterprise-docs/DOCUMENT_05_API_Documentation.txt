@@ -1,7 +1,7 @@
 Document Name: API Documentation
 
 Purpose:
-Describe APIs available in PIM1.
+Describe APIs available in TEJ PIM.
 
 Scope:
 Validated API surface from docs/openapi.yaml and controller implementations under apps/api/src.
@@ -156,5 +156,5 @@ Pagination:
 Source: apps/api/src/common/pagination/*
 
 Webhooks/Event Receiver Endpoint:
-Information not available in PIM1 project.
+Information not available in TEJ PIM project.
 

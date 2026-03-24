@@ -1,13 +1,13 @@
 Document Name: Product Overview
 
 Purpose:
-Explain the purpose of the PIM1 platform.
+Explain the purpose of the TEJ PIM platform.
 
 Scope:
-Product purpose, business problem, scope boundaries, documented users, implemented features, and project terminology validated from PIM1 sources.
+Product purpose, business problem, scope boundaries, documented users, implemented features, and project terminology validated from TEJ PIM sources.
 
 Content:
-Product Name: PIM1
+Product Name: TEJ PIM
 
 Validated Product Description:
 India-first, multi-tenant Product Information Management platform with connector-first marketplace architecture.

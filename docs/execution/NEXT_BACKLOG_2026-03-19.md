@@ -1,4 +1,4 @@
-# PIM1 Next Backlog
+# TEJ PIM Next Backlog
 
 - Date: 2026-03-19
 - Purpose: hold all deferred work outside the active auth/compliance slice for password recovery, account export delivery, and legacy hash migration

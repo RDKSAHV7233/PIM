@@ -199,7 +199,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
         <label htmlFor={fieldId("brand")} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
           Brand
         </label>
-        <Input id={fieldId("brand")} name="brand" placeholder="e.g. PIM1" />
+        <Input id={fieldId("brand")} name="brand" placeholder="e.g. TEJ PIM" />
       </div>
 
       <div className="space-y-1 md:col-span-2">

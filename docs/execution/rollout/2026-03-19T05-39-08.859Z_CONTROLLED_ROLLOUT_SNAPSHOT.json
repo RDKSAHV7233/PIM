@@ -18,7 +18,7 @@
         "active": 0,
         "idle": 1,
         "waiting": 0,
-        "applicationName": "pim1-api"
+        "applicationName": "TEJ PIM-api"
       },
       "queues": {
         "webhook-event": {
