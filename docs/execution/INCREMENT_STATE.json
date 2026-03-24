@@ -114,8 +114,8 @@
         {
           "storyId": "ST-UI-AUTH-SHELL-005",
           "title": "Stabilize post-login auth shell rendering from server token presence",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
           "commit": "ccd18a8",
           "tests_passed": [
@@ -1479,7 +1479,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "787fb7d",
+          "commit": "4114ba3",
           "tests_passed": [
             "node apps/web/test/integration/connector-install-form.test.cjs",
             "node apps/web/test/integration/connector-launch-honesty-ui.test.cjs",
