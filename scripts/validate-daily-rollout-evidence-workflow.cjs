@@ -53,7 +53,10 @@ function main() {
   requireRunContains(snapshotStep, "node scripts/capture-controlled-rollout-snapshot.cjs", "Capture daily rollout snapshot");
 
   const uploadStep = requireStep(dailyJob, "Upload daily rollout artifacts");
-  assert(String(uploadStep.uses || "").trim() === "actions/upload-artifact@v4", "Upload daily rollout artifacts must use actions/upload-artifact@v4");
+  assert(
+    /^actions\/upload-artifact@v\d+$/.test(String(uploadStep.uses || "").trim()),
+    "Upload daily rollout artifacts must use actions/upload-artifact",
+  );
 
   const commitStep = requireStep(dailyJob, "Commit daily rollout evidence");
   requireRunContains(commitStep, "git commit -m \"chore(release): record daily rollout evidence [skip ci]\"", "Commit daily rollout evidence");

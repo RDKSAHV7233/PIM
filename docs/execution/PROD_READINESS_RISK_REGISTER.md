@@ -1,6 +1,6 @@
 # TEJ PIM Production Readiness Risk Register
 
-Last updated: 2026-03-23 (latest daily evidence + green staging reruns reconciled)
+Last updated: 2026-03-24 (latest checked-in daily evidence + green staging reruns reconciled)
 
 ## P0 (Must close before production)
 
@@ -15,7 +15,7 @@ Last updated: 2026-03-23 (latest daily evidence + green staging reruns reconcile
   - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
   - Completed: live staging workflow run `23127921361` captured a healthy staging snapshot with `/api/v1/health` returning `env=staging`, queue runtime `backend=bullmq`, and `workerEnabled=true`.
   - Completed: artifact `staging-gate-artifacts-23127921361` uploaded with digest `sha256:c2de34cd35af3cbac223b77885c37c8755424e6cdc3ea64a5ae3599fb615d537`.
-  - Remaining: fresh consecutive E10 signoff continuity is not yet restored, and the 14-day/SLO broad-rollout evidence window is still incomplete.
+  - Remaining: fresh consecutive E10 signoff continuity is not yet restored, and the 14-day/SLO broad-rollout evidence window remains incomplete at `8 / 14` days in the latest checked-in snapshot.
 - Exit criteria:
   1. Two consecutive E10 signoff artifacts recorded.
   2. `/api/v1/health` reports `env=staging` in staging.
@@ -25,8 +25,8 @@ Last updated: 2026-03-23 (latest daily evidence + green staging reruns reconcile
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
   - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
-  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23396591019`
-  - Latest snapshot: `docs/execution/rollout/2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23423428444`
+  - Latest snapshot: `docs/execution/rollout/2026-03-23T05-50-17.608Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
 - Implementation update (2026-03-16):
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
@@ -87,9 +87,19 @@ Last updated: 2026-03-23 (latest daily evidence + green staging reruns reconcile
   - Full staging E2E rerun `23410453415` passed on the same commit with `108 / 121` pass, `0` fail, `13` skip.
   - The previously failing March 20 checks (`create_export_job`, `account_export_request`) are now closed. `create_export_job` now skips honestly when staging connector/category readiness prevents export-job creation.
   - Remaining: restore controlled-gate continuity and continue the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-03-23):
+  - Daily rollout evidence workflow run `23423428444` succeeded and persisted snapshot `docs/execution/rollout/2026-03-23T05-50-17.608Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`.
+  - Latest snapshot shows:
+    - `health.ok = true`
+    - `health.status = 200`
+    - `consecutiveE10SignoffRuns = 0`
+    - `controlledRollout.pending = ["Need at least 2 consecutive E10 gate signoff artifacts."]`
+    - `observationWindowDaysCovered = 8 / 14`
+    - `sloTrendDaysCovered = 8 / 14`
+  - Remaining: restore controlled-gate continuity and continue the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
 - Prior implementation update (2026-03-13):
   - `.github/workflows/deploy-staging.yml` now captures a controlled rollout snapshot against the live staging URL after the post-deploy verification step.
-  - The same workflow now uploads gate and rollout snapshot artifacts via `actions/upload-artifact@v4`.
+  - The same workflow now uploads gate, rollout, and smoke artifacts via `actions/upload-artifact`.
   - Added `scripts/validate-deploy-staging-workflow.cjs` to statically verify the deploy workflow still contains the required smoke, post-deploy, gate-signoff, rollout-snapshot, and artifact-upload steps.
   - Added `scripts/validate-live-staging-evidence.cjs` plus `docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md` so the next live staging run can be validated mechanically instead of with a manual artifact read-through.
   - `deploy-staging.yml` now also supports `workflow_dispatch`, so the evidence run can be triggered directly from GitHub CLI without a synthetic push to `main`.

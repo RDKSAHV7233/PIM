@@ -109,7 +109,7 @@ node scripts/validate-live-staging-evidence.cjs --artifactDir $artifactDir --env
 - gate artifact contains `environment`, `tenantId`, `date`, `gitTag`, `suite`
 - rollout snapshot has:
   - `health.ok = true`
-  - `health.status = "ok"`
+  - `health.status` indicating a healthy response (`200` or `"ok"`)
   - `controlledRollout.pending = []`
 
 ### Expected partial state after the first live run

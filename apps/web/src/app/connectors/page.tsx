@@ -14,6 +14,8 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
+  type ConnectorDefinition,
+  type ConnectorInstallation,
   type MarketplaceChannel,
   getConnectorDefinitions,
   getInstalledConnectors,
@@ -32,8 +34,11 @@ interface ConnectorsPageProps {
     status?: string;
     connectorSlug?: string;
     installError?: string;
+    q?: string;
   }>;
 }
+
+type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 function mapConnectorSlugToChannel(slugInput: string): MarketplaceChannel | null {
   const slug = String(slugInput ?? "").trim().toLowerCase();
@@ -134,21 +139,25 @@ function connectorStatusNote(
   return null;
 }
 
-function installationStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+function installationStatusTone(status: string): StatusTone {
   const normalized = String(status ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE") {
     return "success";
   }
-  if (normalized === "DISABLED" || normalized === "INACTIVE") {
+  if (normalized === "PAUSED" || normalized === "DISABLED" || normalized === "INACTIVE") {
     return "warning";
   }
-  if (normalized === "ERROR" || normalized === "FAILED") {
+  if (normalized === "CREDENTIAL_EXPIRED" || normalized === "ERROR" || normalized === "FAILED") {
     return "danger";
   }
   return "neutral";
 }
 
-function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | "warning" | "info" {
+function isInstallationAttentionStatus(status: string): boolean {
+  return installationStatusTone(status) === "warning" || installationStatusTone(status) === "danger";
+}
+
+function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
   if (stage === "live") {
     return "success";
   }
@@ -171,7 +180,7 @@ function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
 function resolveInstalledStatusPresentation(
   status: string,
   implementationStatus: string | undefined,
-): { label: string; tone: "neutral" | "success" | "warning" | "danger" | "info" } {
+): { label: string; tone: StatusTone } {
   const normalizedStatus = String(status ?? "").trim().toUpperCase();
   if (normalizedStatus === "ACTIVE" && implementationStatus === "stub") {
     return {
@@ -185,6 +194,127 @@ function resolveInstalledStatusPresentation(
   };
 }
 
+function formatCapabilityList(capabilities: string[]): string {
+  return capabilities.length > 0 ? capabilities.join(", ") : "-";
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "Not recorded";
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+}
+
+function connectorMatchesQuery(
+  query: string,
+  definition: ConnectorDefinition,
+  installedForDefinition: ConnectorInstallation[],
+): boolean {
+  if (!query) {
+    return true;
+  }
+  const searchable = [
+    definition.displayName,
+    definition.slug,
+    definition.authType,
+    definition.connectorVersion,
+    definition.launchStage,
+    definition.launchNote ?? "",
+    definition.implementationStatus ?? "",
+    ...definition.capabilities,
+    ...installedForDefinition.flatMap((installation) => [
+      installation.accountAlias,
+      installation.externalAccountRef ?? "",
+      installation.status,
+      ...installation.capabilities,
+    ]),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return searchable.includes(query);
+}
+
+function installationMatchesQuery(query: string, installation: ConnectorInstallation): boolean {
+  if (!query) {
+    return true;
+  }
+  const searchable = [
+    installation.displayName,
+    installation.slug,
+    installation.accountAlias,
+    installation.externalAccountRef ?? "",
+    installation.status,
+    installation.launchStage,
+    installation.launchNote ?? "",
+    installation.implementationStatus ?? "",
+    ...installation.capabilities,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return searchable.includes(query);
+}
+
+function summarizeDefinitionWorkspace(
+  definition: ConnectorDefinition,
+  installedForDefinition: ConnectorInstallation[],
+): { label: string; tone: StatusTone; description: string } {
+  const activeAccounts = installedForDefinition.filter(
+    (installation) => String(installation.status ?? "").trim().toUpperCase() === "ACTIVE",
+  ).length;
+  const attentionAccounts = installedForDefinition.filter((installation) =>
+    isInstallationAttentionStatus(installation.status),
+  ).length;
+
+  if (activeAccounts > 0) {
+    return {
+      label: "Connected",
+      tone: "success",
+      description: `${activeAccounts} active account${activeAccounts === 1 ? "" : "s"} already using this connector.`,
+    };
+  }
+  if (attentionAccounts > 0) {
+    return {
+      label: "Needs attention",
+      tone: "warning",
+      description: `${attentionAccounts} account${attentionAccounts === 1 ? "" : "s"} need follow-up before the lane is healthy.`,
+    };
+  }
+  if (definition.launchStage === "manual") {
+    return {
+      label: "Guided rollout",
+      tone: "warning",
+      description: "Operationally limited. Keep installs coordinated with the rollout owner.",
+    };
+  }
+  if (definition.launchStage === "planned") {
+    return {
+      label: "Planned",
+      tone: "info",
+      description: "Tracked in the product roadmap but not open for seller self-serve install yet.",
+    };
+  }
+  if (definition.actions?.install.allowed) {
+    return {
+      label: "Needs setup",
+      tone: "info",
+      description: "Ready for the first account connection and downstream mapping work.",
+    };
+  }
+  if (isPlanBlockedReason(definition.actions?.install.reason)) {
+    return {
+      label: "Plan blocked",
+      tone: "warning",
+      description: formatActionBlockedReason(definition.actions?.install.reason),
+    };
+  }
+  return {
+    label: "Action blocked",
+    tone: "danger",
+    description: formatActionBlockedReason(definition.actions?.install.reason),
+  };
+}
+
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -194,6 +324,8 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     String(query.installError ?? ""),
     String(query.connectorSlug ?? "").trim().toLowerCase(),
   );
+  const searchValue = String(query.q ?? "").trim();
+  const normalizedSearch = searchValue.toLowerCase();
 
   try {
     const [definitions, installations, productsRaw] = await Promise.all([
@@ -204,21 +336,79 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
     const visibleProducts = filterTestData(productsRaw, true);
     const firstProductId = visibleProducts[0]?.id ?? "";
+    const definitionModels = definitions
+      .map((definition) => {
+        const installedForDefinition = installations.filter(
+          (installation) => installation.connectorId === definition.id,
+        );
+        return {
+          definition,
+          installedForDefinition,
+          statusNote: connectorStatusNote(definition.slug, definition.implementationStatus),
+          workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
+        };
+      })
+      .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
+      .sort((left, right) => {
+        const installedDelta = right.installedForDefinition.length - left.installedForDefinition.length;
+        if (installedDelta !== 0) {
+          return installedDelta;
+        }
+        return left.definition.displayName.localeCompare(right.definition.displayName);
+      });
+    const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
+    const manualDefinitions = definitionModels.filter((item) => item.definition.launchStage === "manual");
+    const plannedDefinitions = definitionModels.filter((item) => item.definition.launchStage === "planned");
+    const needsSetupDefinitions = definitionModels.filter(
+      (item) => item.workspaceState.label === "Needs setup",
+    );
+    const filteredInstallations = installations
+      .filter((installation) => installationMatchesQuery(normalizedSearch, installation))
+      .sort((left, right) => {
+        const leftActive = String(left.status ?? "").trim().toUpperCase() === "ACTIVE" ? 0 : 1;
+        const rightActive = String(right.status ?? "").trim().toUpperCase() === "ACTIVE" ? 0 : 1;
+        if (leftActive !== rightActive) {
+          return leftActive - rightActive;
+        }
+        return `${left.displayName} ${left.accountAlias}`.localeCompare(
+          `${right.displayName} ${right.accountAlias}`,
+        );
+      });
+    const connectedAccountsCount = filteredInstallations.length;
+    const activeAccountsCount = filteredInstallations.filter(
+      (installation) => String(installation.status ?? "").trim().toUpperCase() === "ACTIVE",
+    ).length;
+    const attentionAccountsCount = filteredInstallations.filter((installation) =>
+      isInstallationAttentionStatus(installation.status),
+    ).length;
+    const portfolioContext = searchValue ? ` for "${searchValue}"` : "";
 
     return (
-      <div className="space-y-5">
+      <div className="space-y-6">
         <PageHeader
+          className="overflow-hidden border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,246,255,0.98),rgba(255,247,237,0.98))]"
           title="Channel Connectors"
-          description="Install, reconnect, and govern channel accounts for this tenant."
+          description="Run your marketplace portfolio like a connector workspace: see what is live, what needs setup, which accounts need attention, and where to jump next."
           breadcrumb={
             <>
               Dashboard / Channels / <span className="font-semibold text-slate-700">Connectors</span>
             </>
           }
           actions={
-            <Link href="/admin/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-              Connector Access
-            </Link>
+            <>
+              <Link
+                href="/channels/mappings"
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Open Mappings
+              </Link>
+              <Link
+                href="/admin/connectors"
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Connector Access
+              </Link>
+            </>
           }
         />
 
@@ -233,332 +423,636 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           </div>
         ) : null}
 
-        <Card>
-          <CardTitle>Available Connectors</CardTitle>
-          {definitions.length === 0 ? (
-            <EmptyState
-              icon="PLUG"
-              title="No connector definitions available"
-              description="Connector definitions have not been seeded for this environment."
-            />
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <Card className="border-slate-200 bg-white">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Portfolio Summary
+            </div>
+            <div className="mt-3 text-3xl font-semibold text-slate-900">{connectedAccountsCount}</div>
+            <p className="mt-2 text-sm text-slate-600">Connected accounts{portfolioContext}</p>
+          </Card>
+          <Card className="border-slate-200 bg-white">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Live marketplaces
+            </div>
+            <div className="mt-3 text-3xl font-semibold text-slate-900">{liveDefinitions.length}</div>
+            <p className="mt-2 text-sm text-slate-600">Marketplaces ready for seller-facing connector installs.</p>
+          </Card>
+          <Card className="border-slate-200 bg-white">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Needs setup
+            </div>
+            <div className="mt-3 text-3xl font-semibold text-slate-900">{needsSetupDefinitions.length}</div>
+            <p className="mt-2 text-sm text-slate-600">Live marketplaces still waiting for their first connected account.</p>
+          </Card>
+          <Card className="border-slate-200 bg-white">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Accounts needing attention
+            </div>
+            <div className="mt-3 text-3xl font-semibold text-slate-900">{attentionAccountsCount}</div>
+            <p className="mt-2 text-sm text-slate-600">Reconnect, disable, or clean up accounts that are not currently healthy.</p>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
+          <Card className="border-slate-200 bg-white">
+            <CardTitle>Search connectors</CardTitle>
+            <form method="GET" action="/channels/connectors" className="flex flex-col gap-3 md:flex-row md:items-end">
+              <div className="flex-1 space-y-2">
+                <label htmlFor="connector-search" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Search connectors
+                </label>
+                <Input
+                  id="connector-search"
+                  name="q"
+                  defaultValue={searchValue}
+                  placeholder="Search marketplaces, aliases, capabilities, or launch notes"
+                />
+                <p className="text-xs text-slate-500">
+                  Filter the workspace by marketplace, account alias, capability, or launch note.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit">Apply filters</Button>
+                {searchValue ? (
+                  <Link
+                    href="/channels/connectors"
+                    className="inline-flex items-center rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Clear
+                  </Link>
+                ) : null}
+              </div>
+            </form>
+          </Card>
+
+          <Card className="border-slate-200 bg-slate-950 text-white">
+            <CardTitle>Workspace lanes</CardTitle>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Live marketplaces</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{liveDefinitions.length}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Self-serve connector lanes that sellers can install and operate now.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Guided rollout</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{manualDefinitions.length}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Connectors that need a guided handoff or manual downstream workflow.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Planned backlog</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{plannedDefinitions.length}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Future connector surface that is visible for planning but not seller-ready yet.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
+          <Card className="border-slate-200 bg-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Live marketplaces</CardTitle>
+                <p className="text-sm text-slate-600">
+                  Marketplaces ready for seller-facing installs, mapping, and day-to-day account operations{portfolioContext}.
+                </p>
+              </div>
+              <StatusChip
+                label={`${liveDefinitions.filter((item) => item.installedForDefinition.length > 0).length} with active footprint`}
+                tone="info"
+              />
+            </div>
+
+            {liveDefinitions.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon="PLUG"
+                  title={searchValue ? "No live marketplaces match this search" : "No live marketplaces available"}
+                  description={
+                    searchValue
+                      ? "Try a broader search term or clear the filter to see the full connector portfolio."
+                      : "Live connector definitions have not been seeded for this environment."
+                  }
+                />
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                {liveDefinitions.map((item) => {
+                  const { definition, installedForDefinition, statusNote, workspaceState } = item;
+                  const primaryInstallation = installedForDefinition[0] ?? null;
+                  const mappedChannel = primaryInstallation
+                    ? mapConnectorSlugToChannel(primaryInstallation.slug)
+                    : mapConnectorSlugToChannel(definition.slug);
+                  const mappingHref =
+                    primaryInstallation && mappedChannel && firstProductId
+                      ? `/connectors/${encodeURIComponent(primaryInstallation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
+                      : primaryInstallation
+                      ? `/connectors/${encodeURIComponent(primaryInstallation.id)}/mapping`
+                      : "/channels/mappings";
+
+                  return (
+                    <section
+                      key={definition.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900">{definition.displayName}</h3>
+                          <p className="mt-1 font-mono text-xs text-slate-500">{definition.slug}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
+                          <StatusChip
+                            label={connectorLaunchLabel(definition.launchStage)}
+                            tone={connectorLaunchTone(definition.launchStage)}
+                          />
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-sm text-slate-600">{workspaceState.description}</p>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capability surface</p>
+                          <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(definition.capabilities)}</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Install footprint</p>
+                          <p className="mt-2 text-sm text-slate-700">
+                            {installedForDefinition.length} account{installedForDefinition.length === 1 ? "" : "s"} installed
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Auth {definition.authType} · Version {definition.connectorVersion}
+                          </p>
+                        </div>
+                      </div>
+
+                      {definition.launchNote ? (
+                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          {definition.launchNote}
+                        </p>
+                      ) : null}
+                      {statusNote ? (
+                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                          {statusNote}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link
+                          href={mappingHref}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Open mapping workspace
+                        </Link>
+                        {primaryInstallation ? (
+                          <Link
+                            href={`/channels/connectors/${encodeURIComponent(primaryInstallation.id)}`}
+                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            View account details
+                          </Link>
+                        ) : null}
+                      </div>
+
+                      {definition.launchStage === "live" && definition.actions?.install.allowed ? (
+                        <form action={installConnectorAction} className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                          <input type="hidden" name="slug" value={definition.slug} />
+                          <div className="space-y-1">
+                            <label
+                              htmlFor={`install-alias-${definition.id}`}
+                              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                            >
+                              Account Alias
+                            </label>
+                            <Input
+                              id={`install-alias-${definition.id}`}
+                              name="accountAlias"
+                              defaultValue="primary"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label
+                              htmlFor={`install-ref-${definition.id}`}
+                              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                            >
+                              External Account Ref
+                            </label>
+                            <Input
+                              id={`install-ref-${definition.id}`}
+                              name="externalAccountRef"
+                              placeholder="Optional"
+                            />
+                          </div>
+                          {definition.slug === "flipkart" ? (
+                            <>
+                              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                                Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-client-id-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Client ID
+                                </label>
+                                <Input
+                                  id={`install-client-id-${definition.id}`}
+                                  name="clientId"
+                                  autoComplete="off"
+                                  placeholder="fk-client-id"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-client-secret-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Client Secret
+                                </label>
+                                <Input
+                                  id={`install-client-secret-${definition.id}`}
+                                  name="clientSecret"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Enter Flipkart client secret"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-refresh-token-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Refresh Token
+                                </label>
+                                <Input
+                                  id={`install-refresh-token-${definition.id}`}
+                                  name="refreshToken"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Enter Flipkart refresh token"
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                          <PendingSubmitButton
+                            type="submit"
+                            idleLabel="Install connector"
+                            pendingLabel="Installing connector..."
+                          />
+                        </form>
+                      ) : (
+                        <p className="mt-4 text-xs text-slate-500">
+                          {definition.launchStage !== "live"
+                            ? "Seller self-serve install is intentionally hidden until this connector is operationally ready."
+                            : isPlanBlockedReason(definition.actions?.install.reason)
+                            ? (
+                              <>
+                                {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
+                                <Link href="/admin/plan" className="underline">
+                                  Upgrade your plan
+                                </Link>{" "}
+                                to install more accounts.
+                              </>
+                            )
+                            : formatActionBlockedReason(definition.actions?.install.reason)}
+                        </p>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          <Card className="border-slate-200 bg-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Needs setup</CardTitle>
+                <p className="text-sm text-slate-600">
+                  Live marketplaces with no connected account yet. This is the fastest path from connector discovery to mapping work.
+                </p>
+              </div>
+              <StatusChip label={`${needsSetupDefinitions.length} pending`} tone="warning" />
+            </div>
+
+            {needsSetupDefinitions.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon="PLUG"
+                  title="No live connectors are waiting for first setup"
+                  description={
+                    searchValue
+                      ? "This filtered view already has an installed account for each live marketplace."
+                      : "Every live marketplace in the current portfolio already has at least one connected account."
+                  }
+                />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {needsSetupDefinitions.map((item) => (
+                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatCapabilityList(item.definition.capabilities)}
+                        </p>
+                      </div>
+                      <StatusChip label={item.workspaceState.label} tone={item.workspaceState.tone} />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-slate-200 bg-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Guided rollout</CardTitle>
+                <p className="text-sm text-slate-600">
+                  Connectors with manual or partial operational paths that still matter for account planning.
+                </p>
+              </div>
+              <StatusChip label={`${manualDefinitions.length} connectors`} tone="warning" />
+            </div>
+            {manualDefinitions.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon="PLUG"
+                  title="No guided-rollout connectors in this view"
+                  description="Manual-rollout connectors will appear here when they are seeded into the connector definitions."
+                />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {manualDefinitions.map((item) => (
+                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
+                        <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
+                      </div>
+                      <StatusChip
+                        label={connectorLaunchLabel(item.definition.launchStage)}
+                        tone={connectorLaunchTone(item.definition.launchStage)}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
+                    {item.definition.launchNote ? (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        {item.definition.launchNote}
+                      </p>
+                    ) : null}
+                    {item.statusNote ? (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        {item.statusNote}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="border-slate-200 bg-white">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Planned and research</CardTitle>
+                <p className="text-sm text-slate-600">
+                  Future connector opportunities that are visible for roadmap awareness but not seller-ready.
+                </p>
+              </div>
+              <StatusChip label={`${plannedDefinitions.length} connectors`} tone="info" />
+            </div>
+            {plannedDefinitions.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon="PLUG"
+                  title="No planned connectors in this view"
+                  description="When roadmap-only connector definitions are present, they will appear here."
+                />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {plannedDefinitions.map((item) => (
+                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
+                        <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
+                      </div>
+                      <StatusChip
+                        label={connectorLaunchLabel(item.definition.launchStage)}
+                        tone={connectorLaunchTone(item.definition.launchStage)}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Capability surface: {formatCapabilityList(item.definition.capabilities)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <Card className="border-slate-200 bg-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Connected accounts</CardTitle>
+              <p className="text-sm text-slate-600">
+                Review account health, sync recency, connector metadata, and the actions operators take most often{portfolioContext}.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusChip label={`${activeAccountsCount} active`} tone="success" />
+              <StatusChip label={`${attentionAccountsCount} attention`} tone="warning" />
+            </div>
+          </div>
+
+          {filteredInstallations.length === 0 ? (
+            <div className="mt-4">
+              <EmptyState
+                icon="PLUG"
+                title={searchValue ? "No connected accounts match this search" : "No connectors installed"}
+                description={
+                  searchValue
+                    ? "Try a broader search term or clear the filter to inspect the full account portfolio."
+                    : "Install at least one connector to enable mapping previews and export flows."
+                }
+              />
+            </div>
           ) : (
-            <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {definitions.map((definition) => {
-                const installedForDefinition = installations.filter(
-                  (installation) => installation.connectorId === definition.id,
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              {filteredInstallations.map((installation) => {
+                const mappedChannel = mapConnectorSlugToChannel(installation.slug);
+                const statusNote = connectorStatusNote(
+                  installation.slug,
+                  installation.implementationStatus,
                 );
-                const statusNote = connectorStatusNote(definition.slug, definition.implementationStatus);
+                const displayStatus = resolveInstalledStatusPresentation(
+                  installation.status,
+                  installation.implementationStatus,
+                );
+                const mappingHref =
+                  mappedChannel && firstProductId
+                    ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
+                    : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
 
                 return (
                   <section
-                    key={definition.id}
-                    className="rounded-lg border border-slate-200 p-3"
+                    key={installation.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
                   >
-                    <h3 className="text-sm font-semibold text-slate-900">{definition.displayName}</h3>
-                    <div className="mt-2">
-                      <StatusChip
-                        label={connectorLaunchLabel(definition.launchStage)}
-                        tone={connectorLaunchTone(definition.launchStage)}
-                      />
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          {installation.displayName} / {installation.accountAlias}
+                        </h3>
+                        <p className="mt-1 font-mono text-xs text-slate-500">{installation.slug}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
+                        <StatusChip
+                          label={connectorLaunchLabel(installation.launchStage)}
+                          tone={connectorLaunchTone(installation.launchStage)}
+                        />
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      slug: <span className="font-mono">{definition.slug}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Auth: {definition.authType} | Version: {definition.connectorVersion}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Capabilities: {definition.capabilities.length > 0 ? definition.capabilities.join(", ") : "-"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Installed accounts: {installedForDefinition.length}
-                    </p>
-                    {definition.launchNote ? (
-                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
-                        {definition.launchNote}
-                      </p>
+
+                    {installation.launchNote ? (
+                      <p className="mt-3 max-w-3xl text-sm text-slate-600">{installation.launchNote}</p>
                     ) : null}
                     {statusNote ? (
-                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                         {statusNote}
                       </p>
                     ) : null}
 
-                    {definition.launchStage === "live" && definition.actions?.install.allowed ? (
-                      <form action={installConnectorAction} className="mt-3 space-y-2">
-                        <input type="hidden" name="slug" value={definition.slug} />
-                        <div className="space-y-1">
-                          <label
-                            htmlFor={`install-alias-${definition.id}`}
-                            className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                          >
-                            Account Alias
-                          </label>
-                          <Input
-                            id={`install-alias-${definition.id}`}
-                            name="accountAlias"
-                            defaultValue="primary"
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">External reference</p>
+                        <p className="mt-2 text-sm text-slate-700">{installation.externalAccountRef || "Not recorded"}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capabilities</p>
+                        <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(installation.capabilities)}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Installed</p>
+                        <p className="mt-2 text-sm text-slate-700">{formatDateTime(installation.installedAt)}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last sync</p>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "No sync recorded yet"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link
+                        href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Details
+                      </Link>
+                      <Link
+                        href={mappingHref}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Mapping
+                      </Link>
+                      {installation.actions?.reconnect.allowed ? (
+                        <form action={reconnectConnectorAction}>
+                          <input type="hidden" name="installationId" value={installation.id} />
+                          <PendingSubmitButton
+                            type="submit"
+                            variant="secondary"
+                            idleLabel="Reconnect"
+                            pendingLabel="Reconnecting..."
                           />
-                        </div>
-                        <div className="space-y-1">
-                          <label
-                            htmlFor={`install-ref-${definition.id}`}
-                            className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                          >
-                            External Account Ref
-                          </label>
-                          <Input
-                            id={`install-ref-${definition.id}`}
-                            name="externalAccountRef"
-                            placeholder="Optional"
+                        </form>
+                      ) : null}
+                      {installation.actions?.uninstall.allowed ? (
+                        <form action={uninstallConnectorAction}>
+                          <input type="hidden" name="installationId" value={installation.id} />
+                          <PendingSubmitButton
+                            type="submit"
+                            variant="secondary"
+                            idleLabel="Disable"
+                            pendingLabel="Disabling..."
                           />
-                        </div>
-                        {definition.slug === "flipkart" ? (
-                          <>
-                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                              Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
-                            </div>
-                            <div className="space-y-1">
-                              <label
-                                htmlFor={`install-client-id-${definition.id}`}
-                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                              >
-                                Client ID
-                              </label>
-                              <Input
-                                id={`install-client-id-${definition.id}`}
-                                name="clientId"
-                                autoComplete="off"
-                                placeholder="fk-client-id"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label
-                                htmlFor={`install-client-secret-${definition.id}`}
-                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                              >
-                                Client Secret
-                              </label>
-                              <Input
-                                id={`install-client-secret-${definition.id}`}
-                                name="clientSecret"
-                                type="password"
-                                autoComplete="new-password"
-                                placeholder="Enter Flipkart client secret"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label
-                                htmlFor={`install-refresh-token-${definition.id}`}
-                                className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                              >
-                                Refresh Token
-                              </label>
-                              <Input
-                                id={`install-refresh-token-${definition.id}`}
-                                name="refreshToken"
-                                type="password"
-                                autoComplete="new-password"
-                                placeholder="Enter Flipkart refresh token"
-                              />
-                            </div>
-                          </>
-                        ) : null}
+                        </form>
+                      ) : null}
+                    </div>
+
+                    {!installation.actions?.reconnect.allowed ? (
+                      <p className="mt-3 text-xs text-slate-500">
+                        Reconnect blocked: {formatActionBlockedReason(installation.actions?.reconnect.reason)}
+                      </p>
+                    ) : null}
+                    {!installation.actions?.uninstall.allowed ? (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Disable blocked: {formatActionBlockedReason(installation.actions?.uninstall.reason)}
+                      </p>
+                    ) : null}
+                    {(isPlanBlockedReason(installation.actions?.reconnect.reason) ||
+                      isPlanBlockedReason(installation.actions?.uninstall.reason)) ? (
+                      <p className="mt-2 text-xs text-slate-500">
+                        <Link href="/admin/plan" className="underline">
+                          Upgrade your plan
+                        </Link>{" "}
+                        to unblock connector actions.
+                      </p>
+                    ) : null}
+
+                    {actorRole === "admin" && installation.status === "DISABLED" ? (
+                      <form action={deleteConnectorInstallationAction} className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                        <input type="hidden" name="installationId" value={installation.id} />
+                        <input type="hidden" name="connectorSlug" value={installation.slug} />
+                        <label className="flex items-center gap-2 text-xs text-slate-600">
+                          <input
+                            type="checkbox"
+                            name="confirmDelete"
+                            value="yes"
+                            required
+                            className="rounded border-slate-300"
+                          />
+                          Confirm permanent delete
+                        </label>
                         <PendingSubmitButton
                           type="submit"
-                          idleLabel="Install connector"
-                          pendingLabel="Installing connector..."
+                          className="text-xs"
+                          idleLabel="Delete Record"
+                          pendingLabel="Deleting record..."
                         />
                       </form>
-                    ) : (
-                      <p className="mt-3 text-xs text-slate-500">
-                        {definition.launchStage !== "live"
-                          ? "Seller self-serve install is intentionally hidden until this connector is operationally ready."
-                          : isPlanBlockedReason(definition.actions?.install.reason)
-                          ? (
-                            <>
-                              {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
-                              <Link href="/admin/plan" className="underline">
-                                Upgrade your plan
-                              </Link>{" "}
-                              to install more accounts.
-                            </>
-                          )
-                          : formatActionBlockedReason(definition.actions?.install.reason)}
-                      </p>
-                    )}
+                    ) : null}
+
+                    <details className="mt-4 rounded-xl border border-slate-200 bg-white">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        View connector metadata
+                      </summary>
+                      <pre className="max-h-44 overflow-auto border-t border-slate-200 p-3 text-[11px] leading-4 text-slate-600">
+                        {JSON.stringify(installation.metadata ?? {}, null, 2)}
+                      </pre>
+                    </details>
                   </section>
                 );
               })}
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardTitle>Installed Connectors</CardTitle>
-          {installations.length === 0 ? (
-            <EmptyState
-              icon="PLUG"
-              title="No connectors installed"
-              description="Install at least one connector to enable mapping previews and export flows."
-            />
-          ) : (
-            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[1120px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Connector</th>
-                    <th className="px-3 py-2">Account Alias</th>
-                    <th className="px-3 py-2">External Ref</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Capabilities</th>
-                    <th className="px-3 py-2">Installed</th>
-                    <th className="px-3 py-2">Last Sync</th>
-                    <th className="px-3 py-2">Metadata</th>
-                    <th className="px-3 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {installations.map((installation) => {
-                    const mappedChannel = mapConnectorSlugToChannel(installation.slug);
-                    const statusNote = connectorStatusNote(
-                      installation.slug,
-                      installation.implementationStatus,
-                    );
-                    const displayStatus = resolveInstalledStatusPresentation(
-                      installation.status,
-                      installation.implementationStatus,
-                    );
-                    const mappingHref =
-                      mappedChannel && firstProductId
-                        ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
-                        : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
-
-                    return (
-                      <tr key={installation.id} className="border-t border-slate-200 align-top hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5">
-                          <div className="font-medium text-slate-900">{installation.displayName}</div>
-                          <div className="font-mono text-xs text-slate-500">{installation.slug}</div>
-                          <div className="mt-1">
-                            <StatusChip
-                              label={connectorLaunchLabel(installation.launchStage)}
-                              tone={connectorLaunchTone(installation.launchStage)}
-                            />
-                          </div>
-                          {installation.launchNote ? (
-                            <p className="mt-2 max-w-xs text-xs text-slate-500">{installation.launchNote}</p>
-                          ) : null}
-                          {statusNote ? (
-                            <p className="mt-2 max-w-xs rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
-                              {statusNote}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2.5">{installation.accountAlias}</td>
-                        <td className="px-3 py-2.5">{installation.externalAccountRef || "-"}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
-                        </td>
-                        <td className="px-3 py-2.5 text-xs">{installation.capabilities.join(", ") || "-"}</td>
-                        <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(installation.installedAt).toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-xs text-slate-600">
-                          {installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString() : "-"}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <pre className="max-h-28 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] leading-4 text-slate-600">
-                            {JSON.stringify(installation.metadata ?? {}, null, 2)}
-                          </pre>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex flex-wrap gap-2">
-                            <Link
-                              href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
-                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm hover:bg-slate-50"
-                            >
-                              Details
-                            </Link>
-                            <Link
-                              href={mappingHref}
-                              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm hover:bg-slate-50"
-                            >
-                              Mapping
-                            </Link>
-                            {installation.actions?.reconnect.allowed ? (
-                              <>
-                                <form action={reconnectConnectorAction}>
-                                  <input type="hidden" name="installationId" value={installation.id} />
-                                  <PendingSubmitButton
-                                    type="submit"
-                                    variant="secondary"
-                                    className="text-xs"
-                                    idleLabel="Reconnect"
-                                    pendingLabel="Reconnecting..."
-                                  />
-                                </form>
-                              </>
-                            ) : null}
-                            {installation.actions?.uninstall.allowed ? (
-                              <>
-                                <form action={uninstallConnectorAction}>
-                                  <input type="hidden" name="installationId" value={installation.id} />
-                                  <PendingSubmitButton
-                                    type="submit"
-                                    variant="secondary"
-                                    className="text-xs"
-                                    idleLabel="Disable"
-                                    pendingLabel="Disabling..."
-                                  />
-                                </form>
-                              </>
-                            ) : null}
-                            {actorRole === "admin" && installation.status === "DISABLED" ? (
-                              <form action={deleteConnectorInstallationAction} className="space-y-1 rounded border border-slate-200 p-2">
-                                <input type="hidden" name="installationId" value={installation.id} />
-                                <input type="hidden" name="connectorSlug" value={installation.slug} />
-                                <label className="flex items-center gap-2 text-xs text-slate-600">
-                                  <input
-                                    type="checkbox"
-                                    name="confirmDelete"
-                                    value="yes"
-                                    required
-                                    className="rounded border-slate-300"
-                                  />
-                                  Confirm permanent delete
-                                </label>
-                                <PendingSubmitButton
-                                  type="submit"
-                                  className="text-xs"
-                                  idleLabel="Delete Record"
-                                  pendingLabel="Deleting record..."
-                                />
-                              </form>
-                            ) : null}
-                            {!installation.actions?.reconnect.allowed ? (
-                              <p className="w-full text-xs text-slate-500">
-                                Reconnect blocked: {formatActionBlockedReason(installation.actions?.reconnect.reason)}
-                              </p>
-                            ) : null}
-                            {!installation.actions?.uninstall.allowed ? (
-                              <p className="w-full text-xs text-slate-500">
-                                Disable blocked: {formatActionBlockedReason(installation.actions?.uninstall.reason)}
-                              </p>
-                            ) : null}
-                            {(isPlanBlockedReason(installation.actions?.reconnect.reason) ||
-                              isPlanBlockedReason(installation.actions?.uninstall.reason)) ? (
-                              <p className="w-full text-xs text-slate-500">
-                                <Link href="/admin/plan" className="underline">
-                                  Upgrade your plan
-                                </Link>{" "}
-                                to unblock connector actions.
-                              </p>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           )}
         </Card>

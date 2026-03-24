@@ -19,8 +19,8 @@
         {
           "storyId": "ST-UI-001",
           "title": "Products tab default landing and bookmarkable",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "db09908",
           "tests_passed": [
@@ -1509,7 +1509,10 @@
             "Invalid supplied Flipkart credentials fail the install cleanly and do not leave connector_installations or connector_credentials artifacts behind.",
             "The connectors page renders masked Flipkart credential fields and surfaces install-time validation failures without exposing secrets.",
             "Existing Flipkart publish and status-sync proofs still pass after the install flow gains credential capture."
-          ]
+          ],
+          "reopened_by": "codex",
+          "reopened_reason": "Seller-facing connector management needs a PIM-style workspace layout now that live install and account-governance flows are active, because the current page is still a utilitarian form-plus-table surface instead of an operator hub.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const source = fs.readFileSync('apps/web/src/app/connectors/page.tsx', 'utf8'); const missing = []; if (!source.includes('Portfolio Summary')) missing.push('Portfolio Summary'); if (!source.includes('Live marketplaces')) missing.push('Live marketplaces'); if (!source.includes('Needs setup')) missing.push('Needs setup'); if (!source.includes('Workspace lanes')) missing.push('Workspace lanes'); if (!source.includes('Connected accounts')) missing.push('Connected accounts'); if (!source.includes('Search connectors')) missing.push('Search connectors'); if (missing.length > 0) { console.error(`FAIL: Connectors page does not provide a PIM-style connector workspace for operators. Missing UI anchors: ${missing.join(', ')}. Likely file: apps/web/src/app/connectors/page.tsx.`); process.exit(1); } console.log('PASS'); '@ | node -. Failing output snippet: FAIL: Connectors page does not provide a PIM-style connector workspace for operators. Missing UI anchors: Portfolio Summary, Live marketplaces, Needs setup, Workspace lanes, Connected accounts, Search connectors. Likely file: apps/web/src/app/connectors/page.tsx."
         },
         {
           "storyId": "ST-FK-UPDATE-008",

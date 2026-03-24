@@ -108,6 +108,22 @@ function main() {
   requireEnvVar(postDeployStep, "STAGING_EXPECTED_ENV", "Post-deploy verification");
   requireRunContains(postDeployStep, "node scripts/staging-postdeploy-check.cjs", "Post-deploy verification");
 
+  const e2eSmokeStep = requireStep(steps, "E2E smoke - post-deploy verification");
+  requireEnvVar(e2eSmokeStep, "STAGING_BASE_URL", "E2E smoke - post-deploy verification");
+  requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_WORKSPACE", "E2E smoke - post-deploy verification");
+  requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_USER", "E2E smoke - post-deploy verification");
+  requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_PASSWORD", "E2E smoke - post-deploy verification");
+  requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_TENANT_ID", "E2E smoke - post-deploy verification");
+  requireRunContains(
+    e2eSmokeStep,
+    "node scripts/e2e-user-journey.cjs --smoke",
+    "E2E smoke - post-deploy verification",
+  );
+  requireRunContains(e2eSmokeStep, "set -o pipefail", "E2E smoke - post-deploy verification");
+  requireRunContains(e2eSmokeStep, ".run-logs/e2e-smoke-${GITHUB_RUN_ID}.log", "E2E smoke - post-deploy verification");
+  requireStepOrder(steps, "Staging post-deploy verification (auth + trust boundary)", "E2E smoke - post-deploy verification");
+  requireStepOrder(steps, "E2E smoke - post-deploy verification", "Record staging gate artifact");
+
   const gateStep = requireStep(steps, "Record staging gate artifact");
   requireEnvVar(gateStep, "STAGING_SMOKE_TENANT_ID", "Record staging gate artifact");
   requireRunContains(gateStep, "node scripts/record-gate-signoff.cjs", "Record staging gate artifact");
@@ -121,12 +137,18 @@ function main() {
   requireRunContains(snapshotStep, "--environment staging", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "--apiBase \"${STAGING_BASE_URL}/api/v1\"", "Capture controlled rollout snapshot");
 
-  const uploadStep = requireStep(steps, "Upload staging gate artifacts");
-  assert(String(uploadStep.uses ?? "").trim() === "actions/upload-artifact@v4", "Upload step must use actions/upload-artifact@v4");
+  const uploadStep = requireStep(steps, "Upload gate + rollout + smoke artifacts");
+  assert(
+    /^actions\/upload-artifact@v\d+$/.test(String(uploadStep.uses ?? "").trim()),
+    "Upload step must use actions/upload-artifact",
+  );
   const uploadWith = uploadStep.with ?? {};
   const uploadPath = String(uploadWith.path ?? "");
   assert(uploadPath.includes("docs/execution/gates/*.json"), "Upload step missing gate artifact path");
   assert(uploadPath.includes("docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json"), "Upload step missing rollout snapshot path");
+  assert(uploadPath.includes(".run-logs/e2e-smoke-*.log"), "Upload step missing E2E smoke log path");
+  assert(uploadPath.includes(".run-logs/e2e-result-*.json"), "Upload step missing E2E smoke result path");
+  assert(uploadWith["include-hidden-files"] === true, "Upload step must include hidden files");
   assert(String(uploadWith["if-no-files-found"] ?? "").trim() === "error", "Upload step must fail when artifacts are missing");
 
   console.log(
@@ -142,9 +164,10 @@ function main() {
           "deploy_step_uses_checked_in_railway_script",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
+          "postdeploy_e2e_smoke_runs_before_gate_recording",
           "gate_artifact_step_records_staging_postcheck_suite",
           "rollout_snapshot_step_targets_live_staging_api",
-          "artifact_upload_step_persists_gate_and_rollout_outputs",
+          "artifact_upload_step_persists_gate_rollout_and_smoke_outputs",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -84,6 +84,8 @@ async function startHealthServer() {
 function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays, options = {}) {
   const pilotOffsetDays = Number.isInteger(options.pilotOffsetDays) ? options.pilotOffsetDays : -13;
   const governanceOffsetDays = Number.isInteger(options.governanceOffsetDays) ? options.governanceOffsetDays : -13;
+  const e10OffsetDays =
+    Array.isArray(options.e10OffsetDays) && options.e10OffsetDays.length >= 2 ? options.e10OffsetDays : [-13, -12];
 
   for (let index = 0; index < gateDays.length; index += 1) {
     const offset = gateDays[index];
@@ -119,7 +121,7 @@ function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays, optio
   writeJson(path.join(gatesDir, "2026-03-03T14-21-45.470Z_E10-ST-QA-001-RUN1.json"), {
     environment: "staging",
     tenantId: "staging-smoke",
-    date: isoAtDayOffset(baseDate, -13, 14),
+    date: isoAtDayOffset(baseDate, e10OffsetDays[0], 14),
     gitTag: "sha-e10-1",
     runUrl: "https://github.com/example/pim1/actions/runs/3001",
     suite: "E10-ST-QA-001-RUN1",
@@ -128,7 +130,7 @@ function seedWindow(gatesDir, rolloutDir, baseDate, gateDays, rolloutDays, optio
   writeJson(path.join(gatesDir, "2026-03-03T14-21-50.328Z_E10-ST-QA-001-RUN2.json"), {
     environment: "staging",
     tenantId: "staging-smoke",
-    date: isoAtDayOffset(baseDate, -12, 14),
+    date: isoAtDayOffset(baseDate, e10OffsetDays[1], 14),
     gitTag: "sha-e10-2",
     runUrl: "https://github.com/example/pim1/actions/runs/3002",
     suite: "E10-ST-QA-001-RUN2",
@@ -250,6 +252,45 @@ async function main() {
     assert(
       historicalEvidenceJson.summary.broadPending.includes("Controlled rollout observation window covers 5 of 14 required days."),
       `Expected broad coverage warning to remain time-bound, got ${historicalEvidenceRun.stdout}`,
+    );
+
+    fs.rmSync(gatesDir, { recursive: true, force: true });
+    fs.rmSync(rolloutDir, { recursive: true, force: true });
+
+    seedWindow(gatesDir, rolloutDir, baseDate, [-13, -12, -11, -10, -9], [-13, -12, -11, -10, -9], {
+      pilotOffsetDays: -20,
+      governanceOffsetDays: -20,
+      e10OffsetDays: [-21, -20],
+    });
+    const evergreenE10Run = await runSnapshot(
+      [
+        "--environment",
+        "staging",
+        "--tenantId",
+        "staging-smoke",
+        "--apiBase",
+        apiBase,
+        "--windowDays",
+        "14",
+        "--gatesDir",
+        gatesDir,
+        "--rolloutDir",
+        rolloutDir,
+      ],
+      tempRoot,
+    );
+    assert(
+      evergreenE10Run.status === 0,
+      `Expected evergreen-E10 snapshot to succeed, got status=${evergreenE10Run.status} stderr=${evergreenE10Run.stderr}`,
+    );
+    const evergreenE10Json = JSON.parse(evergreenE10Run.stdout);
+    assert(
+      evergreenE10Json.summary.consecutiveE10SignoffRuns === 2,
+      `Expected historical E10 continuity to remain satisfied once recorded, got ${evergreenE10Run.stdout}`,
+    );
+    assert(
+      Array.isArray(evergreenE10Json.summary.controlledPending) && evergreenE10Json.summary.controlledPending.length === 0,
+      `Expected no controlled blockers when only broad-window evidence is pending, got ${evergreenE10Run.stdout}`,
     );
 
     fs.rmSync(gatesDir, { recursive: true, force: true });

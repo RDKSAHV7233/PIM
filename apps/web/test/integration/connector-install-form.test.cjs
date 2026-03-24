@@ -34,6 +34,15 @@ function run() {
     "Connectors page must surface install-time validation failures back to the user.",
   );
   assert(
+    pageSource.includes("Portfolio Summary") &&
+      pageSource.includes("Live marketplaces") &&
+      pageSource.includes("Needs setup") &&
+      pageSource.includes("Workspace lanes") &&
+      pageSource.includes("Connected accounts") &&
+      pageSource.includes("Search connectors"),
+    "Connectors page must render the operator-facing workspace anchors for the marketplace hub.",
+  );
+  assert(
     actionsSource.includes("clientId: clientId || undefined") &&
       actionsSource.includes("clientSecret: clientSecret || undefined") &&
       actionsSource.includes("refreshToken: refreshToken || undefined"),
@@ -49,6 +58,7 @@ function run() {
       {
         status: "ok",
         validated: [
+          "connector_workspace_hub_anchors_present",
           "flipkart_install_form_collects_credentials",
           "flipkart_install_form_explains_secret_handling",
           "flipkart_install_action_surfaces_validation_error",

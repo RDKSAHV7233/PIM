@@ -1,6 +1,6 @@
 # TEJ PIM Current State
 
-- Date: 2026-03-23
+- Date: 2026-03-24
 - Repo HEAD: `0be8f44`
 - Scope: canonical snapshot of the current TEJ PIM implementation, execution ledger, and reviewer-facing documentation state
 
@@ -65,7 +65,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 | INC-05 | Ops and Observability | completed | locked stories present; post-deploy verification risk closed |
 | INC-06 | Decision Dashboards | completed | locked stories present |
 | INC-07 | Governance and Compliance | completed | locked stories present |
-| INC-08 | Release Readiness | in_progress | delivery complete; latest checked-in evidence still blocks controlled rollout continuity and broad rollout evidence stands at 7/14 days (SLO 7/14) from the 2026-03-22 snapshot |
+| INC-08 | Release Readiness | in_progress | delivery complete; latest checked-in evidence still blocks controlled rollout continuity and broad rollout evidence stands at 8/14 days (SLO 8/14) from the 2026-03-23 snapshot |
 | INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | locked stories present |
 | INC-10 | Flipkart Publish Connector v1 | completed | locked stories present; connector implementation complete |
 | INC-11 | Workspace Login and Tenant Discovery | completed | locked stories present |
@@ -84,7 +84,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS_RISK_REGISTER.md`
 
 - `INC-05` / `RISK-P0-003`: post-deploy verification pipeline is now live and green on CI. Gate artifact recording is operational. Status: **closed** in the risk register.
-- `INC-08` / `RISK-P0-001`: latest checked-in evidence is snapshot `2026-03-22T05-34-42.984Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` from daily evidence run `23396591019`. It shows `health.ok = true`, `consecutiveE10SignoffRuns = 0`, and `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.` Broad rollout evidence is now **7 of 14 required days**, with production SLO trend evidence also at **7 of 14 required days**. The March 20 scheduled E2E failure has since been reconciled by green staging reruns (`23410221080`, `23410453415`); the remaining blocker is rollout evidence continuity plus the 14-day observation window.
+- `INC-08` / `RISK-P0-001`: latest checked-in evidence is snapshot `2026-03-23T05-50-17.608Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` from daily evidence run `23423428444`. It shows `health.ok = true`, `consecutiveE10SignoffRuns = 0`, and `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.` Broad rollout evidence is now **8 of 14 required days**, with production SLO trend evidence also at **8 of 14 required days**. The March 20 scheduled E2E failure has since been reconciled by green staging reruns (`23410221080`, `23410453415`); the remaining blocker is rollout evidence continuity plus the six remaining observation-window days.
 - `INC-10`: Flipkart connector implementation is complete in the increment ledger. It is no longer tracked as an open release item in `docs/execution/INCREMENT_STATE.json`.
 
 ## 6. Current Documentation State
@@ -104,6 +104,7 @@ Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS
 
 ## 8. Recent Governance Events
 - `0be8f44` -- relock pending feedback rollout story after browser-level bulk import E2E validation
+- `ab57ba0` -- daily rollout evidence persisted the 2026-03-23 snapshot (`8/14` broad-window progress, E10 continuity still pending)
 - `df33091` -- browser validation for pending feedback on bulk import actions
 - `79c54a4` -- stabilize staging catalog and webhook checks; March 20 failing E2E checks are now closed
 - `6c954d1` -- daily rollout evidence persisted the 2026-03-22 snapshot (`7/14` broad-window progress, E10 continuity still pending)

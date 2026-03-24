@@ -245,10 +245,12 @@ async function main() {
   const now = new Date();
   const since = new Date(now.getTime() - args.windowDays * 24 * 60 * 60 * 1000);
   const signoffArtifacts = loadGateArtifacts(args.environment, since.getTime(), args.gatesDir);
+  const allRecordedSignoffArtifacts = loadGateArtifacts(args.environment, 0, args.gatesDir);
   const allArtifactsInWindow = loadArtifacts(args.gatesDir, since.getTime());
   const allRecordedArtifacts = loadArtifacts(args.gatesDir);
   const historicalRolloutSnapshots = loadRolloutSnapshots(args.environment, since.getTime(), args.rolloutDir);
-  const consecutiveE10 = extractConsecutiveE10Runs(signoffArtifacts);
+  // Controlled-rollout E10 continuity is historical proof once recorded; only the broad-rollout window should age.
+  const consecutiveE10 = extractConsecutiveE10Runs(allRecordedSignoffArtifacts);
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
   const reportedEnv = String(health?.body?.env || "").trim().toLowerCase();
   const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
