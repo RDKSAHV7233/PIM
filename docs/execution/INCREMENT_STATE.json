@@ -19,8 +19,8 @@
         {
           "storyId": "ST-UI-001",
           "title": "Products tab default landing and bookmarkable",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
           "commit": "db09908",
           "tests_passed": [
@@ -114,8 +114,8 @@
         {
           "storyId": "ST-UI-AUTH-SHELL-005",
           "title": "Stabilize post-login auth shell rendering from server token presence",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "ccd18a8",
           "tests_passed": [
@@ -1507,8 +1507,8 @@
             "The seller-facing connectors page presents a PIM-style workspace with portfolio summary, workspace lanes, live marketplace cards, and connected account cards while preserving the existing connector action matrix."
           ],
           "reopened_by": "codex",
-          "reopened_reason": "Seller-facing connector management needs a PIM-style workspace layout now that live install and account-governance flows are active, because the current page is still a utilitarian form-plus-table surface instead of an operator hub.",
-          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const source = fs.readFileSync('apps/web/src/app/connectors/page.tsx', 'utf8'); const missing = []; if (!source.includes('Portfolio Summary')) missing.push('Portfolio Summary'); if (!source.includes('Live marketplaces')) missing.push('Live marketplaces'); if (!source.includes('Needs setup')) missing.push('Needs setup'); if (!source.includes('Workspace lanes')) missing.push('Workspace lanes'); if (!source.includes('Connected accounts')) missing.push('Connected accounts'); if (!source.includes('Search connectors')) missing.push('Search connectors'); if (missing.length > 0) { console.error(`FAIL: Connectors page does not provide a PIM-style connector workspace for operators. Missing UI anchors: ${missing.join(', ')}. Likely file: apps/web/src/app/connectors/page.tsx.`); process.exit(1); } console.log('PASS'); '@ | node -. Failing output snippet: FAIL: Connectors page does not provide a PIM-style connector workspace for operators. Missing UI anchors: Portfolio Summary, Live marketplaces, Needs setup, Workspace lanes, Connected accounts, Search connectors. Likely file: apps/web/src/app/connectors/page.tsx."
+          "reopened_reason": "Post-release review validation found a readability regression in the new dark Workspace lanes card, so the seller-facing connector workspace needs a focused UI repair before it stays locked.",
+          "regression_evidence": "Exact failing command: @' const fs = require(\"fs\"); const source = fs.readFileSync(\"apps/web/src/app/connectors/page.tsx\", \"utf8\"); if (!source.includes('font-semibold text-white\\\">Workspace lanes</h2>')) { console.error(\"FAIL: Workspace lanes title does not declare a readable white heading inside the dark card. Likely file: apps/web/src/app/connectors/page.tsx.\"); process.exit(1); } console.log(\"PASS\"); '@ | node -. Failing output snippet: FAIL: Workspace lanes title does not declare a readable white heading inside the dark card. Likely file: apps/web/src/app/connectors/page.tsx."
         },
         {
           "storyId": "ST-FK-UPDATE-008",

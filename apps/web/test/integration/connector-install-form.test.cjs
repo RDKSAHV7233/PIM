@@ -43,6 +43,10 @@ function run() {
     "Connectors page must render the operator-facing workspace anchors for the marketplace hub.",
   );
   assert(
+    pageSource.includes('font-semibold text-white">Workspace lanes</h2>'),
+    "Connectors page must keep the Workspace lanes heading readable on its dark card.",
+  );
+  assert(
     actionsSource.includes("clientId: clientId || undefined") &&
       actionsSource.includes("clientSecret: clientSecret || undefined") &&
       actionsSource.includes("refreshToken: refreshToken || undefined"),
@@ -59,6 +63,7 @@ function run() {
         status: "ok",
         validated: [
           "connector_workspace_hub_anchors_present",
+          "connector_workspace_lanes_heading_readable",
           "flipkart_install_form_collects_credentials",
           "flipkart_install_form_explains_secret_handling",
           "flipkart_install_action_surfaces_validation_error",

@@ -487,7 +487,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           </Card>
 
           <Card className="border-slate-200 bg-slate-950 text-white">
-            <CardTitle>Workspace lanes</CardTitle>
+            <h2 className="mb-3 text-lg font-semibold text-white">Workspace lanes</h2>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Live marketplaces</p>
