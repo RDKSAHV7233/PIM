@@ -36,6 +36,7 @@
    - Why: API key and webhook foundations are shipped, but enterprise integration depth still needs expansion.
 2. Self-serve onboarding completion
    - Why: onboarding still needs to get a seller from signup to first published SKU without operator intervention.
+   - Planned execution spec: `docs/execution/INC-23A_SELF_SERVE_SIGNUP_PLAN.md`
 3. Usage-based billing with payment collection
    - Why: plan modeling exists, but revenue collection does not.
 4. ONDC implementation beyond the feature-flagged shell
