@@ -43,17 +43,17 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "pim1-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "pim1-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "pim1-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/pim1-local");
+  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
@@ -129,7 +129,7 @@ function assertStatus(result, expected, context) {
 
 async function issueStepUp(baseUrl, token) {
   const result = await tracedRequest("issue step-up", baseUrl, "POST", "/auth/step-up", token, {
-    password: "pim1-demo-password",
+    password: "tej-pim-demo-password",
     scope: STEP_UP_SCOPE,
   });
   assertStatus(result, 201, "issue step-up");
@@ -189,7 +189,7 @@ async function run() {
     const login = await tracedRequest("login", baseUrl, "POST", "/auth/login", null, {
       userId,
       workspaceSlug,
-      password: "pim1-demo-password",
+      password: "tej-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");

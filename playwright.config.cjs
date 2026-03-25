@@ -37,7 +37,7 @@ module.exports = defineConfig({
   use: {
     baseURL,
     extraHTTPHeaders: {
-      "x-playwright-suite": "pim1-e2e",
+      "x-playwright-suite": "tej-pim-e2e",
     },
     trace: "on-first-retry",
     screenshot: "only-on-failure",

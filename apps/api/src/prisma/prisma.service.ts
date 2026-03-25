@@ -31,7 +31,7 @@ function withTenantDatabaseUrl(databaseUrl: string, tenantKey: string): string {
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, PrismaClient>();
-  private readonly poolApplicationName = String(process.env.DB_POOL_APP_NAME ?? "pim1-api").trim() || "pim1-api";
+  private readonly poolApplicationName = String(process.env.DB_POOL_APP_NAME ?? "tej-pim-api").trim() || "tej-pim-api";
 
   private getBaseDatabaseUrl(): string {
     const databaseUrl = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();

@@ -44,7 +44,7 @@ function resolveSharedPassword() {
   }
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
   if (appEnv === "development" || appEnv === "local" || appEnv === "test") {
-    return "pim1-demo-password";
+    return "tej-pim-demo-password";
   }
   throw new Error("PIM_AUTH_PASSWORD is required to migrate legacy auth hashes.");
 }

@@ -13,7 +13,7 @@ test("admin can filter audit events and export csv from the audit explorer", asy
 
   try {
     await loginViaUi(page, "admin");
-    await page.goto("/admin/audit?entityType=category&action=POST&actorId=admin@pim1.local&limit=25", {
+    await page.goto("/admin/audit?entityType=category&action=POST&actorId=admin@tej-pim.local&limit=25", {
       waitUntil: "domcontentloaded",
     });
 

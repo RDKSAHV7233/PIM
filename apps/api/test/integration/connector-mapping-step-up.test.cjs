@@ -43,20 +43,20 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "pim1-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "pim1-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "pim1-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/pim1-local");
+  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "pim1-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
   setDefaultEnv("PIM_STEP_UP_EXPIRY_SECONDS", "1");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
 }
@@ -242,7 +242,7 @@ async function run() {
 
     const loginA = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userA,
-      password: "pim1-demo-password",
+      password: "tej-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(loginA, 201, "login tenant A");
@@ -251,7 +251,7 @@ async function run() {
 
     const secondLoginA = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userA,
-      password: "pim1-demo-password",
+      password: "tej-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(secondLoginA, 201, "second login tenant A");
@@ -288,7 +288,7 @@ async function run() {
       `expected STEP_UP_INVALID_CREDENTIALS, payload=${JSON.stringify(deniedStepUp.payload)}`,
     );
 
-    const validStepUp = await issueStepUp(baseUrl, accessTokenA, "pim1-demo-password");
+    const validStepUp = await issueStepUp(baseUrl, accessTokenA, "tej-pim-demo-password");
     assertStatus(validStepUp, 201, "issue valid step-up token");
     const stepUpToken = String(validStepUp.payload?.stepUpToken ?? "");
     assert(stepUpToken.length > 10, "missing step-up token");
@@ -307,7 +307,7 @@ async function run() {
     const v2Id = String(draftV2.payload.id);
     assertStatus(await validateVersion(baseUrl, accessTokenA, v2Id), 201, "validate v2");
 
-    const publishStepUpV2 = await issueStepUp(baseUrl, accessTokenA, "pim1-demo-password");
+    const publishStepUpV2 = await issueStepUp(baseUrl, accessTokenA, "tej-pim-demo-password");
     assertStatus(publishStepUpV2, 201, "issue v2 publish step-up");
     assertStatus(
       await publishVersion(baseUrl, accessTokenA, v2Id, String(publishStepUpV2.payload?.stepUpToken ?? "")),
@@ -322,7 +322,7 @@ async function run() {
       `expected STEP_UP_REQUIRED for rollback, payload=${JSON.stringify(rollbackWithoutStepUp.payload)}`,
     );
 
-    const rollbackStepUp = await issueStepUp(baseUrl, accessTokenA, "pim1-demo-password");
+    const rollbackStepUp = await issueStepUp(baseUrl, accessTokenA, "tej-pim-demo-password");
     assertStatus(rollbackStepUp, 201, "issue rollback step-up");
     const rollback = await rollbackVersion(
       baseUrl,
@@ -337,7 +337,7 @@ async function run() {
       `expected rollbackSourceVersionId=${v1Id}, payload=${JSON.stringify(rollback.payload)}`,
     );
 
-    const expiredStepUp = await issueStepUp(baseUrl, accessTokenA, "pim1-demo-password");
+    const expiredStepUp = await issueStepUp(baseUrl, accessTokenA, "tej-pim-demo-password");
     assertStatus(expiredStepUp, 201, "issue expiring archive step-up");
     const expiringToken = String(expiredStepUp.payload?.stepUpToken ?? "");
     await sleep(2100);
@@ -349,7 +349,7 @@ async function run() {
       `expected STEP_UP_TOKEN_INVALID, payload=${JSON.stringify(archiveExpired.payload)}`,
     );
 
-    const archiveStepUp = await issueStepUp(baseUrl, accessTokenA, "pim1-demo-password");
+    const archiveStepUp = await issueStepUp(baseUrl, accessTokenA, "tej-pim-demo-password");
     assertStatus(archiveStepUp, 201, "issue archive step-up");
     assertStatus(
       await archiveVersion(baseUrl, accessTokenA, v2Id, String(archiveStepUp.payload?.stepUpToken ?? "")),

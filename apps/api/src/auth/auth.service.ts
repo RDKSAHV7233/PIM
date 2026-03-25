@@ -1660,7 +1660,7 @@ export class AuthService implements OnModuleDestroy {
       this.logger.error("PIM_AUTH_PASSWORD must be configured outside local development.");
       return false;
     }
-    const expected = configuredPassword || "pim1-demo-password";
+    const expected = configuredPassword || "tej-pim-demo-password";
     const submittedBuffer = Buffer.from(password, "utf8");
     const expectedBuffer = Buffer.from(expected, "utf8");
     if (submittedBuffer.length !== expectedBuffer.length) {

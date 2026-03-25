@@ -24,17 +24,17 @@ function Set-SmokeRequiredEnvDefaults {
     Set-DefaultEnvVar -Name "DATABASE_URL_DIRECT" -Value $TenantDatabaseUrl
   }
 
-  Set-DefaultEnvVar -Name "JWT_SECRET" -Value "pim1-local-dev-jwt-secret-minimum-length-32"
+  Set-DefaultEnvVar -Name "JWT_SECRET" -Value "tej-pim-local-dev-jwt-secret-minimum-length-32"
   Set-DefaultEnvVar -Name "JWT_EXPIRY" -Value "4h"
-  Set-DefaultEnvVar -Name "CREDENTIAL_ENCRYPTION_KEY_V1" -Value "pim1-local-encryption-key-v1-minimum-32"
+  Set-DefaultEnvVar -Name "CREDENTIAL_ENCRYPTION_KEY_V1" -Value "tej-pim-local-encryption-key-v1-minimum-32"
   Set-DefaultEnvVar -Name "CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION" -Value "1"
   Set-DefaultEnvVar -Name "REDIS_URL" -Value "redis://localhost:6379"
   Set-DefaultEnvVar -Name "JWT_BLOCKLIST_REDIS_DISABLED" -Value "true"
   Set-DefaultEnvVar -Name "R2_ACCOUNT_ID" -Value "local-dev"
   Set-DefaultEnvVar -Name "R2_ACCESS_KEY_ID" -Value "local-dev"
   Set-DefaultEnvVar -Name "R2_SECRET_ACCESS_KEY" -Value "local-dev"
-  Set-DefaultEnvVar -Name "R2_BUCKET_NAME" -Value "pim1-local"
-  Set-DefaultEnvVar -Name "R2_PUBLIC_URL" -Value "https://example.com/pim1-local"
+  Set-DefaultEnvVar -Name "R2_BUCKET_NAME" -Value "tej-pim-local"
+  Set-DefaultEnvVar -Name "R2_PUBLIC_URL" -Value "https://example.com/tej-pim-local"
   Set-DefaultEnvVar -Name "APP_ENV" -Value "development"
   Set-DefaultEnvVar -Name "FEATURE_REAL_SPAPI_VALIDATION" -Value "false"
 }

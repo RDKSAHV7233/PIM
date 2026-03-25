@@ -41,7 +41,7 @@ function resolveBootstrapPassword(args) {
   }
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development').trim().toLowerCase();
   if (appEnv === 'development' || appEnv === 'local' || appEnv === 'test') {
-    return 'pim1-demo-password';
+    return 'tej-pim-demo-password';
   }
   throw new Error('Missing bootstrap password. Pass --password <value> or set PIM_BOOTSTRAP_PASSWORD.');
 }

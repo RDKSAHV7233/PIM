@@ -17,7 +17,7 @@ test("unknown workspace is rejected before credentials are accepted", async ({ p
   await page.goto(`${DEFAULT_BASE_URL}/login`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("Workspace").fill("does-not-exist");
   await page.getByLabel("User ID").fill(USERS.admin.userId);
-  await page.getByLabel("Password").fill(process.env.PLAYWRIGHT_PASSWORD || "pim1-demo-password");
+  await page.getByLabel("Password").fill(process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Workspace not found. Check your workspace ID and try again.")).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);

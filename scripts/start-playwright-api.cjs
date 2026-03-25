@@ -60,7 +60,7 @@ const env = {
   PORT: process.env.PLAYWRIGHT_API_PORT || "4001",
   APP_ENV: "development",
   AUTH_MODE: "local",
-  PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "pim1-demo-password",
+  PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password",
   PIM_DEFAULT_TENANT_KEY: process.env.PLAYWRIGHT_TENANT_KEY || "default",
   PIM_DEFAULT_WORKSPACE_SLUG: process.env.PLAYWRIGHT_WORKSPACE || "default",
   PIM_AUTH_IP_ATTEMPT_LIMIT: process.env.PLAYWRIGHT_AUTH_IP_ATTEMPT_LIMIT || "100",
@@ -70,10 +70,10 @@ const env = {
   PIM_AUTH_IDENTITIES_JSON:
     process.env.PLAYWRIGHT_AUTH_IDENTITIES_JSON ||
     JSON.stringify({
-      "admin@pim1.local": { tenantId: "default", role: "admin" },
-      "editor@pim1.local": { tenantId: "default", role: "editor" },
-      "reviewer@pim1.local": { tenantId: "default", role: "reviewer" },
-      "viewer@pim1.local": { tenantId: "default", role: "viewer" },
+      "admin@tej-pim.local": { tenantId: "default", role: "admin" },
+      "editor@tej-pim.local": { tenantId: "default", role: "editor" },
+      "reviewer@tej-pim.local": { tenantId: "default", role: "reviewer" },
+      "viewer@tej-pim.local": { tenantId: "default", role: "viewer" },
     }),
 };
 
