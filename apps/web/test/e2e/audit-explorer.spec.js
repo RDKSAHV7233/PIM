@@ -5,7 +5,7 @@ const {
   deleteCategory,
   loginViaUi,
   uniqueName,
-} = require("./helpers/pim1.cjs");
+} = require("./helpers/tej-pim.cjs");
 
 test("admin can filter audit events and export csv from the audit explorer", async ({ page }) => {
   const adminToken = await apiLogin("admin");

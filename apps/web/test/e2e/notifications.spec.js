@@ -12,7 +12,7 @@ const {
   reviewProduct,
   uniqueName,
   updateProduct,
-} = require("./helpers/pim1.cjs");
+} = require("./helpers/tej-pim.cjs");
 
 test("editor can open notification center and mark approval notifications read", async ({ page }) => {
   const reviewerAuth = await apiLoginPayload("reviewer");

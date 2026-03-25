@@ -4,7 +4,7 @@ const {
   apiRequest,
   loginViaUi,
   uniqueName,
-} = require("./helpers/pim1.cjs");
+} = require("./helpers/tej-pim.cjs");
 
 const DEFAULT_MAPPING = {
   title: "title",

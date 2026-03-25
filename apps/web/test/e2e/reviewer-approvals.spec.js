@@ -11,7 +11,7 @@ const {
   purgeProduct,
   uniqueName,
   updateProduct,
-} = require("./helpers/pim1.cjs");
+} = require("./helpers/tej-pim.cjs");
 
 test("reviewer can approve clean products and reject blocked products", async ({ page }) => {
   const reviewerAuth = await apiLoginPayload("reviewer");

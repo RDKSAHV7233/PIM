@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { DEFAULT_BASE_URL, USERS, apiLoginPayload, loginViaUi } = require("./helpers/pim1.cjs");
+const { DEFAULT_BASE_URL, USERS, apiLoginPayload, loginViaUi } = require("./helpers/tej-pim.cjs");
 
 const roles = ["admin", "editor", "reviewer", "viewer"];
 
