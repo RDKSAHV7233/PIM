@@ -1,4 +1,4 @@
-# TEJ PIM Tenant Login Spec
+# TEJ PIM Tenant Login and Signup Spec
 
 Status: Locked and implemented
 Implementation commit: `32538a9`
@@ -7,7 +7,7 @@ Date: 2026-03-10
 
 ## 1. Purpose
 
-This document locks the v1 tenant routing and login model for TEJ PIM.
+This document locks the tenant routing, login model, and the current public-signup extension for TEJ PIM.
 
 It is grounded in the shipped workspace-scoped login implementation and records the decisions that must remain stable unless a new increment explicitly changes them.
 
@@ -70,6 +70,20 @@ V1 platform admin is API-only.
 - no platform admin UI in the tenant shell
 - provisioning creates tenant + workspace slug + initial admin binding
 
+### 3.6 Public signup extension
+
+The current repo also supports a public self-serve signup flow behind feature flags.
+
+- `FEATURE_PUBLIC_SIGNUP_ENABLED`
+- `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED`
+
+Locked current behavior:
+- signup collects `Workspace name`, `Workspace ID`, first admin email, password, and terms acceptance
+- workspace creation happens only after email verification succeeds
+- verification happens through `/signup/verify`
+- verified first admin signs in through the normal `/login` workspace-scoped flow
+- v1 keeps one email = one workspace account
+
 ## 4. Login UX Contract
 
 ### 4.1 Field order
@@ -122,7 +136,9 @@ Minimum v1 provisioning surface:
 - assign display name
 - create or bind initial admin identity
 
-No tenant-facing provisioning UI is part of v1.
+Current extension:
+- tenant-facing self-serve signup is implemented behind feature flags
+- the existing platform-admin provisioning API remains intact
 
 ## 7. Files That Must Change
 
@@ -173,7 +189,8 @@ This implementation order is binding for any rework of the slice:
 4. Downstream tenant-scoped behavior works unchanged after login
 5. Lockout and resend-unlock flows are scoped by `workspaceSlug + userId`
 6. Platform admin can provision tenant workspace slugs through an API-only surface
-7. No workspace switcher is introduced
+7. Public signup can create a pending request, verify by email, provision the workspace, and preserve the same login contract
+8. No workspace switcher is introduced
 
 ## 11. Shipped Evidence
 

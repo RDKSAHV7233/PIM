@@ -10,6 +10,9 @@ Current repo state:
 - Current execution snapshot: `docs/execution/CURRENT_STATE.md`
 - Increment source of truth: `docs/execution/INCREMENT_STATE.json`
 - Canonical connector documentation entry point: `docs/connectors/README.md`
+- Public signup is implemented behind:
+  - `FEATURE_PUBLIC_SIGNUP_ENABLED`
+  - `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED`
 
 ## Workspace Layout
 - `apps/web`: Next.js App Router UI
@@ -67,6 +70,7 @@ Current repo state:
 - Backlog: `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md`
 - Consolidated user guide: `docs/pim-user-guide.md`
 - Admin setup checklist: `docs/admin-setup-checklist.md`
+- Tenant login and signup model: `docs/auth/TEJ_PIM_TENANT_LOGIN_SPEC.md`
 - Connector docs SSOT: `docs/connectors/README.md`
 - Connector current-state baseline: `docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 - User guides: `docs/product/user-guide/` (supporting operational guides, not sole implementation truth)

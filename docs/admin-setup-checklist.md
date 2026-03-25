@@ -20,6 +20,12 @@ Important repo-truth notes:
 3. Meesho is still a guided/manual workflow, not a complete self-serve connector path.
 4. ONDC is internal or feature-flagged.
 
+If the workspace does not exist yet and public signup is enabled in your environment:
+1. go to `/signup`
+2. create the workspace and first admin
+3. verify the email link
+4. return to this checklist after signing in as admin
+
 ## 1. Sign In As Admin
 
 Route: `/login`
@@ -30,6 +36,10 @@ Route: `/login`
 4. Confirm you can see `Settings` in the main navigation
 
 If you cannot see `Users & Roles`, `Connector Access`, `Plan & Usage`, `Privacy`, or `Audit Logs`, you are probably not signed in as an admin.
+
+Note:
+1. a new self-serve workspace is not active until the verification email has been completed
+2. the first admin created through `/signup` starts on the `STARTER` plan
 
 ## 2. Check Plan and Usage
 

@@ -205,6 +205,32 @@ The login screen uses:
 2. `User ID`
 3. `Password`
 
+### Self-serve workspace signup
+
+If public signup is enabled in your deployment, a new customer can create a workspace without operator intervention.
+
+Route: `/signup`
+
+Current implemented flow:
+1. enter `Workspace name`
+2. enter `Workspace ID`
+3. enter the first admin email
+4. create a password
+5. accept Terms and Privacy
+6. submit the signup request
+7. open the verification email
+8. use the verification link to activate the workspace
+9. sign in at `/login` with:
+   - `Workspace`
+   - `User ID`
+   - `Password`
+
+Important repo-truth notes:
+1. signup is feature-flagged, so some environments may not expose `/signup`
+2. the workspace is not created until the verification link is used
+3. the first workspace admin lands on the `STARTER` plan by default
+4. v1 signup is one email per workspace account
+
 ### Permissions you may need
 
 Common permissions are role-based.
@@ -258,15 +284,16 @@ Important environment areas from `.env.example`:
 ### A. Set up the workspace basics
 
 Recommended first-time setup order for a new tenant:
-1. Confirm the plan tier in `Settings -> Plan & Usage`
-2. Invite users in `Settings -> Users & Roles`
-3. Review connector permissions in `Settings -> Connector Access`
-4. Create categories in `Catalog -> Categories`
-5. Add attribute definitions in `Catalog -> Attributes`
-6. Create the first products or import a catalog
-7. Install the live channel connector you plan to use
-8. Build and publish channel mappings
-9. Upload media and run validation
+1. If public signup is enabled and the workspace does not exist yet, create it from `/signup`
+2. Confirm the plan tier in `Settings -> Plan & Usage`
+3. Invite users in `Settings -> Users & Roles`
+4. Review connector permissions in `Settings -> Connector Access`
+5. Create categories in `Catalog -> Categories`
+6. Add attribute definitions in `Catalog -> Attributes`
+7. Create the first products or import a catalog
+8. Install the live channel connector you plan to use
+9. Build and publish channel mappings
+10. Upload media and run validation
 
 ### B. Create categories
 
@@ -874,6 +901,20 @@ What you can do:
 Known reset errors:
 1. `PASSWORD_RESET_TOKEN_INVALID`
 
+#### Signup verification link invalid or expired
+
+Route: `/signup/verify`
+
+What it means:
+1. the verification token has already been used
+2. the token expired before activation
+3. the link was copied incorrectly
+
+What to do:
+1. open the verify page again if the full link was not used the first time
+2. use `Resend verification email`
+3. then sign in only after verification succeeds
+
 ### Product and quality issues
 
 #### Blocking issues in Issue Inbox
@@ -1057,6 +1098,10 @@ No. Viewer access is read-only.
 ### Can users reset their own password?
 
 Yes. The login flow includes password reset and locked-account recovery pages.
+
+### Can a new customer create a workspace without admin help?
+
+Yes, if public signup is enabled in that environment. Use `/signup`, verify the email link, then sign in with the workspace ID and admin credentials you created.
 
 ### Can users request account data export and deletion?
 
