@@ -361,7 +361,7 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Flipkart Auto Sync Product ${runId}`,
       description: "Automatic status sync test.",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       categoryId,
       status: "draft",
       attributes: {

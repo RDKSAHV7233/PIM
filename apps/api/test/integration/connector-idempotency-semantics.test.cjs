@@ -346,7 +346,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", accessToken, {
       title: `Idempotency Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Initial row intentionally missing HSN/GST/size",
       categoryId: category.payload.id,
       status: "draft",

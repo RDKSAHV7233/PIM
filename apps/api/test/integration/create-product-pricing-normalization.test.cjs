@@ -184,7 +184,7 @@ async function run() {
 
     const created = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Pricing Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Pricing normalization coverage",
       categoryId,
       status: "draft",
@@ -210,7 +210,7 @@ async function run() {
 
     const invalid = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Pricing Product Invalid ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Negative pricing should fail",
       categoryId,
       status: "draft",

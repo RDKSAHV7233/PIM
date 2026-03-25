@@ -52,7 +52,7 @@ function buildPayload() {
     sku: "SKU-1",
     title: "Sample Product",
     description: "Sample Description",
-    brand: "PIM1",
+    brand: "TEJ PIM",
     hsnCode: "62046200",
     gstRate: 18,
     mrp: 1999,

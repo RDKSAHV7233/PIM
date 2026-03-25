@@ -152,7 +152,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Export Template Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Template summary coverage",
       categoryId: category.payload.id,
       status: "draft",

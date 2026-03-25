@@ -176,7 +176,7 @@ async function run() {
 
     const warningProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Issue Warning Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "warning product",
       categoryId,
       status: "draft",
@@ -188,7 +188,7 @@ async function run() {
 
     const blockingProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Issue Blocking Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "blocking product",
       categoryId,
       status: "draft",

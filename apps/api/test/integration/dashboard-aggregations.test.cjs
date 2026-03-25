@@ -201,7 +201,7 @@ async function run() {
 
     const lowProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Dashboard Low ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "",
       categoryId: category.payload.id,
       status: "draft",
@@ -211,7 +211,7 @@ async function run() {
 
     const highProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Dashboard High ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Complete product",
       categoryId: category.payload.id,
       hsnCode: "62046200",

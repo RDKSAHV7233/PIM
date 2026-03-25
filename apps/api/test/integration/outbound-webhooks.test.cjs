@@ -790,7 +790,7 @@ async function run() {
     const createPublishReadyProduct = await apiRequest(baseUrl, "POST", "/catalog/products", editorToken, {
       title: `Webhook Publish Product ${runId}`,
       description: "Real publish initiation test for outbound webhook success delivery.",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       categoryId,
       status: "draft",
       attributes: {

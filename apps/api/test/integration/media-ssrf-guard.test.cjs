@@ -176,7 +176,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Media SSRF Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "SSRF guard product",
       categoryId: category.payload.id,
       status: "draft",

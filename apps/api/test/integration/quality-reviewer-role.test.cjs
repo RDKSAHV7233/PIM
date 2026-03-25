@@ -190,7 +190,7 @@ async function run() {
 
     const cleanProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Reviewer Clean Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "review decision clean path",
       categoryId,
       status: "draft",
@@ -228,7 +228,7 @@ async function run() {
 
     const warningProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Reviewer Warning Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "warning issue path",
       categoryId,
       status: "draft",
@@ -261,7 +261,7 @@ async function run() {
 
     const blockingProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Reviewer Blocking Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "blocking issue path",
       categoryId,
       status: "draft",

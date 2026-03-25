@@ -169,7 +169,7 @@ async function run() {
       await apiRequest(baseUrl, "POST", "/catalog/products", token, {
         title: `Pagination Product ${i} ${runId}`,
         description: "desc",
-        brand: "PIM1",
+        brand: "TEJ PIM",
         categoryId,
         status: "draft",
         attributes: {},

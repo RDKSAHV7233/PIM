@@ -181,7 +181,7 @@ async function run() {
 
     const nonDraftCreate = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Invalid Workflow Entry ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Workflow entry status enforcement",
       categoryId: category.payload.id,
       status: "approved",
@@ -194,7 +194,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Workflow Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Workflow transition test",
       categoryId: category.payload.id,
       status: "draft",
@@ -298,7 +298,7 @@ async function run() {
         {
           title: `Workflow Import Product ${runId}`,
           description: "Import workflow entry enforcement",
-          brand: "PIM1",
+          brand: "TEJ PIM",
           status: "approved",
           hsnCode: "62046200",
           gstRate: 18,

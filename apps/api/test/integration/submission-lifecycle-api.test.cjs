@@ -181,7 +181,7 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Submission Lifecycle Product ${runId}`,
       description: "Missing required channel fields to trigger issues.",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       categoryId: category.payload.id,
       status: "draft",
       attributes: {},

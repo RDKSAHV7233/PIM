@@ -211,7 +211,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Billing Cache Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Warm plan usage row",
       categoryId: category.payload.id,
       status: "draft",

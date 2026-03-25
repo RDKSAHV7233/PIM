@@ -187,7 +187,7 @@ async function run() {
     const hugeMaterial = "x".repeat(CAP_BYTES + 2048);
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Payload Cap Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Payload snapshot cap validation product",
       categoryId: category.payload.id,
       hsnCode: "62046200",

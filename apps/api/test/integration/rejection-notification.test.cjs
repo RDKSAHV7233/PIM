@@ -187,7 +187,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Rejection Notification Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Intentionally incomplete for rejection simulation",
       categoryId: category.payload.id,
       status: "draft",

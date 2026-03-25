@@ -196,7 +196,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Issue Contract Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Intentionally incomplete for channel simulation",
       categoryId: category.payload.id,
       status: "draft",

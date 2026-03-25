@@ -192,7 +192,7 @@ async function run() {
 
     await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: lowTitle,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Missing HSN/GST/material on purpose",
       categoryId: category.id,
       status: "draft",
@@ -200,7 +200,7 @@ async function run() {
     });
     await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: highTitle,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Complete product",
       categoryId: category.id,
       hsnCode: "62046200",

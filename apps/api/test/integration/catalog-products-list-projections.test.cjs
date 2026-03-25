@@ -153,7 +153,7 @@ async function run() {
     for (let index = 0; index < 55; index += 1) {
       const created = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
         title: `Projection Product ${index} ${runId}`,
-        brand: "PIM1",
+        brand: "TEJ PIM",
         description: "Projection coverage",
         categoryId: category.payload.id,
         status: "draft",

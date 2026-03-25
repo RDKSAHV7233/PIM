@@ -23,7 +23,7 @@ test("editor can open notification center and mark approval notifications read",
   const category = await createCategory(adminToken, uniqueName("e2e-notify-cat"));
   const product = await createProduct(editorToken, {
     title: uniqueName("e2e-notify-product"),
-    brand: "PIM1",
+    brand: "TEJ PIM",
     description: "notification approval flow",
     categoryId: category.id,
     status: "draft",

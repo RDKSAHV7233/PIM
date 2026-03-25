@@ -258,7 +258,7 @@ async function run() {
 
     const product = await tracedRequest("create rejected product", baseUrl, "POST", "/catalog/products", token, {
       title: `Metrics KPI Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Intentionally incomplete for rejection metrics",
       categoryId: category.payload.id,
       status: "draft",
@@ -301,7 +301,7 @@ async function run() {
 
     const successProduct = await tracedRequest("create successful product", baseUrl, "POST", "/catalog/products", token, {
       title: `Metrics KPI Success Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Connector metrics success path",
       categoryId: category.payload.id,
       status: "draft",

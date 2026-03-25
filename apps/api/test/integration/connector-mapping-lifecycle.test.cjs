@@ -211,7 +211,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", tokenA, {
       title: `Mapping Lifecycle Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "mapping lifecycle test",
       categoryId,
       status: "draft",

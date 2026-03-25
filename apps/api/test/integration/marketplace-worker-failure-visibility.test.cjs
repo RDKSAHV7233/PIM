@@ -189,7 +189,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", accessToken, {
       title: `Queue Failure Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Record for async failure visibility test",
       categoryId: category.payload.id,
       status: "draft",

@@ -263,7 +263,7 @@ async function run() {
 
     const authoritativeProduct = await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: "Authoritative Product",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Product for authoritative validation path",
       categoryId: category.id,
       status: "draft",
@@ -289,7 +289,7 @@ async function run() {
 
     const fallbackProduct = await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: "Fallback Trigger Product",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Product for fallback validation path",
       categoryId: category.id,
       status: "draft",

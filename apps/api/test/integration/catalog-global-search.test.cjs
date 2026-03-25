@@ -174,7 +174,7 @@ async function run() {
 
     const titleProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
       title: `Aurora Search Jacket ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "title search coverage",
       categoryId: categoryA.payload.id,
       status: "draft",
@@ -186,7 +186,7 @@ async function run() {
 
     const skuProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
       title: `Variant Search Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "sku search coverage",
       categoryId: categoryA.payload.id,
       status: "draft",
@@ -208,7 +208,7 @@ async function run() {
 
     const otherTenantProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminBToken, {
       title: `Aurora Search Jacket ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "tenant isolation coverage",
       categoryId: categoryB.payload.id,
       status: "draft",

@@ -24,7 +24,7 @@ test("admin can filter audit events and export csv from the audit explorer", asy
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("link", { name: "Export CSV" }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toContain("pim1-audit-events-");
+    expect(download.suggestedFilename()).toContain("tej-pim-audit-events-");
   } finally {
     try {
       await deleteCategory(adminToken, category.id);

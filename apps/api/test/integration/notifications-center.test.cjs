@@ -227,7 +227,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", editorToken, {
       title: `Approval Notification Product ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "ready for approval",
       categoryId,
       status: "draft",

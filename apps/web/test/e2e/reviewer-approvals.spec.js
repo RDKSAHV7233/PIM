@@ -23,7 +23,7 @@ test("reviewer can approve clean products and reject blocked products", async ({
 
   const clean = await createProduct(editorToken, {
     title: uniqueName("e2e-clean-review"),
-    brand: "PIM1",
+    brand: "TEJ PIM",
     description: "clean review path",
     categoryId: category.id,
     status: "draft",
@@ -45,7 +45,7 @@ test("reviewer can approve clean products and reject blocked products", async ({
 
   const blocked = await createProduct(editorToken, {
     title: uniqueName("e2e-blocked-review"),
-    brand: "PIM1",
+    brand: "TEJ PIM",
     description: "blocked review path",
     categoryId: category.id,
     status: "draft",

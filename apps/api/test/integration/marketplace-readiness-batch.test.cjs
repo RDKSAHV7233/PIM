@@ -180,7 +180,7 @@ async function run() {
 
     const productOne = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Readiness Product One ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Incomplete batch readiness product one",
       categoryId: category.payload.id,
       status: "draft",
@@ -190,7 +190,7 @@ async function run() {
 
     const productTwo = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Readiness Product Two ${runId}`,
-      brand: "PIM1",
+      brand: "TEJ PIM",
       description: "Incomplete batch readiness product two",
       categoryId: category.payload.id,
       status: "draft",

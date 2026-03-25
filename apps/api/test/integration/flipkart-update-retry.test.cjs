@@ -344,7 +344,7 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Flipkart Update Product ${runId}`,
       description: "Live update retry integration test.",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       categoryId,
       status: "draft",
       attributes: {

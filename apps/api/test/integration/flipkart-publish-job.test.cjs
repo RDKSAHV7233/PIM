@@ -332,7 +332,7 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Flipkart Publish Product ${runId}`,
       description: "Real publish initiation test.",
-      brand: "PIM1",
+      brand: "TEJ PIM",
       categoryId,
       status: "draft",
       attributes: {
