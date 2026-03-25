@@ -3,9 +3,14 @@ import { PimLocale } from "@/lib/locale";
 export interface AuthCopy {
   loginTitle: string;
   loginSubtitle: string;
+  signupLinkPrompt: string;
+  signupLinkCta: string;
   workspaceLabel: string;
   workspacePlaceholder: string;
   workspaceInvalid: string;
+  workspaceAvailable: string;
+  workspaceChecking: string;
+  workspaceTaken: string;
   workspaceNotFound: string;
   emailLabel: string;
   loginReasonSessionExpired: string;
@@ -13,6 +18,28 @@ export interface AuthCopy {
   passwordLabel: string;
   newPasswordLabel: string;
   confirmPasswordLabel: string;
+  displayNameLabel: string;
+  signupTitle: string;
+  signupSubtitle: string;
+  signupSubmit: string;
+  signupSubmitting: string;
+  signupSuccess: string;
+  signupDuplicateEmail: string;
+  signupEmailInvalid: string;
+  signupTermsLabel: string;
+  signupPasswordHelp: string;
+  signupPasswordMismatch: string;
+  signupDisplayNameRequired: string;
+  signupVerifyTitle: string;
+  signupVerifySubtitle: string;
+  signupVerifyInProgress: string;
+  signupVerifySuccess: string;
+  signupVerifyInvalid: string;
+  signupResendPrompt: string;
+  signupResendSubmit: string;
+  signupResendSubmitting: string;
+  signupResendSuccess: string;
+  signupResendError: string;
   roleLabel: string;
   signIn: string;
   signingIn: string;
@@ -49,9 +76,14 @@ export interface AuthCopy {
 const EN_COPY: AuthCopy = {
   loginTitle: "Sign in to TEJ PIM",
   loginSubtitle: "Use your account credentials to continue.",
+  signupLinkPrompt: "New to TEJ PIM?",
+  signupLinkCta: "Create your workspace",
   workspaceLabel: "Workspace",
   workspacePlaceholder: "your-company",
   workspaceInvalid: "Use lowercase letters, numbers, or hyphens.",
+  workspaceAvailable: "Workspace ID is available.",
+  workspaceChecking: "Checking workspace availability...",
+  workspaceTaken: "That workspace ID is already taken.",
   workspaceNotFound: "Workspace not found. Check your workspace ID and try again.",
   emailLabel: "User ID",
   loginReasonSessionExpired: "Your session expired. Please sign in again.",
@@ -59,6 +91,28 @@ const EN_COPY: AuthCopy = {
   passwordLabel: "Password",
   newPasswordLabel: "New password",
   confirmPasswordLabel: "Confirm new password",
+  displayNameLabel: "Workspace name",
+  signupTitle: "Create your TEJ PIM workspace",
+  signupSubtitle: "Set up your workspace and first admin account. We will email you a verification link before activation.",
+  signupSubmit: "Create workspace",
+  signupSubmitting: "Creating workspace...",
+  signupSuccess: "Check your email for the verification link to finish creating your workspace.",
+  signupDuplicateEmail: "That email is already in use. Sign in or reset your password instead.",
+  signupEmailInvalid: "Enter a valid email address for the first admin.",
+  signupTermsLabel: "I accept the Terms of Service and Privacy Policy.",
+  signupPasswordHelp: "Use at least 8 characters.",
+  signupPasswordMismatch: "The password confirmation does not match.",
+  signupDisplayNameRequired: "Workspace name is required.",
+  signupVerifyTitle: "Verify your workspace",
+  signupVerifySubtitle: "We’ll confirm your email and activate your TEJ PIM workspace.",
+  signupVerifyInProgress: "Verifying your workspace link...",
+  signupVerifySuccess: "Your workspace is ready. Sign in with the workspace ID, email, and password you just created.",
+  signupVerifyInvalid: "This verification link is invalid or has expired.",
+  signupResendPrompt: "Need a fresh verification email?",
+  signupResendSubmit: "Resend verification email",
+  signupResendSubmitting: "Resending verification email...",
+  signupResendSuccess: "If a pending signup exists for that email, we sent a new verification link.",
+  signupResendError: "Unable to resend verification right now. Please try again.",
   roleLabel: "Role",
   signIn: "Sign in",
   signingIn: "Signing in...",

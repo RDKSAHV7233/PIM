@@ -20,6 +20,7 @@ interface LoginPageClientProps {
   reason: string;
   nextPath: string;
   initialWorkspaceSlug: string;
+  signupEnabled: boolean;
 }
 
 function isValidWorkspaceSlug(value: string): boolean {
@@ -27,7 +28,7 @@ function isValidWorkspaceSlug(value: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalized) && normalized.length >= 3 && normalized.length <= 32;
 }
 
-export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug }: LoginPageClientProps) {
+export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug, signupEnabled }: LoginPageClientProps) {
   const authCopy = getAuthCopy(locale);
   const router = useRouter();
   const [workspaceSlug, setWorkspaceSlug] = useState(initialWorkspaceSlug);
@@ -158,6 +159,15 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
         <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">{authCopy.loginTitle}</h1>
         <p className="text-sm text-slate-600">{authCopy.loginSubtitle}</p>
+        {signupEnabled ? (
+          <p className="text-sm text-slate-600">
+            {authCopy.signupLinkPrompt}{" "}
+            <Link href={`/signup?lang=${encodeURIComponent(locale)}`} className="font-medium underline">
+              {authCopy.signupLinkCta}
+            </Link>
+            .
+          </p>
+        ) : null}
       </header>
       {loginReasonMessage ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">

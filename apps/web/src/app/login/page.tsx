@@ -2,6 +2,7 @@ import { LoginPageClient } from "@/components/auth/login-page-client";
 import { cookies } from "next/headers";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 import { sanitizeNextPath } from "@/lib/auth-redirect";
+import { isPublicSignupEnabled } from "@/lib/public-signup";
 
 export const dynamic = "force-dynamic";
 
@@ -23,5 +24,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const reason = getString(params.reason).trim().toLowerCase();
   const nextPath = sanitizeNextPath(getString(params.next));
   const workspaceSlug = getString(params.workspace).trim().toLowerCase();
-  return <LoginPageClient locale={locale} reason={reason} nextPath={nextPath} initialWorkspaceSlug={workspaceSlug} />;
+  return (
+    <LoginPageClient
+      locale={locale}
+      reason={reason}
+      nextPath={nextPath}
+      initialWorkspaceSlug={workspaceSlug}
+      signupEnabled={isPublicSignupEnabled()}
+    />
+  );
 }
