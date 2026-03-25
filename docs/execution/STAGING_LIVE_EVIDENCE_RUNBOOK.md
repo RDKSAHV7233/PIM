@@ -44,10 +44,12 @@ gh auth status
    - `RAILWAY_API_SERVICE_ID`
    - `RAILWAY_WEB_SERVICE_ID`
    - `STAGING_BASE_URL`
+   - `STAGING_WEB_URL` (recommended when public signup should be probed from the deployed web app)
    - `STAGING_SMOKE_WORKSPACE`
    - `STAGING_SMOKE_USER`
    - `STAGING_SMOKE_PASSWORD`
    - `STAGING_SMOKE_TENANT_ID`
+   - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` (optional; defaults to `false` when omitted)
 
 3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
 

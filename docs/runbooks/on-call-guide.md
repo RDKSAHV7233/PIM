@@ -2,7 +2,7 @@
 title: TEJ PIM On-Call and Monitoring Guide
 audience: internal-ops
 status: active
-last_updated: 2026-03-19
+last_updated: 2026-03-26
 owner: DevOps
 ---
 
@@ -18,7 +18,7 @@ owner: DevOps
 | Auth error rate | Railway request and application logs | Normal background level of 401, 423, and 429 responses | Sustained spike in 401, 423, or 429 responses |
 | Database connectivity | `GET /api/v1/health`, Railway logs, and deploy logs | Health endpoint stays green and Prisma boot logs stay clean | Health goes 500 or logs show Prisma connection or migration errors |
 | Redis degradation | API logs from auth and queue services | No Redis connection warnings; normal BullMQ behavior | Repeated Redis connection warnings or auth fallback behavior |
-| Staging verification lanes | GitHub Actions `deploy-staging.yml` and `e2e-staging.yml` | Latest deploy succeeds; latest nightly E2E has 0 failures | Failed deploy smoke gate or failed nightly E2E run |
+| Staging verification lanes | GitHub Actions `deploy-staging.yml` and `e2e-staging.yml` | Latest deploy succeeds; latest nightly E2E has 0 failures; public signup smoke matches the intended rollout state | Failed deploy smoke gate, failed public signup smoke check, or failed nightly E2E run |
 
 ## 2. Signals that indicate degraded mode (not fully down)
 
@@ -44,8 +44,10 @@ The on-call engineer should verify these items each morning:
 2. GitHub Actions: confirm the latest `deploy-staging.yml` run, if any, completed successfully and uploaded artifacts.
 3. Railway: confirm the API and Web services show no unexpected restart spikes overnight.
 4. Staging API: check `GET https://api-staging-4faf.up.railway.app/api/v1/health` for `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
-5. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
-6. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
+5. If self-serve signup rollout is in play, confirm the `Public signup smoke check` step is green in the latest staging deploy and nightly E2E runs.
+6. If the rollout expectation changed, verify `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` matches the intended staging state.
+7. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
+8. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
 
 ## 4. Alert setup (to be configured)
 
@@ -59,6 +61,7 @@ Recommended alerts to configure:
 - Response time p99 greater than 5 seconds -> P1
 - Nightly `e2e-staging.yml` failure -> P1
 - Deploy smoke-gate failure in `deploy-staging.yml` -> P1
+- Public signup smoke-check failure while rollout is enabled -> P1
 
 ## 5. Controlled rollout evidence maintenance
 
@@ -93,6 +96,8 @@ If you only need non-commercial staging to boot and do not need real delivery, s
   - `curl https://api-staging-4faf.up.railway.app/api/v1/health`
 - Post-deploy verification:
   - `node scripts/staging-postdeploy-check.cjs`
+- Public signup smoke:
+  - `node scripts/staging-public-signup-check.cjs`
 - Deep staging E2E:
   - `node scripts/e2e-user-journey.cjs`
 - Fast deploy gate:
