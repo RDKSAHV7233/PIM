@@ -117,6 +117,15 @@ function assertStatus(result, expected, context) {
   }
 }
 
+function compareOutboxEntries(left, right) {
+  const leftTime = new Date(left.payload?.writtenAt ?? 0).getTime();
+  const rightTime = new Date(right.payload?.writtenAt ?? 0).getTime();
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  return left.file.localeCompare(right.file);
+}
+
 async function login(baseUrl, workspaceSlug, userId, password = process.env.PIM_AUTH_PASSWORD) {
   return apiRequest(baseUrl, "POST", "/auth/login", null, {
     workspaceSlug,
@@ -138,7 +147,7 @@ async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
       }
     }
     if (matches.length > 0) {
-      matches.sort((left, right) => left.file.localeCompare(right.file));
+      matches.sort(compareOutboxEntries);
       return matches[matches.length - 1].payload;
     }
     await sleep(200);

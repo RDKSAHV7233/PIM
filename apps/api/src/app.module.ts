@@ -30,6 +30,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
 import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
+import { SignupModule } from "./signup/signup.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
 import { WorkspaceUsersModule } from "./workspace-users/workspace-users.module";
 
@@ -63,6 +64,7 @@ const FEATURE_ONDC_ENABLED =
     NotificationsModule,
     PlatformAdminModule,
     RejectionIntelligenceModule,
+    SignupModule,
     WorkspaceUsersModule,
     ...(FEATURE_ONDC_ENABLED ? [OndcModule] : []),
     AutoSuggestionsModule,

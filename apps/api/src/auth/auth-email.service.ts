@@ -10,7 +10,7 @@ export interface AuthEmailMessage {
   subject: string;
   text: string;
   html: string;
-  category: "password_reset" | "account_unlock" | "account_export_ready";
+  category: "password_reset" | "account_unlock" | "account_export_ready" | "signup_verification";
   metadata?: Record<string, unknown>;
 }
 

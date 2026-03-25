@@ -22,6 +22,10 @@ export interface ProvisionWorkspaceInput {
   initialAdminUserId: string;
 }
 
+export interface ProvisionWorkspaceWithPasswordHashInput extends ProvisionWorkspaceInput {
+  initialAdminPasswordHash: string;
+}
+
 interface LocalWorkspaceDirectoryEntry {
   tenantId: string;
   displayName: string;
@@ -97,6 +101,29 @@ export class TenantDirectoryService {
   }
 
   async provisionWorkspace(input: ProvisionWorkspaceInput): Promise<ResolvedWorkspaceDirectoryEntry> {
+    return this.provisionWorkspaceInternal({
+      ...input,
+      initialAdminPasswordHash: await this.resolveInitialPasswordHash(),
+      overrideExistingPasswordHash: false,
+    });
+  }
+
+  async provisionWorkspaceWithPasswordHash(
+    input: ProvisionWorkspaceWithPasswordHashInput,
+  ): Promise<ResolvedWorkspaceDirectoryEntry> {
+    return this.provisionWorkspaceInternal({
+      ...input,
+      initialAdminPasswordHash: input.initialAdminPasswordHash,
+      overrideExistingPasswordHash: true,
+    });
+  }
+
+  private async provisionWorkspaceInternal(
+    input: ProvisionWorkspaceInput & {
+      initialAdminPasswordHash: string | null;
+      overrideExistingPasswordHash: boolean;
+    },
+  ): Promise<ResolvedWorkspaceDirectoryEntry> {
     const tenantKey = normalizeTenantKey(input.tenantKey);
     const workspaceSlug = normalizeWorkspaceSlug(input.workspaceSlug);
     const displayName = String(input.displayName ?? "").trim();
@@ -129,6 +156,10 @@ export class TenantDirectoryService {
 
     const existingIdentity = await prisma.authIdentity.findUnique({
       where: { userId: initialAdminUserId },
+      select: {
+        id: true,
+        tenantKey: true,
+      },
     });
     if (existingIdentity && normalizeTenantKey(existingIdentity.tenantKey) !== tenantKey) {
       throw new Error("INITIAL_ADMIN_USER_ALREADY_ASSIGNED");
@@ -157,6 +188,9 @@ export class TenantDirectoryService {
         data: {
           role: "admin",
           isActive: true,
+          ...(input.overrideExistingPasswordHash && input.initialAdminPasswordHash
+            ? { passwordHash: input.initialAdminPasswordHash }
+            : {}),
         },
       });
     } else {
@@ -166,7 +200,7 @@ export class TenantDirectoryService {
           userId: initialAdminUserId,
           role: "admin",
           isActive: true,
-          passwordHash: await this.resolveInitialPasswordHash(),
+          passwordHash: input.initialAdminPasswordHash,
         },
       });
     }

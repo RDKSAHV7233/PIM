@@ -38,6 +38,7 @@ export interface ValidatedEnv {
   MEESHO_MERCHANT_ID?: string;
   MEESHO_SECRET_KEY?: string;
   FEATURE_ONDC_ENABLED: BoolText;
+  FEATURE_PUBLIC_SIGNUP_ENABLED: BoolText;
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
@@ -93,6 +94,7 @@ const EnvSchema = z.object({
   MEESHO_MERCHANT_ID: z.string().optional(),
   MEESHO_SECRET_KEY: z.string().optional(),
   FEATURE_ONDC_ENABLED: z.enum(["true", "false"] as const).default("false"),
+  FEATURE_PUBLIC_SIGNUP_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),

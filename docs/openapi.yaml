@@ -1993,6 +1993,65 @@ paths:
           description: ""
       tags:
         - RejectionIntelligence
+  /api/v1/signup/workspace/availability:
+    get:
+      operationId: SignupController_checkWorkspaceAvailability
+      parameters:
+        - name: workspaceSlug
+          required: true
+          in: query
+          schema: {}
+      responses:
+        "200":
+          description: Workspace availability evaluated
+      summary: Check whether a workspace slug is available for public signup
+      tags: &a19
+        - Public Signup
+  /api/v1/signup/workspace:
+    post:
+      operationId: SignupController_createPublicSignup
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePublicSignupDto"
+      responses:
+        "200":
+          description: Signup request accepted and pending verification
+      summary: Create a pending public signup request
+      tags: *a19
+  /api/v1/signup/verify:
+    post:
+      operationId: SignupController_verifyPublicSignup
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPublicSignupDto"
+      responses:
+        "200":
+          description: Signup verified and workspace provisioned
+      summary: Verify a public signup token and provision the workspace
+      tags: *a19
+  /api/v1/signup/resend-verification:
+    post:
+      operationId: SignupController_resendVerification
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendPublicSignupVerificationDto"
+      responses:
+        "200":
+          description: Verification email resent when a pending signup exists
+      summary: Resend the verification email for a pending public signup
+      tags: *a19
   /api/v1/admin/workspace/users:
     get:
       operationId: WorkspaceUsersController_listUsers
@@ -2000,7 +2059,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a19
+      tags: &a20
         - WorkspaceUsers
     post:
       operationId: WorkspaceUsersController_createUser
@@ -2014,7 +2073,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/admin/workspace/users/{userId}/role:
     patch:
       operationId: WorkspaceUsersController_updateUserRole
@@ -2033,7 +2092,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/admin/workspace/users/{userId}/lock:
     post:
       operationId: WorkspaceUsersController_lockUser
@@ -2052,7 +2111,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/admin/workspace/users/{userId}/unlock:
     post:
       operationId: WorkspaceUsersController_unlockUser
@@ -2065,7 +2124,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/admin/workspace/users/{userId}/deactivate:
     post:
       operationId: WorkspaceUsersController_deactivateUser
@@ -2078,7 +2137,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/admin/workspace/users/{userId}/password:
     post:
       operationId: WorkspaceUsersController_setUserPassword
@@ -2097,7 +2156,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a19
+      tags: *a20
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -2110,7 +2169,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a20
+      tags: &a21
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -2124,7 +2183,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a20
+      tags: *a21
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -2137,7 +2196,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a20
+      tags: *a21
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -2150,7 +2209,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a20
+      tags: *a21
 info:
   title: TEJ PIM API
   description: TEJ PIM API OpenAPI specification
@@ -2316,6 +2375,15 @@ components:
       type: object
       properties: {}
     CreatePlatformTenantDto:
+      type: object
+      properties: {}
+    CreatePublicSignupDto:
+      type: object
+      properties: {}
+    VerifyPublicSignupDto:
+      type: object
+      properties: {}
+    ResendPublicSignupVerificationDto:
       type: object
       properties: {}
     CreateWorkspaceUserDto:

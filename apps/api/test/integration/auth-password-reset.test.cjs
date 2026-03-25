@@ -118,6 +118,15 @@ function assertStatus(result, expected, context) {
   }
 }
 
+function compareOutboxEntries(left, right) {
+  const leftTime = new Date(left.parsed?.writtenAt ?? 0).getTime();
+  const rightTime = new Date(right.parsed?.writtenAt ?? 0).getTime();
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  return left.file.localeCompare(right.file);
+}
+
 async function login(baseUrl, workspaceSlug, userId, password) {
   return apiRequest(baseUrl, "POST", "/auth/login", null, {
     workspaceSlug,
@@ -127,7 +136,7 @@ async function login(baseUrl, workspaceSlug, userId, password) {
   });
 }
 
-async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
+async function waitForOutboxEmails(outboxDir, recipient, timeoutMs, minimumCount = 1) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const files = fs.existsSync(outboxDir) ? fs.readdirSync(outboxDir) : [];
@@ -139,13 +148,13 @@ async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
         matches.push({ file, parsed });
       }
     }
-    if (matches.length > 0) {
-      matches.sort((left, right) => left.file.localeCompare(right.file));
-      return matches[matches.length - 1].parsed;
+    if (matches.length >= minimumCount) {
+      matches.sort(compareOutboxEntries);
+      return matches;
     }
     await sleep(200);
   }
-  throw new Error(`Timed out waiting for auth email for ${recipient}`);
+  throw new Error(`Timed out waiting for ${minimumCount} auth email(s) for ${recipient}`);
 }
 
 function extractResetToken(emailPayload) {
@@ -258,14 +267,25 @@ async function run() {
       "expected X-RateLimit-Retry-After header when password reset rate limited",
     );
 
-    const emailPayload = await waitForOutboxEmail(outboxDir, adminUserId, 10_000);
-    const resetToken = extractResetToken(emailPayload);
-
-    const confirmReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/confirm", null, {
-      token: resetToken,
-      password: newPassword,
-    });
-    assertStatus(confirmReset, 200, "password reset confirm");
+    const emailEntries = await waitForOutboxEmails(outboxDir, adminUserId, 10_000, 3);
+    let confirmReset = null;
+    for (let index = emailEntries.length - 1; index >= 0; index -= 1) {
+      const resetToken = extractResetToken(emailEntries[index].parsed);
+      const candidate = await apiRequest(baseUrl, "POST", "/auth/password-reset/confirm", null, {
+        token: resetToken,
+        password: newPassword,
+      });
+      if (candidate.status === 200) {
+        confirmReset = candidate;
+        break;
+      }
+      if (candidate.status !== 401) {
+        throw new Error(
+          `password reset confirm failed unexpectedly: status=${candidate.status} payload=${JSON.stringify(candidate.payload)}`,
+        );
+      }
+    }
+    assert(confirmReset, "expected at least one delivered password reset token to confirm successfully");
     assert(confirmReset.payload?.reset === true, "password reset confirm should return reset=true");
 
     const oldLogin = await login(baseUrl, workspaceSlug, adminUserId, process.env.PIM_AUTH_PASSWORD);
