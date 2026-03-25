@@ -242,7 +242,7 @@
           ],
           "reopened_by": "",
           "reopened_reason": "User requested restoration of UI and connector work moved to unused.",
-          "regression_evidence": "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-TEJ PIM-transfer-2026-03-06"
+          "regression_evidence": "Missing active paths: docs/product/user-guide, docs/architecture/enterprise-docs, scripts/build_user_guide_pdf.py, scripts/generate_page_action_playbooks.py, docs/ports/orbit-pim1-transfer-2026-03-06"
         },
         {
           "storyId": "ST-REPO-MERGE-001",
@@ -1193,7 +1193,7 @@
           "commit": "63c3036",
           "tests_passed": [
             "Get-Content docs/connectors/README.md",
-            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
             "Get-Content docs/STRUCTURE.md",
             "git status --short",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
@@ -1235,11 +1235,11 @@
           "owner": "codex",
           "commit": "0657985",
           "tests_passed": [
-            "Get-Content docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
-            "rg -n \"PIM1_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "rg -n \"TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1251,11 +1251,11 @@
           "owner": "codex",
           "commit": "54f2c5d",
           "tests_passed": [
-            "Get-Content docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md",
-            "Get-Content docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "rg -n \"PIM1_CONNECTOR_CURRENT_STATE_2026-03-08|PIM1_CONNECTOR_DEVELOPER_GUIDE\" docs -S",
+            "rg -n \"TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08|TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE\" docs -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1267,12 +1267,12 @@
           "owner": "codex",
           "commit": "a7d57ad",
           "tests_passed": [
-            "Get-Content docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md",
-            "Get-Content docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md",
-            "Get-Content docs/connectors/PIM1_CONNECTOR_RECIPES.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md",
+            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "rg -n \"PIM1_CONNECTOR_DEVELOPER_GUIDE|PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE|PIM1_CONNECTOR_RECIPES\" docs/connectors docs/STRUCTURE.md -S",
+            "rg -n \"TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE|TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE|TEJ_PIM_CONNECTOR_RECIPES\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1300,7 +1300,7 @@
       "name": "Flipkart Publish Connector v1",
       "status": "completed",
       "evidence": [
-        "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
+        "docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
       ],
       "stories": [
         {
@@ -1311,13 +1311,13 @@
           "owner": "codex",
           "commit": "dd07f73",
           "tests_passed": [
-            "Get-Content docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
-            "rg -n \"publish-capable|imported/snapshotted taxonomy|Publish to Flipkart|installation and credential contract|Response normalization contract|Idempotency Contract|connector-installer|connector-framework|connector-mapping.service|product detail\" docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
-            "git diff --stat -- docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md docs/execution/INCREMENT_STATE.json",
+            "Get-Content docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "rg -n \"publish-capable|imported/snapshotted taxonomy|Publish to Flipkart|installation and credential contract|Response normalization contract|Idempotency Contract|connector-installer|connector-framework|connector-mapping.service|product detail\" docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "git diff --stat -- docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md docs/execution/INCREMENT_STATE.json",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "scope": [
-            "docs/connectors/PIM1_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
@@ -1789,7 +1789,7 @@
         "package.json",
         "scripts/run-product-suite.cjs",
         "apps/web/test/integration/product-shell-uiux.test.cjs",
-        "docs/strategy/PIM1_PRODUCT_TEST_STRATEGY.md"
+        "docs/strategy/TEJ_PIM_PRODUCT_TEST_STRATEGY.md"
       ],
       "stories": [
         {
@@ -1802,7 +1802,7 @@
           "scope": [
             "package.json",
             "scripts/run-product-suite.cjs",
-            "docs/strategy/PIM1_PRODUCT_TEST_STRATEGY.md",
+            "docs/strategy/TEJ_PIM_PRODUCT_TEST_STRATEGY.md",
             "apps/web/test/integration/product-shell-uiux.test.cjs",
             "apps/api/test/integration/create-product-pricing-normalization.test.cjs",
             "apps/api/test/integration/product-workflow-transitions.test.cjs",

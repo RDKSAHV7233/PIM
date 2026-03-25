@@ -17,7 +17,7 @@ Phase 2 cleanup after publishability and docs/bootstrap integrity commits.
 - None in this pass (deferred to avoid mixing with active docs edits).
 
 ## Move to unused/archive
-- `docs/ports/orbit-TEJ PIM-transfer-2026-03-06/**` -> `unused/archive/ports/orbit-TEJ PIM-transfer-2026-03-06/**`
+- `docs/ports/orbit-pim1-transfer-2026-03-06/**` -> `unused/archive/ports/orbit-pim1-transfer-2026-03-06/**`
 - `qa-ui-crawl.json` -> `unused/archive/temp/qa-ui-crawl.json`
 
 ## Generated artifacts ignore hardening

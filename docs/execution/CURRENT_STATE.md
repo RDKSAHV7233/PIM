@@ -91,7 +91,7 @@ Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS
 - `docs/product/` is canonical for product scope and user-facing guidance.
 - `docs/architecture/enterprise-docs/` is a generated reference bundle, not the primary source of truth.
 - `docs/ports/` is historical transfer/reference material and should not be treated as the live implementation baseline.
-- `docs/design/PIM1_UI_Design_Review.html` is design/reference material and not the live route contract.
+- `docs/design/TEJ_PIM_UI_Design_Review.html` is design/reference material and not the live route contract.
 
 ## 7. Current Runtime Notes
 - Local API entrypoint: `npm run dev:api`

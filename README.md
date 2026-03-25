@@ -68,6 +68,6 @@ Current repo state:
 - Consolidated user guide: `docs/pim-user-guide.md`
 - Admin setup checklist: `docs/admin-setup-checklist.md`
 - Connector docs SSOT: `docs/connectors/README.md`
-- Connector current-state baseline: `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+- Connector current-state baseline: `docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 - User guides: `docs/product/user-guide/` (supporting operational guides, not sole implementation truth)
 - OpenAPI references: `docs/openapi.yaml`, `docs/openapi.json` (supporting contract references, not sole implementation truth)

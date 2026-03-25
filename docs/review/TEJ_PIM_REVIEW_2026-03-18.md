@@ -278,7 +278,7 @@ The schema is in better shape than it was before. Important coverage includes:
 | Key rotation runbook | yes | yes | `docs/runbooks/credential-key-rotation.md` |
 | On-call / monitoring guide | yes | partial | Generated ops guide exists at `docs/architecture/enterprise-docs/DOCUMENT_10_Operations_Guide.txt`, but there is no dedicated on-call guide. |
 | Seller onboarding guide | yes | yes | `docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md` |
-| Seller user guide | yes | yes | `docs/product/user-guide/PIM1_MASTER_USER_GUIDE.md` |
+| Seller user guide | yes | yes | `docs/product/user-guide/TEJ_PIM_MASTER_USER_GUIDE.md` |
 | Channel setup guides | yes | yes | Connector and channel playbooks under `docs/product/user-guide/playbooks/` |
 | FAQ / troubleshooting | yes | no | No dedicated FAQ or troubleshooting guide found. |
 | Seller release notes | yes | no | No seller release-notes document found. |
@@ -334,7 +334,7 @@ The schema is in better shape than it was before. Important coverage includes:
 | `docs/product/user-guide/FUNCTIONALITY_WISE_GUIDE.md` | 109 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/PAGE_ACTION_PLAYBOOK_INDEX.md` | 51 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/PAGE_GUIDE_INDEX.md` | 57 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
-| `docs/product/user-guide/PIM1_MASTER_USER_GUIDE.md` | 2185 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
+| `docs/product/user-guide/TEJ_PIM_MASTER_USER_GUIDE.md` | 2185 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/README.md` | 13 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/pages/_admin_audit_page_tsx.md` | 16 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/pages/_admin_connectors_page_tsx.md` | 23 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |

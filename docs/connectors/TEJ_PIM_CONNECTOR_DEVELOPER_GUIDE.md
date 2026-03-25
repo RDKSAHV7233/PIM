@@ -18,9 +18,9 @@ questions without forcing you into another doc first.
 
 Use the deeper docs only when you specifically need them:
 - repo implementation details and ownership surfaces:
-  `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+  `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 - recipe-style worked examples:
-  `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+  `docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md`
 - rollout/gate truth:
   `docs/execution/INCREMENT_STATE.json`
 
@@ -303,8 +303,8 @@ That means:
 ## 13. Historical Notes
 
 Older external connector artifacts are historical only:
-- `PIM1_connector_plan_review_2026-03-04.docx`
-- `PIM1_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
+- `TEJ_PIM_connector_plan_review_2026-03-04.docx`
+- `TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
 
 They predate:
 - mapping lifecycle completion
@@ -316,9 +316,9 @@ They predate:
 
 Use these when you need more depth than the main guide:
 - internal implementation detail and code ownership surfaces:
-  `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+  `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 - worked workflow examples and recipe-style sequences:
-  `docs/connectors/PIM1_CONNECTOR_RECIPES.md`
+  `docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md`
 
 You should not need to open them for ordinary connector onboarding or basic
 API-flow understanding. They are supporting deep dives, not the primary entry

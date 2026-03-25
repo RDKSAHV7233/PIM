@@ -37,7 +37,7 @@ Supporting references:
 
 Historical context only:
 - `docs/archive/connectors/` once archived
-- `docs/connectors/PIM1_CONNECTOR_CURRENT_STATE_2026-03-08.md` as a compatibility pointer
+- `docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md` as a compatibility pointer
 
 ## 3. Current Connector Model
 
@@ -279,8 +279,8 @@ Current active docs supersede those artifacts.
 ### Superseded external artifacts
 
 These older documents are historical only and should not drive current implementation:
-- `PIM1_connector_plan_review_2026-03-04.docx`
-- `PIM1_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
+- `TEJ_PIM_connector_plan_review_2026-03-04.docx`
+- `TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
 
 They are stale because they reference older paths and predate:
 - lifecycle mapping in `apps/api/src/marketplace/**`

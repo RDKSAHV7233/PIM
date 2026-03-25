@@ -8,7 +8,7 @@ Restore UI and connector work from 2026-03-06 that was moved into `unused/archiv
 - `unused/archive/docs/product/user-guide-20260307/**` -> `docs/product/user-guide/**`
 - `unused/archive/scripts/build_user_guide_pdf.py` -> `scripts/build_user_guide_pdf.py`
 - `unused/archive/scripts/generate_page_action_playbooks.py` -> `scripts/generate_page_action_playbooks.py`
-- `unused/archive/ports/orbit-TEJ PIM-transfer-2026-03-06/**` -> `docs/ports/orbit-TEJ PIM-transfer-2026-03-06/**`
+- `unused/archive/ports/orbit-pim1-transfer-2026-03-06/**` -> `docs/ports/orbit-pim1-transfer-2026-03-06/**`
 
 ## Not Restored
 - `unused/archive/docs/execution/rollout/**`

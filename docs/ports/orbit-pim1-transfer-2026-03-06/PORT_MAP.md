@@ -75,8 +75,8 @@ These files are related to TEJ PIM capabilities, but not directly runnable in TE
 
 An expanded bundle was added under:
 
-- `docs/ports/orbit-TEJ PIM-transfer-2026-03-06/expanded/files`
-- `docs/ports/orbit-TEJ PIM-transfer-2026-03-06/expanded/patches`
+- `docs/ports/orbit-pim1-transfer-2026-03-06/expanded/files`
+- `docs/ports/orbit-pim1-transfer-2026-03-06/expanded/patches`
 
 Contents:
 

@@ -6,7 +6,7 @@ Scope: current TEJ PIM repository
 This file has been folded into the canonical connector guide.
 
 Use instead:
-- `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+- `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
 
 That guide now contains:
 - current connector architecture
@@ -21,6 +21,6 @@ Connector source-of-truth order remains:
 1. `docs/product/PRD.md`
 2. `docs/execution/INCREMENT_STATE.json`
 3. current code
-4. `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+4. `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
 
 This file is retained only so existing links do not break immediately.

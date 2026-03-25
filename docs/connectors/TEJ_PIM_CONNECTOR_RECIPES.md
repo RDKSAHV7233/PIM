@@ -10,10 +10,10 @@ Use this file for concrete workflow examples on top of the current TEJ PIM conne
 
 This file is recipe-oriented.
 For API/context overview, use:
-- `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE.md`
+- `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
 
 For repo implementation details, use:
-- `docs/connectors/PIM1_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 
 Current connector reality:
 - `flipkart` is the live publish-capable reference path
