@@ -108,6 +108,15 @@ function main() {
   requireEnvVar(postDeployStep, "STAGING_EXPECTED_ENV", "Post-deploy verification");
   requireRunContains(postDeployStep, "node scripts/staging-postdeploy-check.cjs", "Post-deploy verification");
 
+  const publicSignupStep = requireStep(steps, "Public signup smoke check");
+  requireEnvVar(publicSignupStep, "STAGING_BASE_URL", "Public signup smoke check");
+  requireEnvVar(publicSignupStep, "STAGING_WEB_URL", "Public signup smoke check");
+  requireEnvVar(publicSignupStep, "STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED", "Public signup smoke check");
+  requireEnvVar(publicSignupStep, "STAGING_EXPECTED_ENV", "Public signup smoke check");
+  requireRunContains(publicSignupStep, "node scripts/staging-public-signup-check.cjs", "Public signup smoke check");
+  requireStepOrder(steps, "Staging post-deploy verification (auth + trust boundary)", "Public signup smoke check");
+  requireStepOrder(steps, "Public signup smoke check", "E2E smoke - post-deploy verification");
+
   const e2eSmokeStep = requireStep(steps, "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_BASE_URL", "E2E smoke - post-deploy verification");
   requireEnvVar(e2eSmokeStep, "STAGING_SMOKE_WORKSPACE", "E2E smoke - post-deploy verification");
@@ -164,6 +173,7 @@ function main() {
           "deploy_step_uses_checked_in_railway_script",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
+          "public_signup_smoke_check_runs_after_postdeploy_verification",
           "postdeploy_e2e_smoke_runs_before_gate_recording",
           "gate_artifact_step_records_staging_postcheck_suite",
           "rollout_snapshot_step_targets_live_staging_api",

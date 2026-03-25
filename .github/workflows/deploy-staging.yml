@@ -95,6 +95,20 @@ jobs:
           fi
           node scripts/staging-postdeploy-check.cjs
 
+      - name: Public signup smoke check
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+          STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: ${{ secrets.STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED }}
+          STAGING_EXPECTED_ENV: staging
+        run: |
+          if [ -z "${STAGING_BASE_URL}" ]; then
+            echo "Missing STAGING_BASE_URL secret for public signup smoke check."
+            exit 1
+          fi
+          node scripts/staging-public-signup-check.cjs
+
       - name: E2E smoke - post-deploy verification
         shell: bash
         env:
