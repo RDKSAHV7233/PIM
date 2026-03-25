@@ -74,7 +74,7 @@ async function startStubServer(mode) {
       if (request.url === "/api/v1/signup/verify" && request.method === "POST") {
         const payload = await readJsonBody(request);
         assert(payload.token === "bogus-token", `Expected bogus-token verify payload, got ${JSON.stringify(payload)}`);
-        response.writeHead(400, { "content-type": "application/json" });
+        response.writeHead(401, { "content-type": "application/json" });
         response.end(JSON.stringify({ error: "SIGNUP_VERIFICATION_TOKEN_INVALID" }));
         return;
       }

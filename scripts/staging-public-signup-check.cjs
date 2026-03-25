@@ -172,7 +172,7 @@ async function main() {
     body: { token: "bogus-token" },
     retries: 2,
   });
-  assertStatus(verify, 400, "signup verify validation when feature enabled");
+  assertStatus(verify, 401, "signup verify validation when feature enabled");
   assert(
     String(verify.payload?.error ?? "") === "SIGNUP_VERIFICATION_TOKEN_INVALID",
     `signup verify validation payload invalid: ${JSON.stringify(verify.payload)}`,

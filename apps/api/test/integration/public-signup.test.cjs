@@ -528,6 +528,100 @@ async function runEmailRateLimitCase(baseEnv) {
   }
 }
 
+async function runResendRateLimitCase(baseEnv) {
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-resend-rate-"));
+  const env = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(5900 + Math.floor(Math.random() * 60)),
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+  });
+  const api = await startApi(env);
+  const runId = Date.now().toString();
+  const workspaceSlug = `resend-limit-${runId.slice(-6)}`;
+  const adminEmail = `resend-limit-${runId}@example.com`;
+  try {
+    const createSignup = await apiRequest(api.baseUrl, "POST", "/signup/workspace", {
+      displayName: "Resend Rate Limit",
+      workspaceSlug,
+      adminEmail,
+      password: "Signup#2026",
+      acceptedTerms: true,
+    });
+    assertStatus(createSignup, 200, "resend rate-limit warmup signup succeeds");
+
+    for (let index = 0; index < 2; index += 1) {
+      const resend = await apiRequest(api.baseUrl, "POST", "/signup/resend-verification", {
+        adminEmail,
+      });
+      assertStatus(resend, 200, `resend verification warmup ${index + 1}`);
+    }
+
+    const limited = await apiRequest(api.baseUrl, "POST", "/signup/resend-verification", {
+      adminEmail,
+    });
+    assertStatus(limited, 429, "resend verification rate limit enforced");
+    assert(limited.payload?.error === "SIGNUP_RATE_LIMITED", `unexpected resend rate limit payload=${JSON.stringify(limited.payload)}`);
+    assert(
+      String(limited.headers.get("x-ratelimit-retry-after") ?? "").trim().length > 0,
+      "expected retry header for resend rate limit",
+    );
+  } finally {
+    fs.rmSync(outboxDir, { recursive: true, force: true });
+    await stopApi(api.processHandle);
+  }
+}
+
+async function runConcurrentDuplicateCase(baseEnv) {
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-concurrent-"));
+  const env = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(5960 + Math.floor(Math.random() * 60)),
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+  });
+  const prisma = buildDbClient(baseEnv);
+  const api = await startApi(env);
+  const runId = Date.now().toString();
+  const workspaceSlug = `concurrent-${runId.slice(-6)}`;
+  const adminEmail = `concurrent-${runId}@example.com`;
+
+  try {
+    const [first, second] = await Promise.all([
+      apiRequest(api.baseUrl, "POST", "/signup/workspace", {
+        displayName: "Concurrent Signup",
+        workspaceSlug,
+        adminEmail,
+        password: "Signup#2026",
+        acceptedTerms: true,
+      }),
+      apiRequest(api.baseUrl, "POST", "/signup/workspace", {
+        displayName: "Concurrent Signup",
+        workspaceSlug,
+        adminEmail,
+        password: "Signup#2026",
+        acceptedTerms: true,
+      }),
+    ]);
+
+    const statuses = [first.status, second.status].sort((left, right) => left - right);
+    assert(
+      statuses[0] === 200 && statuses[1] === 409,
+      `expected one success and one conflict for concurrent signup, got ${JSON.stringify([first.payload, second.payload])}`,
+    );
+
+    const matchingRequests = await prisma.publicSignupRequest.findMany({
+      where: {
+        OR: [{ workspaceSlug }, { adminEmail }],
+      },
+    });
+    assert(matchingRequests.length === 1, `expected one pending signup request after concurrent create, got ${matchingRequests.length}`);
+    assert(matchingRequests[0]?.status === "pending", `expected surviving signup request to stay pending, got ${JSON.stringify(matchingRequests[0])}`);
+  } finally {
+    await prisma.$disconnect();
+    fs.rmSync(outboxDir, { recursive: true, force: true });
+    await stopApi(api.processHandle);
+  }
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -540,6 +634,8 @@ async function run() {
   await runHappyPathCase(baseEnv);
   await runIpRateLimitCase(baseEnv);
   await runEmailRateLimitCase(baseEnv);
+  await runResendRateLimitCase(baseEnv);
+  await runConcurrentDuplicateCase(baseEnv);
 
   console.log(
     JSON.stringify(
@@ -556,6 +652,8 @@ async function run() {
           "resend_verification_rotates_token",
           "signup_ip_rate_limit_returns_429",
           "signup_email_rate_limit_returns_429",
+          "resend_verification_rate_limit_returns_429",
+          "concurrent_duplicate_signup_leaves_single_pending_request",
         ],
         checkedAt: new Date().toISOString(),
       },

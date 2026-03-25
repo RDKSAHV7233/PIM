@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "redis";
@@ -141,8 +142,7 @@ export class SignupService implements OnModuleDestroy {
     }
 
     const prisma = this.prisma.tenant(DEFAULT_TENANT_KEY);
-    const signupRequests = this.signupRequestStore();
-    const [existingWorkspace, existingIdentity, existingPendingSlug, existingPendingEmail] = await Promise.all([
+    const [existingWorkspace, existingIdentity] = await Promise.all([
       prisma.workspaceDirectory.findUnique({
         where: { workspaceSlug },
         select: { tenantKey: true, isActive: true },
@@ -151,39 +151,13 @@ export class SignupService implements OnModuleDestroy {
         where: { userId: adminEmail },
         select: { tenantKey: true },
       }),
-      signupRequests.findFirst({
-        where: {
-          workspaceSlug,
-          status: "pending",
-          expiresAt: {
-            gt: new Date(now),
-          },
-        },
-        select: { id: true },
-      }),
-      signupRequests.findFirst({
-        where: {
-          adminEmail,
-          status: "pending",
-          expiresAt: {
-            gt: new Date(now),
-          },
-        },
-        select: { id: true },
-      }),
     ]);
 
     if (existingWorkspace?.isActive) {
       throw new Error("WORKSPACE_SLUG_ALREADY_ASSIGNED");
     }
-    if (existingPendingSlug) {
-      throw new Error("WORKSPACE_SLUG_ALREADY_PENDING");
-    }
     if (existingIdentity) {
       throw new Error("ADMIN_EMAIL_ALREADY_REGISTERED");
-    }
-    if (existingPendingEmail) {
-      throw new Error("SIGNUP_VERIFICATION_ALREADY_PENDING");
     }
 
     const passwordHash = await bcrypt.hash(String(dto.password), 12);
@@ -191,19 +165,105 @@ export class SignupService implements OnModuleDestroy {
     const verificationTokenHash = this.hashVerificationToken(verificationToken);
     const expiresAt = new Date(now + SIGNUP_VERIFICATION_EXPIRY_MS);
 
-    await signupRequests.create({
-      data: {
-        id: `signup_${randomUUID()}`,
-        displayName: String(dto.displayName ?? "").trim(),
-        workspaceSlug,
-        adminEmail,
-        passwordHash,
-        verificationTokenHash,
-        status: "pending",
-        acceptedTerms: dto.acceptedTerms,
-        expiresAt,
-      },
-    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const signupRequests = this.signupRequestStore(tx);
+        await this.expirePendingRequests(new Date(now), signupRequests);
+
+        const matchingRequests = await signupRequests.findMany({
+          where: {
+            OR: [{ workspaceSlug }, { adminEmail }],
+          },
+          orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        });
+
+        const verifiedWorkspace = matchingRequests.find(
+          (request: any) => request.workspaceSlug === workspaceSlug && request.status === "verified",
+        );
+        if (verifiedWorkspace) {
+          throw new Error("WORKSPACE_SLUG_ALREADY_ASSIGNED");
+        }
+
+        const verifiedEmail = matchingRequests.find(
+          (request: any) => request.adminEmail === adminEmail && request.status === "verified",
+        );
+        if (verifiedEmail) {
+          throw new Error("ADMIN_EMAIL_ALREADY_REGISTERED");
+        }
+
+        const pendingWorkspace = matchingRequests.find(
+          (request: any) => request.workspaceSlug === workspaceSlug && request.status === "pending",
+        );
+        if (pendingWorkspace) {
+          throw new Error("WORKSPACE_SLUG_ALREADY_PENDING");
+        }
+
+        const pendingEmail = matchingRequests.find(
+          (request: any) => request.adminEmail === adminEmail && request.status === "pending",
+        );
+        if (pendingEmail) {
+          throw new Error("SIGNUP_VERIFICATION_ALREADY_PENDING");
+        }
+
+        const reusableByEmail = matchingRequests.find((request: any) => request.adminEmail === adminEmail) ?? null;
+        const reusableByWorkspace =
+          matchingRequests.find((request: any) => request.workspaceSlug === workspaceSlug) ?? null;
+
+        const targetRequest = reusableByEmail ?? reusableByWorkspace;
+        const duplicateRequestIds =
+          reusableByEmail && reusableByWorkspace && reusableByEmail.id !== reusableByWorkspace.id
+            ? [reusableByEmail.id === targetRequest?.id ? reusableByWorkspace.id : reusableByEmail.id]
+            : [];
+
+        if (duplicateRequestIds.length > 0) {
+          await signupRequests.deleteMany({
+            where: {
+              id: {
+                in: duplicateRequestIds,
+              },
+            },
+          });
+        }
+
+        const data = {
+          displayName: String(dto.displayName ?? "").trim(),
+          workspaceSlug,
+          adminEmail,
+          passwordHash,
+          verificationTokenHash,
+          status: "pending",
+          acceptedTerms: dto.acceptedTerms,
+          expiresAt,
+          verifiedAt: null,
+        };
+
+        if (targetRequest) {
+          await signupRequests.update({
+            where: { id: targetRequest.id },
+            data,
+          });
+          return;
+        }
+
+        await signupRequests.create({
+          data: {
+            id: `signup_${randomUUID()}`,
+            ...data,
+          },
+        });
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const targets = Array.isArray(error.meta?.target) ? error.meta.target.map(String) : [];
+        if (targets.includes("workspaceSlug")) {
+          throw new Error("WORKSPACE_SLUG_ALREADY_PENDING");
+        }
+        if (targets.includes("adminEmail")) {
+          throw new Error("SIGNUP_VERIFICATION_ALREADY_PENDING");
+        }
+      }
+      throw error;
+    }
 
     try {
       await this.sendVerificationEmail({
@@ -291,11 +351,22 @@ export class SignupService implements OnModuleDestroy {
     };
   }
 
-  async resendVerification(adminEmailInput: string): Promise<{ ok: true; resent: true }> {
+  async resendVerification(adminEmailInput: string, ipAddress: string): Promise<{ ok: true; resent: true }> {
     this.assertFeatureEnabled();
     await this.expirePendingRequests();
 
     const adminEmail = this.normalizeEmail(adminEmailInput);
+    const now = Date.now();
+    const ipRetryAfterSeconds = await this.incrementAndCheckIpRateLimit(ipAddress, now);
+    if (ipRetryAfterSeconds > 0) {
+      throw new SignupRateLimitError(ipRetryAfterSeconds);
+    }
+
+    const emailRetryAfterSeconds = await this.incrementAndCheckEmailRateLimit(adminEmail, now);
+    if (emailRetryAfterSeconds > 0) {
+      throw new SignupRateLimitError(emailRetryAfterSeconds);
+    }
+
     const signupRequests = this.signupRequestStore();
     const signup = await signupRequests.findFirst({
       where: {
@@ -368,12 +439,12 @@ export class SignupService implements OnModuleDestroy {
     return createHash("sha256").update(String(token ?? "").trim(), "utf8").digest("hex");
   }
 
-  private signupRequestStore(): any {
-    return (this.prisma.tenant(DEFAULT_TENANT_KEY) as any).publicSignupRequest;
+  private signupRequestStore(client: any = this.prisma.tenant(DEFAULT_TENANT_KEY)): any {
+    return client.publicSignupRequest;
   }
 
-  private async expirePendingRequests(now = new Date()): Promise<void> {
-    await this.signupRequestStore().updateMany({
+  private async expirePendingRequests(now = new Date(), signupRequests = this.signupRequestStore()): Promise<void> {
+    await signupRequests.updateMany({
       where: {
         status: "pending",
         expiresAt: {

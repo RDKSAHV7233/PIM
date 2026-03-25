@@ -80,10 +80,11 @@ export class SignupController {
   @ApiResponse({ status: 200, description: "Verification email resent when a pending signup exists" })
   async resendVerification(
     @Body() dto: ResendPublicSignupVerificationDto,
+    @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     try {
-      return await this.signupService.resendVerification(dto.adminEmail);
+      return await this.signupService.resendVerification(dto.adminEmail, this.getRequestIp(request));
     } catch (error: unknown) {
       this.rethrowMappedError(error, reply);
     }

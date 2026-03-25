@@ -461,8 +461,8 @@ model AccountDeletionRequest {
 model PublicSignupRequest {
   id                   String    @id
   displayName          String
-  workspaceSlug        String
-  adminEmail           String
+  workspaceSlug        String    @unique
+  adminEmail           String    @unique
   passwordHash         String
   verificationTokenHash String   @unique
   status               String    @default("pending")
@@ -472,8 +472,6 @@ model PublicSignupRequest {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  @@index([workspaceSlug])
-  @@index([adminEmail])
   @@index([status, expiresAt])
 }
 
