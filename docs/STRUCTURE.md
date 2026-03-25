@@ -15,20 +15,20 @@
   - `PRD_SOURCES.md`
   - `FIRST_SELLER_ONBOARDING_PLAYBOOK.md`
 - `docs/architecture/`
-  - `PIM1_Final_Architecture_March2026_v3.docx`
-  - `PIM1_Connector_First_Redesign_March2026.docx`
+  - `TEJ_PIM_Final_Architecture_March2026_v3.docx`
+  - `TEJ_PIM_Connector_First_Redesign_March2026.docx`
   - `enterprise-docs/` (generated reference bundle; useful reviewer material, not canonical source-of-truth)
 - `docs/execution/`
   - `CURRENT_STATE.md`
   - `INCREMENT_STATE.json`
   - `INCREMENT_EXECUTION_MODEL.md`
-  - `PIM1_Execution_Plan_March2026_v2_(1)_tracked.docx`
+  - `TEJ_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
   - `PRD_TO_ENGINEERING_BACKLOG.md`
   - execution evidence files under `E*.md`
   - gate artifacts under `gates/`
   - rollout artifacts under `rollout/`
 - `docs/strategy/`
-  - `PIM1_Enhanced_CTO_PO_Plan_March2026.docx`
+  - `TEJ_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
 - `docs/design/`
   - `TEJ_PIM_UI_Design_Review.html` (reference design review, not the live route/source contract)
 - `docs/product/user-guide/`

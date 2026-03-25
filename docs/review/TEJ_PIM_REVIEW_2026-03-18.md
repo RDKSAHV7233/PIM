@@ -267,7 +267,7 @@ The schema is in better shape than it was before. Important coverage includes:
 | Product requirements (PRD) | yes | yes | `docs/product/PRD.md` |
 | Product roadmap | yes | partial | Increment ledger exists in `docs/execution/INCREMENT_STATE.json`, but there is no dedicated roadmap document. |
 | Release notes | yes | no | No dedicated seller-facing or engineering release-notes document found in `docs/`. |
-| System architecture | yes | yes | `docs/architecture/PIM1_Final_Architecture_March2026_v3.docx`, `docs/architecture/enterprise-docs/DOCUMENT_07_System_Architecture.txt` |
+| System architecture | yes | yes | `docs/architecture/TEJ_PIM_Final_Architecture_March2026_v3.docx`, `docs/architecture/enterprise-docs/DOCUMENT_07_System_Architecture.txt` |
 | Data model | yes | yes | `packages/db/prisma/schema.prisma`; generated companion doc exists at `docs/architecture/enterprise-docs/DOCUMENT_02_PIM_Domain_Model.txt` but is stale. |
 | API reference | yes | yes | `docs/openapi.yaml`, `docs/openapi.json` |
 | ADRs | yes | yes | `docs/decisions/` |
@@ -430,8 +430,8 @@ The schema is in better shape than it was before. Important coverage includes:
 | `docs/product/user-guide/playbooks/settings__connectors_playbook.md` | 25 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/playbooks/settings__plan_playbook.md` | 25 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
 | `docs/product/user-guide/playbooks/settings__privacy_playbook.md` | 25 | Extensive user documentation exists, but freshness is mixed and some entries lag the live UI. |
-| `docs/architecture/PIM1_Connector_First_Redesign_March2026.docx` | - | Binary architecture document present; good for distribution, less useful for diff-driven review. |
-| `docs/architecture/PIM1_Final_Architecture_March2026_v3.docx` | - | Binary architecture document present; good for distribution, less useful for diff-driven review. |
+| `docs/architecture/TEJ_PIM_Connector_First_Redesign_March2026.docx` | - | Binary architecture document present; good for distribution, less useful for diff-driven review. |
+| `docs/architecture/TEJ_PIM_Final_Architecture_March2026_v3.docx` | - | Binary architecture document present; good for distribution, less useful for diff-driven review. |
 | `docs/architecture/enterprise-docs/DOCUMENT_01_Product_Overview.txt` | 70 | Generated architecture reference present; useful, but freshness varies by file. |
 | `docs/architecture/enterprise-docs/DOCUMENT_02_PIM_Domain_Model.txt` | 54 | Generated domain-model doc is stale and no longer matches the live AuthIdentity schema. Generated architecture reference present; useful, but freshness varies by file. |
 | `docs/architecture/enterprise-docs/DOCUMENT_03_Catalog_Modeling_Guide.txt` | 52 | Generated architecture reference present; useful, but freshness varies by file. |

@@ -32,10 +32,10 @@ These code sources define the current implemented shell, route surface, and core
 ## 3. Historical design inputs retained for traceability
 These remain useful as design/history inputs, but they are not the live source of truth by themselves.
 
-1. `docs/architecture/PIM1_Final_Architecture_March2026_v3.docx`
-2. `docs/execution/PIM1_Execution_Plan_March2026_v2_(1)_tracked.docx`
-3. `docs/strategy/PIM1_Enhanced_CTO_PO_Plan_March2026.docx`
-4. `docs/architecture/PIM1_Connector_First_Redesign_March2026.docx`
+1. `docs/architecture/TEJ_PIM_Final_Architecture_March2026_v3.docx`
+2. `docs/execution/TEJ_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
+3. `docs/strategy/TEJ_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
+4. `docs/architecture/TEJ_PIM_Connector_First_Redesign_March2026.docx`
 5. `docs/design/TEJ_PIM_UI_Design_Review.html`
 
 ## 4. Canonical active docs after restructuring
