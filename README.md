@@ -25,6 +25,7 @@ Current repo state:
 - Connector credential key rotation runbook: `docs/runbooks/credential-key-rotation.md`
 - Auth bootstrap runbook: `docs/runbooks/auth-bootstrap-admin.md`
 - Test-data governance runbook: `docs/runbooks/test-data-governance.md`
+- Public signup production rollout runbook: `docs/runbooks/public-signup-production-rollout.md`
 
 ## Setup
 1. Copy `.env.example` to `.env`.
@@ -71,6 +72,7 @@ Current repo state:
 - Consolidated user guide: `docs/pim-user-guide.md`
 - Admin setup checklist: `docs/admin-setup-checklist.md`
 - Tenant login and signup model: `docs/auth/TEJ_PIM_TENANT_LOGIN_SPEC.md`
+- Public signup production rollout: `docs/runbooks/public-signup-production-rollout.md`
 - Connector docs SSOT: `docs/connectors/README.md`
 - Connector current-state baseline: `docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 - User guides: `docs/product/user-guide/` (supporting operational guides, not sole implementation truth)

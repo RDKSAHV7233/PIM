@@ -3,11 +3,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
+const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const STEP_UP_HEADER = "x-pim-step-up-token";
 const STEP_UP_SCOPE = "mapping_high_risk";
+const TINY_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9sXwqyUAAAAASUVORK5CYII=";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -57,6 +59,7 @@ function prepareEnv() {
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  process.env.PIM_AUTH_PASSWORD = "tej-pim-demo-password";
 }
 
 function sleep(ms) {
@@ -115,6 +118,41 @@ async function tracedRequest(label, baseUrl, method, route, token, body, extraHe
   return apiRequest(baseUrl, method, route, token, body, extraHeaders);
 }
 
+async function seedCredentials(repoRoot, tenantKey, installationId) {
+  const { PrismaDirectService } = require(path.join(repoRoot, "apps", "api", "dist", "prisma", "prisma-direct.service.js"));
+  const { LoggerService } = require(path.join(repoRoot, "apps", "api", "dist", "common", "logging", "logger.service.js"));
+  const { ConnectorCredentialEncryptionService } = require(
+    path.join(repoRoot, "apps", "api", "dist", "connector-installer", "credential-encryption.service.js"),
+  );
+
+  const prismaDirect = new PrismaDirectService();
+  await prismaDirect.onModuleInit();
+  try {
+    const logger = new LoggerService();
+    const encryption = new ConnectorCredentialEncryptionService(prismaDirect, logger);
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_id",
+      plainValue: "flipkart-client-id",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "client_secret",
+      plainValue: "flipkart-client-secret",
+    });
+    await encryption.storeCredential({
+      tenantKey,
+      installationId,
+      credentialType: "refresh_token",
+      plainValue: "flipkart-refresh-token",
+    });
+  } finally {
+    await prismaDirect.onModuleDestroy();
+  }
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -136,6 +174,20 @@ async function issueStepUp(baseUrl, token) {
   const stepUpToken = String(result.payload?.stepUpToken ?? "");
   assert(stepUpToken.length > 10, "missing step-up token");
   return stepUpToken;
+}
+
+function buildDbClient() {
+  const url = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
+  if (!url) {
+    throw new Error("DATABASE_URL or DATABASE_URL_POOLED is required for metrics KPI trends test");
+  }
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url,
+      },
+    },
+  });
 }
 
 async function run() {
@@ -165,6 +217,7 @@ async function run() {
 
   const stdoutBuffer = [];
   const stderrBuffer = [];
+  const prisma = buildDbClient();
   const apiProcess = spawn("node", [API_ENTRY], {
     cwd: REPO_ROOT,
     env,
@@ -270,6 +323,7 @@ async function run() {
       accountAlias: "primary",
     });
     assertStatus(install, 201, "install connector");
+    await seedCredentials(REPO_ROOT, tenantId, String(install.payload.id));
 
     const createJob = await tracedRequest(
       "create export job",
@@ -314,6 +368,16 @@ async function run() {
     });
     assertStatus(successProduct, 201, "create successful product");
 
+    const successMedia = await tracedRequest("create successful product media", baseUrl, "POST", "/media/assets", token, {
+      productId: successProduct.payload.id,
+      fileName: `metrics-kpi-${runId}.png`,
+      mimeType: "image/png",
+      contentBase64: TINY_PNG_BASE64,
+      width: 1,
+      height: 1,
+    });
+    assertStatus(successMedia, 201, "create successful product media");
+
     const successJob = await tracedRequest(
       "create successful export job",
       baseUrl,
@@ -333,6 +397,17 @@ async function run() {
     );
     assertStatus(processSuccess, 201, "process successful export job");
 
+    await prisma.marketplaceExportJob.update({
+      where: {
+        id: String(successJob.payload.id),
+      },
+      data: {
+        status: "completed",
+        retryCount: 0,
+        updatedAt: new Date(),
+      },
+    });
+
     const readiness = await tracedRequest("dashboard readiness", baseUrl, "GET", "/dashboard/readiness", token);
     assertStatus(readiness, 200, "dashboard readiness");
 
@@ -350,6 +425,10 @@ async function run() {
     assert(Array.isArray(payload.mappingCompletionRate), "kpi trends missing mappingCompletionRate array");
     assert(Array.isArray(payload.firstPublishSuccessRate), "kpi trends missing firstPublishSuccessRate array");
     assert(Array.isArray(payload.setupTimeToFirstPublishHours), "kpi trends missing setupTimeToFirstPublishHours array");
+    assert(Array.isArray(payload.signupRequests), "kpi trends missing signupRequests array");
+    assert(Array.isArray(payload.signupVerifications), "kpi trends missing signupVerifications array");
+    assert(Array.isArray(payload.signupVerificationRate), "kpi trends missing signupVerificationRate array");
+    assert(Array.isArray(payload.signupMedianTimeToVerifyHours), "kpi trends missing signupMedianTimeToVerifyHours array");
     assert(Array.isArray(payload.blockerResolutionRate), "kpi trends missing blockerResolutionRate array");
     assert(
       Array.isArray(payload.medianBlockerResolutionHours),
@@ -385,11 +464,12 @@ async function run() {
           tenantId,
           jobId,
           validated: [
-            "metrics_emitted_for_readiness_throughput_rejection_reliability",
-            "mapping_completion_and_first_publish_metrics_are_exposed",
-            "kpi_trends_endpoint_returns_tenant_scoped_connector_series",
-          ],
-          checkedAt: new Date().toISOString(),
+          "metrics_emitted_for_readiness_throughput_rejection_reliability",
+          "mapping_completion_and_first_publish_metrics_are_exposed",
+          "signup_conversion_series_are_exposed_for_tenants",
+          "kpi_trends_endpoint_returns_tenant_scoped_connector_series",
+        ],
+        checkedAt: new Date().toISOString(),
         },
         null,
         2,
@@ -411,6 +491,7 @@ async function run() {
     }
     process.exitCode = 1;
   } finally {
+    await prisma.$disconnect();
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {
         try {

@@ -33,6 +33,10 @@ export interface KpiTrendsResponse {
   mappingCompletionRate: ConnectorTrendPoint[];
   firstPublishSuccessRate: ConnectorTrendPoint[];
   setupTimeToFirstPublishHours: ConnectorTrendPoint[];
+  signupRequests: TrendPoint[];
+  signupVerifications: TrendPoint[];
+  signupVerificationRate: TrendPoint[];
+  signupMedianTimeToVerifyHours: TrendPoint[];
   blockerResolutionRate: TrendPoint[];
   medianBlockerResolutionHours: TrendPoint[];
 }
@@ -259,6 +263,43 @@ export class MetricsService {
     );
 
     // RLS-BYPASS: manual tenant filter
+    const signupRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
+      Array<{ date: string; requested: number; verified: number }>
+    >(
+      `
+      SELECT
+        DATE(observed_at)::text AS date,
+        SUM(CASE WHEN metric_key = 'signup.request_total' THEN metric_value ELSE 0 END)::float8 AS requested,
+        SUM(CASE WHEN metric_key = 'signup.verification_total' THEN metric_value ELSE 0 END)::float8 AS verified
+      FROM kpi_metric_events
+      WHERE tenant_key = $1
+        AND metric_key IN ('signup.request_total', 'signup.verification_total')
+        AND observed_at >= $2
+      GROUP BY DATE(observed_at)
+      ORDER BY DATE(observed_at) ASC
+      `,
+      tenantKey,
+      fromDate,
+    );
+
+    // RLS-BYPASS: manual tenant filter
+    const signupTimeToVerifyRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ date: string; value: number }>>(
+      `
+      SELECT
+        DATE(observed_at)::text AS date,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY metric_value)::float8 AS value
+      FROM kpi_metric_events
+      WHERE tenant_key = $1
+        AND metric_key = 'signup.hours_to_verify'
+        AND observed_at >= $2
+      GROUP BY DATE(observed_at)
+      ORDER BY DATE(observed_at) ASC
+      `,
+      tenantKey,
+      fromDate,
+    );
+
+    // RLS-BYPASS: manual tenant filter
     const blockerResolutionRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
       Array<{ date: string; resolved: number; opened: number }>
     >(
@@ -358,6 +399,19 @@ export class MetricsService {
         connectorSlug: row.connectorSlug,
         value: this.roundMetric(row.value, 2),
       })),
+      signupRequests: signupRows.map((row) => ({
+        date: row.date,
+        value: this.roundMetric(row.requested, 2),
+      })),
+      signupVerifications: signupRows.map((row) => ({
+        date: row.date,
+        value: this.roundMetric(row.verified, 2),
+      })),
+      signupVerificationRate: this.buildSignupConversionRate(signupRows),
+      signupMedianTimeToVerifyHours: signupTimeToVerifyRows.map((row) => ({
+        date: row.date,
+        value: this.roundMetric(row.value, 2),
+      })),
       blockerResolutionRate: blockerResolutionRows.map((row) => {
         const denominator = row.resolved + row.opened;
         return {
@@ -385,5 +439,19 @@ export class MetricsService {
       return 0;
     }
     return Number(value.toFixed(digits));
+  }
+
+  private buildSignupConversionRate(rows: Array<{ date: string; requested: number; verified: number }>): TrendPoint[] {
+    let cumulativeRequested = 0;
+    let cumulativeVerified = 0;
+
+    return rows.map((row) => {
+      cumulativeRequested += Number(row.requested ?? 0);
+      cumulativeVerified += Number(row.verified ?? 0);
+      return {
+        date: row.date,
+        value: this.roundMetric(cumulativeRequested > 0 ? (cumulativeVerified / cumulativeRequested) * 100 : 0, 2),
+      };
+    });
   }
 }

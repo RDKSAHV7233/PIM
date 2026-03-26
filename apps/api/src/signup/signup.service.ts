@@ -5,6 +5,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "redis";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AuthEmailService } from "../auth/auth-email.service";
+import { MetricsService } from "../metrics/metrics.service";
 import {
   DEFAULT_TENANT_KEY,
   isValidWorkspaceSlug,
@@ -51,6 +52,7 @@ export class SignupService implements OnModuleDestroy {
     private readonly tenantDirectoryService: TenantDirectoryService,
     private readonly authEmailService: AuthEmailService,
     private readonly planUsageService: PlanUsageService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -281,6 +283,15 @@ export class SignupService implements OnModuleDestroy {
       throw new Error("SIGNUP_VERIFICATION_SEND_FAILED");
     }
 
+    await this.emitSignupMetric({
+      tenantKey: workspaceSlug,
+      metricKey: "signup.request_total",
+      metricValue: 1,
+      tags: {
+        source: "public_signup",
+      },
+    });
+
     return {
       ok: true,
       status: "pending_verification",
@@ -342,6 +353,27 @@ export class SignupService implements OnModuleDestroy {
     });
 
     await this.planUsageService.getTenantPlanProfile(workspace.tenantId);
+
+    const hoursToVerify = Math.max(0, (Date.now() - new Date(request.createdAt).getTime()) / (60 * 60 * 1000));
+    await Promise.all([
+      this.emitSignupMetric({
+        tenantKey: workspace.tenantId,
+        metricKey: "signup.verification_total",
+        metricValue: 1,
+        tags: {
+          source: "public_signup",
+        },
+      }),
+      this.emitSignupMetric({
+        tenantKey: workspace.tenantId,
+        metricKey: "signup.hours_to_verify",
+        metricValue: hoursToVerify,
+        unit: "hours",
+        tags: {
+          source: "public_signup",
+        },
+      }),
+    ]);
 
     return {
       ok: true,
@@ -421,6 +453,15 @@ export class SignupService implements OnModuleDestroy {
       throw new Error("SIGNUP_VERIFICATION_SEND_FAILED");
     }
 
+    await this.emitSignupMetric({
+      tenantKey: signup.workspaceSlug,
+      metricKey: "signup.resend_total",
+      metricValue: 1,
+      tags: {
+        source: "public_signup",
+      },
+    });
+
     return { ok: true, resent: true };
   }
 
@@ -482,6 +523,27 @@ export class SignupService implements OnModuleDestroy {
         workspaceSlug: input.workspaceSlug,
       },
     });
+  }
+
+  private async emitSignupMetric(input: {
+    tenantKey: string;
+    metricKey: string;
+    metricValue: number;
+    unit?: string;
+    tags?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await this.metricsService.emit({
+        tenantKey: input.tenantKey,
+        metricKey: input.metricKey,
+        metricValue: input.metricValue,
+        unit: input.unit ?? null,
+        tags: input.tags ?? {},
+      });
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error ?? "unknown error");
+      this.logger.warn(`Signup metrics emission failed for ${input.metricKey}/${input.tenantKey}: ${reason}`);
+    }
   }
 
   private resolveWebBaseUrl(): string {

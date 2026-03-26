@@ -40,6 +40,7 @@
 - `docs/runbooks/`
   - `auth-bootstrap-admin.md`
   - `credential-key-rotation.md`
+  - `public-signup-production-rollout.md`
   - `test-data-governance.md`
 - `docs/legal/`
   - `terms-of-service.md`

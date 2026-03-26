@@ -402,6 +402,30 @@ async function runHappyPathCase(baseEnv) {
     assertStatus(planProfile, 200, "plan profile available after signup verification");
     assert(planProfile.payload?.planTier === "STARTER", `expected STARTER plan, got ${JSON.stringify(planProfile.payload)}`);
 
+    const signupTrends = await apiRequest(api.baseUrl, "GET", "/metrics/kpi-trends?days=7", undefined, {
+      token: verifiedLogin.payload.accessToken,
+    });
+    assertStatus(signupTrends, 200, "signup metrics trends available");
+    assert(Array.isArray(signupTrends.payload?.signupRequests), "expected signupRequests array in KPI trends");
+    assert(Array.isArray(signupTrends.payload?.signupVerifications), "expected signupVerifications array in KPI trends");
+    assert(Array.isArray(signupTrends.payload?.signupVerificationRate), "expected signupVerificationRate array in KPI trends");
+    assert(
+      Array.isArray(signupTrends.payload?.signupMedianTimeToVerifyHours),
+      "expected signupMedianTimeToVerifyHours array in KPI trends",
+    );
+    assert(
+      signupTrends.payload.signupRequests.some((point) => Number(point.value) >= 1),
+      `expected signup request metric point, got ${JSON.stringify(signupTrends.payload)}`,
+    );
+    assert(
+      signupTrends.payload.signupVerifications.some((point) => Number(point.value) >= 1),
+      `expected signup verification metric point, got ${JSON.stringify(signupTrends.payload)}`,
+    );
+    assert(
+      signupTrends.payload.signupVerificationRate.some((point) => Number(point.value) > 0),
+      `expected non-zero signup verification rate, got ${JSON.stringify(signupTrends.payload)}`,
+    );
+
     const secondSignup = await apiRequest(api.baseUrl, "POST", "/signup/workspace", {
       displayName: "TEJ Resend Workspace",
       workspaceSlug: secondWorkspaceSlug,
@@ -647,6 +671,7 @@ async function run() {
           "signup_happy_path_creates_pending_request",
           "signup_verify_provisions_workspace_and_admin",
           "verified_admin_can_login_and_has_starter_plan",
+          "signup_kpi_trends_expose_request_verification_and_conversion_metrics",
           "duplicate_slug_and_email_are_rejected",
           "expired_token_is_rejected",
           "resend_verification_rotates_token",
