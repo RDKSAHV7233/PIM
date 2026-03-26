@@ -158,8 +158,12 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
       }
 
       if (response.status === 409) {
-        if (payload?.error === "ADMIN_EMAIL_ALREADY_REGISTERED" || payload?.error === "SIGNUP_VERIFICATION_ALREADY_PENDING") {
+        if (payload?.error === "ADMIN_EMAIL_ALREADY_REGISTERED") {
           setError(authCopy.signupDuplicateEmail);
+          return;
+        }
+        if (payload?.error === "SIGNUP_VERIFICATION_ALREADY_PENDING") {
+          setError(authCopy.signupPendingVerification);
           return;
         }
         if (payload?.error === "WORKSPACE_SLUG_ALREADY_ASSIGNED" || payload?.error === "WORKSPACE_SLUG_ALREADY_PENDING") {

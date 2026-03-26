@@ -46,8 +46,12 @@ The on-call engineer should verify these items each morning:
 4. Staging API: check `GET https://api-staging-4faf.up.railway.app/api/v1/health` for `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
 5. If self-serve signup rollout is in play, confirm the `Public signup smoke check` step is green in the latest staging deploy and nightly E2E runs.
 6. If the rollout expectation changed, verify `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` matches the intended staging state.
-7. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
-8. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
+7. When signup is enabled, confirm Railway runtime flags match on both services:
+   - API: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+   - Web: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+   - Web: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+8. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
+9. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
 
 ## 4. Alert setup (to be configured)
 

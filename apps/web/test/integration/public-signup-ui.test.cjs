@@ -26,6 +26,7 @@ try {
   const signupRoute = read("apps/web/src/app/api/signup/workspace/route.ts");
   const verifyRoute = read("apps/web/src/app/api/signup/verify/route.ts");
   const publicSignupFlag = read("apps/web/src/lib/public-signup.ts");
+  const authCopy = read("apps/web/src/components/auth/auth-copy.ts");
   const envExample = read(".env.example");
 
   assert(
@@ -63,6 +64,18 @@ try {
     "Signup verify page must verify tokens and support resend verification.",
   );
   assert(
+    signupClient.includes('payload?.error === "SIGNUP_VERIFICATION_ALREADY_PENDING"') &&
+      signupClient.includes("authCopy.signupPendingVerification") &&
+      authCopy.includes("A verification email is already pending for that address.") &&
+      authCopy.includes("That email is already in use. Sign in or reset your password instead."),
+    "Signup page must distinguish pending verification from a fully registered email conflict.",
+  );
+  assert(
+    authCopy.includes("We'll confirm your email and activate your TEJ PIM workspace.") &&
+      !authCopy.includes("Weâ€™ll confirm your email"),
+    "Signup verify copy must use clean punctuation without mojibake.",
+  );
+  assert(
     signupShared.includes("signupFeatureDisabledResponse") &&
       signupRoute.includes('"/signup/workspace"') &&
       verifyRoute.includes('"/signup/verify"'),
@@ -79,6 +92,8 @@ try {
           "signup_pages_are_feature_gated",
           "signup_page_client_checks_availability_and_submits",
           "signup_verify_client_supports_verify_and_resend",
+          "signup_copy_distinguishes_pending_verification",
+          "signup_verify_copy_has_clean_punctuation",
           "web_signup_api_routes_proxy_backend_endpoints",
         ],
         checkedAt: new Date().toISOString(),

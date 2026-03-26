@@ -25,6 +25,7 @@ export interface AuthCopy {
   signupSubmitting: string;
   signupSuccess: string;
   signupDuplicateEmail: string;
+  signupPendingVerification: string;
   signupEmailInvalid: string;
   signupTermsLabel: string;
   signupPasswordHelp: string;
@@ -98,13 +99,14 @@ const EN_COPY: AuthCopy = {
   signupSubmitting: "Creating workspace...",
   signupSuccess: "Check your email for the verification link to finish creating your workspace.",
   signupDuplicateEmail: "That email is already in use. Sign in or reset your password instead.",
+  signupPendingVerification: "A verification email is already pending for that address. Check your inbox or resend the verification link.",
   signupEmailInvalid: "Enter a valid email address for the first admin.",
   signupTermsLabel: "I accept the Terms of Service and Privacy Policy.",
   signupPasswordHelp: "Use at least 8 characters.",
   signupPasswordMismatch: "The password confirmation does not match.",
   signupDisplayNameRequired: "Workspace name is required.",
   signupVerifyTitle: "Verify your workspace",
-  signupVerifySubtitle: "We’ll confirm your email and activate your TEJ PIM workspace.",
+  signupVerifySubtitle: "We'll confirm your email and activate your TEJ PIM workspace.",
   signupVerifyInProgress: "Verifying your workspace link...",
   signupVerifySuccess: "Your workspace is ready. Sign in with the workspace ID, email, and password you just created.",
   signupVerifyInvalid: "This verification link is invalid or has expired.",
@@ -158,3 +160,4 @@ const COPY_BY_LOCALE: Record<PimLocale, AuthCopy> = {
 export function getAuthCopy(locale: PimLocale): AuthCopy {
   return COPY_BY_LOCALE[locale] ?? EN_COPY;
 }
+

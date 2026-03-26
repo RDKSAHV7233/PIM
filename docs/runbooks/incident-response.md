@@ -117,6 +117,10 @@ Escalation: [FILL: CTO contact]
    - Verify the intended rollout state for staging.
    - Check `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` in GitHub Actions environment secrets.
    - If signup should be disabled, confirm `/api/v1/signup/*` returns `404` and `/signup` is hidden.
+   - If signup should be enabled, confirm Railway runtime flags are aligned:
+     - API: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+     - Web: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+     - Web: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - If signup should be enabled, confirm `STAGING_WEB_URL` points at the deployed web app and the public signup routes are reachable.
    - Re-run `node scripts/staging-public-signup-check.cjs` locally with the staging URLs if needed.
 7. After a successful redeploy, verify:

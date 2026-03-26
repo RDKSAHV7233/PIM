@@ -162,6 +162,14 @@ Environment variables:
 - `STAGING_EXPECTED_ENV=staging`
 - `STAGING_WEB_URL` (optional, required only if you want the script to probe the public `/signup` page)
 
+Runtime flags that must match the intended rollout state:
+
+- `api`: `FEATURE_PUBLIC_SIGNUP_ENABLED=true|false`
+- `web`: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true|false`
+- `web`: `FEATURE_PUBLIC_SIGNUP_ENABLED=true|false`
+
+When signup is enabled, set all three runtime flags to `true`. The web app uses the public flag for client exposure and the server-side fallback flag for route gating, so enabling only the API flag or only `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED` can still leave `/signup` returning `404`.
+
 Disabled-state validation:
 
 ```powershell
@@ -180,6 +188,12 @@ $env:STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED="true"
 $env:STAGING_EXPECTED_ENV="staging"
 node scripts/staging-public-signup-check.cjs
 ```
+
+Before running the enabled-state check, confirm Railway staging config is aligned:
+
+- API service: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+- Web service: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`
+- Web service: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
 
 Expected enabled-state validations:
 
