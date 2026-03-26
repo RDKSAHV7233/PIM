@@ -47,6 +47,7 @@ function run() {
   );
   assert(
     source.includes("Strongest Signup Day") &&
+      source.includes("Highest Backlog Day") &&
       source.includes("Best Verification Day") &&
       source.includes("Slowest Verification Day"),
     "Plan page must expose signup trend highlight summaries.",

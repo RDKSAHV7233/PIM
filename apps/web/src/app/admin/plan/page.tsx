@@ -250,6 +250,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const signupTrendRows = allSignupTrendRows.slice(0, 10);
   const signupTrendChartRows = buildSignupTrendChartRows(allSignupTrendRows);
   const strongestSignupDay = pickTrendHighlight(allSignupTrendRows, (row) => row.requests);
+  const highestBacklogDay = pickTrendHighlight(allSignupTrendRows, (row) =>
+    row.pendingBacklog > 0 ? row.pendingBacklog : null,
+  );
   const bestVerificationDay = pickTrendHighlight(allSignupTrendRows, (row) =>
     row.requests > 0 ? row.verificationRate : null,
   );
@@ -462,7 +465,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </div>
               )}
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <div className="mt-4 grid gap-3 lg:grid-cols-4">
               <div className="rounded-md border border-slate-200 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Strongest Signup Day
@@ -474,6 +477,19 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                   {strongestSignupDay
                     ? `${Math.round(strongestSignupDay.requests)} signup requests recorded`
                     : "We will highlight the busiest signup day once activity arrives."}
+                </div>
+              </div>
+              <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Highest Backlog Day
+                </div>
+                <div className="mt-2 text-lg font-semibold text-slate-900">
+                  {highestBacklogDay ? formatTrendDayLabel(highestBacklogDay.date) : "No data yet"}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {highestBacklogDay
+                    ? `${Math.round(highestBacklogDay.pendingBacklog)} signups were still waiting to verify`
+                    : "We will highlight the heaviest pending-verification day once backlog appears."}
                 </div>
               </div>
               <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
