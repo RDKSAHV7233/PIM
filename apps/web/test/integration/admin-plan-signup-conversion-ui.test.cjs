@@ -16,8 +16,10 @@ function run() {
   const source = fs.readFileSync(PLAN_PAGE, "utf8");
 
   assert(
-    source.includes('role === "admin" ? getKpiTrends({ days: 30 }, { role, authHeader }) : Promise.resolve(null)'),
-    "Plan page must load signup KPI trends for admins.",
+    source.includes("const signupTrendDays = resolveSignupTrendDays(query.days);") &&
+      source.includes('role === "admin"') &&
+      source.includes("getKpiTrends({ days: signupTrendDays }, { role, authHeader })"),
+    "Plan page must load signup KPI trends for admins using the selected window.",
   );
   assert(
     source.includes("Self-Serve Signup Conversion") &&
@@ -27,6 +29,13 @@ function run() {
       source.includes("Median Verify Time"),
     "Plan page must render the signup conversion section and KPI labels.",
   );
+  assert(
+    source.includes("SIGNUP_TREND_WINDOWS = [7, 30, 90]") &&
+      source.includes("href={`/admin/plan?days=${days}`}") &&
+      source.includes("No signup activity recorded for this window yet.") &&
+      source.includes("<th className=\"px-3 py-2\">Date</th>"),
+    "Plan page must expose trend-window links and the signup trend table.",
+  );
 
   console.log(
     JSON.stringify(
@@ -35,6 +44,7 @@ function run() {
         validated: [
           "plan_page_loads_signup_kpi_trends_for_admins",
           "plan_page_renders_signup_conversion_kpis",
+          "plan_page_exposes_signup_trend_windows_and_table",
         ],
         checkedAt: new Date().toISOString(),
       },

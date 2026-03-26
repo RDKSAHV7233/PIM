@@ -13,6 +13,8 @@ interface PlanPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
+const SIGNUP_TREND_WINDOWS = [7, 30, 90] as const;
+
 function percent(current: number, limit: number): number {
   if (!Number.isFinite(current) || !Number.isFinite(limit) || limit <= 0) {
     return 0;
@@ -42,6 +44,60 @@ function formatHours(value: number): string {
     return "0h";
   }
   return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
+}
+
+function resolveSignupTrendDays(input: string | undefined): (typeof SIGNUP_TREND_WINDOWS)[number] {
+  const parsed = Number.parseInt(String(input ?? ""), 10);
+  return SIGNUP_TREND_WINDOWS.includes(parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
+    ? (parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
+    : 30;
+}
+
+function buildSignupTrendRows(signupTrends: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
+  const rows = new Map();
+  for (const point of signupTrends.signupRequests) {
+    rows.set(point.date, {
+      date: point.date,
+      requests: point.value,
+      verifications: 0,
+      verificationRate: 0,
+      medianVerifyHours: null as number | null,
+    });
+  }
+  for (const point of signupTrends.signupVerifications) {
+    const existing = rows.get(point.date) ?? {
+      date: point.date,
+      requests: 0,
+      verifications: 0,
+      verificationRate: 0,
+      medianVerifyHours: null as number | null,
+    };
+    existing.verifications = point.value;
+    rows.set(point.date, existing);
+  }
+  for (const point of signupTrends.signupVerificationRate) {
+    const existing = rows.get(point.date) ?? {
+      date: point.date,
+      requests: 0,
+      verifications: 0,
+      verificationRate: 0,
+      medianVerifyHours: null as number | null,
+    };
+    existing.verificationRate = point.value;
+    rows.set(point.date, existing);
+  }
+  for (const point of signupTrends.signupMedianTimeToVerifyHours) {
+    const existing = rows.get(point.date) ?? {
+      date: point.date,
+      requests: 0,
+      verifications: 0,
+      verificationRate: 0,
+      medianVerifyHours: null as number | null,
+    };
+    existing.medianVerifyHours = point.value;
+    rows.set(point.date, existing);
+  }
+  return Array.from(rows.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
 function Meter({
@@ -77,12 +133,15 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const query = await searchParams;
   const role = await getServerActorRole();
   const authHeader = await getServerAuthHeader();
+  const signupTrendDays = resolveSignupTrendDays(query.days);
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
   let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
   try {
     [usage, signupTrends] = await Promise.all([
       getBillingUsage({ role, authHeader }),
-      role === "admin" ? getKpiTrends({ days: 30 }, { role, authHeader }) : Promise.resolve(null),
+      role === "admin"
+        ? getKpiTrends({ days: signupTrendDays }, { role, authHeader })
+        : Promise.resolve(null),
     ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
@@ -101,6 +160,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const signupMedianVerifyHours = signupTrends
     ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
     : 0;
+  const signupTrendRows = signupTrends ? buildSignupTrendRows(signupTrends).slice(0, 10) : [];
 
   return (
     <div className="space-y-5">
@@ -157,6 +217,24 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
             Track how many teams started signup, how many verified, and how quickly they finished
             onboarding in the last {signupTrends.rangeDays} days.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {SIGNUP_TREND_WINDOWS.map((days) => {
+              const active = signupTrends.rangeDays === days;
+              return (
+                <Link
+                  key={days}
+                  href={`/admin/plan?days=${days}`}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                    active
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  Last {days} days
+                </Link>
+              );
+            })}
+          </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-md border border-slate-200 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -200,6 +278,46 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           <div className="mt-4 text-sm text-slate-600">
             Watch these alongside the dashboard signup funnel to spot stalls before they turn into
             support issues.
+          </div>
+          <div className="mt-4 overflow-x-auto rounded-md border border-slate-200">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Signups</th>
+                  <th className="px-3 py-2">Verified</th>
+                  <th className="px-3 py-2">Rate</th>
+                  <th className="px-3 py-2">Median Verify Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signupTrendRows.length === 0 ? (
+                  <tr className="border-t border-slate-200">
+                    <td className="px-3 py-3 text-slate-600" colSpan={5}>
+                      No signup activity recorded for this window yet.
+                    </td>
+                  </tr>
+                ) : (
+                  signupTrendRows.map((row) => (
+                    <tr key={row.date} className="border-t border-slate-200">
+                      <td className="px-3 py-2.5 text-slate-700">{row.date}</td>
+                      <td className="px-3 py-2.5 font-medium text-slate-900">
+                        {Math.round(row.requests)}
+                      </td>
+                      <td className="px-3 py-2.5 font-medium text-slate-900">
+                        {Math.round(row.verifications)}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-700">
+                        {Math.max(0, Math.min(100, Math.round(row.verificationRate)))}%
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-700">
+                        {row.medianVerifyHours == null ? "-" : formatHours(row.medianVerifyHours)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </Card>
       ) : null}
