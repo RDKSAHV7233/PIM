@@ -50,6 +50,12 @@ function run() {
     "Plan page must expose signup trend highlight summaries.",
   );
   assert(
+    source.includes("Pending Verification Backlog") &&
+      source.includes("Use the chart and table below to spot the slowest days.") &&
+      source.includes("Every signup request in the last"),
+    "Plan page must expose a window-scoped pending verification backlog summary.",
+  );
+  assert(
     source.includes("resolveSignupHealthAlert") &&
       source.includes("Verification rate needs attention") &&
       source.includes("Verification is slowing down") &&
@@ -67,6 +73,7 @@ function run() {
           "plan_page_exposes_signup_trend_windows_and_table",
           "plan_page_exposes_signup_activity_chart",
           "plan_page_exposes_signup_trend_highlights",
+          "plan_page_exposes_pending_verification_backlog_summary",
           "plan_page_exposes_signup_health_alert",
         ],
         checkedAt: new Date().toISOString(),

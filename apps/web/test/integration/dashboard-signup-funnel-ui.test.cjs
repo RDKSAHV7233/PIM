@@ -50,6 +50,12 @@ function run() {
     "Dashboard must expose a compact signup trend snapshot for admins.",
   );
   assert(
+    dashboardPageSource.includes("Pending Verification Backlog") &&
+      dashboardPageSource.includes("Review backlog") &&
+      dashboardPageSource.includes("Use the admin trend view to spot the slowest days."),
+    "Dashboard must expose a window-scoped pending verification backlog signal for admins.",
+  );
+  assert(
     dashboardPageSource.includes('href={signupDrilldownHref}') &&
       dashboardPageSource.includes('label="Workspace Signups"') &&
       dashboardPageSource.includes('label="Verified Workspaces"') &&
@@ -68,6 +74,7 @@ function run() {
           "dashboard_renders_signup_funnel_cards",
           "dashboard_exposes_signup_health_alert_and_admin_link",
           "dashboard_exposes_signup_trend_snapshot",
+          "dashboard_exposes_pending_verification_backlog_signal",
           "dashboard_signup_cards_drill_into_admin_conversion_view",
         ],
         checkedAt: new Date().toISOString(),

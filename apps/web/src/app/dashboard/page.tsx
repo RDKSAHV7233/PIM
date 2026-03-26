@@ -184,6 +184,7 @@ export default async function DashboardPage() {
     const signupVerifications = signupTrends
       ? Math.round(sumTrendValues(signupTrends.signupVerifications))
       : 0;
+    const signupPendingBacklog = Math.max(signupRequests - signupVerifications, 0);
     const signupVerificationRate = signupTrends
       ? getLatestTrendValue(signupTrends.signupVerificationRate)
       : 0;
@@ -383,6 +384,32 @@ export default async function DashboardPage() {
               >
                 <div className="font-semibold">{signupHealthAlert.title}</div>
                 <div className="mt-1">{signupHealthAlert.body}</div>
+              </div>
+            ) : null}
+            {signupRequests > 0 ? (
+              <div
+                className={`rounded-md border px-3 py-3 text-sm ${
+                  signupPendingBacklog > 0
+                    ? "border-sky-200 bg-sky-50 text-sky-900"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Pending Verification Backlog</div>
+                    <div className="mt-1">
+                      {signupPendingBacklog > 0
+                        ? `${signupPendingBacklog} signup requests in the last ${signupTrends.rangeDays} days still need email verification. Use the admin trend view to spot the slowest days.`
+                        : `No pending verifications remain in the last ${signupTrends.rangeDays} days.`}
+                    </div>
+                  </div>
+                  <Link
+                    href={signupDrilldownHref}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
+                  >
+                    Review backlog
+                  </Link>
+                </div>
               </div>
             ) : null}
             {signupSparklineRows.length > 0 ? (
