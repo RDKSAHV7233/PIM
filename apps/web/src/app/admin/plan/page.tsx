@@ -123,6 +123,25 @@ function buildSignupTrendChartRows(rows: ReturnType<typeof buildSignupTrendRows>
   }));
 }
 
+function pickTrendHighlight<T extends ReturnType<typeof buildSignupTrendRows>[number]>(
+  rows: T[],
+  score: (row: T) => number | null,
+) {
+  let best: T | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const currentScore = score(row);
+    if (currentScore == null || !Number.isFinite(currentScore)) {
+      continue;
+    }
+    if (currentScore > bestScore) {
+      best = row;
+      bestScore = currentScore;
+    }
+  }
+  return best;
+}
+
 function Meter({
   label,
   current,
@@ -186,6 +205,11 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const allSignupTrendRows = signupTrends ? buildSignupTrendRows(signupTrends) : [];
   const signupTrendRows = allSignupTrendRows.slice(0, 10);
   const signupTrendChartRows = buildSignupTrendChartRows(allSignupTrendRows);
+  const strongestSignupDay = pickTrendHighlight(allSignupTrendRows, (row) => row.requests);
+  const bestVerificationDay = pickTrendHighlight(allSignupTrendRows, (row) =>
+    row.requests > 0 ? row.verificationRate : null,
+  );
+  const slowestVerificationDay = pickTrendHighlight(allSignupTrendRows, (row) => row.medianVerifyHours);
   const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
 
   return (
@@ -361,6 +385,47 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 ))}
               </div>
             )}
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-md border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Strongest Signup Day
+              </div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {strongestSignupDay ? formatTrendDayLabel(strongestSignupDay.date) : "No data yet"}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {strongestSignupDay
+                  ? `${Math.round(strongestSignupDay.requests)} signup requests recorded`
+                  : "We will highlight the busiest signup day once activity arrives."}
+              </div>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Best Verification Day
+              </div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {bestVerificationDay ? formatTrendDayLabel(bestVerificationDay.date) : "No data yet"}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {bestVerificationDay
+                  ? `${Math.max(0, Math.min(100, Math.round(bestVerificationDay.verificationRate)))}% of signups verified`
+                  : "We will highlight the strongest conversion day once teams start verifying."}
+              </div>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Slowest Verification Day
+              </div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {slowestVerificationDay ? formatTrendDayLabel(slowestVerificationDay.date) : "No data yet"}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {slowestVerificationDay
+                  ? `${formatHours(slowestVerificationDay.medianVerifyHours ?? 0)} median time to verify`
+                  : "We will highlight the slowest day once verification timing data is available."}
+              </div>
+            </div>
           </div>
           <div className="mt-4 overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full min-w-[640px] text-left text-sm">

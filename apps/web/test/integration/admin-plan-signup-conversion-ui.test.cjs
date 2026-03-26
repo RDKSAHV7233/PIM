@@ -43,6 +43,12 @@ function run() {
       source.includes('aria-label={`${row.date} verified workspaces`}'),
     "Plan page must expose a quick visual chart for signup and verification activity.",
   );
+  assert(
+    source.includes("Strongest Signup Day") &&
+      source.includes("Best Verification Day") &&
+      source.includes("Slowest Verification Day"),
+    "Plan page must expose signup trend highlight summaries.",
+  );
 
   console.log(
     JSON.stringify(
@@ -53,6 +59,7 @@ function run() {
           "plan_page_renders_signup_conversion_kpis",
           "plan_page_exposes_signup_trend_windows_and_table",
           "plan_page_exposes_signup_activity_chart",
+          "plan_page_exposes_signup_trend_highlights",
         ],
         checkedAt: new Date().toISOString(),
       },
