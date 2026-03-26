@@ -161,6 +161,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
     : 0;
   const signupTrendRows = signupTrends ? buildSignupTrendRows(signupTrends).slice(0, 10) : [];
+  const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
 
   return (
     <div className="space-y-5">
@@ -234,6 +235,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </Link>
               );
             })}
+            <a
+              href={signupExportHref}
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Export CSV
+            </a>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-md border border-slate-200 p-3">
