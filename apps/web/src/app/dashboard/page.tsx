@@ -57,6 +57,14 @@ function formatHours(value: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
 }
 
+function formatTrendDayLabel(value: string): string {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 function resolveSignupHealthAlert({
   rangeDays,
   requests,
@@ -93,6 +101,51 @@ function resolveSignupHealthAlert({
     title: "Signup conversion looks healthy",
     body: `${verifications} of ${requests} signup requests verified in the last ${rangeDays} days. Keep watching the admin signup trend view for sudden drops.`,
   };
+}
+
+function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
+  const rows = new Map<
+    string,
+    {
+      date: string;
+      requests: number;
+      verifications: number;
+    }
+  >();
+
+  for (const point of signupTrends.signupRequests) {
+    rows.set(point.date, {
+      date: point.date,
+      requests: Number.isFinite(point.value) ? Number(point.value) : 0,
+      verifications: 0,
+    });
+  }
+
+  for (const point of signupTrends.signupVerifications) {
+    const existing = rows.get(point.date) ?? {
+      date: point.date,
+      requests: 0,
+      verifications: 0,
+    };
+    existing.verifications = Number.isFinite(point.value) ? Number(point.value) : 0;
+    rows.set(point.date, existing);
+  }
+
+  const orderedRows = Array.from(rows.values())
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-10);
+  const maxValue = Math.max(
+    1,
+    ...orderedRows.map((row) => Math.max(row.requests, row.verifications)),
+  );
+
+  return orderedRows.map((row) => ({
+    ...row,
+    label: formatTrendDayLabel(row.date),
+    requestHeight: row.requests > 0 ? Math.max(6, Math.round((row.requests / maxValue) * 44)) : 0,
+    verificationHeight:
+      row.verifications > 0 ? Math.max(6, Math.round((row.verifications / maxValue) * 44)) : 0,
+  }));
 }
 
 export default async function DashboardPage() {
@@ -147,6 +200,7 @@ export default async function DashboardPage() {
           medianVerifyHours: signupMedianVerifyHours,
         })
       : null;
+    const signupSparklineRows = signupTrends ? buildSignupSparklineRows(signupTrends) : [];
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -326,6 +380,47 @@ export default async function DashboardPage() {
               >
                 <div className="font-semibold">{signupHealthAlert.title}</div>
                 <div className="mt-1">{signupHealthAlert.body}</div>
+              </div>
+            ) : null}
+            {signupSparklineRows.length > 0 ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Signup Trend Snapshot</div>
+                    <div className="text-xs text-slate-500">
+                      Last {signupSparklineRows.length} active days of signup and verification activity.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+                      Signups
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      Verified
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-end gap-2 overflow-x-auto pb-1">
+                  {signupSparklineRows.map((row) => (
+                    <div key={row.date} className="min-w-[36px] text-center">
+                      <div className="mx-auto flex h-16 items-end justify-center gap-1">
+                        <div
+                          aria-label={`${row.date} dashboard signups`}
+                          className="w-2.5 rounded-t bg-slate-400"
+                          style={{ height: `${row.requestHeight}px` }}
+                        />
+                        <div
+                          aria-label={`${row.date} dashboard verified workspaces`}
+                          className="w-2.5 rounded-t bg-emerald-500"
+                          style={{ height: `${row.verificationHeight}px` }}
+                        />
+                      </div>
+                      <div className="mt-2 text-[10px] font-medium text-slate-500">{row.label}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

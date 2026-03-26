@@ -43,6 +43,12 @@ function run() {
       dashboardPageSource.includes("Open signup trends"),
     "Dashboard must expose a signup health alert and a link to the admin signup trends view.",
   );
+  assert(
+    dashboardPageSource.includes("Signup Trend Snapshot") &&
+      dashboardPageSource.includes("dashboard signups") &&
+      dashboardPageSource.includes("dashboard verified workspaces"),
+    "Dashboard must expose a compact signup trend snapshot for admins.",
+  );
 
   console.log(
     JSON.stringify(
@@ -53,6 +59,7 @@ function run() {
           "dashboard_loads_signup_kpis_for_admins",
           "dashboard_renders_signup_funnel_cards",
           "dashboard_exposes_signup_health_alert_and_admin_link",
+          "dashboard_exposes_signup_trend_snapshot",
         ],
         checkedAt: new Date().toISOString(),
       },
