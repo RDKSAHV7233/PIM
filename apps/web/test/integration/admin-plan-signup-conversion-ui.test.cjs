@@ -33,8 +33,10 @@ function run() {
     source.includes("SIGNUP_TREND_WINDOWS = [7, 30, 90]") &&
       source.includes("href={`/admin/plan?days=${days}`}") &&
       source.includes("No signup activity recorded for this window yet.") &&
-      source.includes("<th className=\"px-3 py-2\">Date</th>"),
-    "Plan page must expose trend-window links and the signup trend table.",
+      source.includes("<th className=\"px-3 py-2\">Date</th>") &&
+      source.includes("<th className=\"px-3 py-2\">Pending</th>") &&
+      source.includes("pendingBacklog"),
+    "Plan page must expose trend-window links and the signup trend table, including daily pending backlog.",
   );
   assert(
     source.includes("Daily Trend At A Glance") &&
@@ -71,6 +73,7 @@ function run() {
           "plan_page_loads_signup_kpi_trends_for_admins",
           "plan_page_renders_signup_conversion_kpis",
           "plan_page_exposes_signup_trend_windows_and_table",
+          "plan_page_exposes_daily_pending_backlog_in_trend_table",
           "plan_page_exposes_signup_activity_chart",
           "plan_page_exposes_signup_trend_highlights",
           "plan_page_exposes_pending_verification_backlog_summary",

@@ -105,7 +105,12 @@ function buildSignupTrendRows(signupTrends: NonNullable<Awaited<ReturnType<typeo
     existing.medianVerifyHours = point.value;
     rows.set(point.date, existing);
   }
-  return Array.from(rows.values()).sort((left, right) => right.date.localeCompare(left.date));
+  return Array.from(rows.values())
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .map((row) => ({
+      ...row,
+      pendingBacklog: Math.max(Number(row.requests) - Number(row.verifications), 0),
+    }));
 }
 
 function buildSignupTrendChartRows(rows: ReturnType<typeof buildSignupTrendRows>) {
@@ -505,6 +510,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     <th className="px-3 py-2">Date</th>
                     <th className="px-3 py-2">Signups</th>
                     <th className="px-3 py-2">Verified</th>
+                    <th className="px-3 py-2">Pending</th>
                     <th className="px-3 py-2">Rate</th>
                     <th className="px-3 py-2">Median Verify Time</th>
                   </tr>
@@ -512,7 +518,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 <tbody>
                   {signupTrendRows.length === 0 ? (
                     <tr className="border-t border-slate-200">
-                      <td className="px-3 py-3 text-slate-600" colSpan={5}>
+                      <td className="px-3 py-3 text-slate-600" colSpan={6}>
                         No signup activity recorded for this window yet.
                       </td>
                     </tr>
@@ -525,6 +531,17 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                         </td>
                         <td className="px-3 py-2.5 font-medium text-slate-900">
                           {Math.round(row.verifications)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              row.pendingBacklog > 0
+                                ? "bg-sky-100 text-sky-900"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {Math.round(row.pendingBacklog)}
+                          </span>
                         </td>
                         <td className="px-3 py-2.5 text-slate-700">
                           {Math.max(0, Math.min(100, Math.round(row.verificationRate)))}%
