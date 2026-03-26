@@ -378,6 +378,34 @@ export interface DashboardOperationsSummaryResponse {
   asOf: string;
 }
 
+export interface KpiTrendPoint {
+  date: string;
+  value: number;
+}
+
+export interface KpiConnectorTrendPoint extends KpiTrendPoint {
+  connectorSlug: string;
+}
+
+export interface KpiTrendsResponse {
+  tenantId: string;
+  rangeDays: number;
+  generatedAt: string;
+  readinessAccuracy: KpiTrendPoint[];
+  throughput: KpiConnectorTrendPoint[];
+  rejectionRate: KpiConnectorTrendPoint[];
+  reliabilityDuplicatePreventionRate: KpiConnectorTrendPoint[];
+  mappingCompletionRate: KpiConnectorTrendPoint[];
+  firstPublishSuccessRate: KpiConnectorTrendPoint[];
+  setupTimeToFirstPublishHours: KpiConnectorTrendPoint[];
+  signupRequests: KpiTrendPoint[];
+  signupVerifications: KpiTrendPoint[];
+  signupVerificationRate: KpiTrendPoint[];
+  signupMedianTimeToVerifyHours: KpiTrendPoint[];
+  blockerResolutionRate: KpiTrendPoint[];
+  medianBlockerResolutionHours: KpiTrendPoint[];
+}
+
 export interface PlanLimitExceededPayload {
   error: "PLAN_LIMIT_EXCEEDED";
   resource: string;

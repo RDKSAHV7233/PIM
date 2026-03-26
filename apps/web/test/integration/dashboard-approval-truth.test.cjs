@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const API_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api.ts");
+const API_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "core.ts");
 const DASHBOARD_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "dashboard", "page.tsx");
 const APPROVALS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "quality", "approvals", "page.tsx");
 

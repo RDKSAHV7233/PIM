@@ -9,6 +9,7 @@ import {
   getBillingUsage,
   getDashboardHealth,
   getDashboardOperationsSummary,
+  getKpiTrends,
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -32,16 +33,43 @@ function formatUpdatedAt(value: string): string {
   return timestamp.toLocaleString();
 }
 
+function sumTrendValues(points: Array<{ value: number }>): number {
+  return points.reduce((sum, point) => sum + (Number.isFinite(point.value) ? point.value : 0), 0);
+}
+
+function getLatestTrendValue(points: Array<{ value: number }>): number {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const value = points[index]?.value;
+    if (Number.isFinite(value)) {
+      return Number(value);
+    }
+  }
+  return 0;
+}
+
+function formatHours(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  if (value === 0) {
+    return "0h";
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
+}
+
 export default async function DashboardPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
 
   try {
-    const [health, usage, operationsSummary, products] = await Promise.all([
+    const [health, usage, operationsSummary, products, signupTrends] = await Promise.all([
       getDashboardHealth({ role: actorRole, authHeader }),
       getBillingUsage({ role: actorRole, authHeader }),
       getDashboardOperationsSummary({ role: actorRole, authHeader }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
+      actorRole === "admin"
+        ? getKpiTrends({ days: 30 }, { role: actorRole, authHeader })
+        : Promise.resolve(null),
     ]);
     const activeConnectors = operationsSummary.activeConnectors;
     const blockingIssues = health.snapshot.openIssuesBlocking;
@@ -61,6 +89,17 @@ export default async function DashboardPage() {
     const pendingApprovals = Number(health.pendingApprovals ?? 0);
     const failedImportJobs = operationsSummary.failedImportJobs;
     const jobsNeedingRetry = operationsSummary.jobsNeedingRetry;
+    const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
+    const signupVerifications = signupTrends
+      ? Math.round(sumTrendValues(signupTrends.signupVerifications))
+      : 0;
+    const signupVerificationRate = signupTrends
+      ? getLatestTrendValue(signupTrends.signupVerificationRate)
+      : 0;
+    const signupMedianVerifyHours = signupTrends
+      ? getLatestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
+      : 0;
+    const signupWindowLabel = signupTrends ? `Last ${signupTrends.rangeDays} days` : "";
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -211,6 +250,67 @@ export default async function DashboardPage() {
             />
           </div>
         </section>
+
+        {actorRole === "admin" && signupTrends ? (
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Signup Funnel</h2>
+              <p className="text-sm text-slate-500">
+                Track self-serve workspace creation and how quickly teams finish verification.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard
+                label="Workspace Signups"
+                value={signupRequests}
+                helper={signupWindowLabel}
+                tone={signupRequests > 0 ? "info" : "default"}
+              />
+              <KpiCard
+                label="Verified Workspaces"
+                value={signupVerifications}
+                helper={
+                  signupRequests > 0
+                    ? `${Math.max(signupRequests - signupVerifications, 0)} still pending or unverified`
+                    : "No signup activity yet"
+                }
+                tone={signupVerifications > 0 ? "success" : "default"}
+              />
+              <KpiCard
+                label="Verification Rate"
+                value={formatPercent(signupVerificationRate)}
+                helper={
+                  signupRequests > 0
+                    ? `${signupVerifications} of ${signupRequests} signups completed`
+                    : "No signups in the current window"
+                }
+                tone={
+                  signupRequests === 0
+                    ? "default"
+                    : signupVerificationRate >= 60
+                      ? "success"
+                      : "warning"
+                }
+              />
+              <KpiCard
+                label="Median Verify Time"
+                value={formatHours(signupMedianVerifyHours)}
+                helper={
+                  signupVerifications > 0
+                    ? "Latest daily median from request to verification"
+                    : "No completed verifications yet"
+                }
+                tone={
+                  signupVerifications === 0
+                    ? "default"
+                    : signupMedianVerifyHours <= 24
+                      ? "success"
+                      : "warning"
+                }
+              />
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

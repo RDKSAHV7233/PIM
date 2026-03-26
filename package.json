@@ -39,6 +39,7 @@
     "test:integration:notifications-center": "dotenv -o -e .env -- node apps/api/test/integration/notifications-center.test.cjs",
     "test:integration:quality-reviewer-role": "dotenv -o -e .env -- node apps/api/test/integration/quality-reviewer-role.test.cjs",
     "test:integration:web-auth-cookie-csrf": "dotenv -o -e .env -- node apps/web/test/integration/auth-cookie-csrf.test.cjs",
+    "test:integration:dashboard-signup-funnel-ui": "dotenv -o -e .env -- node apps/web/test/integration/dashboard-signup-funnel-ui.test.cjs",
     "test:integration:connector-action-matrix-ui-gating": "dotenv -o -e .env -- node apps/web/test/integration/connector-action-matrix-ui-gating.test.cjs",
     "test:integration:marketplace-capability-ui-gating": "dotenv -o -e .env -- node apps/web/test/integration/marketplace-capability-ui-gating.test.cjs",
     "test:integration:env-validation": "dotenv -o -e .env -- node apps/api/test/integration/env-validation.test.cjs",
