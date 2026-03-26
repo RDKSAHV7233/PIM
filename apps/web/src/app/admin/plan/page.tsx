@@ -308,7 +308,8 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
         </div>
       </Card>
       {role === "admin" && signupTrends ? (
-        <Card>
+        <div id="signup-conversion">
+          <Card>
           <CardTitle>Self-Serve Signup Conversion</CardTitle>
           <p className="text-sm text-slate-600">
             Track how many teams started signup, how many verified, and how quickly they finished
@@ -520,7 +521,8 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
               </tbody>
             </table>
           </div>
-        </Card>
+          </Card>
+        </div>
       ) : null}
       {role === "admin" ? (
         <Card>

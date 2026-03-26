@@ -39,15 +39,23 @@ function run() {
       dashboardPageSource.includes("Signup verification needs attention") &&
       dashboardPageSource.includes("Signup verification is slowing down") &&
       dashboardPageSource.includes("Signup conversion looks healthy") &&
-      dashboardPageSource.includes('href="/admin/plan"') &&
+      dashboardPageSource.includes("const signupDrilldownHref = signupTrends") &&
       dashboardPageSource.includes("Open signup trends"),
-    "Dashboard must expose a signup health alert and a link to the admin signup trends view.",
+    "Dashboard must expose a signup health alert and a drill-down link to the admin signup trends view.",
   );
   assert(
     dashboardPageSource.includes("Signup Trend Snapshot") &&
       dashboardPageSource.includes("dashboard signups") &&
       dashboardPageSource.includes("dashboard verified workspaces"),
     "Dashboard must expose a compact signup trend snapshot for admins.",
+  );
+  assert(
+    dashboardPageSource.includes('href={signupDrilldownHref}') &&
+      dashboardPageSource.includes('label="Workspace Signups"') &&
+      dashboardPageSource.includes('label="Verified Workspaces"') &&
+      dashboardPageSource.includes('label="Verification Rate"') &&
+      dashboardPageSource.includes('label="Median Verify Time"'),
+    "Dashboard signup KPI cards must drill into the admin signup conversion view.",
   );
 
   console.log(
@@ -60,6 +68,7 @@ function run() {
           "dashboard_renders_signup_funnel_cards",
           "dashboard_exposes_signup_health_alert_and_admin_link",
           "dashboard_exposes_signup_trend_snapshot",
+          "dashboard_signup_cards_drill_into_admin_conversion_view",
         ],
         checkedAt: new Date().toISOString(),
       },

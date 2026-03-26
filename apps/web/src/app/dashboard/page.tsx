@@ -201,6 +201,9 @@ export default async function DashboardPage() {
         })
       : null;
     const signupSparklineRows = signupTrends ? buildSignupSparklineRows(signupTrends) : [];
+    const signupDrilldownHref = signupTrends
+      ? `/admin/plan?days=${signupTrends.rangeDays}#signup-conversion`
+      : "/admin/plan";
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -362,7 +365,7 @@ export default async function DashboardPage() {
                 </p>
               </div>
               <Link
-                href="/admin/plan"
+                href={signupDrilldownHref}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Open signup trends
@@ -429,6 +432,7 @@ export default async function DashboardPage() {
                 value={signupRequests}
                 helper={signupWindowLabel}
                 tone={signupRequests > 0 ? "info" : "default"}
+                href={signupDrilldownHref}
               />
               <KpiCard
                 label="Verified Workspaces"
@@ -439,6 +443,7 @@ export default async function DashboardPage() {
                     : "No signup activity yet"
                 }
                 tone={signupVerifications > 0 ? "success" : "default"}
+                href={signupDrilldownHref}
               />
               <KpiCard
                 label="Verification Rate"
@@ -455,6 +460,7 @@ export default async function DashboardPage() {
                       ? "success"
                       : "warning"
                 }
+                href={signupDrilldownHref}
               />
               <KpiCard
                 label="Median Verify Time"
@@ -471,6 +477,7 @@ export default async function DashboardPage() {
                       ? "success"
                       : "warning"
                 }
+                href={signupDrilldownHref}
               />
             </div>
           </section>
