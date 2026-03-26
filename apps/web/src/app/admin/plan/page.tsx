@@ -142,6 +142,44 @@ function pickTrendHighlight<T extends ReturnType<typeof buildSignupTrendRows>[nu
   return best;
 }
 
+function resolveSignupHealthAlert({
+  rangeDays,
+  requests,
+  verifications,
+  verificationRate,
+  medianVerifyHours,
+}: {
+  rangeDays: number;
+  requests: number;
+  verifications: number;
+  verificationRate: number;
+  medianVerifyHours: number;
+}) {
+  const pending = Math.max(requests - verifications, 0);
+  if (requests < 3) {
+    return null;
+  }
+  if (verificationRate < 40) {
+    return {
+      tone: "border-red-200 bg-red-50 text-red-900",
+      title: "Verification rate needs attention",
+      body: `${pending} teams are still unverified in the last ${rangeDays} days. Check email delivery and the verification path before rollout friction compounds.`,
+    };
+  }
+  if (medianVerifyHours >= 24) {
+    return {
+      tone: "border-amber-200 bg-amber-50 text-amber-900",
+      title: "Verification is slowing down",
+      body: `Median verification time is ${formatHours(medianVerifyHours)} in the last ${rangeDays} days. Review the onboarding email and any support touchpoints causing delay.`,
+    };
+  }
+  return {
+    tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    title: "Signup conversion looks healthy",
+    body: `${verifications} of ${requests} signup requests verified in the last ${rangeDays} days. Keep an eye on the daily chart for any sudden drop.`,
+  };
+}
+
 function Meter({
   label,
   current,
@@ -210,6 +248,15 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     row.requests > 0 ? row.verificationRate : null,
   );
   const slowestVerificationDay = pickTrendHighlight(allSignupTrendRows, (row) => row.medianVerifyHours);
+  const signupHealthAlert = signupTrends
+    ? resolveSignupHealthAlert({
+        rangeDays: signupTrends.rangeDays,
+        requests: signupRequests,
+        verifications: signupVerifications,
+        verificationRate: signupVerificationRate,
+        medianVerifyHours: signupMedianVerifyHours,
+      })
+    : null;
   const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
 
   return (
@@ -267,6 +314,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
             Track how many teams started signup, how many verified, and how quickly they finished
             onboarding in the last {signupTrends.rangeDays} days.
           </p>
+          {signupHealthAlert ? (
+            <div className={`mt-4 rounded-md border px-3 py-3 text-sm ${signupHealthAlert.tone}`}>
+              <div className="font-semibold">{signupHealthAlert.title}</div>
+              <div className="mt-1">{signupHealthAlert.body}</div>
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {SIGNUP_TREND_WINDOWS.map((days) => {
               const active = signupTrends.rangeDays === days;

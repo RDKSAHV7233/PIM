@@ -49,6 +49,13 @@ function run() {
       source.includes("Slowest Verification Day"),
     "Plan page must expose signup trend highlight summaries.",
   );
+  assert(
+    source.includes("resolveSignupHealthAlert") &&
+      source.includes("Verification rate needs attention") &&
+      source.includes("Verification is slowing down") &&
+      source.includes("Signup conversion looks healthy"),
+    "Plan page must expose a signup health alert state for admins.",
+  );
 
   console.log(
     JSON.stringify(
@@ -60,6 +67,7 @@ function run() {
           "plan_page_exposes_signup_trend_windows_and_table",
           "plan_page_exposes_signup_activity_chart",
           "plan_page_exposes_signup_trend_highlights",
+          "plan_page_exposes_signup_health_alert",
         ],
         checkedAt: new Date().toISOString(),
       },
