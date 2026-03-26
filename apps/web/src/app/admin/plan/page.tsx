@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { setPlanTierAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ApiHttpError, getBillingUsage } from "@/lib/api";
+import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -18,6 +18,30 @@ function percent(current: number, limit: number): number {
     return 0;
   }
   return Math.min(999, Math.round((current / limit) * 100));
+}
+
+function sumTrendValues(points: Array<{ value: number }>): number {
+  return points.reduce((sum, point) => sum + (Number.isFinite(point.value) ? point.value : 0), 0);
+}
+
+function latestTrendValue(points: Array<{ value: number }>): number {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const value = points[index]?.value;
+    if (Number.isFinite(value)) {
+      return Number(value);
+    }
+  }
+  return 0;
+}
+
+function formatHours(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  if (value === 0) {
+    return "0h";
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
 }
 
 function Meter({
@@ -54,8 +78,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const role = await getServerActorRole();
   const authHeader = await getServerAuthHeader();
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
+  let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
   try {
-    usage = await getBillingUsage({ role, authHeader });
+    [usage, signupTrends] = await Promise.all([
+      getBillingUsage({ role, authHeader }),
+      role === "admin" ? getKpiTrends({ days: 30 }, { role, authHeader }) : Promise.resolve(null),
+    ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/admin/plan", error.status));
@@ -63,6 +91,16 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     throw error;
   }
   const status = String(query.status ?? "").trim();
+  const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
+  const signupVerifications = signupTrends
+    ? Math.round(sumTrendValues(signupTrends.signupVerifications))
+    : 0;
+  const signupVerificationRate = signupTrends
+    ? latestTrendValue(signupTrends.signupVerificationRate)
+    : 0;
+  const signupMedianVerifyHours = signupTrends
+    ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
+    : 0;
 
   return (
     <div className="space-y-5">
@@ -112,6 +150,59 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           />
         </div>
       </Card>
+      {role === "admin" && signupTrends ? (
+        <Card>
+          <CardTitle>Self-Serve Signup Conversion</CardTitle>
+          <p className="text-sm text-slate-600">
+            Track how many teams started signup, how many verified, and how quickly they finished
+            onboarding in the last {signupTrends.rangeDays} days.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-md border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Workspace Signups
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">{signupRequests}</div>
+              <div className="mt-1 text-xs text-slate-500">Signup requests created</div>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Verified Workspaces
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">{signupVerifications}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {Math.max(signupRequests - signupVerifications, 0)} still pending or unverified
+              </div>
+            </div>
+            <div className="rounded-md border border-blue-200 bg-blue-50/60 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Verification Rate
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">
+                {Math.max(0, Math.min(100, Math.round(signupVerificationRate)))}%
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {signupVerifications} of {signupRequests} signups completed
+              </div>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Median Verify Time
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">
+                {formatHours(signupMedianVerifyHours)}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Latest daily median from request to verification
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-slate-600">
+            Watch these alongside the dashboard signup funnel to spot stalls before they turn into
+            support issues.
+          </div>
+        </Card>
+      ) : null}
       {role === "admin" ? (
         <Card>
           <CardTitle>Plan management</CardTitle>
