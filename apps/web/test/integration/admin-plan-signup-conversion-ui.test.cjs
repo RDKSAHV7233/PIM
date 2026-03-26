@@ -36,6 +36,13 @@ function run() {
       source.includes("<th className=\"px-3 py-2\">Date</th>"),
     "Plan page must expose trend-window links and the signup trend table.",
   );
+  assert(
+    source.includes("Daily Trend At A Glance") &&
+      source.includes("No signup activity to chart yet.") &&
+      source.includes('aria-label={`${row.date} signups`}') &&
+      source.includes('aria-label={`${row.date} verified workspaces`}'),
+    "Plan page must expose a quick visual chart for signup and verification activity.",
+  );
 
   console.log(
     JSON.stringify(
@@ -45,6 +52,7 @@ function run() {
           "plan_page_loads_signup_kpi_trends_for_admins",
           "plan_page_renders_signup_conversion_kpis",
           "plan_page_exposes_signup_trend_windows_and_table",
+          "plan_page_exposes_signup_activity_chart",
         ],
         checkedAt: new Date().toISOString(),
       },

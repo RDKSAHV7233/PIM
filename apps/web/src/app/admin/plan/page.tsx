@@ -46,6 +46,14 @@ function formatHours(value: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
 }
 
+function formatTrendDayLabel(value: string): string {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 function resolveSignupTrendDays(input: string | undefined): (typeof SIGNUP_TREND_WINDOWS)[number] {
   const parsed = Number.parseInt(String(input ?? ""), 10);
   return SIGNUP_TREND_WINDOWS.includes(parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
@@ -98,6 +106,21 @@ function buildSignupTrendRows(signupTrends: NonNullable<Awaited<ReturnType<typeo
     rows.set(point.date, existing);
   }
   return Array.from(rows.values()).sort((left, right) => right.date.localeCompare(left.date));
+}
+
+function buildSignupTrendChartRows(rows: ReturnType<typeof buildSignupTrendRows>) {
+  const chartRows = rows.slice(0, 10).reverse();
+  const maxValue = Math.max(
+    1,
+    ...chartRows.map((row) => Math.max(Number(row.requests) || 0, Number(row.verifications) || 0)),
+  );
+  return chartRows.map((row) => ({
+    ...row,
+    requestHeight: row.requests > 0 ? Math.max(8, Math.round((row.requests / maxValue) * 96)) : 0,
+    verificationHeight:
+      row.verifications > 0 ? Math.max(8, Math.round((row.verifications / maxValue) * 96)) : 0,
+    shortLabel: formatTrendDayLabel(row.date),
+  }));
 }
 
 function Meter({
@@ -160,7 +183,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const signupMedianVerifyHours = signupTrends
     ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
     : 0;
-  const signupTrendRows = signupTrends ? buildSignupTrendRows(signupTrends).slice(0, 10) : [];
+  const allSignupTrendRows = signupTrends ? buildSignupTrendRows(signupTrends) : [];
+  const signupTrendRows = allSignupTrendRows.slice(0, 10);
+  const signupTrendChartRows = buildSignupTrendChartRows(allSignupTrendRows);
   const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
 
   return (
@@ -285,6 +310,57 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           <div className="mt-4 text-sm text-slate-600">
             Watch these alongside the dashboard signup funnel to spot stalls before they turn into
             support issues.
+          </div>
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Daily Trend At A Glance</h3>
+                <p className="text-xs text-slate-500">
+                  Signups are shown in slate. Verified workspaces are shown in green.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+                  Signups
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  Verified
+                </span>
+              </div>
+            </div>
+            {signupTrendChartRows.length === 0 ? (
+              <div className="mt-4 text-sm text-slate-500">No signup activity to chart yet.</div>
+            ) : (
+              <div className="mt-4 flex min-h-40 items-end gap-3 overflow-x-auto pb-1">
+                {signupTrendChartRows.map((row) => (
+                  <div key={row.date} className="min-w-[54px] text-center">
+                    <div className="mx-auto flex h-28 items-end justify-center gap-1.5">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="text-[10px] text-slate-500">{Math.round(row.requests)}</div>
+                        <div
+                          aria-label={`${row.date} signups`}
+                          className="w-4 rounded-t bg-slate-400"
+                          style={{ height: `${row.requestHeight}px` }}
+                        />
+                      </div>
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="text-[10px] text-slate-500">
+                          {Math.round(row.verifications)}
+                        </div>
+                        <div
+                          aria-label={`${row.date} verified workspaces`}
+                          className="w-4 rounded-t bg-emerald-500"
+                          style={{ height: `${row.verificationHeight}px` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[11px] font-medium text-slate-600">{row.shortLabel}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="mt-4 overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full min-w-[640px] text-left text-sm">
