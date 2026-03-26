@@ -57,6 +57,44 @@ function formatHours(value: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
 }
 
+function resolveSignupHealthAlert({
+  rangeDays,
+  requests,
+  verifications,
+  verificationRate,
+  medianVerifyHours,
+}: {
+  rangeDays: number;
+  requests: number;
+  verifications: number;
+  verificationRate: number;
+  medianVerifyHours: number;
+}) {
+  const pending = Math.max(requests - verifications, 0);
+  if (requests < 3) {
+    return null;
+  }
+  if (verificationRate < 40) {
+    return {
+      tone: "danger" as const,
+      title: "Signup verification needs attention",
+      body: `${pending} teams are still unverified in the last ${rangeDays} days. Check the verification email path before friction compounds.`,
+    };
+  }
+  if (medianVerifyHours >= 24) {
+    return {
+      tone: "warning" as const,
+      title: "Signup verification is slowing down",
+      body: `Median verify time is ${formatHours(medianVerifyHours)} in the last ${rangeDays} days. Review the onboarding email and support touchpoints causing delay.`,
+    };
+  }
+  return {
+    tone: "success" as const,
+    title: "Signup conversion looks healthy",
+    body: `${verifications} of ${requests} signup requests verified in the last ${rangeDays} days. Keep watching the admin signup trend view for sudden drops.`,
+  };
+}
+
 export default async function DashboardPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
@@ -100,6 +138,15 @@ export default async function DashboardPage() {
       ? getLatestTrendValue(signupTrends.signupMedianTimeToVerifyHours)
       : 0;
     const signupWindowLabel = signupTrends ? `Last ${signupTrends.rangeDays} days` : "";
+    const signupHealthAlert = signupTrends
+      ? resolveSignupHealthAlert({
+          rangeDays: signupTrends.rangeDays,
+          requests: signupRequests,
+          verifications: signupVerifications,
+          verificationRate: signupVerificationRate,
+          medianVerifyHours: signupMedianVerifyHours,
+        })
+      : null;
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -253,12 +300,34 @@ export default async function DashboardPage() {
 
         {actorRole === "admin" && signupTrends ? (
           <section className="space-y-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Signup Funnel</h2>
-              <p className="text-sm text-slate-500">
-                Track self-serve workspace creation and how quickly teams finish verification.
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Signup Funnel</h2>
+                <p className="text-sm text-slate-500">
+                  Track self-serve workspace creation and how quickly teams finish verification.
+                </p>
+              </div>
+              <Link
+                href="/admin/plan"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Open signup trends
+              </Link>
             </div>
+            {signupHealthAlert ? (
+              <div
+                className={`rounded-md border px-3 py-3 text-sm ${
+                  signupHealthAlert.tone === "danger"
+                    ? "border-red-200 bg-red-50 text-red-900"
+                    : signupHealthAlert.tone === "warning"
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                }`}
+              >
+                <div className="font-semibold">{signupHealthAlert.title}</div>
+                <div className="mt-1">{signupHealthAlert.body}</div>
+              </div>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard
                 label="Workspace Signups"
@@ -488,3 +557,4 @@ export default async function DashboardPage() {
     throw error;
   }
 }
+

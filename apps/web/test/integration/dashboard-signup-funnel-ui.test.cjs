@@ -34,6 +34,15 @@ function run() {
       dashboardPageSource.includes('label="Median Verify Time"'),
     "Dashboard must render the signup funnel KPI labels.",
   );
+  assert(
+    dashboardPageSource.includes("resolveSignupHealthAlert") &&
+      dashboardPageSource.includes("Signup verification needs attention") &&
+      dashboardPageSource.includes("Signup verification is slowing down") &&
+      dashboardPageSource.includes("Signup conversion looks healthy") &&
+      dashboardPageSource.includes('href="/admin/plan"') &&
+      dashboardPageSource.includes("Open signup trends"),
+    "Dashboard must expose a signup health alert and a link to the admin signup trends view.",
+  );
 
   console.log(
     JSON.stringify(
@@ -43,6 +52,7 @@ function run() {
           "dashboard_api_exposes_signup_kpi_trends",
           "dashboard_loads_signup_kpis_for_admins",
           "dashboard_renders_signup_funnel_cards",
+          "dashboard_exposes_signup_health_alert_and_admin_link",
         ],
         checkedAt: new Date().toISOString(),
       },
@@ -59,3 +69,4 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
+
