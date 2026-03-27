@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyRequest } from "fastify";
+import { FastifyReply, FastifyRequest } from "fastify";
 import { AuditService } from "../audit/audit.service";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { Public } from "../auth/public.decorator";
@@ -244,6 +244,46 @@ export class BillingController {
       items,
       count: items.length,
     };
+  }
+
+  @Public()
+  @Get("internal/upgrade-requests/export")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only upgrade request CSV export" })
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async exportUpgradeRequestsInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Query() query: ListPlanUpgradeRequestsDto,
+    @Res({ passthrough: true }) response: FastifyReply,
+  ) {
+    const { actorId, actorRole } = this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+    );
+    const stamp = new Date().toISOString().slice(0, 10);
+    response.header("Content-Disposition", `attachment; filename="tej-pim-commercial-requests-${stamp}.csv"`);
+    const csv = await this.commercialRequestsService.exportUpgradeRequestsCsvInternal({
+      tenantKey: query.tenantKey,
+      status: query.status,
+      limit: query.limit ?? 250,
+    });
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_UPGRADE_REQUEST_EXPORTED",
+      resource: "TENANT_COMMERCIAL_REQUEST",
+      resourceId: query.tenantKey ?? "all",
+      metadata: {
+        event: "commercial_upgrade_request_exported",
+        tenantKey: query.tenantKey ?? null,
+        status: query.status ?? null,
+        limit: query.limit ?? 250,
+      },
+    });
+    return csv;
   }
 
   @Public()

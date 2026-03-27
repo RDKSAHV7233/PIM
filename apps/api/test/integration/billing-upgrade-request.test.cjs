@@ -336,6 +336,33 @@ async function run() {
       `expected listed request to match created request payload=${JSON.stringify(internalList.payload)}`,
     );
 
+    const exportResult = await apiRequest(
+      baseUrl,
+      "GET",
+      `/billing/internal/upgrade-requests/export?tenantKey=${encodeURIComponent(tenantId)}&status=open&limit=10`,
+      null,
+      undefined,
+      {
+        Accept: "text/csv",
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(exportResult, 200, "internal upgrade request export");
+    const exportCsv = String(exportResult.payload ?? "");
+    assert(
+      exportCsv.includes("id,tenantKey,workspaceSlug,displayName,status,requestedBy,requesterRole"),
+      `expected csv header row payload=${exportCsv}`,
+    );
+    assert(
+      exportCsv.includes(`"${requestId}"`) &&
+        exportCsv.includes(`"${tenantId}"`) &&
+        exportCsv.includes(`"${workspaceSlug}"`) &&
+        exportCsv.includes('"open"'),
+      `expected created open request in csv export payload=${exportCsv}`,
+    );
+
     const acknowledge = await apiRequest(
       baseUrl,
       "POST",
@@ -523,6 +550,7 @@ async function run() {
             "internal_ops_can_update_upgrade_request_status",
             "resolved_requests_clear_customer_pending_state",
             "internal_ops_can_list_upgrade_requests",
+            "internal_ops_can_export_upgrade_requests_as_csv",
             "internal_ops_overview_reflects_request_lifecycle",
             "upgrade_request_notifies_commercial_contact_email",
             "upgrade_request_status_changes_notify_customer_recipients",

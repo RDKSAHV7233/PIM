@@ -39,6 +39,7 @@ function run() {
     pageSource.includes('"TENANT_BILLING_STATUS_SET"') &&
       pageSource.includes('"TENANT_ACCESS_SUSPENDED"') &&
       pageSource.includes('"TENANT_ACCESS_RESUMED"') &&
+      pageSource.includes('"COMMERCIAL_UPGRADE_REQUEST_EXPORTED"') &&
       pageSource.includes('"COMMERCIAL_MUTATION_BLOCKED"'),
     "Admin audit page must expose commercial control actions in the action filter list.",
   );

@@ -59,6 +59,12 @@ export interface UpgradeRequestOverview {
   recentResolvedRequests: number;
 }
 
+interface ExportUpgradeRequestsCsvInput {
+  tenantKey?: string;
+  status?: string;
+  limit?: number;
+}
+
 interface CommercialRequestListRow {
   id: string;
   tenantKey: string;
@@ -260,6 +266,57 @@ export class CommercialRequestsService {
     };
   }
 
+  async exportUpgradeRequestsCsvInternal(input?: ExportUpgradeRequestsCsvInput): Promise<string> {
+    const items = await this.listUpgradeRequestsInternal({
+      tenantKey: input?.tenantKey,
+      status: input?.status,
+      limit: input?.limit ?? 250,
+    });
+    const lines = [
+      [
+        "id",
+        "tenantKey",
+        "workspaceSlug",
+        "displayName",
+        "status",
+        "requestedBy",
+        "requesterRole",
+        "currentPlanTier",
+        "currentBillingStatus",
+        "currentAccessStatus",
+        "source",
+        "createdAt",
+        "updatedAt",
+        "resolvedAt",
+        "resolvedBy",
+        "notes",
+      ].join(","),
+      ...items.map((item) =>
+        [
+          item.id,
+          item.tenantKey,
+          item.workspaceSlug ?? "",
+          item.displayName ?? "",
+          item.status,
+          item.requestedBy,
+          item.requesterRole,
+          item.currentPlanTier,
+          item.currentBillingStatus,
+          item.currentAccessStatus,
+          item.source,
+          item.createdAt,
+          item.updatedAt,
+          item.resolvedAt ?? "",
+          item.resolvedBy ?? "",
+          item.notes ?? "",
+        ]
+          .map((value) => this.csvCell(value))
+          .join(","),
+      ),
+    ];
+    return `${lines.join("\n")}\n`;
+  }
+
   private async mapRequest(record: CommercialRequestRow): Promise<CommercialRequestSummary> {
     const workspace = await this.prisma.tenant(record.tenantKey).workspaceDirectory.findUnique({
       where: {
@@ -371,5 +428,10 @@ export class CommercialRequestsService {
       LIMIT 1
     `);
     return rows[0] ?? null;
+  }
+
+  private csvCell(value: string): string {
+    const normalized = String(value ?? "");
+    return `"${normalized.replace(/"/g, '""')}"`;
   }
 }

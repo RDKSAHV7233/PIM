@@ -6,6 +6,18 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE_PATH = path.join(REPO_ROOT, "apps", "web", "src", "app", "internal", "developer", "page.tsx");
 const ACTIONS_PATH = path.join(REPO_ROOT, "apps", "web", "src", "app", "internal", "developer", "actions.ts");
+const EXPORT_ROUTE_PATH = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "api",
+  "internal",
+  "commercial-requests",
+  "export",
+  "route.ts",
+);
 const API_PATH = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "internal-billing.ts");
 
 function assert(condition, message) {
@@ -17,6 +29,7 @@ function assert(condition, message) {
 function run() {
   const pageSource = fs.readFileSync(PAGE_PATH, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_PATH, "utf8");
+  const exportRouteSource = fs.readFileSync(EXPORT_ROUTE_PATH, "utf8");
   const apiSource = fs.readFileSync(API_PATH, "utf8");
 
   assert(
@@ -38,8 +51,10 @@ function run() {
       pageSource.includes("Open queue") &&
       pageSource.includes("Acknowledged") &&
       pageSource.includes("Resolved") &&
-      pageSource.includes("Cancelled"),
-    "Internal commercial ops page must surface the overview metrics, queue summary, and quick queue links.",
+      pageSource.includes("Cancelled") &&
+      pageSource.includes("Export CSV") &&
+      pageSource.includes("/api/internal/commercial-requests/export"),
+    "Internal commercial ops page must surface the overview metrics, queue summary, quick queue links, and CSV export.",
   );
   assert(
     pageSource.includes("Selected tenant snapshot") &&
@@ -73,6 +88,14 @@ function run() {
     "Internal commercial ops actions must route status updates and preserve operator feedback.",
   );
   assert(
+    exportRouteSource.includes("getServerActorRole") &&
+      exportRouteSource.includes("getServerSessionClaims") &&
+      exportRouteSource.includes("/billing/internal/upgrade-requests/export") &&
+      exportRouteSource.includes('"x-pim-commercial-ops-token"') &&
+      exportRouteSource.includes('"Content-Disposition"'),
+    "Internal commercial export route must enforce admin session context and proxy the hidden CSV endpoint.",
+  );
+  assert(
     apiSource.includes("/billing/internal/overview") &&
       apiSource.includes("CommercialOverviewResponse") &&
       apiSource.includes("getCommercialOverviewInternal"),
@@ -98,6 +121,7 @@ function run() {
             "internal_commercial_ops_page_exposes_search_and_queue_controls",
             "internal_commercial_ops_page_exposes_request_lifecycle_actions",
             "internal_commercial_ops_actions_preserve_feedback_state",
+            "internal_commercial_export_route_proxies_hidden_csv_endpoint",
             "internal_billing_api_helper_exposes_commercial_overview_endpoint",
             "internal_billing_api_helper_targets_hidden_ops_endpoints",
           ],
