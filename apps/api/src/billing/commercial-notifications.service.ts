@@ -148,6 +148,96 @@ export class CommercialNotificationsService {
     return { recipientCount: 1 };
   }
 
+  async notifyTenantAdminsUpgradeRequestStatus(input: {
+    tenantKey: string;
+    request: CommercialRequestSummary;
+  }): Promise<{ recipientCount: number }> {
+    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+      where: {
+        tenantKey: input.tenantKey,
+      },
+      select: {
+        workspaceSlug: true,
+        displayName: true,
+      },
+    });
+    const profile = await this.prisma.tenant().tenantPlanProfile.findUnique({
+      where: {
+        tenantKey: input.tenantKey,
+      },
+      select: {
+        billingContactEmail: true,
+      },
+    });
+
+    const recipients = await this.resolveRecipients(input.tenantKey, profile?.billingContactEmail ?? null);
+    if (recipients.length === 0) {
+      return { recipientCount: 0 };
+    }
+
+    const workspaceSlug = String(workspace?.workspaceSlug ?? input.tenantKey).trim() || input.tenantKey;
+    const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
+    const subject = this.buildUpgradeRequestStatusSubject(input.request.status, displayName);
+    const statusLabel = this.presentUpgradeRequestStatus(input.request.status);
+    const textLines = [
+      `Your TEJ PIM upgrade request is now ${statusLabel}.`,
+      "",
+      `Workspace: ${displayName}`,
+      `Workspace slug: ${workspaceSlug}`,
+      `Current plan tier: ${input.request.currentPlanTier}`,
+      `Current billing status: ${input.request.currentBillingStatus}`,
+      `Current access status: ${input.request.currentAccessStatus}`,
+      `Request status: ${statusLabel}`,
+    ];
+    if (input.request.notes) {
+      textLines.push(`Request notes: ${input.request.notes}`);
+    }
+    if (input.request.resolvedAt) {
+      textLines.push(`Updated at: ${input.request.resolvedAt}`);
+    }
+    textLines.push("");
+    textLines.push(this.resolveCommercialContactLine());
+
+    const htmlRows = [
+      ["Workspace", this.escapeHtml(displayName)],
+      ["Workspace slug", this.escapeHtml(workspaceSlug)],
+      ["Current plan tier", this.escapeHtml(input.request.currentPlanTier)],
+      ["Current billing status", this.escapeHtml(input.request.currentBillingStatus)],
+      ["Current access status", this.escapeHtml(input.request.currentAccessStatus)],
+      ["Request status", this.escapeHtml(statusLabel)],
+    ];
+    if (input.request.notes) {
+      htmlRows.push(["Request notes", this.escapeHtml(input.request.notes)]);
+    }
+    if (input.request.resolvedAt) {
+      htmlRows.push(["Updated at", this.escapeHtml(input.request.resolvedAt)]);
+    }
+    const tableRows = htmlRows
+      .map(([label, value]) => `<tr><td><strong>${label}</strong></td><td>${value}</td></tr>`)
+      .join("");
+
+    await Promise.all(
+      recipients.map((recipient) =>
+        this.authEmailService.send({
+          to: recipient,
+          subject,
+          text: textLines.join("\n"),
+          html: `<p>${this.escapeHtml(`Your TEJ PIM upgrade request is now ${statusLabel}.`)}</p><table>${tableRows}</table><p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
+          category: "commercial_status_notice",
+          metadata: {
+            event: "commercial_upgrade_request_status_updated",
+            tenantKey: input.tenantKey,
+            requestId: input.request.id,
+            requestStatus: input.request.status,
+            workspaceSlug,
+          },
+        }),
+      ),
+    );
+
+    return { recipientCount: recipients.length };
+  }
+
   private async resolveRecipients(tenantKey: string, billingContactEmail: string | null): Promise<string[]> {
     const explicitContact = String(billingContactEmail ?? "").trim().toLowerCase();
     if (explicitContact) {
@@ -293,6 +383,32 @@ export class CommercialNotificationsService {
       return `If you need help, contact TEJ commercial ops at ${contactEmail}.`;
     }
     return "If you need help, contact TEJ commercial ops.";
+  }
+
+  private buildUpgradeRequestStatusSubject(status: string, displayName: string): string {
+    if (status === "acknowledged") {
+      return `Upgrade request acknowledged: ${displayName}`;
+    }
+    if (status === "resolved") {
+      return `Upgrade request resolved: ${displayName}`;
+    }
+    if (status === "cancelled") {
+      return `Upgrade request closed: ${displayName}`;
+    }
+    return `Upgrade request updated: ${displayName}`;
+  }
+
+  private presentUpgradeRequestStatus(status: string): string {
+    if (status === "acknowledged") {
+      return "acknowledged";
+    }
+    if (status === "resolved") {
+      return "resolved";
+    }
+    if (status === "cancelled") {
+      return "closed";
+    }
+    return "open";
   }
 
   private escapeHtml(value: string): string {

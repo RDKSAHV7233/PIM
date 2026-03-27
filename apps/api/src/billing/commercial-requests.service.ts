@@ -4,6 +4,7 @@ import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 
 const COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged", "resolved", "cancelled"] as const;
+const ACTIVE_COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged"] as const;
 
 type CommercialRequestStatus = (typeof COMMERCIAL_REQUEST_STATUSES)[number];
 
@@ -57,6 +58,24 @@ interface CommercialRequestListRow {
   updatedAt: Date | string;
 }
 
+interface CommercialRequestRow {
+  id: string;
+  tenantKey: string;
+  requestType: string;
+  status: string;
+  requestedBy: string;
+  requesterRole: string;
+  currentPlanTier: string;
+  currentBillingStatus: string;
+  currentAccessStatus: string;
+  notes: string | null;
+  source: string;
+  resolvedAt: Date | null;
+  resolvedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 @Injectable()
 export class CommercialRequestsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -67,11 +86,11 @@ export class CommercialRequestsService {
       where: {
         tenantKey,
         requestType: "upgrade",
-        status: "open",
+        status: {
+          in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
+        },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
     if (!record) {
@@ -150,25 +169,41 @@ export class CommercialRequestsService {
     return rows.map((row) => this.mapListRow(row));
   }
 
-  private async mapRequest(
-    record: {
-      id: string;
-      tenantKey: string;
-      requestType: string;
-      status: string;
-      requestedBy: string;
-      requesterRole: string;
-      currentPlanTier: string;
-      currentBillingStatus: string;
-      currentAccessStatus: string;
-      notes: string | null;
-      source: string;
-      resolvedAt: Date | null;
-      resolvedBy: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-    },
+  async updateUpgradeRequestStatusInternal(
+    requestIdInput: string,
+    statusInput: string,
+    actorId: string,
   ): Promise<CommercialRequestSummary> {
+    const requestId = String(requestIdInput ?? "").trim();
+    if (!requestId) {
+      throw new Error("COMMERCIAL_REQUEST_ID_REQUIRED");
+    }
+
+    const status = this.normalizeStatus(statusInput);
+    const current = await this.findRequestByIdInternal(requestId);
+    if (!current) {
+      throw new Error("COMMERCIAL_REQUEST_NOT_FOUND");
+    }
+
+    const tenantKey = normalizeTenantKey(current.tenantKey);
+    const nextResolvedAt = status === "resolved" || status === "cancelled" ? new Date() : null;
+    const nextResolvedBy = status === "resolved" || status === "cancelled" ? actorId : null;
+
+    const updated = await this.prisma.tenant(tenantKey).tenantCommercialRequest.update({
+      where: {
+        id: requestId,
+      },
+      data: {
+        status,
+        resolvedAt: nextResolvedAt,
+        resolvedBy: nextResolvedBy,
+      },
+    });
+
+    return this.mapRequest(updated);
+  }
+
+  private async mapRequest(record: CommercialRequestRow): Promise<CommercialRequestSummary> {
     const workspace = await this.prisma.tenant(record.tenantKey).workspaceDirectory.findUnique({
       where: {
         tenantKey: record.tenantKey,
@@ -253,5 +288,31 @@ export class CommercialRequestsService {
     }
     const parsed = value instanceof Date ? value : new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  private async findRequestByIdInternal(requestId: string): Promise<CommercialRequestRow | null> {
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRaw<CommercialRequestRow[]>(Prisma.sql`
+      SELECT
+        req."id" AS "id",
+        req."tenantKey" AS "tenantKey",
+        req."requestType" AS "requestType",
+        req."status" AS "status",
+        req."requested_by" AS "requestedBy",
+        req."requester_role" AS "requesterRole",
+        req."current_plan_tier" AS "currentPlanTier",
+        req."current_billing_status" AS "currentBillingStatus",
+        req."current_access_status" AS "currentAccessStatus",
+        req."notes" AS "notes",
+        req."source" AS "source",
+        req."resolved_at" AS "resolvedAt",
+        req."resolved_by" AS "resolvedBy",
+        req."created_at" AS "createdAt",
+        req."updated_at" AS "updatedAt"
+      FROM "tenant_commercial_requests" req
+      WHERE req."id" = ${requestId}
+      LIMIT 1
+    `);
+    return rows[0] ?? null;
   }
 }

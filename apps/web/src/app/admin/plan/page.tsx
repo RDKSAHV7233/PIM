@@ -171,6 +171,23 @@ function resolveUpgradeRequestStatusAlert(statusInput: string | undefined) {
   return null;
 }
 
+function describeUpgradeRequest(
+  request: NonNullable<Awaited<ReturnType<typeof getBillingUpgradeRequest>>["item"]>,
+) {
+  if (request.status === "acknowledged") {
+    return {
+      title: "Upgrade request acknowledged",
+      body: "TEJ commercial ops has picked this up and is reviewing the next plan change with your workspace context.",
+      tone: "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950",
+    };
+  }
+  return {
+    title: "Upgrade request pending",
+    body: "TEJ commercial ops is reviewing this request.",
+    tone: "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950",
+  };
+}
+
 function buildSignupTrendRows(signupTrends: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
   const rows = new Map();
   for (const point of signupTrends.signupRequests) {
@@ -387,6 +404,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   });
   const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);
   const upgradeRequestStatusAlert = resolveUpgradeRequestStatusAlert(query.requestStatus);
+  const upgradeRequestDescriptor = upgradeRequest ? describeUpgradeRequest(upgradeRequest) : null;
 
   return (
     <div className="space-y-5">
@@ -723,11 +741,11 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
               </div>
             ) : null}
             {upgradeRequest ? (
-              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950">
-                <div className="font-semibold">Upgrade request pending</div>
+              <div className={upgradeRequestDescriptor?.tone ?? "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"}>
+                <div className="font-semibold">{upgradeRequestDescriptor?.title ?? "Upgrade request pending"}</div>
                 <div className="mt-1">
                   Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
-                  {upgradeRequest.requestedBy}. TEJ commercial ops is reviewing this request.
+                  {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "TEJ commercial ops is reviewing this request."}
                 </div>
                 {upgradeRequest.notes ? (
                   <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">

@@ -19,6 +19,7 @@ import { InternalSetTenantPlanTierDto } from "./dto/internal-set-tenant-plan-tie
 import { ListPlanUpgradeRequestsDto } from "./dto/list-plan-upgrade-requests.dto";
 import { SearchCommercialTenantsDto } from "./dto/search-commercial-tenants.dto";
 import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
+import { UpdatePlanUpgradeRequestStatusDto } from "./dto/update-plan-upgrade-request-status.dto";
 
 type AuthenticatedRequest = FastifyRequest & {
   pimUserId?: string;
@@ -170,6 +171,56 @@ export class BillingController {
       items,
       count: items.length,
     };
+  }
+
+  @Public()
+  @Post("internal/upgrade-requests/status")
+  @ApiExcludeEndpoint()
+  @HttpCode(200)
+  @ApiOperation({ summary: "Internal-only upgrade request status update" })
+  async updateUpgradeRequestStatusInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Body() dto: UpdatePlanUpgradeRequestStatusDto,
+  ) {
+    const { actorId, actorRole } = this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+    );
+
+    let item;
+    try {
+      item = await this.commercialRequestsService.updateUpgradeRequestStatusInternal(
+        dto.requestId,
+        dto.status,
+        actorId,
+      );
+    } catch (error: unknown) {
+      const code = error instanceof Error ? error.message : String(error ?? "unknown error");
+      throw new BadRequestException({ error: code });
+    }
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED",
+      resource: "TENANT_COMMERCIAL_REQUEST",
+      resourceId: item.id,
+      metadata: {
+        event: "commercial_upgrade_request_status_updated",
+        tenantKey: item.tenantKey,
+        status: item.status,
+        resolvedAt: item.resolvedAt,
+        resolvedBy: item.resolvedBy,
+      },
+    });
+    await this.commercialNotificationsService.notifyTenantAdminsUpgradeRequestStatus({
+      tenantKey: item.tenantKey,
+      request: item,
+    });
+    return { item };
   }
 
   @Public()

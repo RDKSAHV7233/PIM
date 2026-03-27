@@ -293,22 +293,116 @@ async function run() {
       `expected listed request to match created request payload=${JSON.stringify(internalList.payload)}`,
     );
 
-    await waitForEmailCount(outboxDir, 1, 10_000);
-    const emails = readEmails(outboxDir);
-    assert(emails.length === 1, `expected one upgrade-request email payload=${JSON.stringify(emails)}`);
-    const email = emails[0];
-    assert(String(email.to ?? "") === "commercial@tej.example", `expected commercial contact recipient payload=${JSON.stringify(email)}`);
-    assert(String(email.category ?? "") === "commercial_upgrade_request", `expected commercial_upgrade_request category payload=${JSON.stringify(email)}`);
+    const acknowledge = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/upgrade-requests/status",
+      null,
+      {
+        requestId,
+        status: "acknowledged",
+      },
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(acknowledge, 200, "acknowledge upgrade request");
     assert(
-      String(email.subject ?? "").includes(`Upgrade request: ${displayName}`),
-      `expected upgrade request subject payload=${JSON.stringify(email)}`,
+      String(acknowledge.payload?.item?.status ?? "") === "acknowledged",
+      `expected acknowledged status payload=${JSON.stringify(acknowledge.payload)}`,
+    );
+
+    const lookupAfterAcknowledge = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
+    assertStatus(lookupAfterAcknowledge, 200, "lookup acknowledged upgrade request");
+    assert(
+      String(lookupAfterAcknowledge.payload?.item?.id ?? "") === requestId &&
+        String(lookupAfterAcknowledge.payload?.item?.status ?? "") === "acknowledged",
+      `expected customer lookup to preserve acknowledged request payload=${JSON.stringify(lookupAfterAcknowledge.payload)}`,
+    );
+
+    const thirdRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
+      notes: "Third request should reuse the acknowledged request.",
+      source: "admin_plan",
+    });
+    assertStatus(thirdRequest, 200, "reuse acknowledged upgrade request");
+    assert(thirdRequest.payload?.created === false, `expected created=false for acknowledged request payload=${JSON.stringify(thirdRequest.payload)}`);
+    assert(
+      String(thirdRequest.payload?.item?.id ?? "") === requestId &&
+        String(thirdRequest.payload?.item?.status ?? "") === "acknowledged",
+      `expected acknowledged request reuse payload=${JSON.stringify(thirdRequest.payload)}`,
+    );
+
+    const resolved = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/upgrade-requests/status",
+      null,
+      {
+        requestId,
+        status: "resolved",
+      },
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(resolved, 200, "resolve upgrade request");
+    assert(
+      String(resolved.payload?.item?.status ?? "") === "resolved" &&
+        String(resolved.payload?.item?.resolvedBy ?? "") === "ops-commercial" &&
+        String(resolved.payload?.item?.resolvedAt ?? "").length > 10,
+      `expected resolved request metadata payload=${JSON.stringify(resolved.payload)}`,
+    );
+
+    const lookupAfterResolved = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
+    assertStatus(lookupAfterResolved, 200, "lookup after resolved request");
+    assert(
+      lookupAfterResolved.payload?.item === null,
+      `expected no active customer request after resolve payload=${JSON.stringify(lookupAfterResolved.payload)}`,
+    );
+
+    const createAfterResolve = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
+      notes: "We still need review after the first request was resolved.",
+      source: "admin_plan",
+    });
+    assertStatus(createAfterResolve, 200, "create upgrade request after resolution");
+    assert(
+      createAfterResolve.payload?.created === true &&
+        String(createAfterResolve.payload?.item?.id ?? "") !== requestId,
+      `expected new request after resolution payload=${JSON.stringify(createAfterResolve.payload)}`,
+    );
+
+    await waitForEmailCount(outboxDir, 4, 10_000);
+    const emails = readEmails(outboxDir);
+    assert(emails.length === 4, `expected four upgrade-request related emails payload=${JSON.stringify(emails)}`);
+    const requestEmails = emails.filter((entry) => String(entry.category ?? "") === "commercial_upgrade_request");
+    assert(requestEmails.length === 2, `expected two commercial ops request emails payload=${JSON.stringify(emails)}`);
+    const firstRequestEmail = requestEmails[0];
+    assert(String(firstRequestEmail.to ?? "") === "commercial@tej.example", `expected commercial contact recipient payload=${JSON.stringify(firstRequestEmail)}`);
+    assert(String(firstRequestEmail.category ?? "") === "commercial_upgrade_request", `expected commercial_upgrade_request category payload=${JSON.stringify(firstRequestEmail)}`);
+    assert(
+      String(firstRequestEmail.subject ?? "").includes(`Upgrade request: ${displayName}`),
+      `expected upgrade request subject payload=${JSON.stringify(firstRequestEmail)}`,
     );
     assert(
-      String(email.text ?? "").includes(`Tenant key: ${tenantId}`) &&
-        String(email.text ?? "").includes(`Workspace slug: ${workspaceSlug}`) &&
-        String(email.text ?? "").includes("Current plan tier: STARTER") &&
-        String(email.text ?? "").includes("We need more users and a paid-plan review before trial end."),
-      `expected upgrade request email details payload=${JSON.stringify(email)}`,
+      String(firstRequestEmail.text ?? "").includes(`Tenant key: ${tenantId}`) &&
+        String(firstRequestEmail.text ?? "").includes(`Workspace slug: ${workspaceSlug}`) &&
+        String(firstRequestEmail.text ?? "").includes("Current plan tier: STARTER") &&
+        String(firstRequestEmail.text ?? "").includes("We need more users and a paid-plan review before trial end."),
+      `expected upgrade request email details payload=${JSON.stringify(firstRequestEmail)}`,
+    );
+    const statusEmails = emails.filter((entry) => String(entry.category ?? "") === "commercial_status_notice");
+    assert(statusEmails.length === 2, `expected two customer-facing status emails payload=${JSON.stringify(emails)}`);
+    assert(
+      statusEmails.some((entry) => String(entry.subject ?? "").includes(`Upgrade request acknowledged: ${displayName}`)),
+      `expected acknowledged status email payload=${JSON.stringify(statusEmails)}`,
+    );
+    assert(
+      statusEmails.some((entry) => String(entry.subject ?? "").includes(`Upgrade request resolved: ${displayName}`)),
+      `expected resolved status email payload=${JSON.stringify(statusEmails)}`,
     );
 
     console.log(
@@ -320,8 +414,12 @@ async function run() {
             "tenant_admin_can_create_upgrade_request",
             "open_upgrade_request_lookup_is_exposed_to_customer_admins",
             "duplicate_open_upgrade_requests_are_reused",
+            "acknowledged_requests_remain_visible_to_customer_admins",
+            "internal_ops_can_update_upgrade_request_status",
+            "resolved_requests_clear_customer_pending_state",
             "internal_ops_can_list_upgrade_requests",
             "upgrade_request_notifies_commercial_contact_email",
+            "upgrade_request_status_changes_notify_customer_recipients",
           ],
           checkedAt: new Date().toISOString(),
         },
