@@ -38,6 +38,27 @@ export interface CreateUpgradeRequestInput {
   source?: string | null;
 }
 
+interface UpgradeRequestOverviewRow {
+  totalRequests: number;
+  openRequests: number;
+  acknowledgedRequests: number;
+  resolvedRequests: number;
+  cancelledRequests: number;
+  recentRequests: number;
+  recentResolvedRequests: number;
+}
+
+export interface UpgradeRequestOverview {
+  totalRequests: number;
+  activeRequests: number;
+  openRequests: number;
+  acknowledgedRequests: number;
+  resolvedRequests: number;
+  cancelledRequests: number;
+  recentRequests: number;
+  recentResolvedRequests: number;
+}
+
 interface CommercialRequestListRow {
   id: string;
   tenantKey: string;
@@ -201,6 +222,42 @@ export class CommercialRequestsService {
     });
 
     return this.mapRequest(updated);
+  }
+
+  async getUpgradeRequestOverviewInternal(): Promise<UpgradeRequestOverview> {
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRaw<UpgradeRequestOverviewRow[]>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade')::int AS "totalRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'open')::int AS "openRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'acknowledged')::int AS "acknowledgedRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'resolved')::int AS "resolvedRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'cancelled')::int AS "cancelledRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."created_at" >= NOW() - INTERVAL '7 days')::int AS "recentRequests",
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."resolved_at" >= NOW() - INTERVAL '7 days')::int AS "recentResolvedRequests"
+      FROM "tenant_commercial_requests" req
+    `);
+    const row = rows[0] ?? {
+      totalRequests: 0,
+      openRequests: 0,
+      acknowledgedRequests: 0,
+      resolvedRequests: 0,
+      cancelledRequests: 0,
+      recentRequests: 0,
+      recentResolvedRequests: 0,
+    };
+    const openRequests = Number(row.openRequests ?? 0);
+    const acknowledgedRequests = Number(row.acknowledgedRequests ?? 0);
+    return {
+      totalRequests: Number(row.totalRequests ?? 0),
+      activeRequests: openRequests + acknowledgedRequests,
+      openRequests,
+      acknowledgedRequests,
+      resolvedRequests: Number(row.resolvedRequests ?? 0),
+      cancelledRequests: Number(row.cancelledRequests ?? 0),
+      recentRequests: Number(row.recentRequests ?? 0),
+      recentResolvedRequests: Number(row.recentResolvedRequests ?? 0),
+    };
   }
 
   private async mapRequest(record: CommercialRequestRow): Promise<CommercialRequestSummary> {

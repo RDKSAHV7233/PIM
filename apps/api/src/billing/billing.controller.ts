@@ -169,6 +169,43 @@ export class BillingController {
   }
 
   @Public()
+  @Get("internal/overview")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only commercial overview" })
+  async getCommercialOverviewInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+  ) {
+    const { actorId, actorRole } = this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+    );
+
+    const [tenantOverview, requestOverview] = await Promise.all([
+      this.planUsageService.getCommercialTenantOverview(),
+      this.commercialRequestsService.getUpgradeRequestOverviewInternal(),
+    ]);
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_OVERVIEW_VIEWED",
+      resource: "TENANT_PLAN_PROFILE",
+      resourceId: "all",
+      metadata: {
+        event: "commercial_overview_viewed",
+        totalTenants: tenantOverview.totalTenants,
+        activeRequests: requestOverview.activeRequests,
+      },
+    });
+    return {
+      tenantOverview,
+      requestOverview,
+    };
+  }
+
+  @Public()
   @Get("internal/upgrade-requests")
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: "Internal-only upgrade request listing" })

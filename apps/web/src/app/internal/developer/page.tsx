@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ApiHttpError, type PlanUpgradeRequest } from "@/lib/api";
 import {
+  getCommercialOverviewInternal,
   getCommercialOpsRequestOptions,
   listInternalUpgradeRequests,
   searchCommercialTenantsInternal,
+  type CommercialOverviewResponse,
   type CommercialTenantSearchResult,
 } from "@/lib/api/internal-billing";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
@@ -166,6 +168,23 @@ function buildRequestActions(request: PlanUpgradeRequest) {
   return [{ status: "open", label: "Re-open" }];
 }
 
+function OverviewMetric({
+  label,
+  value,
+  tone = "text-slate-900",
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-2 text-2xl font-semibold ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
 export default async function DeveloperPage({ searchParams }: DeveloperPageProps) {
   const actorRole = await getServerActorRole();
   if (actorRole !== "admin" || process.env.APP_ENV === "production") {
@@ -182,6 +201,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
 
   let requestItems: PlanUpgradeRequest[] = [];
   let tenantResults: CommercialTenantSearchResult[] = [];
+  let overview: CommercialOverviewResponse | null = null;
   let opsError: string | null = null;
 
   if (!claims?.sub) {
@@ -191,7 +211,8 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   } else {
     try {
       const requestOptions = getCommercialOpsRequestOptions(claims.sub, actorRole);
-      const [requestResponse, tenantResponse] = await Promise.all([
+      const [overviewResponse, requestResponse, tenantResponse] = await Promise.all([
+        getCommercialOverviewInternal(requestOptions),
         listInternalUpgradeRequests(
           {
             tenantKey: tenantKey || undefined,
@@ -204,6 +225,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           ? searchCommercialTenantsInternal({ q: tenantQuery, limit: 8 }, requestOptions)
           : Promise.resolve({ items: [], count: 0, query: tenantQuery }),
       ]);
+      overview = overviewResponse;
       requestItems = requestResponse.items;
       tenantResults = tenantResponse.items;
     } catch (error: unknown) {
@@ -251,6 +273,32 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           <p>
             Search workspaces, review commercial upgrade requests, and move them through the TEJ ops workflow without leaving the internal surface.
           </p>
+          {overview ? (
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <OverviewMetric label="Tenants" value={overview.tenantOverview.totalTenants} />
+                <OverviewMetric label="Trial" value={overview.tenantOverview.billingStatusCounts.trial} tone="text-blue-900" />
+                <OverviewMetric label="Paid" value={overview.tenantOverview.billingStatusCounts.activePaid} tone="text-emerald-900" />
+                <OverviewMetric label="Past due" value={overview.tenantOverview.billingStatusCounts.pastDue} tone="text-amber-900" />
+                <OverviewMetric label="Suspended" value={overview.tenantOverview.accessStatusCounts.suspended} tone="text-rose-900" />
+                <OverviewMetric label="Active queue" value={overview.requestOverview.activeRequests} tone="text-sky-900" />
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <div>
+                  Workspace activity: {overview.tenantOverview.activeWorkspaces} active / {overview.tenantOverview.inactiveWorkspaces} inactive
+                </div>
+                <div className="mt-1">
+                  Plans: {overview.tenantOverview.planTierCounts.starter} starter, {overview.tenantOverview.planTierCounts.growth} growth, {overview.tenantOverview.planTierCounts.enterprise} enterprise
+                </div>
+                <div className="mt-1">
+                  Request queue: {overview.requestOverview.openRequests} open, {overview.requestOverview.acknowledgedRequests} acknowledged, {overview.requestOverview.resolvedRequests} resolved, {overview.requestOverview.cancelledRequests} cancelled
+                </div>
+                <div className="mt-1">
+                  Last 7 days: {overview.requestOverview.recentRequests} new requests, {overview.requestOverview.recentResolvedRequests} resolved
+                </div>
+              </div>
+            </div>
+          ) : null}
           <form action="/internal/developer" className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1.6fr)_220px_auto] md:items-end">
             <div>
               <label htmlFor="tenant-query" className="text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -254,7 +254,8 @@ export class AuditService {
             'COMMERCIAL_UPGRADE_REQUEST_CREATED',
             'COMMERCIAL_UPGRADE_REQUEST_REUSED',
             'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED'
+            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+            'COMMERCIAL_OVERVIEW_VIEWED'
           ) THEN 'plan'
         WHEN resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%' THEN 'privacy'
         WHEN resource ILIKE 'auth.%' OR resource = 'auth.step_up' THEN 'auth'
@@ -299,7 +300,8 @@ export class AuditService {
             'COMMERCIAL_UPGRADE_REQUEST_CREATED',
             'COMMERCIAL_UPGRADE_REQUEST_REUSED',
             'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED'
+            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+            'COMMERCIAL_OVERVIEW_VIEWED'
           )
         )`);
         break;
@@ -338,7 +340,8 @@ export class AuditService {
             'COMMERCIAL_UPGRADE_REQUEST_CREATED',
             'COMMERCIAL_UPGRADE_REQUEST_REUSED',
             'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED'
+            'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+            'COMMERCIAL_OVERVIEW_VIEWED'
           )
           OR resource ILIKE '%account%'
           OR action LIKE 'consent.%'

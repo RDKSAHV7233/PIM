@@ -26,6 +26,18 @@ function run() {
     "Internal commercial ops page must stay gated to admin non-production access.",
   );
   assert(
+    pageSource.includes("Tenants") &&
+      pageSource.includes("Trial") &&
+      pageSource.includes("Paid") &&
+      pageSource.includes("Past due") &&
+      pageSource.includes("Suspended") &&
+      pageSource.includes("Active queue") &&
+      pageSource.includes("Workspace activity:") &&
+      pageSource.includes("Request queue:") &&
+      pageSource.includes("Last 7 days:"),
+    "Internal commercial ops page must surface the overview metrics and queue summary.",
+  );
+  assert(
     pageSource.includes("Commercial ops request queue") &&
       pageSource.includes("Search workspaces") &&
       pageSource.includes("Request filter") &&
@@ -48,6 +60,12 @@ function run() {
     "Internal commercial ops actions must route status updates and preserve operator feedback.",
   );
   assert(
+    apiSource.includes("/billing/internal/overview") &&
+      apiSource.includes("CommercialOverviewResponse") &&
+      apiSource.includes("getCommercialOverviewInternal"),
+    "Internal billing API helper must expose the commercial overview endpoint.",
+  );
+  assert(
     apiSource.includes("/billing/internal/upgrade-requests") &&
       apiSource.includes("/billing/internal/tenants/search") &&
       apiSource.includes("/billing/internal/upgrade-requests/status") &&
@@ -58,15 +76,17 @@ function run() {
 
   console.log(
     JSON.stringify(
-      {
-        status: "ok",
-        validated: [
-          "internal_commercial_ops_page_stays_gated",
-          "internal_commercial_ops_page_exposes_search_and_queue_controls",
-          "internal_commercial_ops_page_exposes_request_lifecycle_actions",
-          "internal_commercial_ops_actions_preserve_feedback_state",
-          "internal_billing_api_helper_targets_hidden_ops_endpoints",
-        ],
+        {
+          status: "ok",
+          validated: [
+            "internal_commercial_ops_page_stays_gated",
+            "internal_commercial_ops_page_surfaces_overview_metrics",
+            "internal_commercial_ops_page_exposes_search_and_queue_controls",
+            "internal_commercial_ops_page_exposes_request_lifecycle_actions",
+            "internal_commercial_ops_actions_preserve_feedback_state",
+            "internal_billing_api_helper_exposes_commercial_overview_endpoint",
+            "internal_billing_api_helper_targets_hidden_ops_endpoints",
+          ],
         checkedAt: new Date().toISOString(),
       },
       null,

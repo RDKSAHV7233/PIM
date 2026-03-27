@@ -223,6 +223,24 @@ async function run() {
     assertStatus(initialLookup, 200, "initial upgrade request lookup");
     assert(initialLookup.payload?.item === null, `expected no open upgrade request payload=${JSON.stringify(initialLookup.payload)}`);
 
+    const initialOverview = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(initialOverview, 200, "initial commercial overview");
+    const baseRequestOverview = initialOverview.payload?.requestOverview;
+    const baseTenantOverview = initialOverview.payload?.tenantOverview;
+    assert(baseRequestOverview, `expected request overview payload=${JSON.stringify(initialOverview.payload)}`);
+    assert(baseTenantOverview, `expected tenant overview payload=${JSON.stringify(initialOverview.payload)}`);
+
     const createRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
       notes: "We need more users and a paid-plan review before trial end.",
       source: "admin_plan",
@@ -250,6 +268,31 @@ async function run() {
     assert(
       String(createRequest.payload?.item?.notes ?? "") === "We need more users and a paid-plan review before trial end.",
       `expected notes to persist payload=${JSON.stringify(createRequest.payload)}`,
+    );
+
+    const overviewAfterCreate = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(overviewAfterCreate, 200, "commercial overview after create");
+    assert(
+      Number(overviewAfterCreate.payload?.tenantOverview?.totalTenants ?? 0) >= Number(baseTenantOverview.totalTenants ?? 0),
+      `expected tenant count to remain stable payload=${JSON.stringify(overviewAfterCreate.payload)}`,
+    );
+    assert(
+      Number(overviewAfterCreate.payload?.requestOverview?.totalRequests ?? 0) === Number(baseRequestOverview.totalRequests ?? 0) + 1 &&
+        Number(overviewAfterCreate.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) + 1 &&
+        Number(overviewAfterCreate.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1 &&
+        Number(overviewAfterCreate.payload?.requestOverview?.recentRequests ?? 0) === Number(baseRequestOverview.recentRequests ?? 0) + 1,
+      `expected overview to reflect new open request payload=${JSON.stringify(overviewAfterCreate.payload)}`,
     );
 
     const secondRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
@@ -314,6 +357,26 @@ async function run() {
       `expected acknowledged status payload=${JSON.stringify(acknowledge.payload)}`,
     );
 
+    const overviewAfterAcknowledge = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(overviewAfterAcknowledge, 200, "commercial overview after acknowledge");
+    assert(
+      Number(overviewAfterAcknowledge.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) &&
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.acknowledgedRequests ?? 0) === Number(baseRequestOverview.acknowledgedRequests ?? 0) + 1 &&
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1,
+      `expected overview to reflect acknowledged request payload=${JSON.stringify(overviewAfterAcknowledge.payload)}`,
+    );
+
     const lookupAfterAcknowledge = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
     assertStatus(lookupAfterAcknowledge, 200, "lookup acknowledged upgrade request");
     assert(
@@ -357,6 +420,27 @@ async function run() {
       `expected resolved request metadata payload=${JSON.stringify(resolved.payload)}`,
     );
 
+    const overviewAfterResolved = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(overviewAfterResolved, 200, "commercial overview after resolve");
+    assert(
+      Number(overviewAfterResolved.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) &&
+        Number(overviewAfterResolved.payload?.requestOverview?.resolvedRequests ?? 0) === Number(baseRequestOverview.resolvedRequests ?? 0) + 1 &&
+        Number(overviewAfterResolved.payload?.requestOverview?.recentResolvedRequests ?? 0) ===
+          Number(baseRequestOverview.recentResolvedRequests ?? 0) + 1,
+      `expected overview to reflect resolved request payload=${JSON.stringify(overviewAfterResolved.payload)}`,
+    );
+
     const lookupAfterResolved = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
     assertStatus(lookupAfterResolved, 200, "lookup after resolved request");
     assert(
@@ -373,6 +457,27 @@ async function run() {
       createAfterResolve.payload?.created === true &&
         String(createAfterResolve.payload?.item?.id ?? "") !== requestId,
       `expected new request after resolution payload=${JSON.stringify(createAfterResolve.payload)}`,
+    );
+
+    const overviewAfterReopen = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(overviewAfterReopen, 200, "commercial overview after follow-up request");
+    assert(
+      Number(overviewAfterReopen.payload?.requestOverview?.totalRequests ?? 0) === Number(baseRequestOverview.totalRequests ?? 0) + 2 &&
+        Number(overviewAfterReopen.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) + 1 &&
+        Number(overviewAfterReopen.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1 &&
+        Number(overviewAfterReopen.payload?.requestOverview?.resolvedRequests ?? 0) === Number(baseRequestOverview.resolvedRequests ?? 0) + 1,
+      `expected overview to reflect follow-up open request payload=${JSON.stringify(overviewAfterReopen.payload)}`,
     );
 
     await waitForEmailCount(outboxDir, 4, 10_000);
@@ -418,6 +523,7 @@ async function run() {
             "internal_ops_can_update_upgrade_request_status",
             "resolved_requests_clear_customer_pending_state",
             "internal_ops_can_list_upgrade_requests",
+            "internal_ops_overview_reflects_request_lifecycle",
             "upgrade_request_notifies_commercial_contact_email",
             "upgrade_request_status_changes_notify_customer_recipients",
           ],

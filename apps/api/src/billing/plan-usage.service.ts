@@ -110,6 +110,21 @@ interface CommercialTenantSearchRow {
   adminEmails: unknown;
 }
 
+interface CommercialOverviewRow {
+  totalTenants: number;
+  activeWorkspaces: number;
+  inactiveWorkspaces: number;
+  starterTenants: number;
+  growthTenants: number;
+  enterpriseTenants: number;
+  trialTenants: number;
+  paidTenants: number;
+  pastDueTenants: number;
+  cancelledTenants: number;
+  activeAccessTenants: number;
+  suspendedTenants: number;
+}
+
 interface BytesRow {
   bytes: number | bigint | string;
 }
@@ -193,6 +208,27 @@ export interface CommercialTenantSearchResult {
   suspensionReason: string | null;
   billingContactEmail: string | null;
   adminEmails: string[];
+}
+
+export interface CommercialTenantOverview {
+  totalTenants: number;
+  activeWorkspaces: number;
+  inactiveWorkspaces: number;
+  planTierCounts: {
+    starter: number;
+    growth: number;
+    enterprise: number;
+  };
+  billingStatusCounts: {
+    trial: number;
+    activePaid: number;
+    pastDue: number;
+    cancelled: number;
+  };
+  accessStatusCounts: {
+    active: number;
+    suspended: number;
+  };
 }
 
 export interface UpdateCommercialStateInput {
@@ -636,6 +672,86 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         adminEmails: this.normalizeAdminEmails(row.adminEmails),
       };
     });
+  }
+
+  async getCommercialTenantOverview(): Promise<CommercialTenantOverview> {
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRaw<CommercialOverviewRow[]>(Prisma.sql`
+      WITH latest_usage AS (
+        SELECT DISTINCT ON (pu."tenantKey")
+          pu."tenantKey" AS "tenantKey",
+          pu."planTier" AS "planTier"
+        FROM "PlanUsage" pu
+        ORDER BY pu."tenantKey", pu."month" DESC, pu."updatedAt" DESC
+      ),
+      normalized AS (
+        SELECT
+          wd."tenantKey" AS "tenantKey",
+          wd."isActive" AS "workspaceIsActive",
+          COALESCE(profile."planTier", latest_usage."planTier", 'STARTER') AS "planTier",
+          COALESCE(
+            profile."billingStatus",
+            CASE
+              WHEN COALESCE(profile."planTier", latest_usage."planTier", 'STARTER') = 'STARTER' THEN 'trial'
+              ELSE 'active_paid'
+            END
+          ) AS "billingStatus",
+          COALESCE(profile."accessStatus", 'active') AS "accessStatus"
+        FROM "WorkspaceDirectory" wd
+        LEFT JOIN "TenantPlanProfile" profile
+          ON profile."tenantKey" = wd."tenantKey"
+        LEFT JOIN latest_usage
+          ON latest_usage."tenantKey" = wd."tenantKey"
+      )
+      SELECT
+        COUNT(*)::int AS "totalTenants",
+        COUNT(*) FILTER (WHERE normalized."workspaceIsActive" = TRUE)::int AS "activeWorkspaces",
+        COUNT(*) FILTER (WHERE normalized."workspaceIsActive" = FALSE)::int AS "inactiveWorkspaces",
+        COUNT(*) FILTER (WHERE normalized."planTier" = 'STARTER')::int AS "starterTenants",
+        COUNT(*) FILTER (WHERE normalized."planTier" = 'GROWTH')::int AS "growthTenants",
+        COUNT(*) FILTER (WHERE normalized."planTier" = 'ENTERPRISE')::int AS "enterpriseTenants",
+        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'trial')::int AS "trialTenants",
+        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'active_paid')::int AS "paidTenants",
+        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'past_due')::int AS "pastDueTenants",
+        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'cancelled')::int AS "cancelledTenants",
+        COUNT(*) FILTER (WHERE normalized."accessStatus" = 'active')::int AS "activeAccessTenants",
+        COUNT(*) FILTER (WHERE normalized."accessStatus" = 'suspended')::int AS "suspendedTenants"
+      FROM normalized
+    `);
+    const row = rows[0] ?? {
+      totalTenants: 0,
+      activeWorkspaces: 0,
+      inactiveWorkspaces: 0,
+      starterTenants: 0,
+      growthTenants: 0,
+      enterpriseTenants: 0,
+      trialTenants: 0,
+      paidTenants: 0,
+      pastDueTenants: 0,
+      cancelledTenants: 0,
+      activeAccessTenants: 0,
+      suspendedTenants: 0,
+    };
+    return {
+      totalTenants: Number(row.totalTenants ?? 0),
+      activeWorkspaces: Number(row.activeWorkspaces ?? 0),
+      inactiveWorkspaces: Number(row.inactiveWorkspaces ?? 0),
+      planTierCounts: {
+        starter: Number(row.starterTenants ?? 0),
+        growth: Number(row.growthTenants ?? 0),
+        enterprise: Number(row.enterpriseTenants ?? 0),
+      },
+      billingStatusCounts: {
+        trial: Number(row.trialTenants ?? 0),
+        activePaid: Number(row.paidTenants ?? 0),
+        pastDue: Number(row.pastDueTenants ?? 0),
+        cancelled: Number(row.cancelledTenants ?? 0),
+      },
+      accessStatusCounts: {
+        active: Number(row.activeAccessTenants ?? 0),
+        suspended: Number(row.suspendedTenants ?? 0),
+      },
+    };
   }
 
   async recomputeUsage(

@@ -25,6 +25,39 @@ export interface CommercialTenantSearchResponse {
   query: string;
 }
 
+export interface CommercialOverviewResponse {
+  tenantOverview: {
+    totalTenants: number;
+    activeWorkspaces: number;
+    inactiveWorkspaces: number;
+    planTierCounts: {
+      starter: number;
+      growth: number;
+      enterprise: number;
+    };
+    billingStatusCounts: {
+      trial: number;
+      activePaid: number;
+      pastDue: number;
+      cancelled: number;
+    };
+    accessStatusCounts: {
+      active: number;
+      suspended: number;
+    };
+  };
+  requestOverview: {
+    totalRequests: number;
+    activeRequests: number;
+    openRequests: number;
+    acknowledgedRequests: number;
+    resolvedRequests: number;
+    cancelledRequests: number;
+    recentRequests: number;
+    recentResolvedRequests: number;
+  };
+}
+
 function buildQueryString(params: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -75,6 +108,10 @@ export async function listInternalUpgradeRequests(
     undefined,
     options,
   );
+}
+
+export async function getCommercialOverviewInternal(options: ApiRequestOptions) {
+  return fetchJson<CommercialOverviewResponse>("/billing/internal/overview", undefined, options);
 }
 
 export async function searchCommercialTenantsInternal(
