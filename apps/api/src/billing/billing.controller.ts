@@ -19,6 +19,7 @@ import { InternalSetTenantPlanTierDto } from "./dto/internal-set-tenant-plan-tie
 import { ListPlanUpgradeRequestsDto } from "./dto/list-plan-upgrade-requests.dto";
 import { SearchCommercialTenantsDto } from "./dto/search-commercial-tenants.dto";
 import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
+import { UpdateBillingContactDto } from "./dto/update-billing-contact.dto";
 import { UpdatePlanUpgradeRequestStatusDto } from "./dto/update-plan-upgrade-request-status.dto";
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -49,6 +50,41 @@ export class BillingController {
   @ApiResponse({ status: 200, description: "Tenant plan profile fetched", type: PlanProfileSummaryDto })
   planProfile() {
     return this.planUsageService.getTenantPlanProfile();
+  }
+
+  @Post("billing-contact")
+  @Roles("admin")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Update the billing notice recipient for this tenant" })
+  @ApiResponse({ status: 200, description: "Tenant billing contact updated", type: PlanProfileSummaryDto })
+  async updateBillingContact(
+    @Body() dto: UpdateBillingContactDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actorId = String(request.pimUserId ?? "system");
+    const actorRole = String(request.pimRole ?? "admin");
+    const current = await this.planUsageService.getTenantPlanProfile();
+    const profile = await this.planUsageService.updateCommercialStateForTenant(
+      current.tenantKey,
+      {
+        billingContactEmail: dto.billingContactEmail ?? null,
+      },
+      actorId,
+    );
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "TENANT_BILLING_CONTACT_UPDATED",
+      resource: "TENANT_PLAN_PROFILE",
+      resourceId: profile.tenantKey,
+      metadata: {
+        event: "tenant_billing_contact_updated",
+        previousBillingContactEmail: current.billingContactEmail,
+        billingContactEmail: profile.billingContactEmail,
+      },
+    });
+    return profile;
   }
 
   @Get("upgrade-request")
@@ -343,6 +379,8 @@ export class BillingController {
           ? "TENANT_ACCESS_RESUMED"
           : dto.billingStatus
             ? "TENANT_BILLING_STATUS_SET"
+            : dto.billingContactEmail !== undefined
+              ? "TENANT_BILLING_CONTACT_UPDATED"
             : "TENANT_COMMERCIAL_STATE_UPDATED";
     const auditEvent =
       dto.accessStatus === "suspended"
@@ -351,6 +389,8 @@ export class BillingController {
           ? "tenant_resumed"
           : dto.billingStatus
             ? "tenant_billing_status_set"
+            : dto.billingContactEmail !== undefined
+              ? "tenant_billing_contact_updated"
             : "tenant_commercial_state_updated";
 
     await this.auditService.record({
@@ -381,6 +421,8 @@ export class BillingController {
             ? "tenant_access_resumed"
             : dto.billingStatus
               ? "tenant_billing_status_set"
+              : dto.billingContactEmail !== undefined
+                ? "tenant_commercial_state_updated"
               : "tenant_commercial_state_updated",
       profile,
     });

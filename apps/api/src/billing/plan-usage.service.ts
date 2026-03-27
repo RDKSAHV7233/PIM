@@ -436,7 +436,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       input.suspendedAt,
     ].some((value) => value !== undefined);
     const hasSuspensionReason = input.suspensionReason !== undefined && input.suspensionReason !== null;
-    if (!hasBillingStatus && !hasAccessStatus && !hasDateMutation && !hasSuspensionReason) {
+    const hasBillingContactMutation = input.billingContactEmail !== undefined;
+    if (!hasBillingStatus && !hasAccessStatus && !hasDateMutation && !hasSuspensionReason && !hasBillingContactMutation) {
       throw new Error("COMMERCIAL_STATE_CHANGE_REQUIRED");
     }
 

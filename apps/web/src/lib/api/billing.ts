@@ -24,3 +24,10 @@ export async function createBillingUpgradeRequest(
 ) {
   return postJson<PlanUpgradeRequestCreateResponse>("/billing/upgrade-request", body, options);
 }
+
+export async function updateBillingContact(
+  body: { billingContactEmail?: string | null },
+  options?: ApiRequestOptions,
+) {
+  return postJson<PlanUsageResponse["profile"]>("/billing/billing-contact", body, options);
+}

@@ -421,6 +421,38 @@
         ]
       }
     },
+    "/api/v1/billing/billing-contact": {
+      "post": {
+        "operationId": "BillingController_updateBillingContact",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBillingContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant billing contact updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanProfileSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update the billing notice recipient for this tenant",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
     "/api/v1/billing/upgrade-request": {
       "get": {
         "operationId": "BillingController_upgradeRequest",
@@ -4056,6 +4088,10 @@
           "connectorAccounts",
           "profile"
         ]
+      },
+      "UpdateBillingContactDto": {
+        "type": "object",
+        "properties": {}
       },
       "PlanUpgradeRequestSummaryDto": {
         "type": "object",

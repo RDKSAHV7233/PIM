@@ -62,6 +62,10 @@ function run() {
     source.includes("Plan changes are managed by TEJ commercial ops.") &&
       source.includes("Customer admins can review plan usage") &&
       source.includes("paid-plan changes are applied through") &&
+      source.includes("updateBillingContactAction") &&
+      source.includes("Billing contact email") &&
+      source.includes("Save billing contact") &&
+      source.includes("Use admin fallback") &&
       source.includes("getBillingUpgradeRequest") &&
       source.includes("requestPlanUpgradeAction") &&
       source.includes("Upgrade request pending") &&

@@ -6,7 +6,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
-import { requestPlanUpgradeAction } from "./actions";
+import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +166,41 @@ function resolveUpgradeRequestStatusAlert(statusInput: string | undefined) {
       tone: "border-amber-200 bg-amber-50 text-amber-900",
       title: "Upgrade request needs an admin session",
       body: "Sign in again with an active admin session to submit a commercial change request.",
+    };
+  }
+  return null;
+}
+
+function resolveBillingContactStatusAlert(statusInput: string | undefined, billingContactEmail: string | null) {
+  const status = String(statusInput ?? "").trim().toLowerCase();
+  if (status === "saved") {
+    return {
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      title: "Billing contact updated",
+      body: billingContactEmail
+        ? `Commercial notices will now go to ${billingContactEmail}.`
+        : "Commercial notices will now fall back to active workspace admins.",
+    };
+  }
+  if (status === "cleared") {
+    return {
+      tone: "border-sky-200 bg-sky-50 text-sky-900",
+      title: "Billing contact cleared",
+      body: "Commercial notices will now fall back to active workspace admins for this workspace.",
+    };
+  }
+  if (status === "invalid") {
+    return {
+      tone: "border-amber-200 bg-amber-50 text-amber-900",
+      title: "Billing contact needs a valid email",
+      body: "Enter a valid billing email address or clear the field to use active workspace admins instead.",
+    };
+  }
+  if (status === "forbidden") {
+    return {
+      tone: "border-amber-200 bg-amber-50 text-amber-900",
+      title: "Billing contact update needs an admin session",
+      body: "Sign in again with an active admin session to update commercial notice recipients.",
     };
   }
   return null;
@@ -404,6 +439,10 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   });
   const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);
   const upgradeRequestStatusAlert = resolveUpgradeRequestStatusAlert(query.requestStatus);
+  const billingContactStatusAlert = resolveBillingContactStatusAlert(
+    query.billingContactStatus,
+    usage.profile.billingContactEmail,
+  );
   const upgradeRequestDescriptor = upgradeRequest ? describeUpgradeRequest(upgradeRequest) : null;
 
   return (
@@ -734,6 +773,53 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}
               </div>
             </div>
+            {billingContactStatusAlert ? (
+              <div className={`rounded-md border px-3 py-3 text-sm ${billingContactStatusAlert.tone}`}>
+                <div className="font-semibold">{billingContactStatusAlert.title}</div>
+                <div className="mt-1">{billingContactStatusAlert.body}</div>
+              </div>
+            ) : null}
+            <form action={updateBillingContactAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <input type="hidden" name="days" value={String(signupTrendDays)} />
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="billing-contact-email">
+                  Billing contact email
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Commercial notices go to this email first. If you leave it empty, TEJ falls back to active workspace admins.
+                </p>
+                <input
+                  id="billing-contact-email"
+                  type="email"
+                  name="billingContactEmail"
+                  defaultValue={usage.profile.billingContactEmail ?? ""}
+                  maxLength={200}
+                  placeholder="billing@example.com"
+                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                >
+                  Save billing contact
+                </button>
+                {usage.profile.billingContactEmail ? (
+                  <button
+                    type="submit"
+                    name="clear"
+                    value="true"
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Use admin fallback
+                  </button>
+                ) : null}
+                <p className="text-xs text-slate-500">
+                  Current recipient path: {usage.profile.billingContactEmail ?? "active workspace admins"}.
+                </p>
+              </div>
+            </form>
             {upgradeRequestStatusAlert ? (
               <div className={`rounded-md border px-3 py-3 text-sm ${upgradeRequestStatusAlert.tone}`}>
                 <div className="font-semibold">{upgradeRequestStatusAlert.title}</div>

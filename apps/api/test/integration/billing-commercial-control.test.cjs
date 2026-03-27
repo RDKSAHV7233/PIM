@@ -256,6 +256,31 @@ async function run() {
     assert(String(usage.payload?.accessStatus ?? "") === "active", "expected usage summary to expose access status");
     assert(String(usage.payload?.profile?.billingStatus ?? "") === "active_paid", "expected usage profile to expose billing status");
 
+    const internalBillingContactOnly = `ops-only-${runId}@example.com`;
+    const contactOnlyUpdate = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/commercial-state",
+      null,
+      {
+        tenantKey: tenantId,
+        billingContactEmail: internalBillingContactOnly,
+      },
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assert(
+      contactOnlyUpdate.status === 200 || contactOnlyUpdate.status === 201,
+      `internal billing-contact-only mutation failed: status=${contactOnlyUpdate.status} payload=${JSON.stringify(contactOnlyUpdate.payload)}`,
+    );
+    assert(
+      String(contactOnlyUpdate.payload?.billingContactEmail ?? "") === internalBillingContactOnly,
+      `expected internal contact-only mutation to persist billing contact payload=${JSON.stringify(contactOnlyUpdate.payload)}`,
+    );
+
     const graceEndsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const billingContactEmail = `billing-${runId}@example.com`;
     const commercialStateUpdate = await apiRequest(
@@ -305,6 +330,59 @@ async function run() {
     assert(
       String(usageAfterCommercialState.payload?.profile?.billingContactEmail ?? "") === billingContactEmail,
       `expected usage profile to expose billingContactEmail payload=${JSON.stringify(usageAfterCommercialState.payload)}`,
+    );
+
+    const selfManagedBillingContactEmail = `self-managed-${runId}@example.com`;
+    const customerBillingContactUpdate = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/billing-contact",
+      adminToken,
+      {
+        billingContactEmail: selfManagedBillingContactEmail,
+      },
+    );
+    assertStatus(customerBillingContactUpdate, 200, "customer billing contact update");
+    assert(
+      String(customerBillingContactUpdate.payload?.billingContactEmail ?? "") === selfManagedBillingContactEmail,
+      `expected customer billing contact update to persist payload=${JSON.stringify(customerBillingContactUpdate.payload)}`,
+    );
+
+    const usageAfterCustomerBillingContact = await apiRequest(baseUrl, "GET", "/billing/usage", adminToken);
+    assertStatus(usageAfterCustomerBillingContact, 200, "billing usage after customer billing contact update");
+    assert(
+      String(usageAfterCustomerBillingContact.payload?.profile?.billingContactEmail ?? "") === selfManagedBillingContactEmail,
+      `expected usage profile to expose self-managed billing contact payload=${JSON.stringify(usageAfterCustomerBillingContact.payload)}`,
+    );
+
+    const invalidCustomerBillingContact = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/billing-contact",
+      adminToken,
+      {
+        billingContactEmail: "not-an-email",
+      },
+    );
+    assertStatus(invalidCustomerBillingContact, 400, "customer billing contact validation");
+
+    const clearCustomerBillingContact = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/billing-contact",
+      adminToken,
+      {
+        billingContactEmail: null,
+      },
+    );
+    assertStatus(clearCustomerBillingContact, 200, "customer billing contact clear");
+    assert(clearCustomerBillingContact.payload?.billingContactEmail == null, "expected billing contact clear to fall back to admins");
+
+    const usageAfterBillingContactClear = await apiRequest(baseUrl, "GET", "/billing/usage", adminToken);
+    assertStatus(usageAfterBillingContactClear, 200, "billing usage after billing contact clear");
+    assert(
+      usageAfterBillingContactClear.payload?.profile?.billingContactEmail == null,
+      `expected usage profile to clear billingContactEmail payload=${JSON.stringify(usageAfterBillingContactClear.payload)}`,
     );
 
     const legacyLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
@@ -358,8 +436,12 @@ async function run() {
             "internal_plan_mutation_requires_operator_identity",
             "internal_plan_mutation_updates_target_tenant",
             "paid_tier_mutation_promotes_billing_status",
+            "internal_commercial_state_accepts_billing_contact_only_mutation",
             "internal_commercial_state_mutation_persists_dates",
             "internal_commercial_state_mutation_persists_billing_contact",
+            "tenant_admin_can_manage_billing_contact",
+            "tenant_admin_billing_contact_validation_rejects_invalid_email",
+            "tenant_admin_can_clear_billing_contact_to_admin_fallback",
             "legacy_plan_profile_bootstrap_reuses_latest_usage_tier",
           ],
           checkedAt: new Date().toISOString(),
