@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const PAGE_PATH = path.join(REPO_ROOT, "apps", "web", "src", "app", "internal", "developer", "page.tsx");
+const ACTIONS_PATH = path.join(REPO_ROOT, "apps", "web", "src", "app", "internal", "developer", "actions.ts");
+const API_PATH = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "internal-billing.ts");
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function run() {
+  const pageSource = fs.readFileSync(PAGE_PATH, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS_PATH, "utf8");
+  const apiSource = fs.readFileSync(API_PATH, "utf8");
+
+  assert(
+    pageSource.includes("notFound();") &&
+      pageSource.includes('actorRole !== "admin"') &&
+      pageSource.includes('process.env.APP_ENV === "production"'),
+    "Internal commercial ops page must stay gated to admin non-production access.",
+  );
+  assert(
+    pageSource.includes("Commercial ops request queue") &&
+      pageSource.includes("Search workspaces") &&
+      pageSource.includes("Request filter") &&
+      pageSource.includes("View requests") &&
+      pageSource.includes("No commercial requests found for this filter."),
+    "Internal commercial ops page must expose search and queue controls.",
+  );
+  assert(
+    pageSource.includes("Acknowledge") &&
+      pageSource.includes("Resolve") &&
+      pageSource.includes("Cancel") &&
+      pageSource.includes("Re-open") &&
+      pageSource.includes("updateUpgradeRequestStatusAction"),
+    "Internal commercial ops page must expose request lifecycle actions.",
+  );
+  assert(
+    actionsSource.includes('redirect("/internal/developer?actionStatus=forbidden")') &&
+      actionsSource.includes("updateInternalUpgradeRequestStatus") &&
+      actionsSource.includes('returnTo.searchParams.set("actionStatus", status)'),
+    "Internal commercial ops actions must route status updates and preserve operator feedback.",
+  );
+  assert(
+    apiSource.includes("/billing/internal/upgrade-requests") &&
+      apiSource.includes("/billing/internal/tenants/search") &&
+      apiSource.includes("/billing/internal/upgrade-requests/status") &&
+      apiSource.includes("x-pim-commercial-ops-token") &&
+      apiSource.includes("getCommercialOpsRequestOptions"),
+    "Internal billing API helper must target the hidden commercial ops endpoints with the required headers.",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "internal_commercial_ops_page_stays_gated",
+          "internal_commercial_ops_page_exposes_search_and_queue_controls",
+          "internal_commercial_ops_page_exposes_request_lifecycle_actions",
+          "internal_commercial_ops_actions_preserve_feedback_state",
+          "internal_billing_api_helper_targets_hidden_ops_endpoints",
+        ],
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+try {
+  run();
+} catch (error) {
+  console.error("Internal commercial ops UI test failed:");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
