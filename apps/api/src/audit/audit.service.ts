@@ -253,11 +253,12 @@ export class AuditService {
             'COMMERCIAL_MUTATION_BLOCKED',
               'COMMERCIAL_UPGRADE_REQUEST_CREATED',
               'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-              'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-              'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-              'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-              'COMMERCIAL_OVERVIEW_VIEWED'
-            ) THEN 'plan'
+                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
+                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
+                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+                'COMMERCIAL_OVERVIEW_VIEWED',
+                'COMMERCIAL_TENANT_EXPORTED'
+              ) THEN 'plan'
         WHEN resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%' THEN 'privacy'
         WHEN resource ILIKE 'auth.%' OR resource = 'auth.step_up' THEN 'auth'
         WHEN resource ILIKE '%import%' THEN 'import'
@@ -300,11 +301,12 @@ export class AuditService {
             'COMMERCIAL_MUTATION_BLOCKED',
               'COMMERCIAL_UPGRADE_REQUEST_CREATED',
               'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-              'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-              'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-              'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-              'COMMERCIAL_OVERVIEW_VIEWED'
-            )
+                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
+                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
+                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+                'COMMERCIAL_OVERVIEW_VIEWED',
+                'COMMERCIAL_TENANT_EXPORTED'
+              )
         )`);
         break;
       case "privacy":
@@ -341,11 +343,12 @@ export class AuditService {
             'COMMERCIAL_MUTATION_BLOCKED',
               'COMMERCIAL_UPGRADE_REQUEST_CREATED',
               'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-              'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-              'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-              'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-              'COMMERCIAL_OVERVIEW_VIEWED'
-            )
+                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
+                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
+                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
+                'COMMERCIAL_OVERVIEW_VIEWED',
+                'COMMERCIAL_TENANT_EXPORTED'
+              )
           OR resource ILIKE '%account%'
           OR action LIKE 'consent.%'
           OR action LIKE 'account.%'

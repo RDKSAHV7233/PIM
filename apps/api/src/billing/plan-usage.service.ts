@@ -231,6 +231,11 @@ export interface CommercialTenantOverview {
   };
 }
 
+interface ListCommercialTenantsInternalInput {
+  query?: string;
+  limit?: number;
+}
+
 export interface UpdateCommercialStateInput {
   billingStatus?: string;
   accessStatus?: string;
@@ -567,8 +572,19 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
     const normalizedLimit = Number.isFinite(limitInput) ? Math.trunc(Number(limitInput)) : 10;
     const limit = Math.max(1, Math.min(normalizedLimit || 10, 25));
+    return this.listCommercialTenantsInternal({
+      query,
+      limit,
+    });
+  }
+
+  async listCommercialTenantsInternal(input?: ListCommercialTenantsInternalInput): Promise<CommercialTenantSearchResult[]> {
+    const query = String(input?.query ?? "").trim();
+    const normalizedLimit = Number.isFinite(input?.limit) ? Math.trunc(Number(input?.limit)) : 50;
+    const limit = Math.max(1, Math.min(normalizedLimit || 50, 250));
     const exactQuery = query.toLowerCase();
     const fuzzyQuery = `%${query}%`;
+    const hasQuery = query.length >= 2;
 
     // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<CommercialTenantSearchRow[]>(
@@ -603,8 +619,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
               WHERE ai."tenantKey" = wd."tenantKey"
                 AND LOWER(ai.role) = 'admin'
                 AND ai."isActive" = TRUE
-              ORDER BY ai."userId" ASC
-              LIMIT 5
+                ORDER BY ai."userId" ASC
+                LIMIT 5
             ) admin_rows
           ),
           '[]'::json
@@ -620,7 +636,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         LIMIT 1
       ) usage ON TRUE
       WHERE
-        LOWER(wd."tenantKey") = $1
+        ($4::boolean = FALSE)
+        OR LOWER(wd."tenantKey") = $1
         OR LOWER(wd."workspaceSlug") = $1
         OR LOWER(wd."displayName") = $1
         OR wd."tenantKey" ILIKE $2
@@ -635,6 +652,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         )
       ORDER BY
         CASE
+          WHEN $4::boolean = FALSE THEN 0
           WHEN LOWER(wd."tenantKey") = $1 THEN 0
           WHEN LOWER(wd."workspaceSlug") = $1 THEN 1
           WHEN LOWER(wd."displayName") = $1 THEN 2
@@ -650,28 +668,58 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       exactQuery,
       fuzzyQuery,
       limit,
+      hasQuery,
     );
 
-    return rows.map((row) => {
-      const planTier = this.normalizePlanTier(row.planTier ?? "STARTER");
-      return {
-        tenantKey: normalizeTenantKey(row.tenantKey),
-        workspaceSlug: String(row.workspaceSlug ?? "").trim(),
-        displayName: String(row.displayName ?? "").trim(),
-        workspaceIsActive: Boolean(row.workspaceIsActive),
-        planTier,
-        billingStatus: this.normalizeBillingStatus(row.billingStatus, planTier),
-        accessStatus: this.normalizeAccessStatus(row.accessStatus),
-        trialEndsAt: this.toIsoString(row.trialEndsAt),
-        paidThroughAt: this.toIsoString(row.paidThroughAt),
-        graceEndsAt: this.toIsoString(row.graceEndsAt),
-        cancelledAt: this.toIsoString(row.cancelledAt),
-        suspendedAt: this.toIsoString(row.suspendedAt),
-        suspensionReason: row.suspensionReason ? String(row.suspensionReason).trim() || null : null,
-        billingContactEmail: this.normalizeOptionalEmail(row.billingContactEmail),
-        adminEmails: this.normalizeAdminEmails(row.adminEmails),
-      };
+    return rows.map((row) => this.mapCommercialTenantSearchRow(row));
+  }
+
+  async exportCommercialTenantsCsvInternal(input?: ListCommercialTenantsInternalInput): Promise<string> {
+    const items = await this.listCommercialTenantsInternal({
+      query: input?.query,
+      limit: input?.limit ?? 250,
     });
+    const lines = [
+      [
+        "tenantKey",
+        "workspaceSlug",
+        "displayName",
+        "workspaceIsActive",
+        "planTier",
+        "billingStatus",
+        "accessStatus",
+        "trialEndsAt",
+        "paidThroughAt",
+        "graceEndsAt",
+        "cancelledAt",
+        "suspendedAt",
+        "suspensionReason",
+        "billingContactEmail",
+        "adminEmails",
+      ].join(","),
+      ...items.map((item) =>
+        [
+          item.tenantKey,
+          item.workspaceSlug,
+          item.displayName,
+          item.workspaceIsActive ? "true" : "false",
+          item.planTier,
+          item.billingStatus,
+          item.accessStatus,
+          item.trialEndsAt ?? "",
+          item.paidThroughAt ?? "",
+          item.graceEndsAt ?? "",
+          item.cancelledAt ?? "",
+          item.suspendedAt ?? "",
+          item.suspensionReason ?? "",
+          item.billingContactEmail ?? "",
+          item.adminEmails.join("; "),
+        ]
+          .map((value) => this.csvCell(value))
+          .join(","),
+      ),
+    ];
+    return `${lines.join("\n")}\n`;
   }
 
   async getCommercialTenantOverview(): Promise<CommercialTenantOverview> {
@@ -1120,6 +1168,31 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   private normalizeOptionalEmail(value: string | null | undefined): string | null {
     const normalized = String(value ?? "").trim().toLowerCase();
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private mapCommercialTenantSearchRow(row: CommercialTenantSearchRow): CommercialTenantSearchResult {
+    const planTier = this.normalizePlanTier(row.planTier ?? "STARTER");
+    return {
+      tenantKey: normalizeTenantKey(row.tenantKey),
+      workspaceSlug: String(row.workspaceSlug ?? "").trim(),
+      displayName: String(row.displayName ?? "").trim(),
+      workspaceIsActive: Boolean(row.workspaceIsActive),
+      planTier,
+      billingStatus: this.normalizeBillingStatus(row.billingStatus, planTier),
+      accessStatus: this.normalizeAccessStatus(row.accessStatus),
+      trialEndsAt: this.toIsoString(row.trialEndsAt),
+      paidThroughAt: this.toIsoString(row.paidThroughAt),
+      graceEndsAt: this.toIsoString(row.graceEndsAt),
+      cancelledAt: this.toIsoString(row.cancelledAt),
+      suspendedAt: this.toIsoString(row.suspendedAt),
+      suspensionReason: row.suspensionReason ? String(row.suspensionReason).trim() || null : null,
+      billingContactEmail: this.normalizeOptionalEmail(row.billingContactEmail),
+      adminEmails: this.normalizeAdminEmails(row.adminEmails),
+    };
+  }
+
+  private csvCell(value: string): string {
+    return `"${String(value ?? "").replace(/"/g, '""')}"`;
   }
 
   private resolvePositiveIntegerEnv(value: string | undefined, fallback: number): number {

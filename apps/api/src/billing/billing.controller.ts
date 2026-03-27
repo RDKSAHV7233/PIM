@@ -14,6 +14,7 @@ import {
   PlanUpgradeRequestLookupDto,
   PlanUsageSummaryDto,
 } from "./dto/billing-response.dto";
+import { ExportCommercialTenantsDto } from "./dto/export-commercial-tenants.dto";
 import { InternalUpdateTenantCommercialStateDto } from "./dto/internal-update-tenant-commercial-state.dto";
 import { InternalSetTenantPlanTierDto } from "./dto/internal-set-tenant-plan-tier.dto";
 import { ListPlanUpgradeRequestsDto } from "./dto/list-plan-upgrade-requests.dto";
@@ -377,6 +378,45 @@ export class BillingController {
       count: results.length,
       query: query.q,
     };
+  }
+
+  @Public()
+  @Get("internal/tenants/export")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only commercial tenant CSV export" })
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async exportCommercialTenantsInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Query() query: ExportCommercialTenantsDto,
+    @Res({ passthrough: true }) response: FastifyReply,
+  ) {
+    const { actorId, actorRole } = this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+    );
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    response.header("Content-Disposition", `attachment; filename="tej-pim-commercial-tenants-${stamp}.csv"`);
+    const csv = await this.planUsageService.exportCommercialTenantsCsvInternal({
+      query: query.q,
+      limit: query.limit ?? 250,
+    });
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_TENANT_EXPORTED",
+      resource: "WORKSPACE_DIRECTORY",
+      resourceId: query.q ?? "all",
+      metadata: {
+        event: "commercial_tenant_exported",
+        query: query.q ?? null,
+        limit: query.limit ?? 250,
+      },
+    });
+    return csv;
   }
 
   @Public()

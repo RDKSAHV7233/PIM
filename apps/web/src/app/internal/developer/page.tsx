@@ -72,6 +72,19 @@ function buildExportHref(input: {
   return query ? `/api/internal/commercial-requests/export?${query}` : "/api/internal/commercial-requests/export";
 }
 
+function buildTenantExportHref(input: {
+  tenantQuery?: string;
+  tenantKey?: string;
+}) {
+  const search = new URLSearchParams();
+  const exportQuery = input.tenantKey || (String(input.tenantQuery ?? "").trim().length >= 2 ? String(input.tenantQuery).trim() : "");
+  if (exportQuery) {
+    search.set("q", exportQuery);
+  }
+  const query = search.toString();
+  return query ? `/api/internal/commercial-tenants/export?${query}` : "/api/internal/commercial-tenants/export";
+}
+
 function formatBillingStatus(value: string) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "active_paid") {
@@ -422,6 +435,12 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
               <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">
                 Filter queue
               </button>
+              <Link
+                href={buildTenantExportHref({ tenantQuery, tenantKey })}
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Export tenants CSV
+              </Link>
               <Link
                 href={buildExportHref({ tenantKey, requestStatusFilter })}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

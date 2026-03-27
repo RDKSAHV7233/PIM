@@ -302,6 +302,53 @@ async function run() {
       );
     }
 
+    const exportAll = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/tenants/export?limit=10",
+      undefined,
+      {
+        Accept: "text/csv",
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(exportAll, 200, "tenant export across all tenants");
+    const exportAllCsv = String(exportAll.payload ?? "");
+    assert(
+      exportAllCsv.includes("tenantKey,workspaceSlug,displayName,workspaceIsActive,planTier,billingStatus,accessStatus"),
+      `expected tenant export csv header payload=${exportAllCsv}`,
+    );
+    assert(
+      exportAllCsv.includes(`"${tenantId}"`) &&
+        exportAllCsv.includes(`"${secondTenantId}"`) &&
+        exportAllCsv.includes(`"${billingContactEmail}"`) &&
+        exportAllCsv.includes('"ops_search_validation"'),
+      `expected both tenants and commercial state in export payload=${exportAllCsv}`,
+    );
+
+    const exportFiltered = await apiRequest(
+      baseUrl,
+      "GET",
+      `/billing/internal/tenants/export?q=${encodeURIComponent(workspaceSlug)}&limit=10`,
+      undefined,
+      {
+        Accept: "text/csv",
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(exportFiltered, 200, "filtered tenant export");
+    const exportFilteredCsv = String(exportFiltered.payload ?? "");
+    assert(
+      exportFilteredCsv.includes(`"${tenantId}"`) &&
+        exportFilteredCsv.includes(`"${workspaceSlug}"`) &&
+        !exportFilteredCsv.includes(`"${secondTenantId}"`),
+      `expected filtered tenant export to narrow to the matching workspace payload=${exportFilteredCsv}`,
+    );
+
     const shortQuery = await apiRequest(
       baseUrl,
       "GET",
@@ -332,6 +379,7 @@ async function run() {
             "tenant_search_matches_tenant_key",
             "tenant_search_matches_admin_email",
             "tenant_search_returns_current_commercial_state",
+            "tenant_export_returns_all_or_filtered_commercial_rows",
             "tenant_search_rejects_too_short_queries",
           ],
           checkedAt: new Date().toISOString(),
