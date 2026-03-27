@@ -66,9 +66,12 @@ try {
   assert(
     signupClient.includes('payload?.error === "SIGNUP_VERIFICATION_ALREADY_PENDING"') &&
       signupClient.includes("authCopy.signupPendingVerification") &&
+      signupClient.includes('payload?.error === "SIGNUP_VERIFICATION_SEND_FAILED"') &&
+      signupClient.includes("authCopy.signupVerificationSendFailed") &&
       authCopy.includes("A verification email is already pending for that address.") &&
+      authCopy.includes("We couldn't send the verification email right now. Please try again.") &&
       authCopy.includes("That email is already in use. Sign in or reset your password instead."),
-    "Signup page must distinguish pending verification from a fully registered email conflict.",
+    "Signup page must distinguish pending verification, verification email delivery failure, and a fully registered email conflict.",
   );
   assert(
     authCopy.includes("We'll confirm your email and activate your TEJ PIM workspace.") &&

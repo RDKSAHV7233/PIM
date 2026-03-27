@@ -24,6 +24,10 @@ const DEFAULT_REDIS_URL = "redis://localhost:6379";
 const REDIS_RETRY_BACKOFF_MS = 30_000;
 const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
+const SIGNUP_STATUS_PENDING = "pending";
+const SIGNUP_STATUS_VERIFIED = "verified";
+const SIGNUP_STATUS_EXPIRED = "expired";
+const SIGNUP_STATUS_DELIVERY_FAILED = "delivery_failed";
 
 interface AttemptState {
   windowStartMs: number;
@@ -92,7 +96,7 @@ export class SignupService implements OnModuleDestroy {
       signupRequests.findFirst({
         where: {
           workspaceSlug,
-          status: "pending",
+          status: SIGNUP_STATUS_PENDING,
           expiresAt: {
             gt: new Date(),
           },
@@ -166,9 +170,10 @@ export class SignupService implements OnModuleDestroy {
     const verificationToken = randomBytes(SIGNUP_TOKEN_BYTES).toString("hex");
     const verificationTokenHash = this.hashVerificationToken(verificationToken);
     const expiresAt = new Date(now + SIGNUP_VERIFICATION_EXPIRY_MS);
+    let signupRequestId = "";
 
     try {
-      await prisma.$transaction(async (tx) => {
+      signupRequestId = await prisma.$transaction(async (tx) => {
         const signupRequests = this.signupRequestStore(tx);
         await this.expirePendingRequests(new Date(now), signupRequests);
 
@@ -180,28 +185,28 @@ export class SignupService implements OnModuleDestroy {
         });
 
         const verifiedWorkspace = matchingRequests.find(
-          (request: any) => request.workspaceSlug === workspaceSlug && request.status === "verified",
+          (request: any) => request.workspaceSlug === workspaceSlug && request.status === SIGNUP_STATUS_VERIFIED,
         );
         if (verifiedWorkspace) {
           throw new Error("WORKSPACE_SLUG_ALREADY_ASSIGNED");
         }
 
         const verifiedEmail = matchingRequests.find(
-          (request: any) => request.adminEmail === adminEmail && request.status === "verified",
+          (request: any) => request.adminEmail === adminEmail && request.status === SIGNUP_STATUS_VERIFIED,
         );
         if (verifiedEmail) {
           throw new Error("ADMIN_EMAIL_ALREADY_REGISTERED");
         }
 
         const pendingWorkspace = matchingRequests.find(
-          (request: any) => request.workspaceSlug === workspaceSlug && request.status === "pending",
+          (request: any) => request.workspaceSlug === workspaceSlug && request.status === SIGNUP_STATUS_PENDING,
         );
         if (pendingWorkspace) {
           throw new Error("WORKSPACE_SLUG_ALREADY_PENDING");
         }
 
         const pendingEmail = matchingRequests.find(
-          (request: any) => request.adminEmail === adminEmail && request.status === "pending",
+          (request: any) => request.adminEmail === adminEmail && request.status === SIGNUP_STATUS_PENDING,
         );
         if (pendingEmail) {
           throw new Error("SIGNUP_VERIFICATION_ALREADY_PENDING");
@@ -233,26 +238,27 @@ export class SignupService implements OnModuleDestroy {
           adminEmail,
           passwordHash,
           verificationTokenHash,
-          status: "pending",
+          status: SIGNUP_STATUS_PENDING,
           acceptedTerms: dto.acceptedTerms,
           expiresAt,
           verifiedAt: null,
         };
 
         if (targetRequest) {
-          await signupRequests.update({
+          const updated = await signupRequests.update({
             where: { id: targetRequest.id },
             data,
           });
-          return;
+          return String(updated.id);
         }
 
-        await signupRequests.create({
+        const created = await signupRequests.create({
           data: {
             id: `signup_${randomUUID()}`,
             ...data,
           },
         });
+        return String(created.id);
       });
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -276,6 +282,7 @@ export class SignupService implements OnModuleDestroy {
       });
     } catch (error: unknown) {
       const code = error instanceof Error ? error.message : String(error ?? "unknown error");
+      await this.markSignupRequestDeliveryFailed(signupRequestId);
       if (code === "EMAIL_PROVIDER_MISCONFIGURED") {
         throw new Error(code);
       }
@@ -317,11 +324,11 @@ export class SignupService implements OnModuleDestroy {
       },
     });
 
-    if (!request || request.status !== "pending" || new Date(request.expiresAt).getTime() <= Date.now()) {
-      if (request && request.status === "pending" && new Date(request.expiresAt).getTime() <= Date.now()) {
+    if (!request || request.status !== SIGNUP_STATUS_PENDING || new Date(request.expiresAt).getTime() <= Date.now()) {
+      if (request && request.status === SIGNUP_STATUS_PENDING && new Date(request.expiresAt).getTime() <= Date.now()) {
         await signupRequests.update({
           where: { id: request.id },
-          data: { status: "expired" },
+          data: { status: SIGNUP_STATUS_EXPIRED },
         });
       }
       throw new Error("SIGNUP_VERIFICATION_TOKEN_INVALID");
@@ -347,7 +354,7 @@ export class SignupService implements OnModuleDestroy {
     await signupRequests.update({
       where: { id: request.id },
       data: {
-        status: "verified",
+        status: SIGNUP_STATUS_VERIFIED,
         verifiedAt: new Date(),
       },
     });
@@ -404,7 +411,7 @@ export class SignupService implements OnModuleDestroy {
       where: {
         adminEmail,
         status: {
-          in: ["pending", "expired"],
+          in: [SIGNUP_STATUS_PENDING, SIGNUP_STATUS_EXPIRED, SIGNUP_STATUS_DELIVERY_FAILED],
         },
       },
       orderBy: [
@@ -431,7 +438,7 @@ export class SignupService implements OnModuleDestroy {
       },
       data: {
         verificationTokenHash,
-        status: "pending",
+        status: SIGNUP_STATUS_PENDING,
         expiresAt,
         verifiedAt: null,
       },
@@ -446,6 +453,7 @@ export class SignupService implements OnModuleDestroy {
       });
     } catch (error: unknown) {
       const code = error instanceof Error ? error.message : String(error ?? "unknown error");
+      await this.markSignupRequestDeliveryFailed(signup.id);
       if (code === "EMAIL_PROVIDER_MISCONFIGURED") {
         throw new Error(code);
       }
@@ -487,15 +495,35 @@ export class SignupService implements OnModuleDestroy {
   private async expirePendingRequests(now = new Date(), signupRequests = this.signupRequestStore()): Promise<void> {
     await signupRequests.updateMany({
       where: {
-        status: "pending",
+        status: SIGNUP_STATUS_PENDING,
         expiresAt: {
           lt: now,
         },
       },
       data: {
-        status: "expired",
+        status: SIGNUP_STATUS_EXPIRED,
       },
     });
+  }
+
+  private async markSignupRequestDeliveryFailed(signupRequestId: string): Promise<void> {
+    if (!String(signupRequestId ?? "").trim()) {
+      return;
+    }
+    try {
+      await this.signupRequestStore().updateMany({
+        where: {
+          id: signupRequestId,
+          status: SIGNUP_STATUS_PENDING,
+        },
+        data: {
+          status: SIGNUP_STATUS_DELIVERY_FAILED,
+        },
+      });
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error ?? "unknown error");
+      this.logger.warn(`Unable to mark signup request ${signupRequestId} as delivery_failed: ${reason}`);
+    }
   }
 
   private async sendVerificationEmail(input: {

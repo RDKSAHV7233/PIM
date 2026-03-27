@@ -130,7 +130,7 @@ export class SignupController {
     if (code === "SIGNUP_VERIFICATION_TOKEN_INVALID") {
       throw new UnauthorizedException({ error: code });
     }
-    if (code === "EMAIL_PROVIDER_MISCONFIGURED") {
+    if (code === "EMAIL_PROVIDER_MISCONFIGURED" || code === "SIGNUP_VERIFICATION_SEND_FAILED") {
       throw new BadGatewayException({ error: code });
     }
     throw new InternalServerErrorException({

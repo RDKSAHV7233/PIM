@@ -195,6 +195,10 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
         setError(authCopy.workspaceInvalid);
         return;
       }
+      if (payload?.error === "SIGNUP_VERIFICATION_SEND_FAILED" || payload?.error === "EMAIL_PROVIDER_MISCONFIGURED") {
+        setError(authCopy.signupVerificationSendFailed);
+        return;
+      }
       setError(authCopy.genericLoginFailure);
     } catch {
       setError(authCopy.networkError);

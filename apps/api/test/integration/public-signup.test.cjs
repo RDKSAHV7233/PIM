@@ -479,6 +479,102 @@ async function runHappyPathCase(baseEnv) {
   }
 }
 
+async function runVerificationDeliveryFailureRecoveryCase(baseEnv) {
+  const brokenOutboxPath = path.join(os.tmpdir(), `tej-pim-signup-broken-outbox-${Date.now()}.json`);
+  fs.writeFileSync(brokenOutboxPath, "broken");
+  const failingEnv = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(5750 + Math.floor(Math.random() * 20)),
+    AUTH_EMAIL_OUTBOX_DIR: brokenOutboxPath,
+  });
+  const prisma = buildDbClient(baseEnv);
+  const failingApi = await startApi(failingEnv);
+  const runId = Date.now().toString();
+  const workspaceSlug = `tej-fail-${runId.slice(-8)}`;
+  const adminEmail = `signup-fail-${runId}@example.com`;
+  const password = "Signup#2026";
+
+  try {
+    const failedSignup = await apiRequest(failingApi.baseUrl, "POST", "/signup/workspace", {
+      displayName: "TEJ Failed Delivery Workspace",
+      workspaceSlug,
+      adminEmail,
+      password,
+      acceptedTerms: true,
+    });
+    assertStatus(failedSignup, 502, "signup returns dependency failure when verification email send fails");
+    assert(
+      failedSignup.payload?.error === "SIGNUP_VERIFICATION_SEND_FAILED",
+      `unexpected signup delivery failure payload=${JSON.stringify(failedSignup.payload)}`,
+    );
+
+    const failedRequest = await prisma.publicSignupRequest.findUnique({
+      where: { workspaceSlug },
+      select: {
+        id: true,
+        workspaceSlug: true,
+        adminEmail: true,
+        status: true,
+      },
+    });
+    assert(failedRequest, "expected signup request record to exist after delivery failure");
+    assert(
+      failedRequest.status === "delivery_failed",
+      `expected signup request to move to delivery_failed after email failure, got ${JSON.stringify(failedRequest)}`,
+    );
+
+    const availability = await apiRequest(
+      failingApi.baseUrl,
+      "GET",
+      `/signup/workspace/availability?workspaceSlug=${encodeURIComponent(workspaceSlug)}`,
+    );
+    assertStatus(availability, 200, "workspace availability check still succeeds after delivery failure");
+    assert(
+      availability.payload?.available === true,
+      `expected failed delivery slug to remain available for retry, got ${JSON.stringify(availability.payload)}`,
+    );
+  } finally {
+    fs.rmSync(brokenOutboxPath, { force: true });
+    await stopApi(failingApi.processHandle);
+  }
+
+  const goodOutboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-recovery-"));
+  const recoveryEnv = buildBaseRuntimeEnv({
+    ...baseEnv,
+    PORT: String(5770 + Math.floor(Math.random() * 20)),
+    AUTH_EMAIL_OUTBOX_DIR: goodOutboxDir,
+  });
+  const recoveryApi = await startApi(recoveryEnv);
+
+  try {
+    const retriedSignup = await apiRequest(recoveryApi.baseUrl, "POST", "/signup/workspace", {
+      displayName: "TEJ Failed Delivery Workspace",
+      workspaceSlug,
+      adminEmail,
+      password,
+      acceptedTerms: true,
+    });
+    assertStatus(retriedSignup, 200, "signup can be retried after delivery failure");
+    assert(
+      retriedSignup.payload?.status === "pending_verification",
+      `unexpected retry signup payload=${JSON.stringify(retriedSignup.payload)}`,
+    );
+
+    const signupEmail = await waitForOutboxEmail(goodOutboxDir, adminEmail, "signup_verification", 10_000);
+    const verificationToken = extractVerificationToken(signupEmail.parsed);
+
+    const verify = await apiRequest(recoveryApi.baseUrl, "POST", "/signup/verify", { token: verificationToken });
+    assertStatus(verify, 200, "retried signup verification succeeds");
+
+    const verifiedLogin = await login(recoveryApi.baseUrl, workspaceSlug, adminEmail, password);
+    assertStatus(verifiedLogin, 201, "retried signup admin can log in after verification");
+  } finally {
+    await prisma.$disconnect();
+    fs.rmSync(goodOutboxDir, { recursive: true, force: true });
+    await stopApi(recoveryApi.processHandle);
+  }
+}
+
 async function runIpRateLimitCase(baseEnv) {
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-ip-rate-"));
   const env = buildBaseRuntimeEnv({
@@ -662,6 +758,7 @@ async function run() {
   await runFeatureFlagOffCase(baseEnv);
   await runValidationCase(baseEnv);
   await runHappyPathCase(baseEnv);
+  await runVerificationDeliveryFailureRecoveryCase(baseEnv);
   await runIpRateLimitCase(baseEnv);
   await runEmailRateLimitCase(baseEnv);
   await runResendRateLimitCase(baseEnv);
@@ -675,6 +772,7 @@ async function run() {
           "feature_flag_off_returns_404",
           "signup_validation_returns_explicit_errors",
           "signup_happy_path_creates_pending_request",
+          "signup_delivery_failure_marks_request_non_pending_and_allows_retry",
           "signup_verify_provisions_workspace_and_admin",
           "verified_admin_can_login_and_has_starter_plan",
           "signup_kpi_trends_expose_request_verification_and_conversion_metrics",

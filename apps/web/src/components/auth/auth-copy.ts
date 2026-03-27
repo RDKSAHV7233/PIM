@@ -27,6 +27,7 @@ export interface AuthCopy {
   signupSuccess: string;
   signupDuplicateEmail: string;
   signupPendingVerification: string;
+  signupVerificationSendFailed: string;
   signupEmailInvalid: string;
   signupTermsLabel: string;
   signupPasswordHelp: string;
@@ -102,6 +103,7 @@ const EN_COPY: AuthCopy = {
   signupSuccess: "Check your email for the verification link to finish creating your workspace.",
   signupDuplicateEmail: "That email is already in use. Sign in or reset your password instead.",
   signupPendingVerification: "A verification email is already pending for that address. Check your inbox or resend the verification link.",
+  signupVerificationSendFailed: "We couldn't send the verification email right now. Please try again.",
   signupEmailInvalid: "Enter a valid email address for the first admin.",
   signupTermsLabel: "I accept the Terms of Service and Privacy Policy.",
   signupPasswordHelp: "Use at least 8 characters.",
