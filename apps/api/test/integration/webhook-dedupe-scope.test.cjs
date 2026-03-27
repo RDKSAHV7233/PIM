@@ -79,8 +79,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders) {
+  const headers = { Accept: "application/json", ...(extraHeaders ?? {}) };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -102,6 +102,21 @@ async function apiRequest(baseUrl, method, route, token, body) {
     payload = text;
   }
   return { status: response.status, payload };
+}
+
+async function commercialPlanRequest(baseUrl, commercialToken, tenantKey, planTier) {
+  return apiRequest(
+    baseUrl,
+    "POST",
+    "/billing/internal/plan-tier",
+    null,
+    { tenantKey, planTier },
+    {
+      "x-pim-commercial-ops-token": commercialToken,
+      "x-pim-operator-id": "ops-commercial",
+      "x-pim-operator-role": "commercial_ops",
+    },
+  );
 }
 
 function assert(condition, message) {
@@ -126,15 +141,22 @@ async function run() {
   const apiPort = 5200 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `webhook-dedupe-tenant-${runId}`;
+  const workspaceSlug = `webhook-${runId}`.slice(0, 24);
   const userId = `webhook-dedupe-user-${runId}`;
+  const commercialToken = `commercial-ops-${runId}`;
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
     }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Webhook Dedupe" },
+    }),
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+    PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
   };
 
   const stdoutBuffer = [];
@@ -167,6 +189,7 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId,
       password: "tej-pim-demo-password",
       expiresInMinutes: 30,
@@ -175,9 +198,7 @@ async function run() {
     const token = login.payload?.accessToken;
     assert(typeof token === "string" && token.length > 10, "missing access token");
 
-    const setPlanTier = await apiRequest(baseUrl, "POST", "/billing/plan-tier", token, {
-      planTier: "ENTERPRISE",
-    });
+    const setPlanTier = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
     assert(
       setPlanTier.status === 200 || setPlanTier.status === 201,
       `set plan tier failed: expected 200/201, got ${setPlanTier.status} payload=${JSON.stringify(setPlanTier.payload)}`,

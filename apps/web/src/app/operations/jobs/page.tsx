@@ -266,7 +266,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/operations/jobs", error.status));
+      redirect(buildLoginRedirect("/operations/jobs", error));
     }
     throw error;
   }

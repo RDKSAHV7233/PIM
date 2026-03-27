@@ -331,6 +331,8 @@ export type ExportJobListQuery = {
 
 export interface PlanUsageResponse {
   planTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+  billingStatus: "trial" | "active_paid" | "past_due" | "cancelled" | string;
+  accessStatus: "active" | "suspended" | string;
   month: string;
   billingCycleResetAt: string;
   skus: { current: number; limit: number };
@@ -342,7 +344,16 @@ export interface PlanUsageResponse {
   profile: {
     tenantKey: string;
     planTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+    billingStatus: "trial" | "active_paid" | "past_due" | "cancelled" | string;
+    accessStatus: "active" | "suspended" | string;
     effectiveFrom: string | null;
+    trialEndsAt: string | null;
+    paidThroughAt: string | null;
+    graceEndsAt: string | null;
+    cancelledAt: string | null;
+    suspendedAt: string | null;
+    suspensionReason: string | null;
+    billingContactEmail: string | null;
     updatedBy: string | null;
     createdAt: string;
     updatedAt: string;
@@ -604,6 +615,7 @@ export type ExportJobStatus =
   | "queued"
   | "processing"
   | "retrying"
+  | "skipped"
   | "completed"
   | "failed"
   | "dead_letter";

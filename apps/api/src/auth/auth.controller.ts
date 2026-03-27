@@ -16,6 +16,7 @@ import {
 import { FastifyRequest } from "fastify";
 import { FastifyReply } from "fastify";
 import { AuthService, LoginResponse } from "./auth.service";
+import { AllowSuspendedTenant } from "./allow-suspended.decorator";
 import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -85,6 +86,19 @@ export class AuthController {
       );
     }
 
+    if (result.type === "tenant_suspended") {
+      throw new HttpException(
+        {
+          error: "TENANT_SUSPENDED",
+          tenantId: result.tenantId,
+          billingStatus: result.billingStatus,
+          accessStatus: result.accessStatus,
+          suspensionReason: result.suspensionReason,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     return result.payload;
   }
 
@@ -143,6 +157,7 @@ export class AuthController {
 
   @Get("account/privacy-status")
   @Roles(...APP_ROLES)
+  @AllowSuspendedTenant()
   @HttpCode(200)
   async getPrivacyStatus(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
@@ -164,6 +179,7 @@ export class AuthController {
 
   @Get("account/export/:jobId/download")
   @Roles(...APP_ROLES)
+  @AllowSuspendedTenant()
   async downloadAccountExport(
     @Param("jobId") jobId: string,
     @Req() request: AuthenticatedRequest,
@@ -185,6 +201,7 @@ export class AuthController {
 
   @Delete("account")
   @Roles(...APP_ROLES)
+  @AllowSuspendedTenant()
   @HttpCode(202)
   async deleteAccount(@Body() dto: DeleteAccountDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);

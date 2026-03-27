@@ -188,7 +188,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels/submissions", error.status));
+      redirect(buildLoginRedirect("/channels/submissions", error));
     }
     throw error;
   }

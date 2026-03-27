@@ -56,6 +56,7 @@ function prepareEnv() {
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
 }
 
 function sleep(ms) {
@@ -138,6 +139,7 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Worker Failure" },
     }),
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
   };
 
   const stdoutBuffer = [];

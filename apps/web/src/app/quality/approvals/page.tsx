@@ -317,7 +317,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/quality/approvals", error.status));
+      redirect(buildLoginRedirect("/quality/approvals", error));
     }
     throw error;
   }

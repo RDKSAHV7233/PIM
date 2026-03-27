@@ -268,7 +268,7 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/catalog/attributes", error.status));
+      redirect(buildLoginRedirect("/catalog/attributes", error));
     }
     throw error;
   }

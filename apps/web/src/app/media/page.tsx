@@ -107,7 +107,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/media", error.status));
+      redirect(buildLoginRedirect("/media", error));
     }
     throw error;
   }

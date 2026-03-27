@@ -39,6 +39,7 @@
    - Planned execution spec: `docs/execution/INC-23A_SELF_SERVE_SIGNUP_PLAN.md`
 3. Usage-based billing with payment collection
    - Why: plan modeling exists, but revenue collection does not.
+   - Planned execution spec: `docs/execution/INC-24_COMMERCIAL_CONTROL_PLAN.md`
 4. ONDC implementation beyond the feature-flagged shell
    - Why: strategically important for India expansion, but not the next commercial blocker.
 5. Variant bulk edit and media workflow completion

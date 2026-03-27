@@ -257,7 +257,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/admin/webhooks", error.status));
+      redirect(buildLoginRedirect("/admin/webhooks", error));
     }
     throw error;
   }

@@ -100,7 +100,7 @@ export default async function ChannelsHealthPage() {
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels/health", error.status));
+      redirect(buildLoginRedirect("/channels/health", error));
     }
     throw error;
   }

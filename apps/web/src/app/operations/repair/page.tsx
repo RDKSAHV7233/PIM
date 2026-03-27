@@ -117,7 +117,7 @@ export default async function OperationsRepairPage() {
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/operations/repair", error.status));
+      redirect(buildLoginRedirect("/operations/repair", error));
     }
     throw error;
   }

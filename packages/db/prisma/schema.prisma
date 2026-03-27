@@ -55,6 +55,7 @@ enum ExportJobStatus {
   queued
   processing
   retrying
+  skipped
   completed
   failed
   dead_letter
@@ -524,15 +525,28 @@ model PlanUsage {
 }
 
 model TenantPlanProfile {
-  id           String   @id @default(cuid())
-  tenantKey    String   @unique
-  planTier     String   @default("STARTER")
-  effectiveFrom DateTime?
-  updatedBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  tenantKey              String   @unique
+  planTier               String   @default("STARTER")
+  billingStatus          String   @default("trial")
+  accessStatus           String   @default("active")
+  effectiveFrom          DateTime?
+  trialEndsAt            DateTime?
+  paidThroughAt          DateTime?
+  graceEndsAt            DateTime?
+  cancelledAt            DateTime?
+  suspendedAt            DateTime?
+  suspensionReason       String?
+  billingContactEmail    String?
+  billingProvider        String?
+  externalCustomerId     String?
+  externalSubscriptionId String?
+  updatedBy              String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([tenantKey, planTier])
+  @@index([tenantKey, billingStatus, accessStatus])
 }
 
 model ConnectorPermission {

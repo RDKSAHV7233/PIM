@@ -61,6 +61,9 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
   const showRateLimitCountdown = isRateLimited && rateLimitCountdown <= 15 * 60;
   const safeNextPath = useMemo(() => sanitizeNextPath(nextPath), [nextPath]);
   const loginReasonMessage = useMemo(() => {
+    if (reason === "tenant_suspended") {
+      return authCopy.loginReasonTenantSuspended;
+    }
     if (reason === "forbidden") {
       return authCopy.loginReasonForbidden;
     }
@@ -68,7 +71,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       return authCopy.loginReasonSessionExpired;
     }
     return "";
-  }, [authCopy.loginReasonForbidden, authCopy.loginReasonSessionExpired, reason]);
+  }, [authCopy.loginReasonForbidden, authCopy.loginReasonSessionExpired, authCopy.loginReasonTenantSuspended, reason]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,6 +134,15 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
         setAttemptsRemaining(Number.isFinite(remaining) ? Math.max(0, Math.trunc(remaining)) : null);
         setErrorMessage(authCopy.invalidCredentials);
         return;
+      }
+
+      if (response.status === 403) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (payload.error === "TENANT_SUSPENDED") {
+          setAttemptsRemaining(null);
+          setErrorMessage(authCopy.loginReasonTenantSuspended);
+          return;
+        }
       }
 
       if (response.status === 404) {

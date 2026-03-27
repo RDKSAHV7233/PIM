@@ -333,6 +333,8 @@ async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
     QUEUE_BACKEND: "bullmq",
     QUEUE_WORKER_ENABLED: "true",
     PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
   };
   const baseUrl = `http://localhost:${port}/api/v1`;
   const stdout = [];
@@ -371,6 +373,8 @@ async function runCaseStagingRequiresResendCredentials(baseEnv) {
     QUEUE_BACKEND: "bullmq",
     QUEUE_WORKER_ENABLED: "true",
     PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
   };
 
   const stderr = [];
@@ -418,6 +422,8 @@ async function runCaseProductionRejectsConsoleEmailProvider(baseEnv) {
     QUEUE_BACKEND: "bullmq",
     QUEUE_WORKER_ENABLED: "true",
     PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+    PIM_COMMERCIAL_OPS_TOKEN: "production-commercial-ops-token",
   };
 
   const stderr = [];
@@ -454,6 +460,105 @@ async function runCaseProductionRejectsConsoleEmailProvider(baseEnv) {
   }
 }
 
+async function runCaseStagingRequiresCommercialContact(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5498 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "console",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "true",
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "",
+    PIM_COMMERCIAL_CONTACT_EMAIL: "",
+    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail without commercial contact config, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail without commercial contact config, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("PIM_COMMERCIAL_CONTACT_URL") && !mergedOutput.includes("PIM_COMMERCIAL_CONTACT_EMAIL")) {
+    throw new Error(`Expected startup failure output to mention commercial contact config. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
+async function runCaseStagingRequiresCommercialOpsToken(baseEnv) {
+  const env = {
+    ...baseEnv,
+    PORT: String(5502 + Math.floor(Math.random() * 100)),
+    APP_ENV: "staging",
+    AUTH_MODE: "db",
+    CORS_ORIGIN: "https://staging.example.com",
+    AUTH_EMAIL_PROVIDER: "console",
+    QUEUE_BACKEND: "bullmq",
+    QUEUE_WORKER_ENABLED: "true",
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+    PIM_COMMERCIAL_OPS_TOKEN: "",
+  };
+
+  const stderr = [];
+  const stdout = [];
+  const processHandle = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(20_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(
+      `Expected staging startup to fail without commercial ops token, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
+    );
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0) {
+    throw new Error("Expected staging startup to fail without commercial ops token, but process exited with code 0.");
+  }
+  if (!mergedOutput.includes("PIM_COMMERCIAL_OPS_TOKEN")) {
+    throw new Error(`Expected startup failure output to mention PIM_COMMERCIAL_OPS_TOKEN. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -466,6 +571,8 @@ async function run() {
   await runCaseStagingRequiresRealEmailProvider(baseEnv);
   await runCaseStagingAllowsConsoleEmailProvider(baseEnv);
   await runCaseStagingRequiresResendCredentials(baseEnv);
+  await runCaseStagingRequiresCommercialContact(baseEnv);
+  await runCaseStagingRequiresCommercialOpsToken(baseEnv);
   await runCaseProductionRejectsConsoleEmailProvider(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
@@ -480,6 +587,8 @@ async function run() {
           "staging_requires_real_email_provider",
           "staging_allows_console_email_provider",
           "staging_requires_resend_credentials",
+          "staging_requires_commercial_contact_config",
+          "staging_requires_commercial_ops_token",
           "production_requires_resend_email_provider",
           "valid_env_starts_api",
         ],

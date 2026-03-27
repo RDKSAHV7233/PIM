@@ -7,7 +7,7 @@ This index focuses on **how to perform actions** page-by-page.
 | `/admin/audit` | Audit Logs | [admin__audit_playbook.md](./playbooks/admin__audit_playbook.md) | Read-only / navigation |
 | `/admin/connectors` | Connector Access | [admin__connectors_playbook.md](./playbooks/admin__connectors_playbook.md) | `grantConnectorPermissionAction`, `revokeConnectorPermissionAction` |
 | `/admin` | Admin | [admin_playbook.md](./playbooks/admin_playbook.md) | Read-only / navigation |
-| `/admin/plan` | Plan and Usage | [admin__plan_playbook.md](./playbooks/admin__plan_playbook.md) | `setPlanTierAction` |
+| `/admin/plan` | Plan and Usage | [admin__plan_playbook.md](./playbooks/admin__plan_playbook.md) | Read-only plan review and commercial contact CTA |
 | `/admin/privacy` | Information not available in TEJ PIM project. | [admin__privacy_playbook.md](./playbooks/admin__privacy_playbook.md) | Read-only / navigation |
 | `/admin/users` | Users & Roles | [admin__users_playbook.md](./playbooks/admin__users_playbook.md) | Live management surface — invite user, change role, lock, unlock, deactivate. Admin role required. |
 | `/admin/workspace` | Workspace Settings | [admin__workspace_playbook.md](./playbooks/admin__workspace_playbook.md) | Read-only / navigation |

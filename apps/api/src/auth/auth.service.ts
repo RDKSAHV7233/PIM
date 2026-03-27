@@ -13,6 +13,7 @@ import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeAppRole, resolveDefaultRole } from "../common/rbac/role-utils";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   DEFAULT_TENANT_KEY,
   normalizeTenantKey,
@@ -49,6 +50,7 @@ const EXPORT_STATUS_QUEUED = "queued";
 const EXPORT_STATUS_PROCESSING = "processing";
 const EXPORT_STATUS_COMPLETED = "completed";
 const EXPORT_STATUS_FAILED = "failed";
+const EXPORT_STATUS_SKIPPED = "skipped";
 
 function resolvePositiveIntegerEnv(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? "").trim(), 10);
@@ -136,6 +138,13 @@ export type LoginResult =
     }
   | {
       type: "workspace_not_found";
+    }
+  | {
+      type: "tenant_suspended";
+      tenantId: string;
+      billingStatus: string;
+      accessStatus: string;
+      suspensionReason: string | null;
     };
 
 export interface ResendUnlockResult {
@@ -204,6 +213,12 @@ export interface AccountPrivacyStatusResult {
   ok: true;
   userId: string;
   tenantId: string;
+  commercialState: {
+    billingStatus: string;
+    accessStatus: string;
+    suspensionReason: string | null;
+    suspendedAt: string | null;
+  };
   latestConsent: {
     accepted: boolean;
     policyVersion: string;
@@ -273,6 +288,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly queueService: QueueService,
     private readonly authEmailService: AuthEmailService,
     private readonly authExportStorageService: AuthExportStorageService,
+    private readonly planUsageService: PlanUsageService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
       await this.processAuthEmailJob(payload);
@@ -348,6 +364,18 @@ export class AuthService implements OnModuleDestroy {
         maskedEmail: this.maskIdentity(identity.userId),
       };
     }
+
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(identity.tenantId);
+    if (commercialProfile.accessStatus === "suspended") {
+      return {
+        type: "tenant_suspended",
+        tenantId: identity.tenantId,
+        billingStatus: commercialProfile.billingStatus,
+        accessStatus: commercialProfile.accessStatus,
+        suspensionReason: commercialProfile.suspensionReason,
+      };
+    }
+
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
       ? Math.min(MAX_LOGIN_EXPIRY_MINUTES, Math.max(1, Math.floor(dto.expiresInMinutes ?? DEFAULT_LOGIN_EXPIRY_MINUTES)))
       : DEFAULT_LOGIN_EXPIRY_MINUTES;
@@ -774,69 +802,73 @@ export class AuthService implements OnModuleDestroy {
   async getAccountPrivacyStatus(userIdInput: string, tenantIdInput: string): Promise<AccountPrivacyStatusResult> {
     const tenantId = normalizeTenantKey(tenantIdInput);
     const userId = userIdInput.trim();
-    const rows = (await this.prisma
-      .tenant(tenantId)
-      // RLS-BYPASS: manual tenant filter
-      .$queryRawUnsafe(
-        `
-        SELECT
-          (
-            SELECT row_to_json(c)
-            FROM (
-              SELECT
-                accepted,
-                policy_version AS "policyVersion",
-                purpose,
-                consent_recorded_at AS "consentRecordedAt"
-              FROM account_consent_events
-              WHERE tenant_key = $1 AND user_id = $2
-              ORDER BY consent_recorded_at DESC
-              LIMIT 1
-            ) c
-          ) AS "latestConsent",
-          (
-            SELECT row_to_json(e)
-            FROM (
-              SELECT
-                id AS "jobId",
-                status,
-                format,
-                requested_at AS "requestedAt",
-                estimated_ready_in_seconds AS "estimatedReadyInSeconds",
-                completed_at AS "completedAt",
-                failed_at AS "failedAt",
-                error_message AS "errorMessage",
-                (artifact_path IS NOT NULL AND completed_at IS NOT NULL) AS "downloadAvailable"
-              FROM account_export_requests
-              WHERE tenant_key = $1 AND user_id = $2
-              ORDER BY requested_at DESC
-              LIMIT 1
-            ) e
-          ) AS "latestExport",
-          (
-            SELECT row_to_json(d)
-            FROM (
-              SELECT
-                id AS "ticketId",
-                status,
-                requested_at AS "requestedAt",
-                scheduled_for AS "scheduledFor"
-              FROM account_deletion_requests
-              WHERE tenant_key = $1 AND user_id = $2
-              ORDER BY requested_at DESC
-              LIMIT 1
-            ) d
-          ) AS "latestDeletion"
-        `,
-        tenantId,
-        userId,
-      )) as Array<{
+    const [commercialProfile, rows] = await Promise.all([
+      this.planUsageService.getTenantPlanProfile(tenantId),
+      this.prisma
+        .tenant(tenantId)
+        // RLS-BYPASS: manual tenant filter
+        .$queryRawUnsafe(
+          `
+          SELECT
+            (
+              SELECT row_to_json(c)
+              FROM (
+                SELECT
+                  accepted,
+                  policy_version AS "policyVersion",
+                  purpose,
+                  consent_recorded_at AS "consentRecordedAt"
+                FROM account_consent_events
+                WHERE tenant_key = $1 AND user_id = $2
+                ORDER BY consent_recorded_at DESC
+                LIMIT 1
+              ) c
+            ) AS "latestConsent",
+            (
+              SELECT row_to_json(e)
+              FROM (
+                SELECT
+                  id AS "jobId",
+                  status,
+                  format,
+                  requested_at AS "requestedAt",
+                  estimated_ready_in_seconds AS "estimatedReadyInSeconds",
+                  completed_at AS "completedAt",
+                  failed_at AS "failedAt",
+                  error_message AS "errorMessage",
+                  (artifact_path IS NOT NULL AND completed_at IS NOT NULL) AS "downloadAvailable"
+                FROM account_export_requests
+                WHERE tenant_key = $1 AND user_id = $2
+                ORDER BY requested_at DESC
+                LIMIT 1
+              ) e
+            ) AS "latestExport",
+            (
+              SELECT row_to_json(d)
+              FROM (
+                SELECT
+                  id AS "ticketId",
+                  status,
+                  requested_at AS "requestedAt",
+                  scheduled_for AS "scheduledFor"
+                FROM account_deletion_requests
+                WHERE tenant_key = $1 AND user_id = $2
+                ORDER BY requested_at DESC
+                LIMIT 1
+              ) d
+            ) AS "latestDeletion"
+          `,
+          tenantId,
+          userId,
+        ),
+    ]);
+    const typedRows = rows as Array<{
       latestConsent: AccountPrivacyStatusResult["latestConsent"];
       latestExport: AccountPrivacyStatusResult["latestExport"];
       latestDeletion: AccountPrivacyStatusResult["latestDeletion"];
     }>;
 
-    const first = rows[0] ?? {
+    const first = typedRows[0] ?? {
       latestConsent: null,
       latestExport: null,
       latestDeletion: null,
@@ -846,6 +878,12 @@ export class AuthService implements OnModuleDestroy {
       ok: true,
       userId,
       tenantId,
+      commercialState: {
+        billingStatus: commercialProfile.billingStatus,
+        accessStatus: commercialProfile.accessStatus,
+        suspensionReason: commercialProfile.suspensionReason,
+        suspendedAt: commercialProfile.suspendedAt,
+      },
       latestConsent: first.latestConsent ?? null,
       latestExport: first.latestExport ?? null,
       latestDeletion: first.latestDeletion ?? null,
@@ -1327,6 +1365,41 @@ export class AuthService implements OnModuleDestroy {
   private async processAccountExportJob(payload: AccountExportJobPayload): Promise<void> {
     const tenantId = normalizeTenantKey(payload.tenantId);
     const tenantPrisma = this.prisma.tenant(tenantId);
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(tenantId);
+
+    if (commercialProfile.accessStatus === "suspended") {
+      const skippedAt = new Date();
+      await tenantPrisma.accountExportRequest.updateMany({
+        where: {
+          id: payload.jobId,
+          tenantKey: tenantId,
+          userId: payload.userId,
+        },
+        data: {
+          status: EXPORT_STATUS_SKIPPED,
+          artifactPath: null,
+          artifactFileName: null,
+          completedAt: null,
+          failedAt: skippedAt,
+          errorMessage: "tenant_suspended",
+          estimatedReadyInSeconds: 0,
+        },
+      });
+
+      await this.auditService.record({
+        actorId: payload.userId,
+        actorRole: "public",
+        action: "account.export_skipped",
+        resource: "account_export_requests",
+        resourceId: payload.jobId,
+        metadata: {
+          tenantId,
+          format: payload.format,
+          reason: "tenant_suspended",
+        },
+      });
+      return;
+    }
 
     await tenantPrisma.accountExportRequest.updateMany({
       where: {

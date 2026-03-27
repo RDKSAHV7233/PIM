@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { setPlanTierAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,89 @@ function resolveSignupTrendDays(input: string | undefined): (typeof SIGNUP_TREND
   return SIGNUP_TREND_WINDOWS.includes(parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
     ? (parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
     : 30;
+}
+
+function formatCommercialStatus(value: string): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "active_paid") {
+    return "Active paid";
+  }
+  if (normalized === "past_due") {
+    return "Past due";
+  }
+  if (normalized === "cancelled") {
+    return "Cancelled";
+  }
+  if (normalized === "suspended") {
+    return "Suspended";
+  }
+  return "Trial";
+}
+
+function formatAccessStatus(value: string): string {
+  return String(value ?? "").trim().toLowerCase() === "suspended" ? "Suspended" : "Active";
+}
+
+function formatCommercialDate(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleDateString("en-IN");
+}
+
+function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBillingUsage>>["profile"]) {
+  const trialEndsAt = formatCommercialDate(profile.trialEndsAt);
+  const graceEndsAt = formatCommercialDate(profile.graceEndsAt);
+  const paidThroughAt = formatCommercialDate(profile.paidThroughAt);
+  const suspendedAt = formatCommercialDate(profile.suspendedAt);
+
+  if (profile.accessStatus === "suspended") {
+    return {
+      tone: "border-rose-200 bg-rose-50 text-rose-900",
+      title: "Workspace access is suspended",
+      body: profile.suspensionReason
+        ? `${profile.suspensionReason}${suspendedAt ? ` Since ${suspendedAt}.` : ""}`
+        : suspendedAt
+          ? `This workspace has been suspended since ${suspendedAt}. Contact TEJ commercial ops to restore access.`
+          : "This workspace is suspended. Contact TEJ commercial ops to restore access.",
+    };
+  }
+
+  if (profile.billingStatus === "past_due") {
+    return {
+      tone: "border-amber-200 bg-amber-50 text-amber-900",
+      title: "Billing needs attention",
+      body: graceEndsAt
+        ? `Payment is past due. Resolve commercial terms before ${graceEndsAt} to avoid interruption.`
+        : "Payment is past due. Contact TEJ commercial ops to avoid interruption.",
+    };
+  }
+
+  if (profile.billingStatus === "cancelled") {
+    return {
+      tone: "border-slate-300 bg-slate-50 text-slate-800",
+      title: "Workspace is scheduled to end",
+      body: paidThroughAt
+        ? `Current access is scheduled to continue through ${paidThroughAt} unless TEJ updates the commercial profile.`
+        : "This workspace is marked as cancelled. Contact TEJ commercial ops if continued access is required.",
+    };
+  }
+
+  if (profile.billingStatus === "trial") {
+    return {
+      tone: "border-blue-200 bg-blue-50 text-blue-900",
+      title: "Trial is active",
+      body: trialEndsAt
+        ? `Your current trial runs through ${trialEndsAt}. Review commercial terms before then to avoid interruption.`
+        : "Your workspace is currently in trial. TEJ will confirm commercial terms before any access change.",
+    };
+  }
+
+  return null;
 }
 
 function buildSignupTrendRows(signupTrends: NonNullable<Awaited<ReturnType<typeof getKpiTrends>>>) {
@@ -218,6 +301,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const query = await searchParams;
   const role = await getServerActorRole();
   const authHeader = await getServerAuthHeader();
+  const claims = await getServerSessionClaims();
   const signupTrendDays = resolveSignupTrendDays(query.days);
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
   let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
@@ -230,11 +314,10 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/admin/plan", error.status));
+      redirect(buildLoginRedirect("/admin/plan", error));
     }
     throw error;
   }
-  const status = String(query.status ?? "").trim();
   const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
   const signupVerifications = signupTrends
     ? Math.round(sumTrendValues(signupTrends.signupVerifications))
@@ -267,6 +350,13 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       })
     : null;
   const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
+  const commercialContact = resolveCommercialContactTarget({
+    tenantKey: usage.profile.tenantKey,
+    planTier: usage.planTier,
+    requesterId: claims?.sub ?? null,
+    source: "admin_plan",
+  });
+  const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);
 
   return (
     <div className="space-y-5">
@@ -284,13 +374,15 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Plan and Usage</h1>
         <p className="text-sm text-slate-600">
-          Plan: {usage.planTier} | Billing month: {usage.month} | Resets on{" "}
+          Plan: {usage.planTier} | Billing: {formatCommercialStatus(usage.billingStatus)} | Access:{" "}
+          {formatAccessStatus(usage.accessStatus)} | Billing month: {usage.month} | Resets on{" "}
           {new Date(usage.billingCycleResetAt).toLocaleDateString()}
         </p>
       </header>
-      {status === "plan-updated" ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Plan tier updated successfully.
+      {commercialStatusAlert ? (
+        <div className={`rounded-md border px-3 py-3 text-sm ${commercialStatusAlert.tone}`}>
+          <div className="font-semibold">{commercialStatusAlert.title}</div>
+          <div className="mt-1">{commercialStatusAlert.body}</div>
         </div>
       ) : null}
       <Card>
@@ -577,29 +669,40 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       {role === "admin" ? (
         <Card>
           <CardTitle>Plan management</CardTitle>
-          <form action={setPlanTierAction} className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <label htmlFor="plan-tier" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Plan Tier
-              </label>
-              <select
-                id="plan-tier"
-                name="planTier"
-                defaultValue={usage.planTier}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="STARTER">STARTER</option>
-                <option value="GROWTH">GROWTH</option>
-                <option value="ENTERPRISE">ENTERPRISE</option>
-              </select>
+          <div className="mt-3 space-y-4 text-sm text-slate-700">
+            <p>
+              Plan changes are managed by TEJ commercial ops. Customer admins can review plan usage
+              here, but paid-plan changes are applied through TEJ&apos;s commercial workflow.
+            </p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">{usage.planTier}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Billing: {formatCommercialStatus(usage.profile.billingStatus)} | Access:{" "}
+                {formatAccessStatus(usage.profile.accessStatus)}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">Tenant key: {usage.profile.tenantKey}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}
+              </div>
             </div>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-            >
-              Update plan
-            </button>
-          </form>
+            {commercialContact ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={commercialContact.href}
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                >
+                  {commercialContact.label}
+                </a>
+                <p className="text-xs text-slate-500">{commercialContact.helperText}</p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                Commercial contact is not configured for this environment yet. Ask TEJ ops to set
+                `PIM_COMMERCIAL_CONTACT_URL` or `PIM_COMMERCIAL_CONTACT_EMAIL`.
+              </div>
+            )}
+          </div>
         </Card>
       ) : null}
     </div>

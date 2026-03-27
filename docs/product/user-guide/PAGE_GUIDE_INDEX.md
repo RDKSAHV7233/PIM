@@ -15,7 +15,7 @@ Connector-specific note:
 | /admin/audit | Information not available in TEJ PIM project. | [_admin_audit_page_tsx.md](./pages/_admin_audit_page_tsx.md) |  |  |
 | /admin/connectors | Information not available in TEJ PIM project. | [_admin_connectors_page_tsx.md](./pages/_admin_connectors_page_tsx.md) | ApiHttpError, getConnectorDefinitions, getConnectorPermissions | grantConnectorPermissionAction, revokeConnectorPermissionAction |
 | /admin | Admin | [_admin_page_tsx.md](./pages/_admin_page_tsx.md) |  |  |
-| /admin/plan | Information not available in TEJ PIM project. | [_admin_plan_page_tsx.md](./pages/_admin_plan_page_tsx.md) | ApiHttpError, getBillingUsage | setPlanTierAction |
+| /admin/plan | Information not available in TEJ PIM project. | [_admin_plan_page_tsx.md](./pages/_admin_plan_page_tsx.md) | ApiHttpError, getBillingUsage | Read-only plan review and commercial contact CTA |
 | /admin/privacy | Information not available in TEJ PIM project. | [_admin_privacy_page_tsx.md](./pages/_admin_privacy_page_tsx.md) |  |  |
 | /admin/users | Users & Roles | [_admin_users_page_tsx.md](./pages/_admin_users_page_tsx.md) | ApiHttpError, getBillingUsage, getConnectorPermissions |  |
 | /admin/workspace | Workspace Settings | [_admin_workspace_page_tsx.md](./pages/_admin_workspace_page_tsx.md) |  |  |

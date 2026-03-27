@@ -240,7 +240,17 @@ export class AuditService {
         WHEN COALESCE(metadata->>'model', '') = 'Category' OR resource ILIKE '%categor%' THEN 'category'
         WHEN resource ILIKE '%mapping%' OR COALESCE(metadata->>'lifecycle_state', '') <> '' THEN 'mapping'
         WHEN resource ILIKE '%connector%' OR resource = 'CONNECTOR_PERMISSION' THEN 'connector'
-        WHEN resource ILIKE '%billing%' OR action = 'PLAN_TIER_CHANGE' THEN 'plan'
+        WHEN resource ILIKE '%billing%'
+          OR resource = 'TENANT_PLAN_PROFILE'
+          OR resource ILIKE '%plan_profile%'
+          OR action IN (
+            'PLAN_TIER_CHANGE',
+            'TENANT_ACCESS_SUSPENDED',
+            'TENANT_ACCESS_RESUMED',
+            'TENANT_BILLING_STATUS_SET',
+            'TENANT_COMMERCIAL_STATE_UPDATED',
+            'COMMERCIAL_MUTATION_BLOCKED'
+          ) THEN 'plan'
         WHEN resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%' THEN 'privacy'
         WHEN resource ILIKE 'auth.%' OR resource = 'auth.step_up' THEN 'auth'
         WHEN resource ILIKE '%import%' THEN 'import'
@@ -269,7 +279,19 @@ export class AuditService {
         clauses.push(`resource ILIKE '%user%'`);
         break;
       case "plan":
-        clauses.push(`(resource ILIKE '%billing%' OR action = 'PLAN_TIER_CHANGE')`);
+        clauses.push(`(
+          resource ILIKE '%billing%'
+          OR resource = 'TENANT_PLAN_PROFILE'
+          OR resource ILIKE '%plan_profile%'
+          OR action IN (
+            'PLAN_TIER_CHANGE',
+            'TENANT_ACCESS_SUSPENDED',
+            'TENANT_ACCESS_RESUMED',
+            'TENANT_BILLING_STATUS_SET',
+            'TENANT_COMMERCIAL_STATE_UPDATED',
+            'COMMERCIAL_MUTATION_BLOCKED'
+          )
+        )`);
         break;
       case "privacy":
         clauses.push(`(resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%')`);
@@ -293,7 +315,16 @@ export class AuditService {
           OR resource ILIKE '%connector%'
           OR resource = 'CONNECTOR_PERMISSION'
           OR resource ILIKE '%billing%'
-          OR action = 'PLAN_TIER_CHANGE'
+          OR resource = 'TENANT_PLAN_PROFILE'
+          OR resource ILIKE '%plan_profile%'
+          OR action IN (
+            'PLAN_TIER_CHANGE',
+            'TENANT_ACCESS_SUSPENDED',
+            'TENANT_ACCESS_RESUMED',
+            'TENANT_BILLING_STATUS_SET',
+            'TENANT_COMMERCIAL_STATE_UPDATED',
+            'COMMERCIAL_MUTATION_BLOCKED'
+          )
           OR resource ILIKE '%account%'
           OR action LIKE 'consent.%'
           OR action LIKE 'account.%'

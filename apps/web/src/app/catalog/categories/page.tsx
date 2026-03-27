@@ -218,7 +218,7 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/catalog/categories", error.status));
+      redirect(buildLoginRedirect("/catalog/categories", error));
     }
     throw error;
   }

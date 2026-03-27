@@ -28,6 +28,10 @@ export interface ValidatedEnv {
   AUTH_EMAIL_REPLY_TO?: string;
   AUTH_EMAIL_RESEND_API_KEY?: string;
   AUTH_EMAIL_OUTBOX_DIR?: string;
+  PIM_COMMERCIAL_CONTACT_URL?: string;
+  PIM_COMMERCIAL_CONTACT_EMAIL?: string;
+  PIM_COMMERCIAL_OPS_TOKEN?: string;
+  PIM_COMMERCIAL_TRIAL_DAYS: number;
   CORS_ORIGINS: string[];
   PORT: number;
   PIM_WEB_BASE_URL?: string;
@@ -84,6 +88,10 @@ const EnvSchema = z.object({
   AUTH_EMAIL_REPLY_TO: z.string().optional(),
   AUTH_EMAIL_RESEND_API_KEY: z.string().optional(),
   AUTH_EMAIL_OUTBOX_DIR: z.string().optional(),
+  PIM_COMMERCIAL_CONTACT_URL: z.string().url().optional(),
+  PIM_COMMERCIAL_CONTACT_EMAIL: z.string().email().optional(),
+  PIM_COMMERCIAL_OPS_TOKEN: z.string().optional(),
+  PIM_COMMERCIAL_TRIAL_DAYS: z.coerce.number().int().min(1).default(14),
   CORS_ORIGIN: z.string().optional(),
   PORT: z.coerce.number().int().min(1).default(4000),
   PIM_WEB_BASE_URL: z.string().url().optional(),
@@ -186,6 +194,20 @@ export function validateEnv(): ValidatedEnv {
       }
       if (!String(data.AUTH_EMAIL_FROM ?? "").trim()) {
         issues.push("AUTH_EMAIL_FROM: required when AUTH_EMAIL_PROVIDER=resend");
+      }
+    }
+
+    if (data.APP_ENV === "staging" || data.APP_ENV === "production") {
+      if (
+        !String(data.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() &&
+        !String(data.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim()
+      ) {
+        issues.push(
+          "PIM_COMMERCIAL_CONTACT_URL or PIM_COMMERCIAL_CONTACT_EMAIL: at least one is required for staging/production",
+        );
+      }
+      if (!String(data.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim()) {
+        issues.push("PIM_COMMERCIAL_OPS_TOKEN: required for staging/production");
       }
     }
 

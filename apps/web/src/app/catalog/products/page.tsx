@@ -117,7 +117,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/catalog/products", error.status));
+      redirect(buildLoginRedirect("/catalog/products", error));
     }
     throw error;
   }

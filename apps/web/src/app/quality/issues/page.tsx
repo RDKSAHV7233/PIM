@@ -362,7 +362,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/quality/issues", error.status));
+      redirect(buildLoginRedirect("/quality/issues", error));
     }
     throw error;
   }

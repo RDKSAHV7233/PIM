@@ -78,8 +78,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders) {
+  const headers = { Accept: "application/json", ...(extraHeaders ?? {}) };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -97,6 +97,21 @@ async function apiRequest(baseUrl, method, route, token, body) {
     payload = text;
   }
   return { status: response.status, payload };
+}
+
+async function commercialPlanRequest(baseUrl, commercialToken, tenantKey, planTier) {
+  return apiRequest(
+    baseUrl,
+    "POST",
+    "/billing/internal/plan-tier",
+    null,
+    { tenantKey, planTier },
+    {
+      "x-pim-commercial-ops-token": commercialToken,
+      "x-pim-operator-id": "ops-commercial",
+      "x-pim-operator-role": "commercial_ops",
+    },
+  );
 }
 
 function assert(condition, message) {
@@ -174,6 +189,7 @@ async function run() {
   const tenantId = `flipkart-install-${runId}`;
   const workspaceSlug = `fk-install-${runId}`.slice(0, 24);
   const userId = `flipkart-install-user-${runId}`;
+  const commercialToken = `commercial-ops-${runId}`;
   const oauthServer = createMockFlipkartOAuthServer();
   const oauthBaseUrl = await oauthServer.start();
   const env = {
@@ -186,6 +202,8 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Flipkart Install" },
     }),
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+    PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
     PIM_FLIPKART_OAUTH_BASE_URL: oauthBaseUrl,
     PIM_FLIPKART_API_BASE_URL: `${oauthBaseUrl}/sellers`,
   };
@@ -223,9 +241,7 @@ async function run() {
     const token = String(login.payload?.accessToken ?? "");
     assert(token.length > 10, "missing access token");
 
-    const enterprisePlan = await apiRequest(baseUrl, "POST", "/billing/plan-tier", token, {
-      planTier: "ENTERPRISE",
-    });
+    const enterprisePlan = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
     assertStatus(enterprisePlan, 201, "set enterprise plan tier");
 
     const install = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", token, {

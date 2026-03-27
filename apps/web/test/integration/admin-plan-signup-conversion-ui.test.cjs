@@ -59,6 +59,27 @@ function run() {
     "Plan page must expose a window-scoped pending verification backlog summary.",
   );
   assert(
+    source.includes("Plan changes are managed by TEJ commercial ops.") &&
+      source.includes("Customer admins can review plan usage") &&
+      source.includes("paid-plan changes are applied through") &&
+      source.includes("resolveCommercialContactTarget") &&
+      source.includes("commercialContact.label") &&
+      !source.includes("setPlanTierAction") &&
+      !source.includes("Update plan"),
+    "Plan page must be read-only for customer admins and route plan changes into the TEJ commercial workflow.",
+  );
+  assert(
+      source.includes("resolveCommercialStatusAlert") &&
+      source.includes("Workspace access is suspended") &&
+      source.includes("Billing needs attention") &&
+      source.includes("Trial is active") &&
+      source.includes("Billing: {formatCommercialStatus(usage.billingStatus)}") &&
+      source.includes('Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}') &&
+      source.includes("Access:") &&
+      source.includes("formatAccessStatus"),
+    "Plan page must expose commercial status and warning states for billing/access transitions.",
+  );
+  assert(
     source.includes("resolveSignupHealthAlert") &&
       source.includes("Verification rate needs attention") &&
       source.includes("Verification is slowing down") &&
@@ -78,6 +99,8 @@ function run() {
           "plan_page_exposes_signup_activity_chart",
           "plan_page_exposes_signup_trend_highlights",
           "plan_page_exposes_pending_verification_backlog_summary",
+          "plan_page_exposes_read_only_commercial_upgrade_flow",
+          "plan_page_exposes_commercial_status_warning_states",
           "plan_page_exposes_signup_health_alert",
         ],
         checkedAt: new Date().toISOString(),

@@ -55,6 +55,7 @@ function prepareEnv() {
   setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
   setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
   setDefaultEnv("APP_ENV", "development");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
 }
 
@@ -150,6 +151,7 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_DEFAULT_ROLE: "viewer",
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
       [viewerUserId]: { tenantId: viewerTenant, role: "viewer", workspaceSlug: viewerWorkspaceSlug },
       [adminUserId]: { tenantId: adminTenant, role: "admin", workspaceSlug: adminWorkspaceSlug },

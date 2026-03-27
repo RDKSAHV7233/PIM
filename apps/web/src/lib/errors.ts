@@ -20,6 +20,11 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "This row failed once and is being tried again automatically.",
     action: "Wait a moment. It will either succeed or appear in the error list.",
   },
+  skipped: {
+    title: "Skipped while access is suspended",
+    description: "This export was intentionally not processed because the workspace is suspended.",
+    action: "Resume the workspace first, then process the export again.",
+  },
   REQUIRED_FIELD: {
     title: "Required field missing",
     description: "This field must be filled before the product can be published.",
@@ -66,6 +71,7 @@ export function extractErrorCode(input: string | undefined | null): string {
     "VERSION_CONFLICT",
     "dead_letter",
     "retrying",
+    "skipped",
     "REQUIRED_FIELD",
     "INVALID_HSN",
     "INVALID_GST_RATE",
@@ -95,6 +101,9 @@ export function extractErrorCode(input: string | undefined | null): string {
   if (normalized.includes("retrying")) {
     return "retrying";
   }
+  if (normalized.includes("skipped")) {
+    return "skipped";
+  }
 
   return "UNKNOWN_ERROR";
 }
@@ -118,6 +127,7 @@ export function translateExportStatus(status: string): string {
     processing: "Preparing export",
     completed: "Ready to submit",
     retrying: "Retrying",
+    skipped: "Skipped while workspace is suspended",
     dead_letter: "Export blocked. Fix errors first",
     failed: "Export failed",
   };

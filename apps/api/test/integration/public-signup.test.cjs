@@ -401,6 +401,12 @@ async function runHappyPathCase(baseEnv) {
     });
     assertStatus(planProfile, 200, "plan profile available after signup verification");
     assert(planProfile.payload?.planTier === "STARTER", `expected STARTER plan, got ${JSON.stringify(planProfile.payload)}`);
+    assert(planProfile.payload?.billingStatus === "trial", `expected trial billing status, got ${JSON.stringify(planProfile.payload)}`);
+    assert(planProfile.payload?.accessStatus === "active", `expected active access status, got ${JSON.stringify(planProfile.payload)}`);
+    assert(
+      typeof planProfile.payload?.trialEndsAt === "string" && String(planProfile.payload.trialEndsAt).length > 0,
+      `expected trial end date after signup, got ${JSON.stringify(planProfile.payload)}`,
+    );
 
     const signupTrends = await apiRequest(api.baseUrl, "GET", "/metrics/kpi-trends?days=7", undefined, {
       token: verifiedLogin.payload.accessToken,

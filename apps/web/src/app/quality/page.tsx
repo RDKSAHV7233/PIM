@@ -144,7 +144,7 @@ export default async function QualityPage() {
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/quality", error.status));
+      redirect(buildLoginRedirect("/quality", error));
     }
     throw error;
   }

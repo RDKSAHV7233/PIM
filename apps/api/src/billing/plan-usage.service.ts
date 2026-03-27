@@ -7,9 +7,13 @@ import { PLAN_LIMITS } from "./plan-limits.seed";
 import { PlanResource } from "./require-plan-limit.decorator";
 
 const PLAN_TIERS = ["STARTER", "GROWTH", "ENTERPRISE"] as const;
+const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled"] as const;
+const ACCESS_STATUSES = ["active", "suspended"] as const;
 const USAGE_SUMMARY_TTL_MS = 60_000;
 
 type PlanTier = (typeof PLAN_TIERS)[number];
+type BillingStatus = (typeof BILLING_STATUSES)[number];
+type AccessStatus = (typeof ACCESS_STATUSES)[number];
 
 interface PlanLimitsRow {
   planTier: string;
@@ -33,6 +37,10 @@ interface UsageRow {
   updatedAt: Date | string;
 }
 
+interface LatestPlanUsageTierRow {
+  planTier: string;
+}
+
 interface UsageSummaryReadRow {
   tenantKey: string;
   month: string;
@@ -51,7 +59,16 @@ interface UsageSummaryReadRow {
   maxAccountsPerConnector: number;
   profileTenantKey: string | null;
   profilePlanTier: string | null;
+  profileBillingStatus: string | null;
+  profileAccessStatus: string | null;
   profileEffectiveFrom: Date | string | null;
+  profileTrialEndsAt: Date | string | null;
+  profilePaidThroughAt: Date | string | null;
+  profileGraceEndsAt: Date | string | null;
+  profileCancelledAt: Date | string | null;
+  profileSuspendedAt: Date | string | null;
+  profileSuspensionReason: string | null;
+  profileBillingContactEmail: string | null;
   profileUpdatedBy: string | null;
   profileCreatedAt: Date | string | null;
   profileUpdatedAt: Date | string | null;
@@ -60,10 +77,37 @@ interface UsageSummaryReadRow {
 interface TenantPlanProfileRow {
   tenantKey: string;
   planTier: string;
+  billingStatus: string | null;
+  accessStatus: string | null;
   effectiveFrom: Date | string | null;
+  trialEndsAt: Date | string | null;
+  paidThroughAt: Date | string | null;
+  graceEndsAt: Date | string | null;
+  cancelledAt: Date | string | null;
+  suspendedAt: Date | string | null;
+  suspensionReason: string | null;
+  billingContactEmail: string | null;
   updatedBy: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+interface CommercialTenantSearchRow {
+  tenantKey: string;
+  workspaceSlug: string;
+  displayName: string;
+  workspaceIsActive: boolean;
+  planTier: string | null;
+  billingStatus: string | null;
+  accessStatus: string | null;
+  trialEndsAt: Date | string | null;
+  paidThroughAt: Date | string | null;
+  graceEndsAt: Date | string | null;
+  cancelledAt: Date | string | null;
+  suspendedAt: Date | string | null;
+  suspensionReason: string | null;
+  billingContactEmail: string | null;
+  adminEmails: unknown;
 }
 
 interface BytesRow {
@@ -85,7 +129,16 @@ export interface PlanCheckResult {
 export interface PlanProfileSummary {
   tenantKey: string;
   planTier: string;
+  billingStatus: BillingStatus;
+  accessStatus: AccessStatus;
   effectiveFrom: string | null;
+  trialEndsAt: string | null;
+  paidThroughAt: string | null;
+  graceEndsAt: string | null;
+  cancelledAt: string | null;
+  suspendedAt: string | null;
+  suspensionReason: string | null;
+  billingContactEmail: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -93,6 +146,8 @@ export interface PlanProfileSummary {
 
 export interface PlanUsageSummary {
   planTier: string;
+  billingStatus: BillingStatus;
+  accessStatus: AccessStatus;
   month: string;
   billingCycleResetAt: string;
   skus: {
@@ -122,9 +177,40 @@ export interface PlanUsageSummary {
   profile: PlanProfileSummary;
 }
 
+export interface CommercialTenantSearchResult {
+  tenantKey: string;
+  workspaceSlug: string;
+  displayName: string;
+  workspaceIsActive: boolean;
+  planTier: string;
+  billingStatus: BillingStatus;
+  accessStatus: AccessStatus;
+  trialEndsAt: string | null;
+  paidThroughAt: string | null;
+  graceEndsAt: string | null;
+  cancelledAt: string | null;
+  suspendedAt: string | null;
+  suspensionReason: string | null;
+  billingContactEmail: string | null;
+  adminEmails: string[];
+}
+
+export interface UpdateCommercialStateInput {
+  billingStatus?: string;
+  accessStatus?: string;
+  suspensionReason?: string | null;
+  trialEndsAt?: string | null;
+  paidThroughAt?: string | null;
+  graceEndsAt?: string | null;
+  cancelledAt?: string | null;
+  suspendedAt?: string | null;
+  billingContactEmail?: string | null;
+}
+
 @Injectable()
 export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PlanUsageService.name);
+  private readonly commercialTrialDays = this.resolvePositiveIntegerEnv(process.env.PIM_COMMERCIAL_TRIAL_DAYS, 14);
   private rollupTimeout: NodeJS.Timeout | null = null;
   private rollupInterval: NodeJS.Timeout | null = null;
 
@@ -287,24 +373,267 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     planTierInput: string,
     actorId: string,
   ): Promise<PlanProfileSummary> {
-    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    return this.setTenantPlanTierForTenant(getTenantKeyFromContext(), planTierInput, actorId);
+  }
+
+  async setTenantPlanTierForTenant(
+    tenantKeyInput: string,
+    planTierInput: string,
+    actorId: string,
+  ): Promise<PlanProfileSummary> {
+    const rawTenantKey = String(tenantKeyInput ?? "").trim();
+    if (!rawTenantKey) {
+      throw new Error("TENANT_KEY_REQUIRED");
+    }
+    const tenantKey = normalizeTenantKey(rawTenantKey);
     const planTier = this.normalizePlanTier(planTierInput);
+    const current = await this.getOrCreateTenantPlanProfile(tenantKey);
+    const nextBillingStatus =
+      current.billingStatus === "trial" && planTier !== "STARTER" ? "active_paid" : current.billingStatus;
+    const nextTrialEndsAt =
+      nextBillingStatus === "trial"
+        ? current.trialEndsAt
+          ? new Date(current.trialEndsAt)
+          : this.buildTrialEndsAt()
+        : null;
 
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "TenantPlanProfile"
-        ("id", "tenantKey", "planTier", "effectiveFrom", "updatedBy", "createdAt", "updatedAt")
+        ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "updatedBy", "createdAt", "updatedAt")
       VALUES
-        (${this.randomId()}, ${tenantKey}, ${planTier}, NOW(), ${actorId}, NOW(), NOW())
+        (${this.randomId()}, ${tenantKey}, ${planTier}, ${nextBillingStatus}, ${current.accessStatus}, NOW(), ${nextTrialEndsAt}, ${current.billingContactEmail}, ${actorId}, NOW(), NOW())
       ON CONFLICT ("tenantKey")
       DO UPDATE SET
         "planTier" = EXCLUDED."planTier",
+        "billingStatus" = EXCLUDED."billingStatus",
         "effectiveFrom" = NOW(),
+        "trialEndsAt" = EXCLUDED."trialEndsAt",
+        "billingContactEmail" = EXCLUDED."billingContactEmail",
         "updatedBy" = EXCLUDED."updatedBy",
         "updatedAt" = NOW()
     `);
 
     await this.recomputeUsage(tenantKey);
     return this.getOrCreateTenantPlanProfile(tenantKey);
+  }
+
+  async updateCommercialStateForTenant(
+    tenantKeyInput: string,
+    input: UpdateCommercialStateInput,
+    actorId: string,
+  ): Promise<PlanProfileSummary> {
+    const rawTenantKey = String(tenantKeyInput ?? "").trim();
+    if (!rawTenantKey) {
+      throw new Error("TENANT_KEY_REQUIRED");
+    }
+    const hasBillingStatus = input.billingStatus !== undefined && input.billingStatus !== null;
+    const hasAccessStatus = input.accessStatus !== undefined && input.accessStatus !== null;
+    const hasDateMutation = [
+      input.trialEndsAt,
+      input.paidThroughAt,
+      input.graceEndsAt,
+      input.cancelledAt,
+      input.suspendedAt,
+    ].some((value) => value !== undefined);
+    const hasSuspensionReason = input.suspensionReason !== undefined && input.suspensionReason !== null;
+    if (!hasBillingStatus && !hasAccessStatus && !hasDateMutation && !hasSuspensionReason) {
+      throw new Error("COMMERCIAL_STATE_CHANGE_REQUIRED");
+    }
+
+    const tenantKey = normalizeTenantKey(rawTenantKey);
+    const current = await this.getOrCreateTenantPlanProfile(tenantKey);
+    const currentPlanTier = this.normalizePlanTier(current.planTier);
+    const nextBillingStatus = hasBillingStatus
+      ? this.normalizeBillingStatus(input.billingStatus, currentPlanTier)
+      : current.billingStatus;
+    const nextAccessStatus = hasAccessStatus
+      ? this.normalizeAccessStatus(input.accessStatus)
+      : current.accessStatus;
+    const providedReason = String(input.suspensionReason ?? "").trim();
+    const nextSuspensionReason =
+      nextAccessStatus === "suspended"
+        ? providedReason || current.suspensionReason || "commercial_control"
+        : null;
+    const nextBillingContactEmail =
+      input.billingContactEmail !== undefined
+        ? this.normalizeOptionalEmail(input.billingContactEmail)
+        : current.billingContactEmail;
+    const nextSuspendedAt =
+      input.suspendedAt !== undefined
+        ? this.parseOptionalDate(input.suspendedAt, "suspendedAt")
+        : nextAccessStatus === "suspended"
+          ? current.suspendedAt
+            ? new Date(current.suspendedAt)
+            : new Date()
+          : null;
+    const nextTrialEndsAt =
+      input.trialEndsAt !== undefined
+        ? this.parseOptionalDate(input.trialEndsAt, "trialEndsAt")
+        : nextBillingStatus === "trial"
+          ? current.trialEndsAt
+            ? new Date(current.trialEndsAt)
+            : this.buildTrialEndsAt()
+          : null;
+    const nextPaidThroughAt =
+      input.paidThroughAt !== undefined
+        ? this.parseOptionalDate(input.paidThroughAt, "paidThroughAt")
+        : nextBillingStatus === "cancelled"
+          ? current.paidThroughAt
+            ? new Date(current.paidThroughAt)
+            : null
+          : null;
+    const nextGraceEndsAt =
+      input.graceEndsAt !== undefined
+        ? this.parseOptionalDate(input.graceEndsAt, "graceEndsAt")
+        : nextBillingStatus === "past_due"
+          ? current.graceEndsAt
+            ? new Date(current.graceEndsAt)
+            : null
+          : null;
+    const nextCancelledAt =
+      input.cancelledAt !== undefined
+        ? this.parseOptionalDate(input.cancelledAt, "cancelledAt")
+        : nextBillingStatus === "cancelled"
+          ? current.cancelledAt
+            ? new Date(current.cancelledAt)
+            : new Date()
+          : null;
+
+    await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
+      UPDATE "TenantPlanProfile"
+      SET
+        "billingStatus" = ${nextBillingStatus},
+        "accessStatus" = ${nextAccessStatus},
+        "trialEndsAt" = ${nextTrialEndsAt},
+        "paidThroughAt" = ${nextPaidThroughAt},
+        "graceEndsAt" = ${nextGraceEndsAt},
+        "cancelledAt" = ${nextCancelledAt},
+        "suspendedAt" = ${nextSuspendedAt},
+        "suspensionReason" = ${nextSuspensionReason},
+        "billingContactEmail" = ${nextBillingContactEmail},
+        "updatedBy" = ${actorId},
+        "updatedAt" = NOW()
+      WHERE "tenantKey" = ${tenantKey}
+    `);
+
+    return this.getOrCreateTenantPlanProfile(tenantKey);
+  }
+
+  async searchCommercialTenants(queryInput: string, limitInput?: number): Promise<CommercialTenantSearchResult[]> {
+    const query = String(queryInput ?? "").trim();
+    if (!query) {
+      throw new Error("TENANT_SEARCH_QUERY_REQUIRED");
+    }
+    if (query.length < 2) {
+      throw new Error("TENANT_SEARCH_QUERY_TOO_SHORT");
+    }
+
+    const normalizedLimit = Number.isFinite(limitInput) ? Math.trunc(Number(limitInput)) : 10;
+    const limit = Math.max(1, Math.min(normalizedLimit || 10, 25));
+    const exactQuery = query.toLowerCase();
+    const fuzzyQuery = `%${query}%`;
+
+    const rows = await this.prisma.tenant().$queryRawUnsafe<CommercialTenantSearchRow[]>(
+      `
+      SELECT
+        wd."tenantKey" AS "tenantKey",
+        wd."workspaceSlug" AS "workspaceSlug",
+        wd."displayName" AS "displayName",
+        wd."isActive" AS "workspaceIsActive",
+        COALESCE(profile."planTier", usage."planTier", 'STARTER') AS "planTier",
+        COALESCE(
+          profile."billingStatus",
+          CASE
+            WHEN COALESCE(profile."planTier", usage."planTier", 'STARTER') = 'STARTER' THEN 'trial'
+            ELSE 'active_paid'
+          END
+        ) AS "billingStatus",
+        COALESCE(profile."accessStatus", 'active') AS "accessStatus",
+        profile."trialEndsAt" AS "trialEndsAt",
+        profile."paidThroughAt" AS "paidThroughAt",
+        profile."graceEndsAt" AS "graceEndsAt",
+        profile."cancelledAt" AS "cancelledAt",
+        profile."suspendedAt" AS "suspendedAt",
+        profile."suspensionReason" AS "suspensionReason",
+        profile."billingContactEmail" AS "billingContactEmail",
+        COALESCE(
+          (
+            SELECT json_agg(admin_rows."userId" ORDER BY admin_rows."userId")
+            FROM (
+              SELECT ai."userId"
+              FROM "AuthIdentity" ai
+              WHERE ai."tenantKey" = wd."tenantKey"
+                AND LOWER(ai.role) = 'admin'
+                AND ai."isActive" = TRUE
+              ORDER BY ai."userId" ASC
+              LIMIT 5
+            ) admin_rows
+          ),
+          '[]'::json
+        ) AS "adminEmails"
+      FROM "WorkspaceDirectory" wd
+      LEFT JOIN "TenantPlanProfile" profile
+        ON profile."tenantKey" = wd."tenantKey"
+      LEFT JOIN LATERAL (
+        SELECT pu."planTier" AS "planTier"
+        FROM "PlanUsage" pu
+        WHERE pu."tenantKey" = wd."tenantKey"
+        ORDER BY pu."month" DESC, pu."updatedAt" DESC
+        LIMIT 1
+      ) usage ON TRUE
+      WHERE
+        LOWER(wd."tenantKey") = $1
+        OR LOWER(wd."workspaceSlug") = $1
+        OR LOWER(wd."displayName") = $1
+        OR wd."tenantKey" ILIKE $2
+        OR wd."workspaceSlug" ILIKE $2
+        OR wd."displayName" ILIKE $2
+        OR EXISTS (
+          SELECT 1
+          FROM "AuthIdentity" ai_match
+          WHERE ai_match."tenantKey" = wd."tenantKey"
+            AND LOWER(ai_match.role) = 'admin'
+            AND ai_match."userId" ILIKE $2
+        )
+      ORDER BY
+        CASE
+          WHEN LOWER(wd."tenantKey") = $1 THEN 0
+          WHEN LOWER(wd."workspaceSlug") = $1 THEN 1
+          WHEN LOWER(wd."displayName") = $1 THEN 2
+          WHEN wd."tenantKey" ILIKE $2 THEN 3
+          WHEN wd."workspaceSlug" ILIKE $2 THEN 4
+          WHEN wd."displayName" ILIKE $2 THEN 5
+          ELSE 6
+        END,
+        wd."updatedAt" DESC,
+        wd."tenantKey" ASC
+      LIMIT $3
+      `,
+      exactQuery,
+      fuzzyQuery,
+      limit,
+    );
+
+    return rows.map((row) => {
+      const planTier = this.normalizePlanTier(row.planTier ?? "STARTER");
+      return {
+        tenantKey: normalizeTenantKey(row.tenantKey),
+        workspaceSlug: String(row.workspaceSlug ?? "").trim(),
+        displayName: String(row.displayName ?? "").trim(),
+        workspaceIsActive: Boolean(row.workspaceIsActive),
+        planTier,
+        billingStatus: this.normalizeBillingStatus(row.billingStatus, planTier),
+        accessStatus: this.normalizeAccessStatus(row.accessStatus),
+        trialEndsAt: this.toIsoString(row.trialEndsAt),
+        paidThroughAt: this.toIsoString(row.paidThroughAt),
+        graceEndsAt: this.toIsoString(row.graceEndsAt),
+        cancelledAt: this.toIsoString(row.cancelledAt),
+        suspendedAt: this.toIsoString(row.suspendedAt),
+        suspensionReason: row.suspensionReason ? String(row.suspensionReason).trim() || null : null,
+        billingContactEmail: this.normalizeOptionalEmail(row.billingContactEmail),
+        adminEmails: this.normalizeAdminEmails(row.adminEmails),
+      };
+    });
   }
 
   async recomputeUsage(
@@ -503,7 +832,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       SELECT
         "tenantKey" AS "tenantKey",
         "planTier" AS "planTier",
+        "billingStatus" AS "billingStatus",
+        "accessStatus" AS "accessStatus",
         "effectiveFrom" AS "effectiveFrom",
+        "trialEndsAt" AS "trialEndsAt",
+        "paidThroughAt" AS "paidThroughAt",
+        "graceEndsAt" AS "graceEndsAt",
+        "cancelledAt" AS "cancelledAt",
+        "suspendedAt" AS "suspendedAt",
+        "suspensionReason" AS "suspensionReason",
+        "billingContactEmail" AS "billingContactEmail",
         "updatedBy" AS "updatedBy",
         "createdAt" AS "createdAt",
         "updatedAt" AS "updatedAt"
@@ -517,11 +855,34 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return this.mapPlanProfileRow(row);
     }
 
+    const latestUsageRows = await this.prisma.tenant(tenantKey).$queryRaw<LatestPlanUsageTierRow[]>(Prisma.sql`
+      SELECT
+        "planTier" AS "planTier"
+      FROM "PlanUsage"
+      WHERE "tenantKey" = ${tenantKey}
+      ORDER BY "month" DESC, "updatedAt" DESC
+      LIMIT 1
+    `);
+    const seedPlanTier = this.normalizePlanTier(latestUsageRows[0]?.planTier ?? "STARTER");
+    const seedBillingStatus = this.normalizeBillingStatus(null, seedPlanTier);
+    const seedTrialEndsAt = seedBillingStatus === "trial" ? this.buildTrialEndsAt() : null;
+
     await this.prisma.tenant(tenantKey).$executeRaw(Prisma.sql`
       INSERT INTO "TenantPlanProfile"
-        ("id", "tenantKey", "planTier", "effectiveFrom", "createdAt", "updatedAt")
+        ("id", "tenantKey", "planTier", "billingStatus", "accessStatus", "effectiveFrom", "trialEndsAt", "billingContactEmail", "createdAt", "updatedAt")
       VALUES
-        (${this.randomId()}, ${tenantKey}, 'STARTER', NOW(), NOW(), NOW())
+        (
+          ${this.randomId()},
+          ${tenantKey},
+          ${seedPlanTier},
+          ${seedBillingStatus},
+          'active',
+          NOW(),
+          ${seedTrialEndsAt},
+          NULL,
+          NOW(),
+          NOW()
+        )
       ON CONFLICT ("tenantKey") DO NOTHING
     `);
 
@@ -529,7 +890,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       SELECT
         "tenantKey" AS "tenantKey",
         "planTier" AS "planTier",
+        "billingStatus" AS "billingStatus",
+        "accessStatus" AS "accessStatus",
         "effectiveFrom" AS "effectiveFrom",
+        "trialEndsAt" AS "trialEndsAt",
+        "paidThroughAt" AS "paidThroughAt",
+        "graceEndsAt" AS "graceEndsAt",
+        "cancelledAt" AS "cancelledAt",
+        "suspendedAt" AS "suspendedAt",
+        "suspensionReason" AS "suspensionReason",
+        "billingContactEmail" AS "billingContactEmail",
         "updatedBy" AS "updatedBy",
         "createdAt" AS "createdAt",
         "updatedAt" AS "updatedAt"
@@ -546,10 +916,20 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private mapPlanProfileRow(row: TenantPlanProfileRow): PlanProfileSummary {
+    const normalizedPlanTier = this.normalizePlanTier(row.planTier);
     return {
       tenantKey: normalizeTenantKey(row.tenantKey),
-      planTier: this.normalizePlanTier(row.planTier),
-      effectiveFrom: row.effectiveFrom ? new Date(row.effectiveFrom).toISOString() : null,
+      planTier: normalizedPlanTier,
+      billingStatus: this.normalizeBillingStatus(row.billingStatus, normalizedPlanTier),
+      accessStatus: this.normalizeAccessStatus(row.accessStatus),
+      effectiveFrom: this.toIsoString(row.effectiveFrom),
+      trialEndsAt: this.toIsoString(row.trialEndsAt),
+      paidThroughAt: this.toIsoString(row.paidThroughAt),
+      graceEndsAt: this.toIsoString(row.graceEndsAt),
+      cancelledAt: this.toIsoString(row.cancelledAt),
+      suspendedAt: this.toIsoString(row.suspendedAt),
+      suspensionReason: row.suspensionReason ? String(row.suspensionReason).trim() || null : null,
+      billingContactEmail: this.normalizeOptionalEmail(row.billingContactEmail),
       updatedBy: row.updatedBy,
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),
@@ -562,6 +942,71 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       return normalized;
     }
     return "STARTER";
+  }
+
+  private normalizeBillingStatus(value: string | null | undefined, planTier: PlanTier): BillingStatus {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (normalized === "active_paid" || normalized === "past_due" || normalized === "cancelled") {
+      return normalized;
+    }
+    if (normalized === "trial") {
+      return "trial";
+    }
+    return planTier === "STARTER" ? "trial" : "active_paid";
+  }
+
+  private normalizeAccessStatus(value: string | null | undefined): AccessStatus {
+    return String(value ?? "").trim().toLowerCase() === "suspended" ? "suspended" : "active";
+  }
+
+  private toIsoString(value: Date | string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  private buildTrialEndsAt(from = new Date()): Date {
+    return new Date(from.getTime() + this.commercialTrialDays * 24 * 60 * 60 * 1000);
+  }
+
+  private parseOptionalDate(value: string | null | undefined, fieldName: string): Date | null {
+    if (value === null || value === undefined || String(value).trim().length === 0) {
+      return null;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`INVALID_${fieldName.toUpperCase()}`);
+    }
+    return parsed;
+  }
+
+  private normalizeAdminEmails(value: unknown): string[] {
+    let input = value;
+    if (typeof input === "string") {
+      try {
+        input = JSON.parse(input);
+      } catch {
+        input = [];
+      }
+    }
+    if (!Array.isArray(input)) {
+      return [];
+    }
+    return input
+      .map((item) => String(item ?? "").trim().toLowerCase())
+      .filter((item, index, items) => item.length > 0 && items.indexOf(item) === index);
+  }
+
+  private normalizeOptionalEmail(value: string | null | undefined): string | null {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private resolvePositiveIntegerEnv(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private getMonthKey(date = new Date()): string {
@@ -653,7 +1098,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         limits."maxAccountsPerConnector" AS "maxAccountsPerConnector",
         profile."tenantKey" AS "profileTenantKey",
         profile."planTier" AS "profilePlanTier",
+        profile."billingStatus" AS "profileBillingStatus",
+        profile."accessStatus" AS "profileAccessStatus",
         profile."effectiveFrom" AS "profileEffectiveFrom",
+        profile."trialEndsAt" AS "profileTrialEndsAt",
+        profile."paidThroughAt" AS "profilePaidThroughAt",
+        profile."graceEndsAt" AS "profileGraceEndsAt",
+        profile."cancelledAt" AS "profileCancelledAt",
+        profile."suspendedAt" AS "profileSuspendedAt",
+        profile."suspensionReason" AS "profileSuspensionReason",
+        profile."billingContactEmail" AS "profileBillingContactEmail",
         profile."updatedBy" AS "profileUpdatedBy",
         profile."createdAt" AS "profileCreatedAt",
         profile."updatedAt" AS "profileUpdatedAt"
@@ -688,6 +1142,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     return !!(
       row.profileTenantKey &&
       row.profilePlanTier &&
+      row.profileBillingStatus &&
+      row.profileAccessStatus &&
       row.profileCreatedAt &&
       row.profileUpdatedAt
     );
@@ -723,7 +1179,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     return this.mapPlanProfileRow({
       tenantKey: row.profileTenantKey ?? row.tenantKey,
       planTier: row.profilePlanTier ?? row.planTier,
+      billingStatus: row.profileBillingStatus,
+      accessStatus: row.profileAccessStatus,
       effectiveFrom: row.profileEffectiveFrom,
+      trialEndsAt: row.profileTrialEndsAt,
+      paidThroughAt: row.profilePaidThroughAt,
+      graceEndsAt: row.profileGraceEndsAt,
+      cancelledAt: row.profileCancelledAt,
+      suspendedAt: row.profileSuspendedAt,
+      suspensionReason: row.profileSuspensionReason,
+      billingContactEmail: row.profileBillingContactEmail,
       updatedBy: row.profileUpdatedBy,
       createdAt: row.profileCreatedAt ?? row.usageUpdatedAt,
       updatedAt: row.profileUpdatedAt ?? row.usageUpdatedAt,
@@ -739,6 +1204,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const monthBounds = this.getMonthBounds(usage.month);
     return {
       planTier: usage.planTier,
+      billingStatus: profile.billingStatus,
+      accessStatus: profile.accessStatus,
       month: usage.month,
       billingCycleResetAt: monthBounds.end.toISOString(),
       skus: {
@@ -768,7 +1235,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       profile: {
         tenantKey,
         planTier: profile.planTier,
+        billingStatus: profile.billingStatus,
+        accessStatus: profile.accessStatus,
         effectiveFrom: profile.effectiveFrom,
+        trialEndsAt: profile.trialEndsAt,
+        paidThroughAt: profile.paidThroughAt,
+        graceEndsAt: profile.graceEndsAt,
+        cancelledAt: profile.cancelledAt,
+        suspendedAt: profile.suspendedAt,
+        suspensionReason: profile.suspensionReason,
+        billingContactEmail: profile.billingContactEmail,
         updatedBy: profile.updatedBy,
         createdAt: profile.createdAt,
         updatedAt: profile.updatedAt,

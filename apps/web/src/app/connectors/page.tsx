@@ -1060,7 +1060,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels/connectors", error.status));
+      redirect(buildLoginRedirect("/channels/connectors", error));
     }
     throw error;
   }

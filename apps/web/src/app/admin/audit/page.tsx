@@ -33,6 +33,10 @@ const ACTION_OPTIONS = [
   "DELETE",
   "STATUS_TRANSITION",
   "PLAN_TIER_CHANGE",
+  "TENANT_BILLING_STATUS_SET",
+  "TENANT_ACCESS_SUSPENDED",
+  "TENANT_ACCESS_RESUMED",
+  "COMMERCIAL_MUTATION_BLOCKED",
   "CONNECTOR_PERMISSION_GRANT",
   "CONNECTOR_PERMISSION_REVOKE",
   "auth.step_up_issued",
@@ -108,6 +112,12 @@ function summarizeMetadata(row: AuditEventRecord) {
   }
   if (metadata.policyVersion && metadata.purpose) {
     return `${String(metadata.policyVersion)} | ${String(metadata.purpose)}`;
+  }
+  if (metadata.planTier || metadata.billingStatus || metadata.accessStatus) {
+    return [metadata.planTier, metadata.billingStatus, metadata.accessStatus, metadata.suspensionReason]
+      .filter((value) => String(value ?? "").trim().length > 0)
+      .map((value) => String(value))
+      .join(" | ");
   }
   if (metadata.scope && metadata.reason) {
     return `${String(metadata.scope)} | ${String(metadata.reason)}`;
@@ -345,7 +355,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/admin/audit", error.status));
+      redirect(buildLoginRedirect("/admin/audit", error));
     }
     throw error;
   }

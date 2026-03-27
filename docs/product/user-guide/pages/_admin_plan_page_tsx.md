@@ -17,10 +17,11 @@
   - ApiHttpError
   - getBillingUsage
 - Mutation actions used on this page:
-  - setPlanTierAction
+  - None. Current page is read-only for commercial control and routes plan changes into the TEJ commercial workflow.
 
 ## User Actions
-- setPlanTierAction
+- Review current plan and usage
+- Use the request-upgrade/commercial-contact CTA when a plan change is needed
 
 ## Notes
 - This document is generated from current route source and only contains validated references.

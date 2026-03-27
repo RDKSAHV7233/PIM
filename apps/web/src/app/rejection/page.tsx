@@ -88,7 +88,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
     ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/rejection", error.status));
+      redirect(buildLoginRedirect("/rejection", error));
     }
     throw error;
   }
@@ -100,7 +100,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
       score = await getRejectionIntelligenceScore(productId, channel, { role: actorRole, authHeader });
     } catch (error: unknown) {
       if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-        redirect(buildLoginRedirect("/rejection", error.status));
+        redirect(buildLoginRedirect("/rejection", error));
       }
       throw error;
     }

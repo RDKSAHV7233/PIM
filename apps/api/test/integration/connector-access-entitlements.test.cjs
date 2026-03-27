@@ -78,8 +78,8 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders) {
+  const headers = { Accept: "application/json", ...(extraHeaders ?? {}) };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -101,6 +101,21 @@ async function apiRequest(baseUrl, method, route, token, body) {
     payload = text;
   }
   return { status: response.status, payload };
+}
+
+async function commercialPlanRequest(baseUrl, commercialToken, tenantKey, planTier) {
+  return apiRequest(
+    baseUrl,
+    "POST",
+    "/billing/internal/plan-tier",
+    null,
+    { tenantKey, planTier },
+    {
+      "x-pim-commercial-ops-token": commercialToken,
+      "x-pim-operator-id": "ops-commercial",
+      "x-pim-operator-role": "commercial_ops",
+    },
+  );
 }
 
 function assert(condition, message) {
@@ -128,6 +143,7 @@ async function run() {
   const workspaceSlug = `ca-${runId}`;
   const adminUser = `admin-${runId}`;
   const editorUser = `editor-${runId}`;
+  const commercialToken = `commercial-ops-${runId}`;
   const env = {
     ...process.env,
     PORT: String(apiPort),
@@ -140,6 +156,8 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Connector Access" },
     }),
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+    PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
   };
 
   const stdoutBuffer = [];
@@ -193,10 +211,20 @@ async function run() {
       assertStatus(result, 200, `definitions warmup ${index + 1}`);
     }
 
-    const setStarter = await apiRequest(baseUrl, "POST", "/billing/plan-tier", adminToken, {
+    const tenantPlanMutationBlocked = await apiRequest(baseUrl, "POST", "/billing/plan-tier", adminToken, {
       planTier: "STARTER",
     });
-    assertStatus(setStarter, 201, "set plan tier starter");
+    assertStatus(tenantPlanMutationBlocked, 403, "tenant admin plan mutation blocked");
+    assert(
+      String(tenantPlanMutationBlocked.payload?.error ?? "") === "COMMERCIAL_MUTATION_INTERNAL_ONLY",
+      "expected COMMERCIAL_MUTATION_INTERNAL_ONLY payload",
+    );
+
+    const setStarter = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "STARTER");
+    assert(
+      setStarter.status === 200 || setStarter.status === 201,
+      `set starter plan failed: expected 200/201, got ${setStarter.status} payload=${JSON.stringify(setStarter.payload)}`,
+    );
 
     const installAmazon = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", adminToken, {
       accountAlias: "primary",
@@ -316,10 +344,11 @@ async function run() {
     assert(meeshoBefore, "expected meesho definition before upgrade");
     assert(meeshoBefore.actions?.install?.allowed === false, "meesho install should be blocked before plan upgrade");
 
-    const setEnterprise = await apiRequest(baseUrl, "POST", "/billing/plan-tier", adminToken, {
-      planTier: "ENTERPRISE",
-    });
-    assertStatus(setEnterprise, 201, "set plan tier enterprise");
+    const setEnterprise = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
+    assert(
+      setEnterprise.status === 200 || setEnterprise.status === 201,
+      `set enterprise plan failed: expected 200/201, got ${setEnterprise.status} payload=${JSON.stringify(setEnterprise.payload)}`,
+    );
 
     const definitionsAfterUpgrade = await apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken);
     assertStatus(definitionsAfterUpgrade, 200, "definitions after upgrade");
@@ -345,11 +374,11 @@ async function run() {
       foreignTenantKey,
     );
 
-    const tenantOverrideAttempt = await apiRequest(baseUrl, "POST", "/billing/plan-tier", adminToken, {
-      planTier: "GROWTH",
-      tenantKey: foreignTenantKey,
-    });
-    assertStatus(tenantOverrideAttempt, 201, "set plan tier ignores body tenant override");
+    const tenantOverrideAttempt = await commercialPlanRequest(baseUrl, commercialToken, foreignTenantKey, "GROWTH");
+    assert(
+      tenantOverrideAttempt.status === 200 || tenantOverrideAttempt.status === 201,
+      `internal plan tier target failed: expected 200/201, got ${tenantOverrideAttempt.status} payload=${JSON.stringify(tenantOverrideAttempt.payload)}`,
+    );
 
     const foreignPlanRows = await prisma.$queryRawUnsafe(
       `
@@ -361,7 +390,7 @@ async function run() {
       foreignTenantKey,
     );
     const foreignPlanTier = Array.isArray(foreignPlanRows) ? String(foreignPlanRows[0]?.planTier ?? "") : "";
-    assert(foreignPlanTier === "STARTER", "tenant override must not mutate foreign tenant plan profile");
+    assert(foreignPlanTier === "GROWTH", "internal commercial path must mutate explicitly targeted tenant plan profile");
 
     const auditRows = await prisma.$queryRawUnsafe(
       `
@@ -392,7 +421,8 @@ async function run() {
             "editor_permission_denied_then_allowed_after_grant",
             "action_matrix_reflects_backend_permissions",
             "tenant_plan_profile_change_updates_enforcement",
-            "plan_tier_endpoint_ignores_body_tenant_override",
+            "tenant_admin_plan_tier_mutation_blocked",
+            "internal_plan_tier_endpoint_targets_requested_tenant",
             "audit_rows_for_plan_permission_install",
           ],
           checkedAt: new Date().toISOString(),

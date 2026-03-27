@@ -289,7 +289,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/operations/bulk-edit", error.status));
+      redirect(buildLoginRedirect("/operations/bulk-edit", error));
     }
     throw error;
   }

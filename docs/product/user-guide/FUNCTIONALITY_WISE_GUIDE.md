@@ -61,7 +61,7 @@ This document explains how to perform core workflows across pages.
 5. Track outcomes in `/channels/submissions` and `/operations/jobs`.
 
 ## 9. Admin governance workflows
-1. Open `/admin/plan` to set plan tier (`setPlanTierAction`).
+1. Open `/admin/plan` to review usage and request a commercial plan change from TEJ.
 2. Open `/admin/connectors` to grant/revoke connector permissions (`grantConnectorPermissionAction`, `revokeConnectorPermissionAction`).
 3. Use `/admin/users`, `/admin/audit`, `/admin/workspace`, `/admin/privacy` for governance views.
 

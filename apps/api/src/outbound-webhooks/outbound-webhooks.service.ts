@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { createHmac } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import type { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
@@ -100,6 +101,7 @@ export class OutboundWebhooksService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly queueService: QueueService,
+    private readonly planUsageService: PlanUsageService,
   ) {
     this.registerWorker();
   }
@@ -432,6 +434,38 @@ export class OutboundWebhooksService {
       },
     });
     if (!delivery) {
+      return;
+    }
+
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(tenantKey);
+    if (commercialProfile.accessStatus === "suspended") {
+      const attemptedAt = new Date();
+      await this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          status: "skipped",
+          responseStatus: null,
+          responseBody: null,
+          deliveredAt: null,
+          errorMessage: "tenant_suspended",
+          attemptedAt,
+          attemptCount: { increment: 1 },
+        },
+      });
+      await this.auditService.record({
+        actorId: "system",
+        actorRole: "public",
+        action: "outbound_webhook.delivery_skipped",
+        resource: "OutboundWebhookDelivery",
+        resourceId: delivery.id,
+        metadata: {
+          tenantKey,
+          endpointId: delivery.endpointId,
+          eventId: delivery.eventId,
+          eventType: delivery.eventType,
+          reason: "tenant_suspended",
+        },
+      });
       return;
     }
 

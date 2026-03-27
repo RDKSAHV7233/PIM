@@ -206,7 +206,7 @@ export default async function ChannelConnectorDetailPage({
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect(`/channels/connectors/${encodeURIComponent(installationId)}`, error.status));
+      redirect(buildLoginRedirect(`/channels/connectors/${encodeURIComponent(installationId)}`, error));
     }
     throw error;
   }

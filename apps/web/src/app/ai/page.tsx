@@ -44,7 +44,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
     products = await getProductList({ slim: true }, { role: actorRole, authHeader });
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/ai", error.status));
+      redirect(buildLoginRedirect("/ai", error));
     }
     throw error;
   }

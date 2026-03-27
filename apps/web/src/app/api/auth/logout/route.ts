@@ -55,6 +55,16 @@ export async function POST(request: NextRequest) {
 
   const contentType = response.headers.get("content-type") ?? "application/json";
   const payload = await response.text();
+  if (response.status === 403 && contentType.toLowerCase().includes("application/json")) {
+    try {
+      const parsed = payload ? JSON.parse(payload) : null;
+      if (parsed?.error === "TENANT_SUSPENDED") {
+        return clearAuthCookies(new NextResponse(null, { status: 204 }));
+      }
+    } catch {
+      // Preserve the backend response below if parsing fails.
+    }
+  }
   return new NextResponse(payload, {
     status: response.status,
     headers: {

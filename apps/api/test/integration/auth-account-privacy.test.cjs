@@ -319,6 +319,11 @@ async function run() {
     }
 
     const statusPayload = await waitForExportReady(baseUrl, token, 15_000);
+    if (String(statusPayload?.commercialState?.accessStatus ?? "") !== "active") {
+      throw new Error(
+        `Privacy status should expose active commercial access state. payload=${JSON.stringify(statusPayload)}`,
+      );
+    }
     if (statusPayload?.latestExport?.downloadAvailable !== true) {
       throw new Error(`Completed export should expose downloadAvailable=true. payload=${JSON.stringify(statusPayload)}`);
     }
@@ -387,6 +392,7 @@ async function run() {
             "consent_acceptance_200",
             "account_export_202_queued",
             "account_export_completes_and_returns_presigned_download",
+            "privacy_status_exposes_active_commercial_state",
             "delete_account_confirmation_guard_400",
             "delete_account_202_scheduled",
             "audit_actions_recorded",

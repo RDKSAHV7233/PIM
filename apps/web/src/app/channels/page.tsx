@@ -122,7 +122,7 @@ export default async function ChannelsOverviewPage() {
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels", error.status));
+      redirect(buildLoginRedirect("/channels", error));
     }
     throw error;
   }

@@ -260,7 +260,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/channels/mappings", error.status));
+      redirect(buildLoginRedirect("/channels/mappings", error));
     }
     throw error;
   }

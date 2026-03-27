@@ -139,7 +139,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/admin/connectors", error.status));
+      redirect(buildLoginRedirect("/admin/connectors", error));
     }
     throw error;
   }

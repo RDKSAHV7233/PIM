@@ -77,7 +77,7 @@ export default async function QualityCompletenessPage() {
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/quality/completeness", error.status));
+      redirect(buildLoginRedirect("/quality/completeness", error));
     }
     throw error;
   }

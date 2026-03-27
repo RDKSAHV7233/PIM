@@ -9,9 +9,11 @@ import { Reflector } from "@nestjs/core";
 import { FastifyRequest } from "fastify";
 import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
 import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { resolveDefaultRole } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
+import { ALLOW_SUSPENDED_TENANT_KEY } from "./allow-suspended.decorator";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, decodePimJwtFromAuthHeader } from "./jwt";
 import { IS_PUBLIC_KEY } from "./public.decorator";
@@ -31,6 +33,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwtBlocklistService: JwtBlocklistService,
     private readonly apiKeysService: ApiKeysService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -41,6 +44,10 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) {
       return true;
     }
+    const allowSuspendedTenant = this.reflector.getAllAndOverride<boolean>(ALLOW_SUSPENDED_TENANT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const roleHeader = request.headers["x-pim-role"];
@@ -57,8 +64,12 @@ export class JwtAuthGuard implements CanActivate {
       if (revoked) {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });
       }
+      const tenantId = normalizeTenantKey(claims.tenantId);
+      if (!allowSuspendedTenant) {
+        await this.assertTenantAccessActive(tenantId);
+      }
       request.pimUserId = claims.sub;
-      request.pimTenant = normalizeTenantKey(claims.tenantId);
+      request.pimTenant = tenantId;
       request.pimRole = claims.role ?? resolveDefaultRole();
       request.pimJwtClaims = claims;
       request.pimAuthType = "user_jwt";
@@ -71,8 +82,10 @@ export class JwtAuthGuard implements CanActivate {
       if (!resolved) {
         throw new UnauthorizedException({ error: "INVALID_API_KEY" });
       }
+      const tenantId = normalizeTenantKey(resolved.tenantId);
+      await this.assertTenantAccessActive(tenantId);
       request.pimUserId = resolved.actorId;
-      request.pimTenant = normalizeTenantKey(resolved.tenantId);
+      request.pimTenant = tenantId;
       request.pimRole = resolved.role ?? resolveDefaultRole();
       request.pimAuthType = "api_key";
       void this.apiKeysService.touchLastUsed(resolved.keyId);
@@ -80,5 +93,19 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     throw new UnauthorizedException("Bearer token or API key is required.");
+  }
+
+  private async assertTenantAccessActive(tenantKeyInput: string): Promise<void> {
+    const profile = await this.planUsageService.getTenantPlanProfile(tenantKeyInput);
+    if (profile.accessStatus !== "suspended") {
+      return;
+    }
+    throw new ForbiddenException({
+      error: "TENANT_SUSPENDED",
+      tenantId: profile.tenantKey,
+      billingStatus: profile.billingStatus,
+      accessStatus: profile.accessStatus,
+      suspensionReason: profile.suspensionReason,
+    });
   }
 }

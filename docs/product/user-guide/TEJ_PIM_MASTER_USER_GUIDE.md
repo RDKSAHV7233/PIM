@@ -2070,9 +2070,9 @@ For each action:
 - Fields and sections:
   - billing breadcrumb and current plan header
   - usage meters for SKUs, Submissions, Storage, Users, Connector Installations, Accounts Per Connector
-  - admin-only `Plan Tier` select and `Update plan`
+  - read-only current plan summary and `Request upgrade` commercial CTA
 - Use cases:
-  1. Admin upgrades from STARTER to GROWTH after hitting connector limits.
+  1. Admin reviews current usage and requests a commercial upgrade after hitting connector limits.
   2. Ops Manager reviews SKU usage before a major import.
   3. Support checks whether plan limits explain blocked connector installs.
   4. Viewer reviews current plan utilization without edit rights.

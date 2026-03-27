@@ -1,11 +1,31 @@
-export type LoginRedirectReason = "session_expired" | "forbidden";
+export type LoginRedirectReason = "session_expired" | "forbidden" | "tenant_suspended";
 
-export function resolveLoginRedirectReason(status?: number): LoginRedirectReason {
+type AuthFailureLike =
+  | number
+  | {
+      status?: number;
+      body?: unknown;
+    }
+  | undefined;
+
+function extractErrorCode(body: unknown): string {
+  if (!body || typeof body !== "object") {
+    return "";
+  }
+  return String((body as { error?: unknown }).error ?? "").trim().toUpperCase();
+}
+
+export function resolveLoginRedirectReason(failure?: AuthFailureLike): LoginRedirectReason {
+  const status = typeof failure === "number" ? failure : Number(failure?.status ?? 0);
+  const body = typeof failure === "number" ? null : failure?.body;
+  if (status === 403 && extractErrorCode(body) === "TENANT_SUSPENDED") {
+    return "tenant_suspended";
+  }
   return status === 403 ? "forbidden" : "session_expired";
 }
 
-export function buildLoginRedirect(nextPath: string, status?: number): string {
-  const reason = resolveLoginRedirectReason(status);
+export function buildLoginRedirect(nextPath: string, failure?: AuthFailureLike): string {
+  const reason = resolveLoginRedirectReason(failure);
   const normalizedNext = sanitizeNextPath(nextPath);
   const params = new URLSearchParams({
     reason,

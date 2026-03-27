@@ -140,7 +140,7 @@ Dashboard and Metrics APIs:
 Billing APIs:
 - GET /api/v1/billing/usage
 - GET /api/v1/billing/plan-profile
-- POST /api/v1/billing/plan-tier
+- Internal-only billing mutation path; tenant-admin plan mutation is no longer part of the public customer contract.
 
 Audit APIs:
 - GET /api/v1/audit/logs
@@ -157,4 +157,3 @@ Source: apps/api/src/common/pagination/*
 
 Webhooks/Event Receiver Endpoint:
 Information not available in TEJ PIM project.
-

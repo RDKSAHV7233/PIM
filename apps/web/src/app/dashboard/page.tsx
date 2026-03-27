@@ -681,7 +681,7 @@ export default async function DashboardPage() {
     );
   } catch (error) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/dashboard", error.status));
+      redirect(buildLoginRedirect("/dashboard", error));
     }
     throw error;
   }

@@ -1004,20 +1004,6 @@ export async function deleteConnectorInstallationAction(formData: FormData) {
   redirect("/channels/connectors?status=deleted");
 }
 
-export async function setPlanTierAction(formData: FormData) {
-  const planTier = String(formData.get("planTier") ?? "").trim().toUpperCase();
-  if (!planTier || !["STARTER", "GROWTH", "ENTERPRISE"].includes(planTier)) {
-    throw new Error("Plan tier must be STARTER, GROWTH, or ENTERPRISE.");
-  }
-
-  await postJsonForAction(formData, "/billing/plan-tier", {
-    planTier,
-  });
-  revalidatePath("/admin/plan");
-  revalidatePath("/channels/connectors");
-  redirect("/admin/plan?status=plan-updated");
-}
-
 export async function grantConnectorPermissionAction(formData: FormData) {
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const principalType = String(formData.get("principalType") ?? "").trim().toLowerCase();

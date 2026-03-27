@@ -72,7 +72,7 @@ export default async function MappingManagerRedirectPage({
     redirect(`/channels/mappings?${target.toString()}`);
   } catch (error) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect(`/connectors/${encodeURIComponent(installationId)}/mapping`, error.status));
+      redirect(buildLoginRedirect(`/connectors/${encodeURIComponent(installationId)}/mapping`, error));
     }
     throw error;
   }

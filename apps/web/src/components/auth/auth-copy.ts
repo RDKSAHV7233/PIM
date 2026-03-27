@@ -15,6 +15,7 @@ export interface AuthCopy {
   emailLabel: string;
   loginReasonSessionExpired: string;
   loginReasonForbidden: string;
+  loginReasonTenantSuspended: string;
   passwordLabel: string;
   newPasswordLabel: string;
   confirmPasswordLabel: string;
@@ -89,6 +90,7 @@ const EN_COPY: AuthCopy = {
   emailLabel: "User ID",
   loginReasonSessionExpired: "Your session expired. Please sign in again.",
   loginReasonForbidden: "Your account does not have access to that page.",
+  loginReasonTenantSuspended: "This workspace is temporarily suspended. Contact TEJ to restore access.",
   passwordLabel: "Password",
   newPasswordLabel: "New password",
   confirmPasswordLabel: "Confirm new password",

@@ -39,7 +39,7 @@ export function lifecycleStatusTone(status: string): "neutral" | "success" | "wa
   if (normalized === "failed" || normalized === "dead_letter" || normalized === "rejected") {
     return "danger";
   }
-  if (normalized === "retrying" || normalized === "queued" || normalized === "in_review") {
+  if (normalized === "retrying" || normalized === "queued" || normalized === "in_review" || normalized === "skipped") {
     return "warning";
   }
   if (normalized === "draft") {

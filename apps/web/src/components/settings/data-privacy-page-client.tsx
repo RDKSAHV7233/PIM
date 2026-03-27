@@ -7,6 +7,12 @@ import type { AppRole } from "@/lib/api";
 type ExportFormat = "json" | "csv";
 
 interface PrivacyStatusPayload {
+  commercialState: {
+    billingStatus: string;
+    accessStatus: string;
+    suspensionReason: string | null;
+    suspendedAt: string | null;
+  };
   latestConsent: {
     accepted: boolean;
     policyVersion: string;
@@ -57,6 +63,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
   const [working, setWorking] = useState<"export" | "delete" | null>(null);
   const [statusError, setStatusError] = useState("");
   const [status, setStatus] = useState<PrivacyStatusPayload | null>(null);
+  const exportBlockedBySuspension = status?.commercialState?.accessStatus === "suspended";
 
   const loadStatus = useCallback(async () => {
     try {
@@ -124,6 +131,12 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
           return;
         }
         if (response.status === 403) {
+          if (payload.error === "TENANT_SUSPENDED") {
+            setExportMessage(
+              "New export requests are paused while the workspace is suspended. You can still download any export that was already prepared.",
+            );
+            return;
+          }
           setExportMessage("You do not have permission to request an account export.");
           return;
         }
@@ -203,6 +216,18 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
           <p className="text-red-700">{statusError}</p>
         ) : (
           <div className="space-y-1">
+            {status?.commercialState?.accessStatus === "suspended" ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Workspace access is suspended.</p>
+                <p>
+                  New export requests are paused while suspension is in effect. Previously prepared exports can still
+                  be downloaded here, and account deletion remains available.
+                </p>
+                {status.commercialState.suspensionReason ? (
+                  <p className="mt-1">Reason: {status.commercialState.suspensionReason}</p>
+                ) : null}
+              </div>
+            ) : null}
             <p>
               Latest consent:{" "}
               {status?.latestConsent
@@ -266,10 +291,14 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
           </div>
           <button
             type="submit"
-            disabled={working !== null}
+            disabled={working !== null || exportBlockedBySuspension}
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            {working === "export" ? "Requesting export..." : "Request export"}
+            {working === "export"
+              ? "Requesting export..."
+              : exportBlockedBySuspension
+                ? "Export requests paused during suspension"
+                : "Request export"}
           </button>
         </form>
         {exportMessage && <p className="text-sm text-slate-700">{exportMessage}</p>}

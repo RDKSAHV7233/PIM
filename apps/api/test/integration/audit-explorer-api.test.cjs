@@ -134,6 +134,7 @@ async function run() {
   const workspaceSlug = `auditx-${runId}`.slice(0, 24);
   const adminUserId = `audit-admin-${runId}@example.com`;
   const editorUserId = `audit-editor-${runId}@example.com`;
+  const commercialToken = `audit-commercial-${runId}`;
   const today = new Date().toISOString().slice(0, 10);
 
   const env = {
@@ -148,6 +149,7 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Audit Explorer" },
     }),
+    PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
   };
 
   const stdoutBuffer = [];
@@ -197,6 +199,46 @@ async function run() {
     );
     assertStatus(category, 201, "create category");
 
+    const commercialUpdate = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/commercial-state",
+      null,
+      {
+        tenantKey: tenantId,
+        billingStatus: "past_due",
+      },
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assert(
+      commercialUpdate.status === 200 || commercialUpdate.status === 201,
+      `internal commercial update failed: ${JSON.stringify(commercialUpdate)}`,
+    );
+
+    const commercialFiltered = await apiRequest(
+      baseUrl,
+      "GET",
+      `/audit/events?entityType=plan&action=TENANT_BILLING_STATUS_SET&limit=25`,
+      adminToken,
+    );
+    assertStatus(commercialFiltered, 200, "commercial audit explorer query");
+    assert(
+      Array.isArray(commercialFiltered.payload?.items),
+      `expected commercial explorer items array, got ${JSON.stringify(commercialFiltered.payload)}`,
+    );
+    const commercialRow = commercialFiltered.payload.items.find(
+      (row) => row && row.resourceId === tenantId && row.action === "TENANT_BILLING_STATUS_SET",
+    );
+    assert(
+      commercialRow,
+      `expected commercial audit row for ${tenantId}, got ${JSON.stringify(commercialFiltered.payload.items)}`,
+    );
+    assert(commercialRow.entityType === "plan", `expected commercial entityType=plan, got ${JSON.stringify(commercialRow)}`);
+
     const filtered = await apiRequest(
       baseUrl,
       "GET",
@@ -233,6 +275,7 @@ async function run() {
           tenantId,
           workspaceSlug,
           validated: [
+            "admin_can_filter_commercial_audit_events_as_plan_entity_type",
             "admin_can_filter_audit_events_by_actor_action_entity_and_date",
             "admin_can_export_filtered_audit_events_as_csv",
             "non_admin_roles_are_denied_audit_explorer_access",

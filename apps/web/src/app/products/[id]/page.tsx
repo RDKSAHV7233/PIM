@@ -70,7 +70,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   let product;
   try { product = await getProduct(id, { role: actorRole, authHeader }); } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) redirect(buildLoginRedirect(`/products/${encodeURIComponent(id)}`, error.status));
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) redirect(buildLoginRedirect(`/products/${encodeURIComponent(id)}`, error));
     notFound();
   }
 

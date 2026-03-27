@@ -7,6 +7,7 @@ import {
   ValidationIssueStatus,
 } from "@prisma/client";
 import { ConnectorFrameworkService } from "../connector-framework/connector-framework.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   CapabilityNotSupportedError,
   CredentialExpiredError,
@@ -222,6 +223,7 @@ export class MarketplaceService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectorFramework: ConnectorFrameworkService,
+    private readonly planUsageService: PlanUsageService,
     private readonly queueService: QueueService,
     private readonly metricsService: MetricsService,
     private readonly connectorMappingService: ConnectorMappingService,
@@ -1135,6 +1137,22 @@ export class MarketplaceService implements OnModuleInit {
     }
     if (existing.status === ExportJobStatus.dead_letter) {
       throw new BadRequestException("Job is in DLQ. Requeue before processing.");
+    }
+
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(existing.tenantKey);
+    if (commercialProfile.accessStatus === "suspended") {
+      const updated = await this.prisma.tenant().marketplaceExportJob.update({
+        where: { id: jobId },
+        data: {
+          status: ExportJobStatus.skipped,
+          failureReason: "tenant_suspended",
+          dlqReason: null,
+          exportPayload: Prisma.JsonNull,
+        },
+        include: { template: true },
+      });
+      await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+      return updated;
     }
 
     await this.prisma.tenant().marketplaceExportJob.update({

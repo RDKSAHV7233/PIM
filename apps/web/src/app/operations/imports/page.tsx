@@ -439,7 +439,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     );
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
-      redirect(buildLoginRedirect("/operations/imports", error.status));
+      redirect(buildLoginRedirect("/operations/imports", error));
     }
     throw error;
   }
