@@ -28,6 +28,11 @@ export class ListAuditEventsDto {
   action?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  resourceId?: string;
+
+  @IsOptional()
   @IsIn(AUDIT_ENTITY_TYPES)
   entityType?: AuditEntityTypeFilter;
 

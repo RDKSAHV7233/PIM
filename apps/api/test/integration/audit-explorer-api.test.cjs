@@ -239,6 +239,19 @@ async function run() {
     );
     assert(commercialRow.entityType === "plan", `expected commercial entityType=plan, got ${JSON.stringify(commercialRow)}`);
 
+    const commercialByResource = await apiRequest(
+      baseUrl,
+      "GET",
+      `/audit/events?entityType=plan&resourceId=${encodeURIComponent(tenantId)}&limit=25`,
+      adminToken,
+    );
+    assertStatus(commercialByResource, 200, "commercial audit explorer resource filter");
+    assert(
+      Array.isArray(commercialByResource.payload?.items) &&
+        commercialByResource.payload.items.some((row) => row && row.resourceId === tenantId),
+      `expected plan audit events filtered by resourceId=${tenantId}, got ${JSON.stringify(commercialByResource.payload)}`,
+    );
+
     const filtered = await apiRequest(
       baseUrl,
       "GET",
@@ -276,6 +289,7 @@ async function run() {
           workspaceSlug,
           validated: [
             "admin_can_filter_commercial_audit_events_as_plan_entity_type",
+            "admin_can_filter_audit_events_by_resource_id",
             "admin_can_filter_audit_events_by_actor_action_entity_and_date",
             "admin_can_export_filtered_audit_events_as_csv",
             "non_admin_roles_are_denied_audit_explorer_access",

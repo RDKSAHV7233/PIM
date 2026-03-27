@@ -77,7 +77,8 @@ function run() {
       pageSource.includes("Paid through:") &&
       pageSource.includes("Grace ends:") &&
       pageSource.includes("Suspended at:") &&
-      pageSource.includes("Admin recipients"),
+      pageSource.includes("Admin recipients") &&
+      pageSource.includes("Tenant audit trail"),
     "Internal commercial ops page must expose selected-tenant commercial snapshot details.",
   );
   assert(
@@ -89,12 +90,14 @@ function run() {
     "Internal commercial ops page must expose search and queue controls.",
   );
   assert(
-    pageSource.includes("Acknowledge") &&
+      pageSource.includes("Acknowledge") &&
       pageSource.includes("Resolve") &&
       pageSource.includes("Cancel") &&
       pageSource.includes("Re-open") &&
+      pageSource.includes("Audit trail") &&
+      pageSource.includes("Needs follow-up") &&
       pageSource.includes("updateUpgradeRequestStatusAction"),
-    "Internal commercial ops page must expose request lifecycle actions.",
+    "Internal commercial ops page must expose request lifecycle actions, follow-up links, and queue age signals.",
   );
   assert(
     actionsSource.includes('redirect("/internal/developer?actionStatus=forbidden")') &&

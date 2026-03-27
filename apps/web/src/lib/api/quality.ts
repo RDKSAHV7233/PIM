@@ -9,6 +9,9 @@ export async function getAuditEvents(input?: AuditEventsQuery, options?: ApiRequ
   if (input?.action?.trim()) {
     params.set("action", input.action.trim());
   }
+  if (input?.resourceId?.trim()) {
+    params.set("resourceId", input.resourceId.trim());
+  }
   if (input?.entityType) {
     params.set("entityType", input.entityType);
   }

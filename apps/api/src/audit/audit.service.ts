@@ -368,6 +368,7 @@ export class AuditService {
     const clauses: string[] = [];
     const actorId = String(query.actorId ?? "").trim();
     const action = String(query.action ?? "").trim();
+    const resourceId = String(query.resourceId ?? "").trim();
     if (actorId) {
       params.push(actorId);
       clauses.push(`actor_id = $${params.length}`);
@@ -375,6 +376,10 @@ export class AuditService {
     if (action) {
       params.push(action);
       clauses.push(`action = $${params.length}`);
+    }
+    if (resourceId) {
+      params.push(resourceId);
+      clauses.push(`resource_id = $${params.length}`);
     }
     if (query.entityType) {
       this.applyEntityTypeClause(query.entityType, clauses);

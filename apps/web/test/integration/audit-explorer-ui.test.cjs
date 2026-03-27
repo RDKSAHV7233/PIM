@@ -30,10 +30,11 @@ function run() {
   assert(
     pageSource.includes('htmlFor="audit-actor"') &&
       pageSource.includes('htmlFor="audit-action"') &&
+      pageSource.includes('htmlFor="audit-resource-id"') &&
       pageSource.includes('htmlFor="audit-entity"') &&
       pageSource.includes('htmlFor="audit-date-from"') &&
       pageSource.includes('htmlFor="audit-date-to"'),
-    "Admin audit page must expose actor, action, entity type, and date-range filters.",
+    "Admin audit page must expose actor, action, resource, entity type, and date-range filters.",
   );
   assert(
     pageSource.includes('"TENANT_BILLING_STATUS_SET"') &&

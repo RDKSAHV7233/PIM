@@ -316,6 +316,7 @@ export type CategoryListQuery = {
 export type AuditEventsQuery = {
   actorId?: string;
   action?: string;
+  resourceId?: string;
   entityType?: AuditEntityType;
   dateFrom?: string;
   dateTo?: string;

@@ -143,6 +143,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
 
   const actorId = String(getFirst(query.actorId) ?? "").trim();
   const action = String(getFirst(query.action) ?? "").trim();
+  const resourceId = String(getFirst(query.resourceId) ?? "").trim();
   const entityType = String(getFirst(query.entityType) ?? "").trim() as AuditEntityType | "";
   const dateFrom = String(getFirst(query.dateFrom) ?? "").trim();
   const dateTo = String(getFirst(query.dateTo) ?? "").trim();
@@ -154,6 +155,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
       {
         actorId: actorId || undefined,
         action: action || undefined,
+        resourceId: resourceId || undefined,
         entityType: entityType || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
@@ -166,6 +168,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
     const exportHref = `/api/admin/audit/export${buildQuery({
       actorId,
       action,
+      resourceId,
       entityType,
       dateFrom,
       dateTo,
@@ -230,6 +233,12 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
               </Select>
             </div>
             <div className="space-y-1">
+              <label htmlFor="audit-resource-id" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Resource ID
+              </label>
+              <Input id="audit-resource-id" name="resourceId" placeholder="tenant key or request id" defaultValue={resourceId} />
+            </div>
+            <div className="space-y-1">
               <label htmlFor="audit-entity" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Entity type
               </label>
@@ -254,7 +263,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
               </label>
               <Input id="audit-date-to" name="dateTo" type="date" defaultValue={dateTo} />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 xl:col-span-2">
               <label htmlFor="audit-limit" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Page size
               </label>
@@ -346,6 +355,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
                 href={`/admin/audit${buildQuery({
                   actorId,
                   action,
+                  resourceId,
                   entityType,
                   dateFrom,
                   dateTo,

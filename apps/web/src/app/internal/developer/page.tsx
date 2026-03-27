@@ -85,6 +85,29 @@ function buildTenantExportHref(input: {
   return query ? `/api/internal/commercial-tenants/export?${query}` : "/api/internal/commercial-tenants/export";
 }
 
+function buildAuditHref(input: {
+  entityType?: string;
+  action?: string;
+  resourceId?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (input.entityType) {
+    search.set("entityType", input.entityType);
+  }
+  if (input.action) {
+    search.set("action", input.action);
+  }
+  if (input.resourceId) {
+    search.set("resourceId", input.resourceId);
+  }
+  if (typeof input.limit === "number" && Number.isFinite(input.limit)) {
+    search.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  const query = search.toString();
+  return query ? `/admin/audit?${query}` : "/admin/audit";
+}
+
 function formatBillingStatus(value: string) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "active_paid") {
@@ -216,6 +239,32 @@ function formatDateValue(value: string | null | undefined) {
     return "Not set";
   }
   return date.toLocaleDateString("en-IN");
+}
+
+function describeRequestAge(value: string) {
+  const createdAt = new Date(value);
+  if (Number.isNaN(createdAt.getTime())) {
+    return { label: "Age unknown", tone: "bg-slate-200 text-slate-700" };
+  }
+  const ageMs = Date.now() - createdAt.getTime();
+  const ageHours = Math.max(0, Math.floor(ageMs / (60 * 60 * 1000)));
+  const ageDays = Math.floor(ageHours / 24);
+  if (ageDays >= 3) {
+    return {
+      label: `Needs follow-up (${ageDays}d)`,
+      tone: "bg-rose-100 text-rose-900",
+    };
+  }
+  if (ageDays >= 1) {
+    return {
+      label: `Open ${ageDays}d`,
+      tone: "bg-amber-100 text-amber-900",
+    };
+  }
+  return {
+    label: ageHours <= 1 ? "Fresh (<1h)" : `Fresh (${ageHours}h)`,
+    tone: "bg-emerald-100 text-emerald-900",
+  };
 }
 
 function OverviewMetric({
@@ -595,6 +644,18 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   {selectedTenant.adminEmails.length > 0 ? selectedTenant.adminEmails.join(", ") : "No active admins found"}
                 </div>
               </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={buildAuditHref({
+                    entityType: "plan",
+                    resourceId: selectedTenant.tenantKey,
+                    limit: 50,
+                  })}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Tenant audit trail
+                </Link>
+              </div>
             </div>
           ) : null}
           {requestItems.length === 0 && !opsError ? (
@@ -614,9 +675,14 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                       {request.workspaceSlug || "no workspace slug"} | {request.tenantKey}
                     </div>
                   </div>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${requestStatusTone(request.status)}`}>
-                    {formatRequestStatus(request.status)}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${requestStatusTone(request.status)}`}>
+                      {formatRequestStatus(request.status)}
+                    </span>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${describeRequestAge(request.createdAt).tone}`}>
+                      {describeRequestAge(request.createdAt).label}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-4">
                   <div>
@@ -648,6 +714,16 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   </div>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href={buildAuditHref({
+                      entityType: "plan",
+                      resourceId: request.id,
+                      limit: 50,
+                    })}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Audit trail
+                  </Link>
                   {buildRequestActions(request).map((action) => (
                     <form key={`${request.id}-${action.status}`} action={updateUpgradeRequestStatusAction}>
                       <input type="hidden" name="requestId" value={request.id} />
