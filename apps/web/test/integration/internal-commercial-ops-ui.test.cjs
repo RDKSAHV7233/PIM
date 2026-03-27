@@ -34,8 +34,21 @@ function run() {
       pageSource.includes("Active queue") &&
       pageSource.includes("Workspace activity:") &&
       pageSource.includes("Request queue:") &&
-      pageSource.includes("Last 7 days:"),
-    "Internal commercial ops page must surface the overview metrics and queue summary.",
+      pageSource.includes("Last 7 days:") &&
+      pageSource.includes("Open queue") &&
+      pageSource.includes("Acknowledged") &&
+      pageSource.includes("Resolved") &&
+      pageSource.includes("Cancelled"),
+    "Internal commercial ops page must surface the overview metrics, queue summary, and quick queue links.",
+  );
+  assert(
+    pageSource.includes("Selected tenant snapshot") &&
+      pageSource.includes("Trial ends:") &&
+      pageSource.includes("Paid through:") &&
+      pageSource.includes("Grace ends:") &&
+      pageSource.includes("Suspended at:") &&
+      pageSource.includes("Admin recipients"),
+    "Internal commercial ops page must expose selected-tenant commercial snapshot details.",
   );
   assert(
     pageSource.includes("Commercial ops request queue") &&
@@ -81,6 +94,7 @@ function run() {
           validated: [
             "internal_commercial_ops_page_stays_gated",
             "internal_commercial_ops_page_surfaces_overview_metrics",
+            "internal_commercial_ops_page_surfaces_selected_tenant_snapshot",
             "internal_commercial_ops_page_exposes_search_and_queue_controls",
             "internal_commercial_ops_page_exposes_request_lifecycle_actions",
             "internal_commercial_ops_actions_preserve_feedback_state",

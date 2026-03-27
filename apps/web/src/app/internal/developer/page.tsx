@@ -89,6 +89,17 @@ function formatRequestStatus(value: string) {
   return "Open";
 }
 
+function formatPlanTier(value: string) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "GROWTH") {
+    return "Growth";
+  }
+  if (normalized === "ENTERPRISE") {
+    return "Enterprise";
+  }
+  return "Starter";
+}
+
 function requestStatusTone(value: string) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "resolved") {
@@ -168,6 +179,17 @@ function buildRequestActions(request: PlanUpgradeRequest) {
   return [{ status: "open", label: "Re-open" }];
 }
 
+function formatDateValue(value: string | null | undefined) {
+  if (!value) {
+    return "Not set";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Not set";
+  }
+  return date.toLocaleDateString("en-IN");
+}
+
 function OverviewMetric({
   label,
   value,
@@ -202,6 +224,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   let requestItems: PlanUpgradeRequest[] = [];
   let tenantResults: CommercialTenantSearchResult[] = [];
   let overview: CommercialOverviewResponse | null = null;
+  let selectedTenant: CommercialTenantSearchResult | null = null;
   let opsError: string | null = null;
 
   if (!claims?.sub) {
@@ -211,7 +234,16 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   } else {
     try {
       const requestOptions = getCommercialOpsRequestOptions(claims.sub, actorRole);
-      const [overviewResponse, requestResponse, tenantResponse] = await Promise.all([
+      const tenantSearchPromise =
+        tenantQuery.length >= 2
+          ? searchCommercialTenantsInternal({ q: tenantQuery, limit: 8 }, requestOptions)
+          : Promise.resolve({ items: [], count: 0, query: tenantQuery });
+      const selectedTenantPromise = tenantKey
+        ? (tenantQuery.length >= 2
+            ? tenantSearchPromise
+            : searchCommercialTenantsInternal({ q: tenantKey, limit: 8 }, requestOptions))
+        : Promise.resolve(null);
+      const [overviewResponse, requestResponse, tenantResponse, selectedTenantResponse] = await Promise.all([
         getCommercialOverviewInternal(requestOptions),
         listInternalUpgradeRequests(
           {
@@ -221,13 +253,16 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           },
           requestOptions,
         ),
-        tenantQuery.length >= 2
-          ? searchCommercialTenantsInternal({ q: tenantQuery, limit: 8 }, requestOptions)
-          : Promise.resolve({ items: [], count: 0, query: tenantQuery }),
+        tenantSearchPromise,
+        selectedTenantPromise,
       ]);
       overview = overviewResponse;
       requestItems = requestResponse.items;
       tenantResults = tenantResponse.items;
+      selectedTenant =
+        selectedTenantResponse?.items?.find((item) => item.tenantKey === tenantKey) ??
+        tenantResponse.items.find((item) => item.tenantKey === tenantKey) ??
+        null;
     } catch (error: unknown) {
       if (error instanceof ApiHttpError) {
         opsError = `Commercial tools API returned ${error.status}.`;
@@ -295,6 +330,48 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 </div>
                 <div className="mt-1">
                   Last 7 days: {overview.requestOverview.recentRequests} new requests, {overview.requestOverview.recentResolvedRequests} resolved
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    className={`rounded-md border px-2 py-1 font-medium ${
+                      requestStatusFilter === "open"
+                        ? "border-sky-300 bg-sky-100 text-sky-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "open" })}
+                  >
+                    Open queue
+                  </Link>
+                  <Link
+                    className={`rounded-md border px-2 py-1 font-medium ${
+                      requestStatusFilter === "acknowledged"
+                        ? "border-amber-300 bg-amber-100 text-amber-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "acknowledged" })}
+                  >
+                    Acknowledged
+                  </Link>
+                  <Link
+                    className={`rounded-md border px-2 py-1 font-medium ${
+                      requestStatusFilter === "resolved"
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "resolved" })}
+                  >
+                    Resolved
+                  </Link>
+                  <Link
+                    className={`rounded-md border px-2 py-1 font-medium ${
+                      requestStatusFilter === "cancelled"
+                        ? "border-slate-300 bg-slate-200 text-slate-800"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "cancelled" })}
+                  >
+                    Cancelled
+                  </Link>
                 </div>
               </div>
             </div>
@@ -426,6 +503,60 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
               ) : null}
             </div>
           </div>
+          {selectedTenant ? (
+            <div className="rounded-md border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected tenant snapshot</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">
+                    {selectedTenant.displayName || selectedTenant.workspaceSlug}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {selectedTenant.workspaceSlug} | {selectedTenant.tenantKey}
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    selectedTenant.workspaceIsActive ? "bg-emerald-100 text-emerald-900" : "bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  {selectedTenant.workspaceIsActive ? "Workspace active" : "Workspace inactive"}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Commercial state</div>
+                  <div className="mt-1">
+                    {formatPlanTier(selectedTenant.planTier)} | {formatBillingStatus(selectedTenant.billingStatus)} | {formatAccessStatus(selectedTenant.accessStatus)}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Billing notices: {selectedTenant.billingContactEmail ?? "active workspace admins"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dates</div>
+                  <div className="mt-1">Trial ends: {formatDateValue(selectedTenant.trialEndsAt)}</div>
+                  <div className="text-xs text-slate-500">Paid through: {formatDateValue(selectedTenant.paidThroughAt)}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grace and cancellation</div>
+                  <div className="mt-1">Grace ends: {formatDateValue(selectedTenant.graceEndsAt)}</div>
+                  <div className="text-xs text-slate-500">Cancelled at: {formatDateValue(selectedTenant.cancelledAt)}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Suspension</div>
+                  <div className="mt-1">Suspended at: {formatDateValue(selectedTenant.suspendedAt)}</div>
+                  <div className="text-xs text-slate-500">{selectedTenant.suspensionReason ?? "No suspension reason recorded"}</div>
+                </div>
+              </div>
+              <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin recipients</div>
+                <div className="mt-1">
+                  {selectedTenant.adminEmails.length > 0 ? selectedTenant.adminEmails.join(", ") : "No active admins found"}
+                </div>
+              </div>
+            </div>
+          ) : null}
           {requestItems.length === 0 && !opsError ? (
             <div className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
               No commercial requests found for this filter.
