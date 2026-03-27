@@ -533,6 +533,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const exactQuery = query.toLowerCase();
     const fuzzyQuery = `%${query}%`;
 
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<CommercialTenantSearchRow[]>(
       `
       SELECT

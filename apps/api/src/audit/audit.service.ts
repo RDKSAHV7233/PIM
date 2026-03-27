@@ -397,6 +397,7 @@ export class AuditService {
     params.push(safeLimit + 1);
     const limitParam = params.length;
     const entityTypeSql = this.entityTypeCaseSql();
+    // RLS-BYPASS: manual tenant filter
     const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
       SELECT
