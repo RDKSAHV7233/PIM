@@ -1,0 +1,358 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const { spawn } = require("node:child_process");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    if (!line || /^\s*#/.test(line)) {
+      continue;
+    }
+    const idx = line.indexOf("=");
+    if (idx === -1) {
+      continue;
+    }
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim().replace(/^"|"$/g, "");
+    if (key && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function setDefaultEnv(name, value) {
+  if (!process.env[name] || String(process.env[name]).trim().length === 0) {
+    process.env[name] = value;
+  }
+}
+
+function prepareEnv() {
+  readEnvFile(path.join(REPO_ROOT, ".env"));
+  const databaseUrl = process.env.DATABASE_URL;
+  if (databaseUrl) {
+    setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
+    setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
+  }
+  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_EXPIRY", "4h");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
+  setDefaultEnv("REDIS_URL", "redis://localhost:6379");
+  setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
+  setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
+  setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
+  setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
+  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("APP_ENV", "development");
+  setDefaultEnv("AUTH_MODE", "db");
+  setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
+  setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForHealth(baseUrl, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/health`, { method: "GET" });
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      // retry
+    }
+    await sleep(400);
+  }
+  throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
+}
+
+async function apiRequest(baseUrl, method, route, token, body, extraHeaders) {
+  const headers = { Accept: "application/json", ...(extraHeaders ?? {}) };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const options = {
+    method,
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${baseUrl}${route}`, options);
+  const text = await response.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = text;
+  }
+  return { status: response.status, payload };
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertStatus(result, expected, context) {
+  if (result.status !== expected) {
+    throw new Error(`${context} failed: expected ${expected}, got ${result.status} payload=${JSON.stringify(result.payload)}`);
+  }
+}
+
+function listEmailFiles(outboxDir) {
+  if (!fs.existsSync(outboxDir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(outboxDir)
+    .filter((file) => file.endsWith(".json"))
+    .sort()
+    .map((file) => path.join(outboxDir, file));
+}
+
+async function waitForEmailCount(outboxDir, expectedCount, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const files = listEmailFiles(outboxDir);
+    if (files.length >= expectedCount) {
+      return files;
+    }
+    await sleep(150);
+  }
+  throw new Error(`Timed out waiting for ${expectedCount} outbox files in ${outboxDir}`);
+}
+
+function readEmails(outboxDir) {
+  return listEmailFiles(outboxDir).map((filePath) => JSON.parse(fs.readFileSync(filePath, "utf8")));
+}
+
+async function run() {
+  prepareEnv();
+  if (!fs.existsSync(API_ENTRY)) {
+    throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
+  }
+
+  const runId = Date.now().toString();
+  const apiPort = 6660 + Math.floor(Math.random() * 120);
+  const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
+  const platformToken = `platform-upgrade-${runId}`;
+  const commercialToken = `commercial-upgrade-${runId}`;
+  const tenantId = `upgrade-tenant-${runId}`;
+  const workspaceSlug = `upgrade-${runId}`.slice(0, 24);
+  const displayName = `Upgrade Workspace ${runId}`;
+  const adminUser = `upgrade-admin-${runId}@example.com`;
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-upgrade-request-email-"));
+
+  const env = {
+    ...process.env,
+    PORT: String(apiPort),
+    PIM_PLATFORM_ADMIN_TOKEN: platformToken,
+    PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
+    PIM_ALLOW_LEGACY_HEADERS: "false",
+    PIM_AUTH_IDENTITIES_JSON: "",
+    PIM_AUTH_WORKSPACES_JSON: "",
+    AUTH_EMAIL_PROVIDER: "file",
+    AUTH_EMAIL_OUTBOX_DIR: outboxDir,
+    PIM_COMMERCIAL_CONTACT_EMAIL: "commercial@tej.example",
+    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+  };
+
+  const stdoutBuffer = [];
+  const stderrBuffer = [];
+  const apiProcess = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  apiProcess.stdout.on("data", (chunk) => {
+    stdoutBuffer.push(String(chunk));
+    if (stdoutBuffer.length > 200) stdoutBuffer.shift();
+  });
+  apiProcess.stderr.on("data", (chunk) => {
+    stderrBuffer.push(String(chunk));
+    if (stderrBuffer.length > 200) stderrBuffer.shift();
+  });
+
+  try {
+    await waitForHealth(baseUrl, 60_000);
+
+    const provision = await apiRequest(
+      baseUrl,
+      "POST",
+      "/platform/tenants",
+      null,
+      {
+        tenantKey: tenantId,
+        workspaceSlug,
+        displayName,
+        initialAdminUserId: adminUser,
+      },
+      { "x-pim-platform-admin-token": platformToken },
+    );
+    assertStatus(provision, 201, "platform tenant provisioning");
+
+    const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
+      userId: adminUser,
+      password: "tej-pim-demo-password",
+      expiresInMinutes: 30,
+    });
+    assertStatus(login, 201, "admin login");
+    const adminToken = String(login.payload?.accessToken ?? "");
+    assert(adminToken.length > 10, "missing admin token");
+
+    const initialLookup = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
+    assertStatus(initialLookup, 200, "initial upgrade request lookup");
+    assert(initialLookup.payload?.item === null, `expected no open upgrade request payload=${JSON.stringify(initialLookup.payload)}`);
+
+    const createRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
+      notes: "We need more users and a paid-plan review before trial end.",
+      source: "admin_plan",
+    });
+    assertStatus(createRequest, 200, "create upgrade request");
+    assert(createRequest.payload?.created === true, `expected created=true payload=${JSON.stringify(createRequest.payload)}`);
+    const requestId = String(createRequest.payload?.item?.id ?? "");
+    assert(requestId.length > 5, `expected request id payload=${JSON.stringify(createRequest.payload)}`);
+    assert(
+      String(createRequest.payload?.item?.tenantKey ?? "") === tenantId &&
+        String(createRequest.payload?.item?.workspaceSlug ?? "") === workspaceSlug,
+      `expected tenant/workspace context payload=${JSON.stringify(createRequest.payload)}`,
+    );
+    assert(
+      String(createRequest.payload?.item?.requestedBy ?? "") === adminUser &&
+        String(createRequest.payload?.item?.requesterRole ?? "") === "admin",
+      `expected requester context payload=${JSON.stringify(createRequest.payload)}`,
+    );
+    assert(
+      String(createRequest.payload?.item?.currentPlanTier ?? "") === "STARTER" &&
+        String(createRequest.payload?.item?.currentBillingStatus ?? "") === "trial" &&
+        String(createRequest.payload?.item?.currentAccessStatus ?? "") === "active",
+      `expected current commercial state snapshot payload=${JSON.stringify(createRequest.payload)}`,
+    );
+    assert(
+      String(createRequest.payload?.item?.notes ?? "") === "We need more users and a paid-plan review before trial end.",
+      `expected notes to persist payload=${JSON.stringify(createRequest.payload)}`,
+    );
+
+    const secondRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
+      notes: "Please expedite.",
+      source: "admin_plan",
+    });
+    assertStatus(secondRequest, 200, "reuse open upgrade request");
+    assert(secondRequest.payload?.created === false, `expected created=false payload=${JSON.stringify(secondRequest.payload)}`);
+    assert(
+      String(secondRequest.payload?.item?.id ?? "") === requestId,
+      `expected open request reuse payload=${JSON.stringify(secondRequest.payload)}`,
+    );
+    assert(
+      String(secondRequest.payload?.item?.notes ?? "") === "We need more users and a paid-plan review before trial end.",
+      `expected original notes to remain on reused request payload=${JSON.stringify(secondRequest.payload)}`,
+    );
+
+    const lookupAfterCreate = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
+    assertStatus(lookupAfterCreate, 200, "lookup open upgrade request");
+    assert(
+      String(lookupAfterCreate.payload?.item?.id ?? "") === requestId,
+      `expected lookup to return open request payload=${JSON.stringify(lookupAfterCreate.payload)}`,
+    );
+
+    const internalList = await apiRequest(
+      baseUrl,
+      "GET",
+      `/billing/internal/upgrade-requests?tenantKey=${encodeURIComponent(tenantId)}&status=open&limit=10`,
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(internalList, 200, "internal upgrade request listing");
+    assert(Number(internalList.payload?.count ?? 0) === 1, `expected one open request payload=${JSON.stringify(internalList.payload)}`);
+    assert(
+      String(internalList.payload?.items?.[0]?.id ?? "") === requestId,
+      `expected listed request to match created request payload=${JSON.stringify(internalList.payload)}`,
+    );
+
+    await waitForEmailCount(outboxDir, 1, 10_000);
+    const emails = readEmails(outboxDir);
+    assert(emails.length === 1, `expected one upgrade-request email payload=${JSON.stringify(emails)}`);
+    const email = emails[0];
+    assert(String(email.to ?? "") === "commercial@tej.example", `expected commercial contact recipient payload=${JSON.stringify(email)}`);
+    assert(String(email.category ?? "") === "commercial_upgrade_request", `expected commercial_upgrade_request category payload=${JSON.stringify(email)}`);
+    assert(
+      String(email.subject ?? "").includes(`Upgrade request: ${displayName}`),
+      `expected upgrade request subject payload=${JSON.stringify(email)}`,
+    );
+    assert(
+      String(email.text ?? "").includes(`Tenant key: ${tenantId}`) &&
+        String(email.text ?? "").includes(`Workspace slug: ${workspaceSlug}`) &&
+        String(email.text ?? "").includes("Current plan tier: STARTER") &&
+        String(email.text ?? "").includes("We need more users and a paid-plan review before trial end."),
+      `expected upgrade request email details payload=${JSON.stringify(email)}`,
+    );
+
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          tenantId,
+          validated: [
+            "tenant_admin_can_create_upgrade_request",
+            "open_upgrade_request_lookup_is_exposed_to_customer_admins",
+            "duplicate_open_upgrade_requests_are_reused",
+            "internal_ops_can_list_upgrade_requests",
+            "upgrade_request_notifies_commercial_contact_email",
+          ],
+          checkedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    const stdout = stdoutBuffer.join("").slice(-4000);
+    const stderr = stderrBuffer.join("").slice(-4000);
+    console.error("Billing upgrade request integration test failed:");
+    console.error(details);
+    if (stdout) {
+      console.error("--- API stdout tail ---");
+      console.error(stdout);
+    }
+    if (stderr) {
+      console.error("--- API stderr tail ---");
+      console.error(stderr);
+    }
+    process.exitCode = 1;
+  } finally {
+    fs.rmSync(outboxDir, { recursive: true, force: true });
+    apiProcess.kill("SIGTERM");
+    await new Promise((resolve) => apiProcess.once("exit", resolve));
+  }
+}
+
+run().catch((error) => {
+  console.error("Billing upgrade request integration test failed before startup:");
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  process.exit(1);
+});

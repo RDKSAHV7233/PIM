@@ -62,11 +62,15 @@ function run() {
     source.includes("Plan changes are managed by TEJ commercial ops.") &&
       source.includes("Customer admins can review plan usage") &&
       source.includes("paid-plan changes are applied through") &&
+      source.includes("getBillingUpgradeRequest") &&
+      source.includes("requestPlanUpgradeAction") &&
+      source.includes("Upgrade request pending") &&
+      source.includes("Request notes") &&
       source.includes("resolveCommercialContactTarget") &&
       source.includes("commercialContact.label") &&
       !source.includes("setPlanTierAction") &&
       !source.includes("Update plan"),
-    "Plan page must be read-only for customer admins and route plan changes into the TEJ commercial workflow.",
+    "Plan page must be read-only for customer admins and route plan changes into a tracked TEJ commercial workflow.",
   );
   assert(
       source.includes("resolveCommercialStatusAlert") &&

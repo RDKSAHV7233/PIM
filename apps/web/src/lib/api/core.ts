@@ -360,6 +360,40 @@ export interface PlanUsageResponse {
   };
 }
 
+export interface PlanUpgradeRequest {
+  id: string;
+  tenantKey: string;
+  workspaceSlug: string | null;
+  displayName: string | null;
+  requestType: "upgrade" | string;
+  status: "open" | "acknowledged" | "resolved" | "cancelled" | string;
+  requestedBy: string;
+  requesterRole: AppRole | string;
+  currentPlanTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+  currentBillingStatus: "trial" | "active_paid" | "past_due" | "cancelled" | string;
+  currentAccessStatus: "active" | "suspended" | string;
+  notes: string | null;
+  source: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlanUpgradeRequestLookupResponse {
+  item: PlanUpgradeRequest | null;
+}
+
+export interface PlanUpgradeRequestCreateResponse {
+  created: boolean;
+  item: PlanUpgradeRequest;
+}
+
+export interface CommercialRequestListResponse {
+  items: PlanUpgradeRequest[];
+  count: number;
+}
+
 export interface DashboardHealthSnapshot {
   capturedAt: string;
   totalSkus: number;

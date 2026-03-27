@@ -549,6 +549,29 @@ model TenantPlanProfile {
   @@index([tenantKey, billingStatus, accessStatus])
 }
 
+model TenantCommercialRequest {
+  id                   String   @id @default(cuid())
+  tenantKey            String   @default("default")
+  requestType          String   @default("upgrade")
+  status               String   @default("open")
+  requestedBy          String   @map("requested_by")
+  requesterRole        String   @map("requester_role")
+  currentPlanTier      String   @map("current_plan_tier")
+  currentBillingStatus String   @map("current_billing_status")
+  currentAccessStatus  String   @map("current_access_status")
+  notes                String?
+  source               String   @default("admin_plan")
+  resolvedAt           DateTime? @map("resolved_at")
+  resolvedBy           String?   @map("resolved_by")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantKey, status, createdAt(sort: Desc)], map: "idx_tenant_commercial_requests_tenant_status_created")
+  @@index([tenantKey, requestType, createdAt(sort: Desc)], map: "idx_tenant_commercial_requests_tenant_type_created")
+  @@index([requestedBy, createdAt(sort: Desc)], map: "idx_tenant_commercial_requests_requester_created")
+  @@map("tenant_commercial_requests")
+}
+
 model ConnectorPermission {
   id            String                            @id @default(cuid())
   tenantKey     String                            @default("default")

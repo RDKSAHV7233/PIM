@@ -66,6 +66,7 @@
     "test:integration:ondc-feature-gating": "dotenv -o -e .env -- node apps/api/test/integration/ondc-feature-gating.test.cjs",
     "test:integration:metrics-kpi-trends": "dotenv -o -e .env -- node apps/api/test/integration/metrics-kpi-trends.test.cjs",
     "test:integration:billing-commercial-control": "dotenv -o -e .env -- node apps/api/test/integration/billing-commercial-control.test.cjs",
+    "test:integration:billing-upgrade-request": "dotenv -o -e .env -- node apps/api/test/integration/billing-upgrade-request.test.cjs",
     "test:integration:billing-commercial-notifications": "dotenv -o -e .env -- node apps/api/test/integration/billing-commercial-notifications.test.cjs",
     "test:integration:billing-commercial-tenant-search": "dotenv -o -e .env -- node apps/api/test/integration/billing-commercial-tenant-search.test.cjs",
     "test:integration:billing-commercial-suspension": "dotenv -o -e .env -- node apps/api/test/integration/billing-commercial-suspension.test.cjs",

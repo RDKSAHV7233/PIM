@@ -15,7 +15,8 @@ export interface AuthEmailMessage {
     | "account_unlock"
     | "account_export_ready"
     | "signup_verification"
-    | "commercial_status_notice";
+    | "commercial_status_notice"
+    | "commercial_upgrade_request";
   metadata?: Record<string, unknown>;
 }
 

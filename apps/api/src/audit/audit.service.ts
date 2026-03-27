@@ -249,7 +249,10 @@ export class AuditService {
             'TENANT_ACCESS_RESUMED',
             'TENANT_BILLING_STATUS_SET',
             'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED'
+            'COMMERCIAL_MUTATION_BLOCKED',
+            'COMMERCIAL_UPGRADE_REQUEST_CREATED',
+            'COMMERCIAL_UPGRADE_REQUEST_REUSED',
+            'COMMERCIAL_UPGRADE_REQUEST_LISTED'
           ) THEN 'plan'
         WHEN resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%' THEN 'privacy'
         WHEN resource ILIKE 'auth.%' OR resource = 'auth.step_up' THEN 'auth'
@@ -289,7 +292,10 @@ export class AuditService {
             'TENANT_ACCESS_RESUMED',
             'TENANT_BILLING_STATUS_SET',
             'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED'
+            'COMMERCIAL_MUTATION_BLOCKED',
+            'COMMERCIAL_UPGRADE_REQUEST_CREATED',
+            'COMMERCIAL_UPGRADE_REQUEST_REUSED',
+            'COMMERCIAL_UPGRADE_REQUEST_LISTED'
           )
         )`);
         break;
@@ -323,7 +329,10 @@ export class AuditService {
             'TENANT_ACCESS_RESUMED',
             'TENANT_BILLING_STATUS_SET',
             'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED'
+            'COMMERCIAL_MUTATION_BLOCKED',
+            'COMMERCIAL_UPGRADE_REQUEST_CREATED',
+            'COMMERCIAL_UPGRADE_REQUEST_REUSED',
+            'COMMERCIAL_UPGRADE_REQUEST_LISTED'
           )
           OR resource ILIKE '%account%'
           OR action LIKE 'consent.%'

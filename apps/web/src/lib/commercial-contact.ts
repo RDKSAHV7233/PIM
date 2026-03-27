@@ -44,8 +44,8 @@ export function resolveCommercialContactTarget(
     }
     return {
       href: target.toString(),
-      label: "Request upgrade",
-      helperText: "TEJ will review your current plan and follow up on commercial changes.",
+      label: "Contact TEJ directly",
+      helperText: "Use this if you need immediate commercial help outside the tracked request flow.",
     };
   }
 
@@ -62,8 +62,8 @@ export function resolveCommercialContactTarget(
     ];
     return {
       href: `mailto:${encodeURIComponent(configuredEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`,
-      label: "Request upgrade",
-      helperText: "TEJ will review your current plan and follow up on commercial changes.",
+      label: "Contact TEJ directly",
+      helperText: "Use this if you need immediate commercial help outside the tracked request flow.",
     };
   }
 

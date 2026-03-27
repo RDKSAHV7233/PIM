@@ -1,14 +1,22 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { AuditService } from "../audit/audit.service";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { Public } from "../auth/public.decorator";
+import { CommercialRequestsService } from "./commercial-requests.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
 import { PlanUsageService } from "./plan-usage.service";
-import { PlanProfileSummaryDto, PlanUsageSummaryDto } from "./dto/billing-response.dto";
+import { CreatePlanUpgradeRequestDto } from "./dto/create-plan-upgrade-request.dto";
+import {
+  PlanProfileSummaryDto,
+  PlanUpgradeRequestCreateDto,
+  PlanUpgradeRequestLookupDto,
+  PlanUsageSummaryDto,
+} from "./dto/billing-response.dto";
 import { InternalUpdateTenantCommercialStateDto } from "./dto/internal-update-tenant-commercial-state.dto";
 import { InternalSetTenantPlanTierDto } from "./dto/internal-set-tenant-plan-tier.dto";
+import { ListPlanUpgradeRequestsDto } from "./dto/list-plan-upgrade-requests.dto";
 import { SearchCommercialTenantsDto } from "./dto/search-commercial-tenants.dto";
 import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
 
@@ -23,6 +31,7 @@ export class BillingController {
   constructor(
     private readonly planUsageService: PlanUsageService,
     private readonly auditService: AuditService,
+    private readonly commercialRequestsService: CommercialRequestsService,
     private readonly commercialNotificationsService: CommercialNotificationsService,
   ) {}
 
@@ -39,6 +48,63 @@ export class BillingController {
   @ApiResponse({ status: 200, description: "Tenant plan profile fetched", type: PlanProfileSummaryDto })
   planProfile() {
     return this.planUsageService.getTenantPlanProfile();
+  }
+
+  @Get("upgrade-request")
+  @Roles("admin")
+  @ApiOperation({ summary: "Get current open upgrade request for this tenant" })
+  @ApiResponse({ status: 200, description: "Current open upgrade request fetched", type: PlanUpgradeRequestLookupDto })
+  async upgradeRequest() {
+    const usage = await this.planUsageService.getUsageSummary();
+    return {
+      item: await this.commercialRequestsService.getOpenUpgradeRequestForTenant(usage.profile.tenantKey),
+    };
+  }
+
+  @Post("upgrade-request")
+  @Roles("admin")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Create or reuse an upgrade request for this tenant" })
+  @ApiResponse({ status: 200, description: "Upgrade request created or reused", type: PlanUpgradeRequestCreateDto })
+  async createUpgradeRequest(
+    @Body() dto: CreatePlanUpgradeRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actorId = String(request.pimUserId ?? "system");
+    const actorRole = String(request.pimRole ?? "admin");
+    const usage = await this.planUsageService.getUsageSummary();
+    const result = await this.commercialRequestsService.createOrReuseUpgradeRequest(usage.profile.tenantKey, {
+      requestedBy: actorId,
+      requesterRole: actorRole,
+      currentPlanTier: usage.planTier,
+      currentBillingStatus: usage.billingStatus,
+      currentAccessStatus: usage.accessStatus,
+      notes: dto.notes,
+      source: dto.source,
+    });
+
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: result.created ? "COMMERCIAL_UPGRADE_REQUEST_CREATED" : "COMMERCIAL_UPGRADE_REQUEST_REUSED",
+      resource: "TENANT_COMMERCIAL_REQUEST",
+      resourceId: result.item.id,
+      metadata: {
+        event: result.created ? "commercial_upgrade_request_created" : "commercial_upgrade_request_reused",
+        tenantKey: result.item.tenantKey,
+        currentPlanTier: result.item.currentPlanTier,
+        currentBillingStatus: result.item.currentBillingStatus,
+        currentAccessStatus: result.item.currentAccessStatus,
+        source: result.item.source,
+      },
+    });
+    if (result.created) {
+      await this.commercialNotificationsService.notifyCommercialOpsUpgradeRequest({
+        tenantKey: result.item.tenantKey,
+        request: result.item,
+      });
+    }
+    return result;
   }
 
   @Post("plan-tier")
@@ -63,6 +129,47 @@ export class BillingController {
       },
     });
     throw new ForbiddenException({ error: "COMMERCIAL_MUTATION_INTERNAL_ONLY" });
+  }
+
+  @Public()
+  @Get("internal/upgrade-requests")
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Internal-only upgrade request listing" })
+  async listUpgradeRequestsInternal(
+    @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
+    @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
+    @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Query() query: ListPlanUpgradeRequestsDto,
+  ) {
+    const { actorId, actorRole } = this.requireCommercialOperator(
+      commercialOpsToken,
+      operatorIdHeader,
+      operatorRoleHeader,
+    );
+
+    const items = await this.commercialRequestsService.listUpgradeRequestsInternal({
+      tenantKey: query.tenantKey,
+      status: query.status,
+      limit: query.limit,
+    });
+    await this.auditService.record({
+      actorId,
+      actorRole,
+      action: "COMMERCIAL_UPGRADE_REQUEST_LISTED",
+      resource: "TENANT_COMMERCIAL_REQUEST",
+      resourceId: query.tenantKey ?? "all",
+      metadata: {
+        event: "commercial_upgrade_request_listed",
+        tenantKey: query.tenantKey ?? null,
+        status: query.status ?? null,
+        limit: query.limit ?? null,
+        resultCount: items.length,
+      },
+    });
+    return {
+      items,
+      count: items.length,
+    };
   }
 
   @Public()

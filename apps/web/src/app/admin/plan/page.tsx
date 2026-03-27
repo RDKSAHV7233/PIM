@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
+import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { requestPlanUpgradeAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -141,6 +142,32 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
     };
   }
 
+  return null;
+}
+
+function resolveUpgradeRequestStatusAlert(statusInput: string | undefined) {
+  const status = String(statusInput ?? "").trim().toLowerCase();
+  if (status === "submitted") {
+    return {
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      title: "Upgrade request submitted",
+      body: "TEJ commercial ops has your request. We will review your current plan and follow up on next steps.",
+    };
+  }
+  if (status === "already-open") {
+    return {
+      tone: "border-sky-200 bg-sky-50 text-sky-900",
+      title: "Upgrade request already open",
+      body: "An open upgrade request already exists for this workspace. TEJ commercial ops will continue from the existing request.",
+    };
+  }
+  if (status === "forbidden") {
+    return {
+      tone: "border-amber-200 bg-amber-50 text-amber-900",
+      title: "Upgrade request needs an admin session",
+      body: "Sign in again with an active admin session to submit a commercial change request.",
+    };
+  }
   return null;
 }
 
@@ -305,12 +332,14 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   const signupTrendDays = resolveSignupTrendDays(query.days);
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
   let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
+  let upgradeRequest: Awaited<ReturnType<typeof getBillingUpgradeRequest>>["item"] = null;
   try {
-    [usage, signupTrends] = await Promise.all([
+    [usage, signupTrends, upgradeRequest] = await Promise.all([
       getBillingUsage({ role, authHeader }),
       role === "admin"
         ? getKpiTrends({ days: signupTrendDays }, { role, authHeader })
         : Promise.resolve(null),
+      role === "admin" ? getBillingUpgradeRequest({ role, authHeader }).then((response) => response.item) : Promise.resolve(null),
     ]);
   } catch (error: unknown) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
@@ -357,6 +386,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     source: "admin_plan",
   });
   const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);
+  const upgradeRequestStatusAlert = resolveUpgradeRequestStatusAlert(query.requestStatus);
 
   return (
     <div className="space-y-5">
@@ -686,22 +716,70 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}
               </div>
             </div>
+            {upgradeRequestStatusAlert ? (
+              <div className={`rounded-md border px-3 py-3 text-sm ${upgradeRequestStatusAlert.tone}`}>
+                <div className="font-semibold">{upgradeRequestStatusAlert.title}</div>
+                <div className="mt-1">{upgradeRequestStatusAlert.body}</div>
+              </div>
+            ) : null}
+            {upgradeRequest ? (
+              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950">
+                <div className="font-semibold">Upgrade request pending</div>
+                <div className="mt-1">
+                  Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
+                  {upgradeRequest.requestedBy}. TEJ commercial ops is reviewing this request.
+                </div>
+                {upgradeRequest.notes ? (
+                  <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">
+                    <div className="font-semibold uppercase tracking-wide text-sky-700">Request notes</div>
+                    <div className="mt-1 whitespace-pre-wrap">{upgradeRequest.notes}</div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <form action={requestPlanUpgradeAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <input type="hidden" name="source" value="admin_plan" />
+                <input type="hidden" name="days" value={String(signupTrendDays)} />
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="upgrade-request-notes">
+                    Request notes
+                  </label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Share what changed so TEJ commercial ops can review the right plan and timeline.
+                  </p>
+                  <textarea
+                    id="upgrade-request-notes"
+                    name="notes"
+                    rows={4}
+                    maxLength={1000}
+                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    placeholder="Example: We need more users, more submission volume, and a paid plan review before the trial ends."
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="submit"
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                  >
+                    Request upgrade
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    TEJ commercial ops will review your request and follow up with the right plan change.
+                  </p>
+                </div>
+              </form>
+            )}
             {commercialContact ? (
               <div className="flex flex-wrap items-center gap-3">
                 <a
                   href={commercialContact.href}
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   {commercialContact.label}
                 </a>
                 <p className="text-xs text-slate-500">{commercialContact.helperText}</p>
               </div>
-            ) : (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                Commercial contact is not configured for this environment yet. Ask TEJ ops to set
-                `PIM_COMMERCIAL_CONTACT_URL` or `PIM_COMMERCIAL_CONTACT_EMAIL`.
-              </div>
-            )}
+            ) : null}
           </div>
         </Card>
       ) : null}

@@ -249,6 +249,37 @@ paths:
                 $ref: "#/components/schemas/PlanProfileSummaryDto"
       summary: Get current tenant plan profile
       tags: *a4
+  /api/v1/billing/upgrade-request:
+    get:
+      operationId: BillingController_upgradeRequest
+      parameters: []
+      responses:
+        "200":
+          description: Current open upgrade request fetched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanUpgradeRequestLookupDto"
+      summary: Get current open upgrade request for this tenant
+      tags: *a4
+    post:
+      operationId: BillingController_createUpgradeRequest
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanUpgradeRequestDto"
+      responses:
+        "200":
+          description: Upgrade request created or reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanUpgradeRequestCreateDto"
+      summary: Create or reuse an upgrade request for this tenant
+      tags: *a4
   /api/v1/taxonomy/categories:
     get:
       operationId: TaxonomyController_listCategories
@@ -2398,6 +2429,123 @@ components:
         - connectorsInstallations
         - connectorAccounts
         - profile
+    PlanUpgradeRequestSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          example: ckreq_123
+        tenantKey:
+          type: string
+          example: tej-demo
+        workspaceSlug:
+          type: object
+          example: tej-demo
+          nullable: true
+        displayName:
+          type: object
+          example: TEJ Demo
+          nullable: true
+        requestType:
+          type: string
+          example: upgrade
+        status:
+          type: string
+          enum:
+            - open
+            - acknowledged
+            - resolved
+            - cancelled
+          example: open
+        requestedBy:
+          type: string
+          example: admin@example.com
+        requesterRole:
+          type: string
+          example: admin
+        currentPlanTier:
+          type: string
+          enum:
+            - STARTER
+            - GROWTH
+            - ENTERPRISE
+          example: STARTER
+        currentBillingStatus:
+          type: string
+          enum:
+            - trial
+            - active_paid
+            - past_due
+            - cancelled
+          example: trial
+        currentAccessStatus:
+          type: string
+          enum:
+            - active
+            - suspended
+          example: active
+        notes:
+          type: object
+          example: We need more users and submission capacity.
+          nullable: true
+        source:
+          type: string
+          example: admin_plan
+        resolvedAt:
+          type: object
+          example: null
+          nullable: true
+        resolvedBy:
+          type: object
+          example: null
+          nullable: true
+        createdAt:
+          type: string
+          example: 2026-03-27T08:30:00.000Z
+        updatedAt:
+          type: string
+          example: 2026-03-27T08:30:00.000Z
+      required:
+        - id
+        - tenantKey
+        - workspaceSlug
+        - displayName
+        - requestType
+        - status
+        - requestedBy
+        - requesterRole
+        - currentPlanTier
+        - currentBillingStatus
+        - currentAccessStatus
+        - notes
+        - source
+        - resolvedAt
+        - resolvedBy
+        - createdAt
+        - updatedAt
+    PlanUpgradeRequestLookupDto:
+      type: object
+      properties:
+        item:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/PlanUpgradeRequestSummaryDto"
+      required:
+        - item
+    CreatePlanUpgradeRequestDto:
+      type: object
+      properties: {}
+    PlanUpgradeRequestCreateDto:
+      type: object
+      properties:
+        created:
+          type: boolean
+          example: true
+        item:
+          $ref: "#/components/schemas/PlanUpgradeRequestSummaryDto"
+      required:
+        - created
+        - item
     CreateCategoryDto:
       type: object
       properties: {}

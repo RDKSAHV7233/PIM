@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AuthEmailService } from "../auth/auth-email.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { type CommercialRequestSummary } from "./commercial-requests.service";
 import { type PlanProfileSummary } from "./plan-usage.service";
 
 type CommercialNotificationEvent =
@@ -76,6 +77,75 @@ export class CommercialNotificationsService {
     );
 
     return { recipientCount: recipients.length };
+  }
+
+  async notifyCommercialOpsUpgradeRequest(input: {
+    tenantKey: string;
+    request: CommercialRequestSummary;
+  }): Promise<{ recipientCount: number }> {
+    const contactEmail = String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim().toLowerCase();
+    if (!contactEmail) {
+      return { recipientCount: 0 };
+    }
+
+    const workspaceSlug = String(input.request.workspaceSlug ?? input.tenantKey).trim() || input.tenantKey;
+    const displayName = String(input.request.displayName ?? workspaceSlug).trim() || workspaceSlug;
+    const subject = `Upgrade request: ${displayName}`;
+    const textLines = [
+      `${input.request.requestedBy} requested a commercial plan review.`,
+      "",
+      `Workspace: ${displayName}`,
+      `Workspace slug: ${workspaceSlug}`,
+      `Tenant key: ${input.tenantKey}`,
+      `Current plan tier: ${input.request.currentPlanTier}`,
+      `Current billing status: ${input.request.currentBillingStatus}`,
+      `Current access status: ${input.request.currentAccessStatus}`,
+      `Requester role: ${input.request.requesterRole}`,
+      `Source: ${input.request.source}`,
+    ];
+    if (input.request.notes) {
+      textLines.push(`Notes: ${input.request.notes}`);
+    }
+    textLines.push("");
+    textLines.push("Review this request in the TEJ commercial workflow.");
+
+    const html = [
+      `<p>${this.escapeHtml(`${input.request.requestedBy} requested a commercial plan review.`)}</p>`,
+      "<table>",
+      `<tr><td><strong>Workspace</strong></td><td>${this.escapeHtml(displayName)}</td></tr>`,
+      `<tr><td><strong>Workspace slug</strong></td><td>${this.escapeHtml(workspaceSlug)}</td></tr>`,
+      `<tr><td><strong>Tenant key</strong></td><td>${this.escapeHtml(input.tenantKey)}</td></tr>`,
+      `<tr><td><strong>Current plan tier</strong></td><td>${this.escapeHtml(input.request.currentPlanTier)}</td></tr>`,
+      `<tr><td><strong>Current billing status</strong></td><td>${this.escapeHtml(input.request.currentBillingStatus)}</td></tr>`,
+      `<tr><td><strong>Current access status</strong></td><td>${this.escapeHtml(input.request.currentAccessStatus)}</td></tr>`,
+      `<tr><td><strong>Requester</strong></td><td>${this.escapeHtml(input.request.requestedBy)}</td></tr>`,
+      `<tr><td><strong>Requester role</strong></td><td>${this.escapeHtml(input.request.requesterRole)}</td></tr>`,
+      `<tr><td><strong>Source</strong></td><td>${this.escapeHtml(input.request.source)}</td></tr>`,
+      input.request.notes
+        ? `<tr><td><strong>Notes</strong></td><td>${this.escapeHtml(input.request.notes)}</td></tr>`
+        : "",
+      "</table>",
+      "<p>Review this request in the TEJ commercial workflow.</p>",
+    ].join("");
+
+    await this.authEmailService.send({
+      to: contactEmail,
+      subject,
+      text: textLines.join("\n"),
+      html,
+      category: "commercial_upgrade_request",
+      metadata: {
+        event: "commercial_upgrade_request_created",
+        tenantKey: input.tenantKey,
+        requestId: input.request.id,
+        workspaceSlug,
+        requestedBy: input.request.requestedBy,
+        currentPlanTier: input.request.currentPlanTier,
+        currentBillingStatus: input.request.currentBillingStatus,
+        currentAccessStatus: input.request.currentAccessStatus,
+      },
+    });
+    return { recipientCount: 1 };
   }
 
   private async resolveRecipients(tenantKey: string, billingContactEmail: string | null): Promise<string[]> {

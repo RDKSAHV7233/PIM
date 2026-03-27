@@ -1,0 +1,23 @@
+import { Transform } from "class-transformer";
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+
+export class ListPlanUpgradeRequestsDto {
+  @IsOptional()
+  @IsString()
+  tenantKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(["open", "acknowledged", "resolved", "cancelled"])
+  status?: "open" | "acknowledged" | "resolved" | "cancelled";
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  })
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
