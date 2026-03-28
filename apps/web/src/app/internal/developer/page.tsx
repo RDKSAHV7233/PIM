@@ -18,6 +18,7 @@ import { updateUpgradeRequestStatusAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 const REQUEST_STATUS_FILTERS = ["all", "open", "acknowledged", "resolved", "cancelled"] as const;
+const REQUEST_SLA_FILTERS = ["all", "attention"] as const;
 
 interface DeveloperPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -30,6 +31,13 @@ function normalizeRequestStatusFilter(value: string | undefined): (typeof REQUES
     : "open";
 }
 
+function normalizeRequestSlaFilter(value: string | undefined): (typeof REQUEST_SLA_FILTERS)[number] {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return REQUEST_SLA_FILTERS.includes(normalized as (typeof REQUEST_SLA_FILTERS)[number])
+    ? (normalized as (typeof REQUEST_SLA_FILTERS)[number])
+    : "all";
+}
+
 function normalizeText(value: string | undefined) {
   return String(value ?? "").trim();
 }
@@ -38,6 +46,7 @@ function buildDeveloperHref(input: {
   tenantQuery?: string;
   tenantKey?: string;
   requestStatusFilter?: string;
+  requestSlaFilter?: string;
   actionStatus?: string;
 }) {
   const search = new URLSearchParams();
@@ -50,6 +59,9 @@ function buildDeveloperHref(input: {
   if (input.requestStatusFilter) {
     search.set("requestStatusFilter", input.requestStatusFilter);
   }
+  if (input.requestSlaFilter) {
+    search.set("requestSlaFilter", input.requestSlaFilter);
+  }
   if (input.actionStatus) {
     search.set("actionStatus", input.actionStatus);
   }
@@ -60,6 +72,7 @@ function buildDeveloperHref(input: {
 function buildExportHref(input: {
   tenantKey?: string;
   requestStatusFilter?: string;
+  requestSlaFilter?: string;
 }) {
   const search = new URLSearchParams();
   if (input.tenantKey) {
@@ -67,6 +80,9 @@ function buildExportHref(input: {
   }
   if (input.requestStatusFilter && input.requestStatusFilter !== "all") {
     search.set("status", input.requestStatusFilter);
+  }
+  if (input.requestSlaFilter && input.requestSlaFilter !== "all") {
+    search.set("sla", input.requestSlaFilter);
   }
   const query = search.toString();
   return query ? `/api/internal/commercial-requests/export?${query}` : "/api/internal/commercial-requests/export";
@@ -312,6 +328,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   const tenantQuery = normalizeText(query.tenantQuery);
   const tenantKey = normalizeText(query.tenantKey);
   const requestStatusFilter = normalizeRequestStatusFilter(query.requestStatusFilter);
+  const requestSlaFilter = normalizeRequestSlaFilter(query.requestSlaFilter);
   const actionAlert = resolveActionAlert(query.actionStatus);
   const tokenConfigured = String(process.env.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim().length > 0;
 
@@ -343,6 +360,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           {
             tenantKey: tenantKey || undefined,
             status: requestStatusFilter === "all" ? undefined : requestStatusFilter,
+            sla: requestSlaFilter,
             limit: 25,
           },
           requestOptions,
@@ -491,11 +509,26 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   >
                     Cancelled
                   </Link>
+                  <Link
+                    className={`rounded-md border px-2 py-1 font-medium ${
+                      requestSlaFilter === "attention"
+                        ? "border-amber-300 bg-amber-100 text-amber-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                    href={buildDeveloperHref({
+                      tenantQuery,
+                      tenantKey,
+                      requestStatusFilter: "all",
+                      requestSlaFilter: "attention",
+                    })}
+                  >
+                    Needs attention
+                  </Link>
                 </div>
               </div>
             </div>
           ) : null}
-          <form action="/internal/developer" className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1.6fr)_220px_auto] md:items-end">
+          <form action="/internal/developer" className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1.4fr)_220px_200px_auto] md:items-end">
             <div>
               <label htmlFor="tenant-query" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Search workspaces
@@ -522,6 +555,15 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 <option value="cancelled">Cancelled</option>
               </Select>
             </div>
+            <div>
+              <label htmlFor="request-sla-filter" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Queue focus
+              </label>
+              <Select id="request-sla-filter" name="requestSlaFilter" defaultValue={requestSlaFilter}>
+                <option value="all">All queue items</option>
+                <option value="attention">Needs attention</option>
+              </Select>
+            </div>
             <div className="flex gap-2">
               <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">
                 Filter queue
@@ -533,12 +575,12 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 Export tenants CSV
               </Link>
               <Link
-                href={buildExportHref({ tenantKey, requestStatusFilter })}
+                href={buildExportHref({ tenantKey, requestStatusFilter, requestSlaFilter })}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Export CSV
               </Link>
-              {(tenantQuery || tenantKey || requestStatusFilter !== "open") ? (
+              {(tenantQuery || tenantKey || requestStatusFilter !== "open" || requestSlaFilter !== "all") ? (
                 <Link href="/internal/developer" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                   Reset
                 </Link>
@@ -599,6 +641,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                           tenantQuery,
                           tenantKey: result.tenantKey,
                           requestStatusFilter,
+                          requestSlaFilter,
                         })}
                       >
                         View requests
@@ -619,6 +662,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Queue scope</div>
                 <div className="mt-1 text-sm text-slate-700">
                   {tenantKey ? `Showing requests for ${tenantKey}.` : "Showing commercial requests across all tenants."}
+                  {requestSlaFilter === "attention" ? " Attention view only." : ""}
                 </div>
               </div>
               {tenantKey ? (
@@ -626,6 +670,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   href={buildDeveloperHref({
                     tenantQuery,
                     requestStatusFilter,
+                    requestSlaFilter,
                   })}
                   className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
@@ -773,6 +818,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                       <input type="hidden" name="tenantQuery" value={tenantQuery} />
                       <input type="hidden" name="tenantKey" value={tenantKey} />
                       <input type="hidden" name="requestStatusFilter" value={requestStatusFilter} />
+                      <input type="hidden" name="requestSlaFilter" value={requestSlaFilter} />
                       <button
                         type="submit"
                         className={`rounded-md px-3 py-2 text-sm font-medium ${

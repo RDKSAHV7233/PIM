@@ -100,13 +100,14 @@ export function getCommercialOpsRequestOptions(
 }
 
 export async function listInternalUpgradeRequests(
-  query: { tenantKey?: string; status?: string; limit?: number },
+  query: { tenantKey?: string; status?: string; sla?: "attention" | "all"; limit?: number },
   options: ApiRequestOptions,
 ) {
   return fetchJson<CommercialRequestListResponse>(
     `/billing/internal/upgrade-requests${buildQueryString({
       tenantKey: query.tenantKey,
       status: query.status,
+      sla: query.sla && query.sla !== "all" ? query.sla : undefined,
       limit: query.limit,
     })}`,
     undefined,

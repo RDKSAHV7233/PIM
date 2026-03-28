@@ -11,6 +11,7 @@ function buildReturnTo(formData: FormData) {
   const tenantQuery = String(formData.get("tenantQuery") ?? "").trim();
   const tenantKey = String(formData.get("tenantKey") ?? "").trim();
   const requestStatusFilter = String(formData.get("requestStatusFilter") ?? "").trim();
+  const requestSlaFilter = String(formData.get("requestSlaFilter") ?? "").trim();
   if (tenantQuery) {
     url.searchParams.set("tenantQuery", tenantQuery);
   }
@@ -19,6 +20,9 @@ function buildReturnTo(formData: FormData) {
   }
   if (requestStatusFilter) {
     url.searchParams.set("requestStatusFilter", requestStatusFilter);
+  }
+  if (requestSlaFilter) {
+    url.searchParams.set("requestSlaFilter", requestSlaFilter);
   }
   return url;
 }

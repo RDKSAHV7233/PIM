@@ -225,6 +225,7 @@ export class BillingController {
     const items = await this.commercialRequestsService.listUpgradeRequestsInternal({
       tenantKey: query.tenantKey,
       status: query.status,
+      sla: query.sla,
       limit: query.limit,
     });
     await this.auditService.record({
@@ -237,6 +238,7 @@ export class BillingController {
         event: "commercial_upgrade_request_listed",
         tenantKey: query.tenantKey ?? null,
         status: query.status ?? null,
+        sla: query.sla ?? null,
         limit: query.limit ?? null,
         resultCount: items.length,
       },
@@ -269,6 +271,7 @@ export class BillingController {
     const csv = await this.commercialRequestsService.exportUpgradeRequestsCsvInternal({
       tenantKey: query.tenantKey,
       status: query.status,
+      sla: query.sla,
       limit: query.limit ?? 250,
     });
     await this.auditService.record({
@@ -281,6 +284,7 @@ export class BillingController {
         event: "commercial_upgrade_request_exported",
         tenantKey: query.tenantKey ?? null,
         status: query.status ?? null,
+        sla: query.sla ?? null,
         limit: query.limit ?? 250,
       },
     });

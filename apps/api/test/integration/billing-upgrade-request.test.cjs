@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { spawn } = require("node:child_process");
+const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
@@ -149,6 +150,10 @@ async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
+  const databaseUrl = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required for billing upgrade request integration test.");
+  }
 
   const runId = Date.now().toString();
   const apiPort = 6660 + Math.floor(Math.random() * 120);
@@ -160,6 +165,11 @@ async function run() {
   const displayName = `Upgrade Workspace ${runId}`;
   const adminUser = `upgrade-admin-${runId}@example.com`;
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-upgrade-request-email-"));
+  const prisma = new PrismaClient({
+    datasources: {
+      db: { url: databaseUrl },
+    },
+  });
 
   const env = {
     ...process.env,
@@ -565,6 +575,73 @@ async function run() {
       `expected resolved status email payload=${JSON.stringify(statusEmails)}`,
     );
 
+    const followUpRequestId = String(createAfterResolve.payload?.item?.id ?? "");
+    assert(followUpRequestId.length > 5, `expected follow-up request id payload=${JSON.stringify(createAfterResolve.payload)}`);
+    await prisma.$executeRaw`
+      UPDATE "tenant_commercial_requests"
+      SET "created_at" = NOW() - INTERVAL '2 days',
+          "updated_at" = NOW()
+      WHERE "id" = ${followUpRequestId}
+    `;
+
+    const attentionList = await apiRequest(
+      baseUrl,
+      "GET",
+      `/billing/internal/upgrade-requests?tenantKey=${encodeURIComponent(tenantId)}&sla=attention&limit=10`,
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(attentionList, 200, "attention-filtered upgrade request listing");
+    assert(
+      Number(attentionList.payload?.count ?? 0) === 1 &&
+        String(attentionList.payload?.items?.[0]?.id ?? "") === followUpRequestId,
+      `expected only aged active request in attention listing payload=${JSON.stringify(attentionList.payload)}`,
+    );
+
+    const attentionExport = await apiRequest(
+      baseUrl,
+      "GET",
+      `/billing/internal/upgrade-requests/export?tenantKey=${encodeURIComponent(tenantId)}&sla=attention&limit=10`,
+      null,
+      undefined,
+      {
+        Accept: "text/csv",
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(attentionExport, 200, "attention-filtered upgrade request export");
+    const attentionCsv = String(attentionExport.payload ?? "");
+    assert(
+      attentionCsv.includes(`"${followUpRequestId}"`) && !attentionCsv.includes(`"${requestId}"`),
+      `expected only aged active request in attention export payload=${attentionCsv}`,
+    );
+
+    const overviewAfterAging = await apiRequest(
+      baseUrl,
+      "GET",
+      "/billing/internal/overview",
+      null,
+      undefined,
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assertStatus(overviewAfterAging, 200, "commercial overview after aging request");
+    assert(
+      Number(overviewAfterAging.payload?.requestOverview?.staleOpenRequests ?? 0) === Number(baseRequestOverview.staleOpenRequests ?? 0) + 1 &&
+        Number(overviewAfterAging.payload?.requestOverview?.attentionRequiredRequests ?? 0) === Number(baseRequestOverview.attentionRequiredRequests ?? 0) + 1,
+      `expected overview to reflect attention queue request payload=${JSON.stringify(overviewAfterAging.payload)}`,
+    );
+
     console.log(
       JSON.stringify(
         {
@@ -580,6 +657,8 @@ async function run() {
             "internal_ops_can_list_upgrade_requests",
             "internal_ops_can_export_upgrade_requests_as_csv",
             "internal_ops_overview_reflects_request_lifecycle",
+            "internal_ops_can_filter_attention_queue_requests",
+            "attention_queue_export_only_includes_stale_requests",
             "upgrade_request_notifies_commercial_contact_email",
             "upgrade_request_status_changes_notify_customer_recipients",
           ],
@@ -608,6 +687,7 @@ async function run() {
     fs.rmSync(outboxDir, { recursive: true, force: true });
     apiProcess.kill("SIGTERM");
     await new Promise((resolve) => apiProcess.once("exit", resolve));
+    await prisma.$disconnect();
   }
 }
 

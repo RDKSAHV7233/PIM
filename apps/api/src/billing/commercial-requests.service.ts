@@ -7,6 +7,7 @@ const COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged", "resolved", "cancel
 const ACTIVE_COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged"] as const;
 
 type CommercialRequestStatus = (typeof COMMERCIAL_REQUEST_STATUSES)[number];
+type CommercialRequestSlaFilter = "attention";
 
 export interface CommercialRequestSummary {
   id: string;
@@ -69,6 +70,7 @@ export interface UpgradeRequestOverview {
 interface ExportUpgradeRequestsCsvInput {
   tenantKey?: string;
   status?: string;
+  sla?: CommercialRequestSlaFilter;
   limit?: number;
 }
 
@@ -163,12 +165,14 @@ export class CommercialRequestsService {
   async listUpgradeRequestsInternal(input?: {
     tenantKey?: string;
     status?: string;
+    sla?: string;
     limit?: number;
   }): Promise<CommercialRequestSummary[]> {
     const normalizedLimit = Number.isFinite(input?.limit) ? Math.trunc(Number(input?.limit)) : 25;
     const limit = Math.max(1, Math.min(normalizedLimit || 25, 50));
     const tenantKey = input?.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
     const status = input?.status ? this.normalizeStatus(input.status) : undefined;
+    const sla = input?.sla ? this.normalizeSla(input.sla) : undefined;
 
     // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRaw<CommercialRequestListRow[]>(Prisma.sql`
@@ -196,6 +200,16 @@ export class CommercialRequestsService {
       WHERE req."requestType" = 'upgrade'
         ${tenantKey ? Prisma.sql`AND req."tenantKey" = ${tenantKey}` : Prisma.empty}
         ${status ? Prisma.sql`AND req."status" = ${status}` : Prisma.empty}
+        ${
+          sla === "attention"
+            ? Prisma.sql`
+                AND (
+                  (req."status" = 'open' AND req."created_at" < NOW() - INTERVAL '1 day')
+                  OR (req."status" = 'acknowledged' AND req."created_at" < NOW() - INTERVAL '3 days')
+                )
+              `
+            : Prisma.empty
+        }
       ORDER BY req."created_at" DESC, req."id" DESC
       LIMIT ${limit}
     `);
@@ -300,6 +314,7 @@ export class CommercialRequestsService {
     const items = await this.listUpgradeRequestsInternal({
       tenantKey: input?.tenantKey,
       status: input?.status,
+      sla: input?.sla,
       limit: input?.limit ?? 250,
     });
     const lines = [
@@ -411,6 +426,14 @@ export class CommercialRequestsService {
       return normalized as CommercialRequestStatus;
     }
     return "open";
+  }
+
+  private normalizeSla(value: string | null | undefined): CommercialRequestSlaFilter | undefined {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (normalized === "attention") {
+      return "attention";
+    }
+    return undefined;
   }
 
   private normalizeOptionalText(value: string | null | undefined, maxLength: number): string | null {

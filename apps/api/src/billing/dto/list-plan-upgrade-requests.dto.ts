@@ -12,6 +12,11 @@ export class ListPlanUpgradeRequestsDto {
   status?: "open" | "acknowledged" | "resolved" | "cancelled";
 
   @IsOptional()
+  @IsString()
+  @IsIn(["attention"])
+  sla?: "attention";
+
+  @IsOptional()
   @Transform(({ value }) => {
     const parsed = Number.parseInt(String(value ?? "").trim(), 10);
     return Number.isFinite(parsed) ? parsed : undefined;

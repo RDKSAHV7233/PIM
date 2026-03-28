@@ -88,6 +88,7 @@ function run() {
     pageSource.includes("Commercial ops request queue") &&
       pageSource.includes("Search workspaces") &&
       pageSource.includes("Request filter") &&
+      pageSource.includes("Queue focus") &&
       pageSource.includes("View requests") &&
       pageSource.includes("No commercial requests found for this filter."),
     "Internal commercial ops page must expose search and queue controls.",
