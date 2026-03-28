@@ -28,6 +28,7 @@ const SUITES = {
   ],
   publish: [
     { label: "UI/UX: channels overview route contract", command: "node", args: ["apps/web/test/integration/channels-overview-route-contract.test.cjs"] },
+    { label: "UI/UX: channels submissions route contract", command: "node", args: ["apps/web/test/integration/channels-submissions-route-contract.test.cjs"] },
     { label: "UI/UX: mapping canonical", command: "node", args: ["apps/web/test/integration/mapping-canonical-ui.test.cjs"] },
     { label: "UI/UX: mapping structured editor", command: "node", args: ["apps/web/test/integration/mapping-structured-editor.test.cjs"] },
     { label: "UI/UX: mapping editor component", command: "node", args: ["apps/web/test/integration/mapping-editor-component.test.cjs"] },
