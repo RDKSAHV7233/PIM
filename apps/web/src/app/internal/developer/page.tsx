@@ -241,6 +241,23 @@ function formatDateValue(value: string | null | undefined) {
   return date.toLocaleDateString("en-IN");
 }
 
+function formatDateTimeValue(value: string | null | undefined) {
+  if (!value) {
+    return "None right now";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "None right now";
+  }
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function describeRequestAge(value: string) {
   const createdAt = new Date(value);
   if (Number.isNaN(createdAt.getTime())) {
@@ -387,13 +404,18 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           </p>
           {overview ? (
             <div className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
                 <OverviewMetric label="Tenants" value={overview.tenantOverview.totalTenants} />
                 <OverviewMetric label="Trial" value={overview.tenantOverview.billingStatusCounts.trial} tone="text-blue-900" />
                 <OverviewMetric label="Paid" value={overview.tenantOverview.billingStatusCounts.activePaid} tone="text-emerald-900" />
                 <OverviewMetric label="Past due" value={overview.tenantOverview.billingStatusCounts.pastDue} tone="text-amber-900" />
                 <OverviewMetric label="Suspended" value={overview.tenantOverview.accessStatusCounts.suspended} tone="text-rose-900" />
                 <OverviewMetric label="Active queue" value={overview.requestOverview.activeRequests} tone="text-sky-900" />
+                <OverviewMetric
+                  label="Needs attention"
+                  value={overview.requestOverview.attentionRequiredRequests}
+                  tone={overview.requestOverview.attentionRequiredRequests > 0 ? "text-amber-900" : "text-emerald-900"}
+                />
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 <div>
@@ -407,6 +429,26 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 </div>
                 <div className="mt-1">
                   Last 7 days: {overview.requestOverview.recentRequests} new requests, {overview.requestOverview.recentResolvedRequests} resolved
+                </div>
+                <div
+                  className={`mt-3 rounded-md border px-3 py-2 ${
+                    overview.requestOverview.attentionRequiredRequests > 0
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  }`}
+                >
+                  <div className="font-semibold">Queue SLA</div>
+                  <div className="mt-1">
+                    {overview.requestOverview.attentionRequiredRequests > 0
+                      ? `${overview.requestOverview.attentionRequiredRequests} request${overview.requestOverview.attentionRequiredRequests === 1 ? "" : "s"} need follow-up. ${overview.requestOverview.staleOpenRequests} open older than 1 day, ${overview.requestOverview.staleAcknowledgedRequests} acknowledged older than 3 days.`
+                      : "No stale commercial requests right now."}
+                  </div>
+                  <div className="mt-1">
+                    Oldest active request:{" "}
+                    {overview.requestOverview.oldestActiveRequestCreatedAt
+                      ? `${formatDateTimeValue(overview.requestOverview.oldestActiveRequestCreatedAt)} (${describeRequestAge(overview.requestOverview.oldestActiveRequestCreatedAt).label})`
+                      : "None right now."}
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link

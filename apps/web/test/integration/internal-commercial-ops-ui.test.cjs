@@ -58,9 +58,12 @@ function run() {
       pageSource.includes("Past due") &&
       pageSource.includes("Suspended") &&
       pageSource.includes("Active queue") &&
+      pageSource.includes("Needs attention") &&
       pageSource.includes("Workspace activity:") &&
       pageSource.includes("Request queue:") &&
       pageSource.includes("Last 7 days:") &&
+      pageSource.includes("Queue SLA") &&
+      pageSource.includes("Oldest active request:") &&
       pageSource.includes("Open queue") &&
       pageSource.includes("Acknowledged") &&
       pageSource.includes("Resolved") &&

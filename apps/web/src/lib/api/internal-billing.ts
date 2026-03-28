@@ -55,6 +55,10 @@ export interface CommercialOverviewResponse {
     cancelledRequests: number;
     recentRequests: number;
     recentResolvedRequests: number;
+    staleOpenRequests: number;
+    staleAcknowledgedRequests: number;
+    attentionRequiredRequests: number;
+    oldestActiveRequestCreatedAt: string | null;
   };
 }
 

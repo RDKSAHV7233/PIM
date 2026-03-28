@@ -240,6 +240,12 @@ async function run() {
     const baseTenantOverview = initialOverview.payload?.tenantOverview;
     assert(baseRequestOverview, `expected request overview payload=${JSON.stringify(initialOverview.payload)}`);
     assert(baseTenantOverview, `expected tenant overview payload=${JSON.stringify(initialOverview.payload)}`);
+    assert(
+      Number.isFinite(Number(baseRequestOverview.staleOpenRequests ?? Number.NaN)) &&
+        Number.isFinite(Number(baseRequestOverview.staleAcknowledgedRequests ?? Number.NaN)) &&
+        Number.isFinite(Number(baseRequestOverview.attentionRequiredRequests ?? Number.NaN)),
+      `expected queue SLA metrics on overview payload=${JSON.stringify(initialOverview.payload)}`,
+    );
 
     const createRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
       notes: "We need more users and a paid-plan review before trial end.",
@@ -291,8 +297,15 @@ async function run() {
       Number(overviewAfterCreate.payload?.requestOverview?.totalRequests ?? 0) === Number(baseRequestOverview.totalRequests ?? 0) + 1 &&
         Number(overviewAfterCreate.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) + 1 &&
         Number(overviewAfterCreate.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1 &&
-        Number(overviewAfterCreate.payload?.requestOverview?.recentRequests ?? 0) === Number(baseRequestOverview.recentRequests ?? 0) + 1,
+        Number(overviewAfterCreate.payload?.requestOverview?.recentRequests ?? 0) === Number(baseRequestOverview.recentRequests ?? 0) + 1 &&
+        Number(overviewAfterCreate.payload?.requestOverview?.staleOpenRequests ?? 0) === Number(baseRequestOverview.staleOpenRequests ?? 0) &&
+        Number(overviewAfterCreate.payload?.requestOverview?.staleAcknowledgedRequests ?? 0) === Number(baseRequestOverview.staleAcknowledgedRequests ?? 0) &&
+        Number(overviewAfterCreate.payload?.requestOverview?.attentionRequiredRequests ?? 0) === Number(baseRequestOverview.attentionRequiredRequests ?? 0),
       `expected overview to reflect new open request payload=${JSON.stringify(overviewAfterCreate.payload)}`,
+    );
+    assert(
+      String(overviewAfterCreate.payload?.requestOverview?.oldestActiveRequestCreatedAt ?? "").length > 10,
+      `expected oldest active request timestamp after create payload=${JSON.stringify(overviewAfterCreate.payload)}`,
     );
 
     const secondRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
@@ -400,8 +413,15 @@ async function run() {
     assert(
       Number(overviewAfterAcknowledge.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) &&
         Number(overviewAfterAcknowledge.payload?.requestOverview?.acknowledgedRequests ?? 0) === Number(baseRequestOverview.acknowledgedRequests ?? 0) + 1 &&
-        Number(overviewAfterAcknowledge.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1,
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1 &&
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.staleOpenRequests ?? 0) === Number(baseRequestOverview.staleOpenRequests ?? 0) &&
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.staleAcknowledgedRequests ?? 0) === Number(baseRequestOverview.staleAcknowledgedRequests ?? 0) &&
+        Number(overviewAfterAcknowledge.payload?.requestOverview?.attentionRequiredRequests ?? 0) === Number(baseRequestOverview.attentionRequiredRequests ?? 0),
       `expected overview to reflect acknowledged request payload=${JSON.stringify(overviewAfterAcknowledge.payload)}`,
+    );
+    assert(
+      String(overviewAfterAcknowledge.payload?.requestOverview?.oldestActiveRequestCreatedAt ?? "").length > 10,
+      `expected oldest active request timestamp after acknowledge payload=${JSON.stringify(overviewAfterAcknowledge.payload)}`,
     );
 
     const lookupAfterAcknowledge = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
@@ -464,7 +484,8 @@ async function run() {
       Number(overviewAfterResolved.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) &&
         Number(overviewAfterResolved.payload?.requestOverview?.resolvedRequests ?? 0) === Number(baseRequestOverview.resolvedRequests ?? 0) + 1 &&
         Number(overviewAfterResolved.payload?.requestOverview?.recentResolvedRequests ?? 0) ===
-          Number(baseRequestOverview.recentResolvedRequests ?? 0) + 1,
+          Number(baseRequestOverview.recentResolvedRequests ?? 0) + 1 &&
+        Number(overviewAfterResolved.payload?.requestOverview?.attentionRequiredRequests ?? 0) === Number(baseRequestOverview.attentionRequiredRequests ?? 0),
       `expected overview to reflect resolved request payload=${JSON.stringify(overviewAfterResolved.payload)}`,
     );
 
@@ -503,8 +524,15 @@ async function run() {
       Number(overviewAfterReopen.payload?.requestOverview?.totalRequests ?? 0) === Number(baseRequestOverview.totalRequests ?? 0) + 2 &&
         Number(overviewAfterReopen.payload?.requestOverview?.openRequests ?? 0) === Number(baseRequestOverview.openRequests ?? 0) + 1 &&
         Number(overviewAfterReopen.payload?.requestOverview?.activeRequests ?? 0) === Number(baseRequestOverview.activeRequests ?? 0) + 1 &&
-        Number(overviewAfterReopen.payload?.requestOverview?.resolvedRequests ?? 0) === Number(baseRequestOverview.resolvedRequests ?? 0) + 1,
+        Number(overviewAfterReopen.payload?.requestOverview?.resolvedRequests ?? 0) === Number(baseRequestOverview.resolvedRequests ?? 0) + 1 &&
+        Number(overviewAfterReopen.payload?.requestOverview?.staleOpenRequests ?? 0) === Number(baseRequestOverview.staleOpenRequests ?? 0) &&
+        Number(overviewAfterReopen.payload?.requestOverview?.staleAcknowledgedRequests ?? 0) === Number(baseRequestOverview.staleAcknowledgedRequests ?? 0) &&
+        Number(overviewAfterReopen.payload?.requestOverview?.attentionRequiredRequests ?? 0) === Number(baseRequestOverview.attentionRequiredRequests ?? 0),
       `expected overview to reflect follow-up open request payload=${JSON.stringify(overviewAfterReopen.payload)}`,
+    );
+    assert(
+      String(overviewAfterReopen.payload?.requestOverview?.oldestActiveRequestCreatedAt ?? "").length > 10,
+      `expected oldest active request timestamp after follow-up request payload=${JSON.stringify(overviewAfterReopen.payload)}`,
     );
 
     await waitForEmailCount(outboxDir, 4, 10_000);

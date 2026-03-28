@@ -46,6 +46,9 @@ interface UpgradeRequestOverviewRow {
   cancelledRequests: number;
   recentRequests: number;
   recentResolvedRequests: number;
+  staleOpenRequests: number;
+  staleAcknowledgedRequests: number;
+  oldestActiveRequestCreatedAt: Date | string | null;
 }
 
 export interface UpgradeRequestOverview {
@@ -57,6 +60,10 @@ export interface UpgradeRequestOverview {
   cancelledRequests: number;
   recentRequests: number;
   recentResolvedRequests: number;
+  staleOpenRequests: number;
+  staleAcknowledgedRequests: number;
+  attentionRequiredRequests: number;
+  oldestActiveRequestCreatedAt: string | null;
 }
 
 interface ExportUpgradeRequestsCsvInput {
@@ -240,7 +247,21 @@ export class CommercialRequestsService {
         COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'resolved')::int AS "resolvedRequests",
         COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'cancelled')::int AS "cancelledRequests",
         COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."created_at" >= NOW() - INTERVAL '7 days')::int AS "recentRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."resolved_at" >= NOW() - INTERVAL '7 days')::int AS "recentResolvedRequests"
+        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."resolved_at" >= NOW() - INTERVAL '7 days')::int AS "recentResolvedRequests",
+        COUNT(*) FILTER (
+          WHERE req."requestType" = 'upgrade'
+            AND req."status" = 'open'
+            AND req."created_at" < NOW() - INTERVAL '1 day'
+        )::int AS "staleOpenRequests",
+        COUNT(*) FILTER (
+          WHERE req."requestType" = 'upgrade'
+            AND req."status" = 'acknowledged'
+            AND req."created_at" < NOW() - INTERVAL '3 days'
+        )::int AS "staleAcknowledgedRequests",
+        MIN(req."created_at") FILTER (
+          WHERE req."requestType" = 'upgrade'
+            AND req."status" IN ('open', 'acknowledged')
+        ) AS "oldestActiveRequestCreatedAt"
       FROM "tenant_commercial_requests" req
     `);
     const row = rows[0] ?? {
@@ -251,9 +272,14 @@ export class CommercialRequestsService {
       cancelledRequests: 0,
       recentRequests: 0,
       recentResolvedRequests: 0,
+      staleOpenRequests: 0,
+      staleAcknowledgedRequests: 0,
+      oldestActiveRequestCreatedAt: null,
     };
     const openRequests = Number(row.openRequests ?? 0);
     const acknowledgedRequests = Number(row.acknowledgedRequests ?? 0);
+    const staleOpenRequests = Number(row.staleOpenRequests ?? 0);
+    const staleAcknowledgedRequests = Number(row.staleAcknowledgedRequests ?? 0);
     return {
       totalRequests: Number(row.totalRequests ?? 0),
       activeRequests: openRequests + acknowledgedRequests,
@@ -263,6 +289,10 @@ export class CommercialRequestsService {
       cancelledRequests: Number(row.cancelledRequests ?? 0),
       recentRequests: Number(row.recentRequests ?? 0),
       recentResolvedRequests: Number(row.recentResolvedRequests ?? 0),
+      staleOpenRequests,
+      staleAcknowledgedRequests,
+      attentionRequiredRequests: staleOpenRequests + staleAcknowledgedRequests,
+      oldestActiveRequestCreatedAt: this.toIsoString(row.oldestActiveRequestCreatedAt),
     };
   }
 
