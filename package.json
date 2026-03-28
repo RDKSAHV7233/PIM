@@ -46,6 +46,7 @@
     "test:integration:dashboard-signup-funnel-ui": "dotenv -o -e .env -- node apps/web/test/integration/dashboard-signup-funnel-ui.test.cjs",
     "test:integration:admin-plan-signup-conversion-ui": "dotenv -o -e .env -- node apps/web/test/integration/admin-plan-signup-conversion-ui.test.cjs",
     "test:integration:quality-approvals-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/quality-approvals-route-contract.test.cjs",
+    "test:integration:quality-issues-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/quality-issues-route-contract.test.cjs",
     "test:integration:internal-commercial-ops-ui": "dotenv -o -e .env -- node apps/web/test/integration/internal-commercial-ops-ui.test.cjs",
     "test:integration:admin-plan-signup-export-ui": "dotenv -o -e .env -- node apps/web/test/integration/admin-plan-signup-export-ui.test.cjs",
     "test:integration:connector-action-matrix-ui-gating": "dotenv -o -e .env -- node apps/web/test/integration/connector-action-matrix-ui-gating.test.cjs",

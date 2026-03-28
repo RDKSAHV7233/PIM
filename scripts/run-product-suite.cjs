@@ -50,10 +50,12 @@ const SUITES = {
     { label: "UI/UX: connector access admin form", command: "node", args: ["apps/web/test/integration/connector-access-admin-form.test.cjs"] },
     { label: "UI/UX: quality reviewer role", command: "node", args: ["apps/web/test/integration/quality-reviewer-role-ui.test.cjs"] },
     { label: "UI/UX: quality approvals route contract", command: "node", args: ["apps/web/test/integration/quality-approvals-route-contract.test.cjs"] },
+    { label: "UI/UX: quality issues route contract", command: "node", args: ["apps/web/test/integration/quality-issues-route-contract.test.cjs"] },
     { label: "API: connector access entitlements", command: "npm", args: ["run", "test:integration:connector-access-entitlements"] },
     { label: "API: audit actor context", command: "npm", args: ["run", "test:integration:audit-actor-context"] },
     { label: "API: auth login lockout", command: "npm", args: ["run", "test:integration:auth-login-lockout"] },
     { label: "API: quality reviewer role", command: "npm", args: ["run", "test:integration:quality-reviewer-role"] },
+    { label: "API: issue inbox", command: "npm", args: ["run", "test:integration:issue-inbox"] },
     { label: "API: tenant isolation", command: "npm", args: ["run", "test:integration:rls-isolation"] },
   ],
 };

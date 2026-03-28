@@ -6,6 +6,7 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -126,6 +127,7 @@ async function run() {
   const apiPort = 6500 + Math.floor(Math.random() * 200);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `issue-inbox-${runId}`;
+  const workspaceSlug = `issue-${runId}`.slice(0, 24);
   const userId = `issue-user-${runId}`;
   const env = {
     ...process.env,
@@ -133,7 +135,10 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Issue Inbox" },
     }),
   };
 
@@ -161,7 +166,8 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      password: "tej-pim-demo-password",
+      workspaceSlug,
+      password: AUTH_PASSWORD,
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");
