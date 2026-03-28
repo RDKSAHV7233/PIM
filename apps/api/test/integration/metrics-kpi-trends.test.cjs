@@ -11,6 +11,10 @@ const STEP_UP_HEADER = "x-pim-step-up-token";
 const STEP_UP_SCOPE = "mapping_high_risk";
 const TINY_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9sXwqyUAAAAASUVORK5CYII=";
 
+function getAuthPassword() {
+  return process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -59,7 +63,7 @@ function prepareEnv() {
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
-  process.env.PIM_AUTH_PASSWORD = "tej-pim-demo-password";
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
 }
 
 function sleep(ms) {
@@ -167,7 +171,7 @@ function assertStatus(result, expected, context) {
 
 async function issueStepUp(baseUrl, token) {
   const result = await tracedRequest("issue step-up", baseUrl, "POST", "/auth/step-up", token, {
-    password: "tej-pim-demo-password",
+    password: getAuthPassword(),
     scope: STEP_UP_SCOPE,
   });
   assertStatus(result, 201, "issue step-up");
@@ -242,7 +246,7 @@ async function run() {
     const login = await tracedRequest("login", baseUrl, "POST", "/auth/login", null, {
       userId,
       workspaceSlug,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");

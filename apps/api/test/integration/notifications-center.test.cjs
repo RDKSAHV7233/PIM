@@ -9,6 +9,10 @@ const { PrismaClient } = require("@prisma/client");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 
+function getAuthPassword() {
+  return process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -172,7 +176,7 @@ async function run() {
     const adminLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: adminUserId,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(adminLogin, 201, "admin login");
@@ -181,7 +185,7 @@ async function run() {
     const editorLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: editorUserId,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(editorLogin, 201, "editor login");
@@ -190,7 +194,7 @@ async function run() {
     const reviewerLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: reviewerUserId,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(reviewerLogin, 201, "reviewer login");

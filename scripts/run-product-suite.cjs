@@ -44,6 +44,8 @@ const SUITES = {
   ],
   operations: [
     { label: "UI/UX: ops cockpit", command: "node", args: ["apps/web/test/integration/ops-cockpit-ui.test.cjs"] },
+    { label: "UI/UX: operations imports route contract", command: "node", args: ["apps/web/test/integration/operations-imports-route-contract.test.cjs"] },
+    { label: "UI/UX: operations jobs route contract", command: "node", args: ["apps/web/test/integration/operations-jobs-route-contract.test.cjs"] },
     { label: "UI/UX: notification center", command: "node", args: ["apps/web/test/integration/notification-center-ui.test.cjs"] },
     { label: "API: dashboard aggregations", command: "npm", args: ["run", "test:integration:dashboard-aggregations"] },
     { label: "API: notifications center", command: "npm", args: ["run", "test:integration:notifications-center"] },

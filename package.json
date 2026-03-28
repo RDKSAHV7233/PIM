@@ -51,6 +51,8 @@
     "test:integration:channels-health-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/channels-health-route-contract.test.cjs",
     "test:integration:channels-submissions-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/channels-submissions-route-contract.test.cjs",
     "test:integration:channel-connector-detail-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/channel-connector-detail-route-contract.test.cjs",
+    "test:integration:operations-imports-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/operations-imports-route-contract.test.cjs",
+    "test:integration:operations-jobs-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/operations-jobs-route-contract.test.cjs",
     "test:integration:internal-commercial-ops-ui": "dotenv -o -e .env -- node apps/web/test/integration/internal-commercial-ops-ui.test.cjs",
     "test:integration:admin-plan-signup-export-ui": "dotenv -o -e .env -- node apps/web/test/integration/admin-plan-signup-export-ui.test.cjs",
     "test:integration:connector-action-matrix-ui-gating": "dotenv -o -e .env -- node apps/web/test/integration/connector-action-matrix-ui-gating.test.cjs",
