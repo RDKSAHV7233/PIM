@@ -79,6 +79,7 @@
     "test:integration:submission-lifecycle-api": "dotenv -o -e .env -- node apps/api/test/integration/submission-lifecycle-api.test.cjs",
     "test:integration:amazon-authoritative-validation": "dotenv -o -e .env -- node apps/api/test/integration/amazon-authoritative-validation.test.cjs",
     "test:integration:catalog-completeness": "dotenv -o -e .env -- node apps/api/test/integration/catalog-completeness.test.cjs",
+    "test:integration:catalog-products-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/catalog-products-route-contract.test.cjs",
     "test:integration:product-workflow-transitions": "dotenv -o -e .env -- node apps/api/test/integration/product-workflow-transitions.test.cjs",
     "test:integration:issue-inbox": "dotenv -o -e .env -- node apps/api/test/integration/issue-inbox.test.cjs",
     "test:integration:mapping-manager": "dotenv -o -e .env -- node apps/api/test/integration/mapping-manager.test.cjs",

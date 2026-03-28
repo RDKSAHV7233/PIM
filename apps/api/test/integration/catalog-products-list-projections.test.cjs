@@ -6,6 +6,7 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -139,7 +140,7 @@ async function run() {
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
-      password: "tej-pim-demo-password",
+      password: AUTH_PASSWORD,
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");

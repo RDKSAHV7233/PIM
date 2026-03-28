@@ -5,6 +5,9 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const OVERVIEW_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "overview-tab.tsx");
+const CHANNELS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "channels-tab.tsx");
+const SIDE_RAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-side-rail.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -13,35 +16,39 @@ function assert(condition, message) {
 }
 
 function run() {
-  const source = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const pageSource = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const overviewSource = fs.readFileSync(OVERVIEW_TAB, "utf8");
+  const channelsSource = fs.readFileSync(CHANNELS_TAB, "utf8");
+  const sideRailSource = fs.readFileSync(SIDE_RAIL, "utf8");
 
   assert(
-    source.includes("<CardTitle>Product overview</CardTitle>"),
+    overviewSource.includes("<CardTitle>Product overview</CardTitle>"),
     "Product detail must lead with a product overview section.",
   );
   assert(
-    source.includes("<CardTitle>Fix blockers before publish</CardTitle>") &&
-      source.includes("Open channel readiness"),
+    overviewSource.includes("<CardTitle>Fix blockers before publish</CardTitle>") &&
+      overviewSource.includes("Open channel readiness"),
     "Product detail must expose a fix-blockers section with direct readiness action.",
   );
   assert(
-    source.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
-      source.includes("Queue channel export") &&
-      !source.includes("Publish to a channel"),
+    channelsSource.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
+      channelsSource.includes("Queue channel export") &&
+      !channelsSource.includes("Publish to a channel"),
     "Product detail must use truthful queued-export language before diagnostics.",
   );
   assert(
-    source.includes("Advanced channel diagnostics") &&
-      source.includes("View queued export attempts and recovery actions"),
+    channelsSource.includes("Advanced channel diagnostics") &&
+      channelsSource.includes("View queued export attempts and recovery actions"),
     "Technical channel diagnostics must be demoted behind collapsible queued-export disclosure controls.",
   );
   assert(
-    source.includes("<SideRailCard title=\"Next actions\">") &&
-      !source.includes("<SideRailCard title=\"Workflow\">"),
+    sideRailSource.includes("<SideRailCard title=\"Next actions\">") &&
+      !sideRailSource.includes("<SideRailCard title=\"Workflow\">"),
     "Product detail side rail must expose next actions instead of raw workflow metadata.",
   );
   assert(
-    !source.includes("<CardTitle>Pre-Export Jobs</CardTitle>"),
+    !pageSource.includes("<CardTitle>Pre-Export Jobs</CardTitle>") &&
+      !channelsSource.includes("<CardTitle>Pre-Export Jobs</CardTitle>"),
     "Product detail must not foreground pre-export jobs as a primary merchandiser panel.",
   );
 

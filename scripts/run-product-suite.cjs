@@ -19,6 +19,7 @@ const SUITES = {
   ],
   catalog: [
     { label: "UI/UX: catalog-first shell", command: "node", args: ["apps/web/test/integration/catalog-first-shell.test.cjs"] },
+    { label: "UI/UX: catalog products route contract", command: "node", args: ["apps/web/test/integration/catalog-products-route-contract.test.cjs"] },
     { label: "UI/UX: product workbench", command: "node", args: ["apps/web/test/integration/product-workbench-ui.test.cjs"] },
     { label: "UI/UX: product detail workflow", command: "node", args: ["apps/web/test/integration/product-detail-workflow-ui.test.cjs"] },
     { label: "API: create product normalization", command: "npm", args: ["run", "test:integration:create-product-pricing-normalization"] },
@@ -57,6 +58,7 @@ const SUITES = {
 
 SUITES.uiux = [
   ...SUITES.shell,
+  { label: "UI/UX: catalog products route contract", command: "node", args: ["apps/web/test/integration/catalog-products-route-contract.test.cjs"] },
   { label: "UI/UX: product workbench", command: "node", args: ["apps/web/test/integration/product-workbench-ui.test.cjs"] },
   { label: "UI/UX: product detail workflow", command: "node", args: ["apps/web/test/integration/product-detail-workflow-ui.test.cjs"] },
   { label: "UI/UX: mapping workflow", command: "node", args: ["apps/web/test/integration/mapping-workflow-ui.test.cjs"] },
