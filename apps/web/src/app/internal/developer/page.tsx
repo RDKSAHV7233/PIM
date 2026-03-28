@@ -47,6 +47,7 @@ function buildDeveloperHref(input: {
   tenantKey?: string;
   requestStatusFilter?: string;
   requestSlaFilter?: string;
+  requestId?: string;
   actionStatus?: string;
 }) {
   const search = new URLSearchParams();
@@ -61,6 +62,9 @@ function buildDeveloperHref(input: {
   }
   if (input.requestSlaFilter) {
     search.set("requestSlaFilter", input.requestSlaFilter);
+  }
+  if (input.requestId) {
+    search.set("requestId", input.requestId);
   }
   if (input.actionStatus) {
     search.set("actionStatus", input.actionStatus);
@@ -329,6 +333,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   const tenantKey = normalizeText(query.tenantKey);
   const requestStatusFilter = normalizeRequestStatusFilter(query.requestStatusFilter);
   const requestSlaFilter = normalizeRequestSlaFilter(query.requestSlaFilter);
+  const requestId = normalizeText(query.requestId);
   const actionAlert = resolveActionAlert(query.actionStatus);
   const tokenConfigured = String(process.env.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim().length > 0;
 
@@ -336,6 +341,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
   let tenantResults: CommercialTenantSearchResult[] = [];
   let overview: CommercialOverviewResponse | null = null;
   let selectedTenant: CommercialTenantSearchResult | null = null;
+  let selectedRequest: PlanUpgradeRequest | null = null;
   let opsError: string | null = null;
 
   if (!claims?.sub) {
@@ -371,6 +377,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
       overview = overviewResponse;
       requestItems = requestResponse.items;
       tenantResults = tenantResponse.items;
+      selectedRequest = requestItems.find((item) => item.id === requestId) ?? requestItems[0] ?? null;
       selectedTenant =
         selectedTenantResponse?.items?.find((item) => item.tenantKey === tenantKey) ??
         tenantResponse.items.find((item) => item.tenantKey === tenantKey) ??
@@ -475,7 +482,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                         ? "border-sky-300 bg-sky-100 text-sky-900"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                     }`}
-                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "open" })}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "open", requestId })}
                   >
                     Open queue
                   </Link>
@@ -485,7 +492,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                         ? "border-amber-300 bg-amber-100 text-amber-900"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                     }`}
-                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "acknowledged" })}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "acknowledged", requestId })}
                   >
                     Acknowledged
                   </Link>
@@ -495,7 +502,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                         ? "border-emerald-300 bg-emerald-100 text-emerald-900"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                     }`}
-                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "resolved" })}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "resolved", requestId })}
                   >
                     Resolved
                   </Link>
@@ -505,7 +512,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                         ? "border-slate-300 bg-slate-200 text-slate-800"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                     }`}
-                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "cancelled" })}
+                    href={buildDeveloperHref({ tenantQuery, tenantKey, requestStatusFilter: "cancelled", requestId })}
                   >
                     Cancelled
                   </Link>
@@ -520,6 +527,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                       tenantKey,
                       requestStatusFilter: "all",
                       requestSlaFilter: "attention",
+                      requestId,
                     })}
                   >
                     Needs attention
@@ -542,6 +550,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 defaultValue={tenantQuery}
                 placeholder="workspace slug, tenant key, display name, or admin email"
               />
+              <input type="hidden" name="requestId" value={requestId} />
             </div>
             <div>
               <label htmlFor="request-status-filter" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -642,6 +651,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                           tenantKey: result.tenantKey,
                           requestStatusFilter,
                           requestSlaFilter,
+                          requestId,
                         })}
                       >
                         View requests
@@ -671,6 +681,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                     tenantQuery,
                     requestStatusFilter,
                     requestSlaFilter,
+                    requestId,
                   })}
                   className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
@@ -745,6 +756,86 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
               </div>
             </div>
           ) : null}
+          {selectedRequest ? (
+            <div className="rounded-md border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected request detail</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">
+                    {selectedRequest.displayName || selectedRequest.workspaceSlug || selectedRequest.tenantKey}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Request ID: {selectedRequest.id}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${requestStatusTone(selectedRequest.status)}`}>
+                    {formatRequestStatus(selectedRequest.status)}
+                  </span>
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${describeRequestAge(selectedRequest.createdAt).tone}`}>
+                    {describeRequestAge(selectedRequest.createdAt).label}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tenant context</div>
+                  <div className="mt-1">{selectedRequest.workspaceSlug || "no workspace slug"}</div>
+                  <div className="text-xs text-slate-500">{selectedRequest.tenantKey}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requester</div>
+                  <div className="mt-1">{selectedRequest.requestedBy}</div>
+                  <div className="text-xs text-slate-500">{selectedRequest.requesterRole}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current commercial state</div>
+                  <div className="mt-1">
+                    {formatPlanTier(selectedRequest.currentPlanTier)} | {formatBillingStatus(selectedRequest.currentBillingStatus)} | {formatAccessStatus(selectedRequest.currentAccessStatus)}
+                  </div>
+                  <div className="text-xs text-slate-500">Source: {selectedRequest.source}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lifecycle</div>
+                  <div className="mt-1">Created: {new Date(selectedRequest.createdAt).toLocaleString("en-IN")}</div>
+                  <div className="text-xs text-slate-500">
+                    {selectedRequest.resolvedAt
+                      ? `Resolved: ${new Date(selectedRequest.resolvedAt).toLocaleString("en-IN")}`
+                      : `Updated: ${new Date(selectedRequest.updatedAt).toLocaleString("en-IN")}`}
+                  </div>
+                </div>
+              </div>
+              {selectedRequest.notes ? (
+                <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected request notes</div>
+                  <div className="mt-1 whitespace-pre-wrap">{selectedRequest.notes}</div>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={buildAuditHref({
+                    entityType: "plan",
+                    resourceId: selectedRequest.id,
+                    limit: 50,
+                  })}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Selected request audit
+                </Link>
+                <Link
+                  href={buildDeveloperHref({
+                    tenantQuery,
+                    tenantKey,
+                    requestStatusFilter,
+                    requestSlaFilter,
+                  })}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Clear request detail
+                </Link>
+              </div>
+            </div>
+          ) : null}
           {requestItems.length === 0 && !opsError ? (
             <div className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
               No commercial requests found for this filter.
@@ -752,7 +843,12 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
           ) : null}
           <div className="space-y-3">
             {requestItems.map((request) => (
-              <div key={request.id} className="rounded-md border border-slate-200 bg-white p-4">
+              <div
+                key={request.id}
+                className={`rounded-md border bg-white p-4 ${
+                  selectedRequest?.id === request.id ? "border-sky-300 shadow-sm ring-1 ring-sky-200" : "border-slate-200"
+                }`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold text-slate-900">
@@ -802,6 +898,18 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
+                    href={buildDeveloperHref({
+                      tenantQuery,
+                      tenantKey,
+                      requestStatusFilter,
+                      requestSlaFilter,
+                      requestId: request.id,
+                    })}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    View detail
+                  </Link>
+                  <Link
                     href={buildAuditHref({
                       entityType: "plan",
                       resourceId: request.id,
@@ -819,6 +927,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                       <input type="hidden" name="tenantKey" value={tenantKey} />
                       <input type="hidden" name="requestStatusFilter" value={requestStatusFilter} />
                       <input type="hidden" name="requestSlaFilter" value={requestSlaFilter} />
+                      <input type="hidden" name="requestId" value={request.id} />
                       <button
                         type="submit"
                         className={`rounded-md px-3 py-2 text-sm font-medium ${

@@ -85,6 +85,15 @@ function run() {
     "Internal commercial ops page must expose selected-tenant commercial snapshot details.",
   );
   assert(
+    pageSource.includes("Selected request detail") &&
+      pageSource.includes("Request ID:") &&
+      pageSource.includes("Selected request notes") &&
+      pageSource.includes("Selected request audit") &&
+      pageSource.includes("Clear request detail") &&
+      pageSource.includes("View detail"),
+    "Internal commercial ops page must expose selected-request detail helpers.",
+  );
+  assert(
     pageSource.includes("Commercial ops request queue") &&
       pageSource.includes("Search workspaces") &&
       pageSource.includes("Request filter") &&
@@ -106,8 +115,9 @@ function run() {
   assert(
     actionsSource.includes('redirect("/internal/developer?actionStatus=forbidden")') &&
       actionsSource.includes("updateInternalUpgradeRequestStatus") &&
+      actionsSource.includes('url.searchParams.set("requestId", requestId)') &&
       actionsSource.includes('returnTo.searchParams.set("actionStatus", status)'),
-    "Internal commercial ops actions must route status updates and preserve operator feedback.",
+    "Internal commercial ops actions must route status updates and preserve operator feedback and selected request state.",
   );
   assert(
     exportRouteSource.includes("getServerActorRole") &&
