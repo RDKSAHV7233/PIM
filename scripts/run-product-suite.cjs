@@ -56,9 +56,13 @@ const SUITES = {
   ],
   governance: [
     { label: "UI/UX: connector access admin form", command: "node", args: ["apps/web/test/integration/connector-access-admin-form.test.cjs"] },
+    { label: "UI/UX: admin api keys route contract", command: "node", args: ["apps/web/test/integration/admin-api-keys-route-contract.test.cjs"] },
+    { label: "UI/UX: admin webhooks route contract", command: "node", args: ["apps/web/test/integration/admin-webhooks-route-contract.test.cjs"] },
     { label: "UI/UX: quality reviewer role", command: "node", args: ["apps/web/test/integration/quality-reviewer-role-ui.test.cjs"] },
     { label: "UI/UX: quality approvals route contract", command: "node", args: ["apps/web/test/integration/quality-approvals-route-contract.test.cjs"] },
     { label: "UI/UX: quality issues route contract", command: "node", args: ["apps/web/test/integration/quality-issues-route-contract.test.cjs"] },
+    { label: "API: api keys", command: "npm", args: ["run", "test:integration:api-keys"] },
+    { label: "API: outbound webhooks", command: "npm", args: ["run", "test:integration:outbound-webhooks"] },
     { label: "API: connector access entitlements", command: "npm", args: ["run", "test:integration:connector-access-entitlements"] },
     { label: "API: audit actor context", command: "npm", args: ["run", "test:integration:audit-actor-context"] },
     { label: "API: auth login lockout", command: "npm", args: ["run", "test:integration:auth-login-lockout"] },
