@@ -6,6 +6,7 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const ISSUE_INBOX_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "quality", "issues", "page.tsx");
 const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const CONTENT_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "content-tab.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
@@ -17,6 +18,7 @@ function assert(condition, message) {
 function run() {
   const issueInboxSource = fs.readFileSync(ISSUE_INBOX_PAGE, "utf8");
   const productPageSource = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const contentTabSource = fs.readFileSync(CONTENT_TAB, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
@@ -27,7 +29,7 @@ function run() {
   assert(
     productPageSource.includes("Back to inbox") &&
       productPageSource.includes('params.set("returnTo", returnTo)') &&
-      productPageSource.includes('name="returnTo" value={returnTo}'),
+      contentTabSource.includes('name="returnTo" value={data.returnTo}'),
     "Product detail must expose and preserve the inbox return path across tab navigation and edits.",
   );
   assert(
