@@ -6,6 +6,7 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -166,7 +167,7 @@ async function run() {
     const adminLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: adminUserId,
       workspaceSlug,
-      password: "tej-pim-demo-password",
+      password: AUTH_PASSWORD,
       expiresInMinutes: 30,
     });
     assertStatus(adminLogin, 201, "admin login");
@@ -175,7 +176,7 @@ async function run() {
     const reviewerLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: reviewerUserId,
       workspaceSlug,
-      password: "tej-pim-demo-password",
+      password: AUTH_PASSWORD,
       expiresInMinutes: 30,
     });
     assertStatus(reviewerLogin, 201, "reviewer login");

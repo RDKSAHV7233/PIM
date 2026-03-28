@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const APPROVALS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "quality", "approvals", "page.tsx");
+const ROLE_CAPABILITIES = path.join(REPO_ROOT, "apps", "web", "src", "lib", "role-capabilities.ts");
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function run() {
+  const approvalsSource = fs.readFileSync(APPROVALS_PAGE, "utf8");
+  const capabilitiesSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
+
+  assert(
+    approvalsSource.includes('if (!authHeader) {') &&
+      approvalsSource.includes('redirect(buildLoginRedirect("/quality/approvals", 401));'),
+    "Approval Queue must redirect unauthenticated access through the centralized login helper before loading page data.",
+  );
+  assert(
+    approvalsSource.includes("Promise.all([") &&
+      approvalsSource.includes("getStats({ role: actorRole, authHeader })") &&
+      approvalsSource.includes("getIssueInbox(") &&
+      approvalsSource.includes('productStatus: "in_review",') &&
+      approvalsSource.includes("limit: 50,") &&
+      approvalsSource.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
+    "Approval Queue must load stats, in-review issue inbox data, and slim product projections together from the shared auth context.",
+  );
+  assert(
+    approvalsSource.includes("const blockingProducts = new Set(") &&
+      approvalsSource.includes('item.severity === "BLOCKING"') &&
+      approvalsSource.includes("const warningProducts = new Set(") &&
+      approvalsSource.includes('item.severity === "WARNING"') &&
+      approvalsSource.includes("const cleanForDecision = Math.max(0, stats.pendingApprovals - reviewedProductIds);"),
+    "Approval Queue must derive blocking, warning, and clean-for-decision metrics from the real in-review inbox state.",
+  );
+  assert(
+    capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "reviewer";') &&
+      approvalsSource.includes("const decisionEnabled = canDecideApproval(actorRole);"),
+    "Approval Queue must rely on the shared reviewer-capable decision rule instead of duplicating local role logic.",
+  );
+  assert(
+    approvalsSource.includes('const returnTo = "/quality/approvals";') &&
+      approvalsSource.includes('href={`/products/${encodeURIComponent(product.id)}?tab=quality&returnTo=${encodeURIComponent(returnTo)}`}'),
+    "Approval Queue must preserve a stable return path when operators jump from the queue into product detail.",
+  );
+  assert(
+    approvalsSource.includes("const inReviewProducts = products") &&
+      approvalsSource.includes('.filter((product) => product.status === "in_review")') &&
+      approvalsSource.includes('.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));'),
+    "Approval Queue must only render real in-review products and keep the newest items at the top of the decision list.",
+  );
+  assert(
+    approvalsSource.includes('const canApprove = summary.blocking === 0;') &&
+      approvalsSource.includes('disabled={!canApprove}') &&
+      approvalsSource.includes("Clear blocking issues before approving."),
+    "Approval Queue must disable approval when blocking issues remain and explain that constraint inline.",
+  );
+  assert(
+    approvalsSource.includes('query.decisionStatus ? (') &&
+      approvalsSource.includes("Product review decision recorded: {query.decisionStatus}.") &&
+      approvalsSource.includes('query.decisionError ? (') &&
+      approvalsSource.includes("Review decision could not be applied."),
+    "Approval Queue must surface success and failure feedback after decision actions redirect back to the queue.",
+  );
+  assert(
+    approvalsSource.includes('if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {') &&
+      approvalsSource.includes('redirect(buildLoginRedirect("/quality/approvals", error));'),
+    "Approval Queue must redirect expired or forbidden sessions through the centralized login redirect helper.",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "quality_approvals_route_redirects_unauthenticated_access",
+          "quality_approvals_route_fetches_review_queue_inputs_in_parallel",
+          "quality_approvals_route_derives_review_metrics_from_issue_inbox_state",
+          "quality_approvals_route_uses_shared_reviewer_decision_capability",
+          "quality_approvals_route_preserves_product_return_context",
+          "quality_approvals_route_blocks_approval_until_blockers_clear",
+          "quality_approvals_route_surfaces_decision_feedback_and_auth_redirects",
+        ],
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+try {
+  run();
+} catch (error) {
+  console.error("Quality approvals route contract test failed:");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
