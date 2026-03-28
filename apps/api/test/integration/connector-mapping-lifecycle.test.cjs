@@ -9,6 +9,10 @@ const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const STEP_UP_HEADER = "x-pim-step-up-token";
 const STEP_UP_SCOPE = "mapping_high_risk";
 
+function getAuthPassword() {
+  return process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -120,7 +124,7 @@ function assertStatus(result, expected, context) {
 
 async function issueStepUp(baseUrl, token) {
   const result = await apiRequest(baseUrl, "POST", "/auth/step-up", token, {
-    password: "tej-pim-demo-password",
+    password: getAuthPassword(),
     scope: STEP_UP_SCOPE,
   });
   assertStatus(result, 201, "issue step-up token");
@@ -186,7 +190,7 @@ async function run() {
     const loginA = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userA,
       workspaceSlug: workspaceSlugA,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(loginA, 201, "login tenant A");
@@ -196,7 +200,7 @@ async function run() {
     const loginB = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId: userB,
       workspaceSlug: workspaceSlugB,
-      password: "tej-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(loginB, 201, "login tenant B");

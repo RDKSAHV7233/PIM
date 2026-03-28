@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const CHANNELS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "channels-tab.tsx");
 const MAPPINGS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
 const CONNECTOR_MAPPING_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "[installationId]", "mapping", "page.tsx");
 
@@ -16,19 +17,21 @@ function assert(condition, message) {
 
 function run() {
   const productSource = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const channelsTabSource = fs.readFileSync(CHANNELS_TAB, "utf8");
   const mappingsSource = fs.readFileSync(MAPPINGS_PAGE, "utf8");
   const connectorMappingSource = fs.readFileSync(CONNECTOR_MAPPING_PAGE, "utf8");
 
   assert(
-    productSource.includes("Lifecycle mapping manager is the canonical edit path for this connector."),
+    channelsTabSource.includes("Lifecycle mapping manager is the canonical edit path for this connector."),
     "Product detail must direct sellers to the canonical lifecycle mapping manager.",
   );
   assert(
-    productSource.includes("/channels/mappings?categoryId="),
+    channelsTabSource.includes("/channels/mappings?categoryId="),
     "Product detail must send mapping fixes to the lifecycle channel mappings workspace.",
   );
   assert(
-    productSource.includes("Legacy template inventory (transition only)"),
+    channelsTabSource.includes("Legacy template inventory (transition only)") &&
+      !productSource.includes("<CardTitle>Channel Mapping</CardTitle>"),
     "Product detail must demote legacy templates to transition-only inventory.",
   );
   assert(

@@ -9,6 +9,10 @@ const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const STEP_UP_HEADER = "x-pim-step-up-token";
 const STEP_UP_SCOPE = "mapping_high_risk";
 
+function getAuthPassword() {
+  return process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -120,7 +124,7 @@ function assertStatus(result, expected, context) {
 
 async function issueStepUp(baseUrl, token) {
   const result = await apiRequest(baseUrl, "POST", "/auth/step-up", token, {
-    password: "tej-pim-demo-password",
+    password: getAuthPassword(),
     scope: STEP_UP_SCOPE,
   });
   assertStatus(result, 201, "issue step-up token");
@@ -191,6 +195,7 @@ async function run() {
   const apiPort = 6900 + Math.floor(Math.random() * 200);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantKey = `mapping-precedence-${runId}`;
+  const workspaceSlug = `mapprec-${runId}`.slice(0, 24);
   const userId = `mapping-precedence-user-${runId}`;
   const connectorSlug = "flipkart";
 
@@ -200,7 +205,10 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantKey,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId: tenantKey, role: "admin" },
+      [userId]: { tenantId: tenantKey, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId: tenantKey, displayName: "Mapping Precedence" },
     }),
   };
 
@@ -229,7 +237,8 @@ async function run() {
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      password: "tej-pim-demo-password",
+      workspaceSlug,
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login admin");

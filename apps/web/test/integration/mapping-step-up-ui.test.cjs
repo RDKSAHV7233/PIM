@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
-const API_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api.ts");
+const API_FILE = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "core.ts");
 const MAPPINGS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
 const VERSION_MANAGER_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "version-manager.tsx");
 
