@@ -72,6 +72,15 @@ const SUITES = {
     { label: "API: issue inbox", command: "npm", args: ["run", "test:integration:issue-inbox"] },
     { label: "API: tenant isolation", command: "npm", args: ["run", "test:integration:rls-isolation"] },
   ],
+  reporting: [
+    { label: "UI/UX: dashboard route contract", command: "node", args: ["apps/web/test/integration/dashboard-route-contract.test.cjs"] },
+    { label: "UI/UX: dashboard signup funnel", command: "node", args: ["apps/web/test/integration/dashboard-signup-funnel-ui.test.cjs"] },
+    { label: "UI/UX: dashboard approval truth", command: "node", args: ["apps/web/test/integration/dashboard-approval-truth.test.cjs"] },
+    { label: "UI/UX: admin plan signup conversion", command: "node", args: ["apps/web/test/integration/admin-plan-signup-conversion-ui.test.cjs"] },
+    { label: "UI/UX: admin plan signup export", command: "node", args: ["apps/web/test/integration/admin-plan-signup-export-ui.test.cjs"] },
+    { label: "API: dashboard aggregations", command: "npm", args: ["run", "test:integration:dashboard-aggregations"] },
+    { label: "API: metrics KPI trends", command: "npm", args: ["run", "test:integration:metrics-kpi-trends"] },
+  ],
 };
 
 SUITES.uiux = [
@@ -80,6 +89,7 @@ SUITES.uiux = [
   { label: "UI/UX: product workbench", command: "node", args: ["apps/web/test/integration/product-workbench-ui.test.cjs"] },
   { label: "UI/UX: product detail route contract", command: "node", args: ["apps/web/test/integration/product-detail-route-contract.test.cjs"] },
   { label: "UI/UX: product detail workflow", command: "node", args: ["apps/web/test/integration/product-detail-workflow-ui.test.cjs"] },
+  { label: "UI/UX: dashboard route contract", command: "node", args: ["apps/web/test/integration/dashboard-route-contract.test.cjs"] },
   { label: "UI/UX: mapping workflow", command: "node", args: ["apps/web/test/integration/mapping-workflow-ui.test.cjs"] },
   { label: "UI/UX: connector access admin form", command: "node", args: ["apps/web/test/integration/connector-access-admin-form.test.cjs"] },
   { label: "UI/UX: ops cockpit", command: "node", args: ["apps/web/test/integration/ops-cockpit-ui.test.cjs"] },
@@ -91,6 +101,7 @@ SUITES.full = [
   ...SUITES.publish,
   ...SUITES.operations,
   ...SUITES.governance,
+  ...SUITES.reporting,
 ];
 
 function spawnCommand(step) {
