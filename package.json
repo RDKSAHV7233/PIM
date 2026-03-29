@@ -122,6 +122,7 @@
     "test:e2e:playwright": "playwright test --config=playwright.config.cjs",
     "test:e2e:admin-api-keys": "playwright test apps/web/test/e2e/admin-api-keys.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
+    "test:e2e:admin-webhooks": "playwright test apps/web/test/e2e/admin-webhooks.spec.js --config=playwright.config.cjs",
     "test:e2e:auth-workspace": "playwright test apps/web/test/e2e/auth.workspace.spec.js --config=playwright.config.cjs",
     "test:e2e:audit-explorer": "playwright test apps/web/test/e2e/audit-explorer.spec.js --config=playwright.config.cjs",
     "test:e2e:catalog-delete": "playwright test apps/web/test/e2e/catalog-delete.spec.js --config=playwright.config.cjs",
