@@ -6,7 +6,17 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 const PRODUCTS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "components", "product", "products-tab.tsx");
-const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const PRODUCT_OVERVIEW_TAB = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "products",
+  "[id]",
+  "_components",
+  "overview-tab.tsx",
+);
 const CATEGORIES_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "catalog", "categories", "page.tsx");
 
 function assert(condition, message) {
@@ -18,7 +28,7 @@ function assert(condition, message) {
 function run() {
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
   const productsTabSource = fs.readFileSync(PRODUCTS_TAB, "utf8");
-  const productPageSource = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const productOverviewSource = fs.readFileSync(PRODUCT_OVERVIEW_TAB, "utf8");
   const categoriesSource = fs.readFileSync(CATEGORIES_PAGE, "utf8");
 
   assert(
@@ -34,9 +44,11 @@ function run() {
     "Products table must expose a soft-delete action with confirmation intent.",
   );
   assert(
-    productPageSource.includes("Delete product") &&
-      productPageSource.includes("Archive product") &&
-      productPageSource.includes("Permanent delete"),
+    productOverviewSource.includes("deleteProductAction") &&
+      productOverviewSource.includes("purgeProductAction") &&
+      productOverviewSource.includes("Archive product") &&
+      productOverviewSource.includes("Confirm permanent delete") &&
+      productOverviewSource.includes("Permanently delete"),
     "Product detail must expose soft delete and admin hard delete controls.",
   );
   assert(
