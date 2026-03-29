@@ -56,6 +56,8 @@ const SUITES = {
   ],
   governance: [
     { label: "UI/UX: connector access admin form", command: "node", args: ["apps/web/test/integration/connector-access-admin-form.test.cjs"] },
+    { label: "UI/UX: admin users route contract", command: "node", args: ["apps/web/test/integration/admin-users-route-contract.test.cjs"] },
+    { label: "UI/UX: admin connectors route contract", command: "node", args: ["apps/web/test/integration/admin-connectors-route-contract.test.cjs"] },
     { label: "UI/UX: admin api keys route contract", command: "node", args: ["apps/web/test/integration/admin-api-keys-route-contract.test.cjs"] },
     { label: "UI/UX: admin webhooks route contract", command: "node", args: ["apps/web/test/integration/admin-webhooks-route-contract.test.cjs"] },
     { label: "UI/UX: quality reviewer role", command: "node", args: ["apps/web/test/integration/quality-reviewer-role-ui.test.cjs"] },

@@ -43,6 +43,8 @@
     "test:integration:auth-recovery-ui": "dotenv -o -e .env -- node apps/web/test/integration/auth-recovery-ui.test.cjs",
     "test:integration:auth-suspension-ui": "dotenv -o -e .env -- node apps/web/test/integration/auth-suspension-ui.test.cjs",
     "test:integration:admin-privacy-ui": "dotenv -o -e .env -- node apps/web/test/integration/admin-privacy-ui.test.cjs",
+    "test:integration:admin-users-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/admin-users-route-contract.test.cjs",
+    "test:integration:admin-connectors-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/admin-connectors-route-contract.test.cjs",
     "test:integration:admin-api-keys-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/admin-api-keys-route-contract.test.cjs",
     "test:integration:admin-webhooks-route-contract": "dotenv -o -e .env -- node apps/web/test/integration/admin-webhooks-route-contract.test.cjs",
     "test:integration:dashboard-signup-funnel-ui": "dotenv -o -e .env -- node apps/web/test/integration/dashboard-signup-funnel-ui.test.cjs",

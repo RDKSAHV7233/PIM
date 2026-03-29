@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "page.tsx");
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function run() {
+  const source = fs.readFileSync(PAGE, "utf8");
+
+  assert(
+    source.includes("const authHeader = await getServerAuthHeader();") &&
+      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("const claims = await getServerSessionClaims();"),
+    "Admin users must derive shared auth, actor role, and session claims before loading workspace access data.",
+  );
+  assert(
+    source.includes('const status = String(query.status ?? "").trim();') &&
+      source.includes('const showInvite = String(query.showInvite ?? "").trim() === "true";') &&
+      source.includes('const canManageUsers = actorRole === "admin" && canEditWorkspace(actorRole);'),
+    "Admin users must normalize page status and invite query state while deriving write access from shared role capabilities.",
+  );
+  assert(
+    source.includes("const [usage, connectorPermissions, workspaceUsers] = await Promise.all([") &&
+      source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
+      source.includes("getConnectorPermissions(undefined, { role: actorRole, authHeader })") &&
+      source.includes("getWorkspaceUsers({ role: actorRole, authHeader })"),
+    "Admin users must load billing usage, connector overrides, and workspace users together through the shared auth context.",
+  );
+  assert(
+    source.includes("const byPrincipalType = connectorPermissions.reduce<Record<string, number>>") &&
+      source.includes('label="User Limit"') &&
+      source.includes('label="Connector Overrides"') &&
+      source.includes('label="User Principals"') &&
+      source.includes('helper={`Role principals: ${byPrincipalType.role ?? 0}`}'),
+    "Admin users must derive top-line access metrics from live billing and connector permission data.",
+  );
+  assert(
+    source.includes('href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}') &&
+      source.includes("form action={createWorkspaceUserAction}") &&
+      source.includes('<option value="editor">Editor</option>') &&
+      source.includes('<option value="reviewer">Reviewer</option>') &&
+      source.includes('<option value="viewer">Viewer</option>'),
+    "Admin users must keep invite entry points and allowed invite roles explicit at the page contract level.",
+  );
+  assert(
+    source.includes('status === "user-created"') &&
+      source.includes('status === "role-updated"') &&
+      source.includes('status === "user-locked"') &&
+      source.includes('status === "user-unlocked"') &&
+      source.includes('status === "user-deactivated"'),
+    "Admin users must surface invite, role change, lock, unlock, and deactivate outcomes through page-level status banners.",
+  );
+  assert(
+    source.includes("const isSelf = user.userId === currentUserId;") &&
+      source.includes("form action={updateWorkspaceUserRoleAction}") &&
+      source.includes("form action={lockWorkspaceUserAction}") &&
+      source.includes("form action={unlockWorkspaceUserAction}") &&
+      source.includes("form action={deactivateWorkspaceUserAction}") &&
+      source.includes("disabled={isSelf}") &&
+      source.includes("disabled={isSelf || !user.isActive}") &&
+      source.includes('<span className="text-xs text-slate-500">Read-only</span>'),
+    "Admin users must enforce self-protection on role and lifecycle actions while preserving a read-only fallback for non-admin operators.",
+  );
+  assert(
+    source.includes("<CardTitle>Role Matrix</CardTitle>") &&
+      source.includes("<CardTitle>Connector Permission Overrides</CardTitle>") &&
+      source.includes('No connector-specific overrides are configured.') &&
+      source.includes('href="/admin/connectors"'),
+    "Admin users must keep the role matrix and connector override visibility linked into connector access management.",
+  );
+  assert(
+    source.includes('redirect(buildLoginRedirect("/admin/users", error));'),
+    "Admin users must redirect expired or forbidden sessions through the shared login helper.",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "admin_users_route_uses_shared_auth_role_and_session_context",
+          "admin_users_route_normalizes_status_and_invite_query_state",
+          "admin_users_route_fetches_usage_permissions_and_users_in_parallel",
+          "admin_users_route_derives_access_kpis_from_live_data",
+          "admin_users_route_keeps_invite_flow_and_roles_explicit",
+          "admin_users_route_surfaces_user_lifecycle_status_banners",
+          "admin_users_route_enforces_self_protection_and_read_only_fallback",
+          "admin_users_route_surfaces_role_matrix_and_connector_overrides",
+          "admin_users_route_redirects_auth_failures",
+        ],
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+try {
+  run();
+} catch (error) {
+  console.error("Admin users route contract test failed:");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
