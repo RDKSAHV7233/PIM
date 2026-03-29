@@ -125,6 +125,7 @@
     "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-privacy-export": "playwright test apps/web/test/e2e/admin-privacy-export.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-plan-upgrade-request": "node scripts/run-playwright-admin-plan-upgrade-request.cjs",
+    "test:e2e:internal-commercial-ops": "node scripts/run-playwright-internal-commercial-ops.cjs",
     "test:e2e:admin-users-lifecycle": "playwright test apps/web/test/e2e/admin-users-lifecycle.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-webhooks": "playwright test apps/web/test/e2e/admin-webhooks.spec.js --config=playwright.config.cjs",
     "test:e2e:auth-workspace": "playwright test apps/web/test/e2e/auth.workspace.spec.js --config=playwright.config.cjs",
