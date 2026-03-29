@@ -39,6 +39,25 @@ function loadEnvFile(filePath) {
 }
 
 const fileEnv = loadEnvFile(envFile);
+const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
+const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
+const identityDirectory =
+  process.env.PLAYWRIGHT_AUTH_IDENTITIES_JSON !== undefined
+    ? process.env.PLAYWRIGHT_AUTH_IDENTITIES_JSON
+    : authMode === "db"
+      ? ""
+      : JSON.stringify({
+          "admin@tej-pim.local": { tenantId: "default", role: "admin" },
+          "editor@tej-pim.local": { tenantId: "default", role: "editor" },
+          "reviewer@tej-pim.local": { tenantId: "default", role: "reviewer" },
+          "viewer@tej-pim.local": { tenantId: "default", role: "viewer" },
+        });
+const workspaceDirectory =
+  process.env.PLAYWRIGHT_AUTH_WORKSPACES_JSON !== undefined
+    ? process.env.PLAYWRIGHT_AUTH_WORKSPACES_JSON
+    : authMode === "db"
+      ? ""
+      : process.env.PIM_AUTH_WORKSPACES_JSON;
 
 const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/api"], {
   cwd: root,
@@ -59,7 +78,7 @@ const env = {
   ...process.env,
   PORT: process.env.PLAYWRIGHT_API_PORT || "4001",
   APP_ENV: "development",
-  AUTH_MODE: "local",
+  AUTH_MODE: authMode,
   PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password",
   PIM_DEFAULT_TENANT_KEY: process.env.PLAYWRIGHT_TENANT_KEY || "default",
   PIM_DEFAULT_WORKSPACE_SLUG: process.env.PLAYWRIGHT_WORKSPACE || "default",
@@ -67,15 +86,13 @@ const env = {
   PIM_AUTH_REDIS_DISABLED: "true",
   JWT_BLOCKLIST_REDIS_DISABLED: "true",
   DASHBOARD_CACHE_REDIS_DISABLED: "true",
-  PIM_AUTH_IDENTITIES_JSON:
-    process.env.PLAYWRIGHT_AUTH_IDENTITIES_JSON ||
-    JSON.stringify({
-      "admin@tej-pim.local": { tenantId: "default", role: "admin" },
-      "editor@tej-pim.local": { tenantId: "default", role: "editor" },
-      "reviewer@tej-pim.local": { tenantId: "default", role: "reviewer" },
-      "viewer@tej-pim.local": { tenantId: "default", role: "viewer" },
-    }),
+  PIM_WEB_BASE_URL: process.env.PIM_WEB_BASE_URL || playwrightBaseUrl,
+  PIM_AUTH_IDENTITIES_JSON: identityDirectory,
 };
+
+if (workspaceDirectory !== undefined) {
+  env.PIM_AUTH_WORKSPACES_JSON = workspaceDirectory;
+}
 
 const child = spawn("npm", ["run", "start", "--workspace", "@pim1/api"], {
   cwd: root,
