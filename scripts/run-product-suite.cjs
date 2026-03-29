@@ -93,6 +93,7 @@ const SUITES = {
     { label: "E2E: critical browser journeys", command: "npm", args: ["run", "test:e2e:critical"] },
     { label: "E2E: public signup browser journey", command: "npm", args: ["run", "test:e2e:public-signup"] },
     { label: "E2E: dashboard signup drilldown browser journey", command: "npm", args: ["run", "test:e2e:dashboard-signup-drilldown"] },
+    { label: "E2E: admin plan signup export browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-signup-export"] },
     { label: "E2E: pending feedback browser journey", command: "npm", args: ["run", "test:e2e:pending-feedback"] },
     { label: "E2E: admin API key lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-api-keys"] },
     { label: "E2E: admin plan upgrade-request browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-upgrade-request"] },
