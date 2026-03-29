@@ -98,6 +98,7 @@ const SUITES = {
     { label: "E2E: admin API key lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-api-keys"] },
     { label: "E2E: admin plan upgrade-request browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-upgrade-request"] },
     { label: "E2E: internal commercial ops browser journey", command: "npm", args: ["run", "test:e2e:internal-commercial-ops"] },
+    { label: "E2E: internal commercial audit follow-up browser journey", command: "npm", args: ["run", "test:e2e:internal-commercial-audit-followup"] },
     { label: "E2E: admin privacy export browser journey", command: "npm", args: ["run", "test:e2e:admin-privacy-export"] },
     { label: "E2E: admin workspace-user lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-users-lifecycle"] },
     { label: "E2E: admin webhook lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-webhooks"] },
