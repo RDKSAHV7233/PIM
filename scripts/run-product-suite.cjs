@@ -69,6 +69,7 @@ const SUITES = {
     { label: "API: audit actor context", command: "npm", args: ["run", "test:integration:audit-actor-context"] },
     { label: "API: auth login lockout", command: "npm", args: ["run", "test:integration:auth-login-lockout"] },
     { label: "API: quality reviewer role", command: "npm", args: ["run", "test:integration:quality-reviewer-role"] },
+    { label: "API: workspace user CRUD", command: "npm", args: ["run", "test:integration:workspace-user-crud"] },
     { label: "API: issue inbox", command: "npm", args: ["run", "test:integration:issue-inbox"] },
     { label: "API: tenant isolation", command: "npm", args: ["run", "test:integration:rls-isolation"] },
   ],
@@ -90,6 +91,7 @@ const SUITES = {
     { label: "E2E: public signup browser journey", command: "npm", args: ["run", "test:e2e:public-signup"] },
     { label: "E2E: pending feedback browser journey", command: "npm", args: ["run", "test:e2e:pending-feedback"] },
     { label: "E2E: admin API key lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-api-keys"] },
+    { label: "E2E: admin workspace-user lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-users-lifecycle"] },
     { label: "E2E: admin webhook lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-webhooks"] },
   ],
 };
