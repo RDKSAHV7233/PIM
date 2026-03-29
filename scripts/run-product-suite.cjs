@@ -85,6 +85,9 @@ const SUITES = {
     { label: "UI/UX: legacy alias routes", command: "node", args: ["apps/web/test/integration/legacy-alias-routes.test.cjs"] },
     { label: "UI/UX: internal surface gating", command: "node", args: ["apps/web/test/integration/internal-surface-gating.test.cjs"] },
   ],
+  journeys: [
+    { label: "E2E: critical browser journeys", command: "npm", args: ["run", "test:e2e:critical"] },
+  ],
 };
 
 SUITES.uiux = [
