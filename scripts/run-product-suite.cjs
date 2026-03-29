@@ -88,6 +88,7 @@ const SUITES = {
   journeys: [
     { label: "E2E: critical browser journeys", command: "npm", args: ["run", "test:e2e:critical"] },
     { label: "E2E: public signup browser journey", command: "npm", args: ["run", "test:e2e:public-signup"] },
+    { label: "E2E: pending feedback browser journey", command: "npm", args: ["run", "test:e2e:pending-feedback"] },
   ],
 };
 
