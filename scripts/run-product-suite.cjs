@@ -81,6 +81,10 @@ const SUITES = {
     { label: "API: dashboard aggregations", command: "npm", args: ["run", "test:integration:dashboard-aggregations"] },
     { label: "API: metrics KPI trends", command: "npm", args: ["run", "test:integration:metrics-kpi-trends"] },
   ],
+  cleanup: [
+    { label: "UI/UX: legacy alias routes", command: "node", args: ["apps/web/test/integration/legacy-alias-routes.test.cjs"] },
+    { label: "UI/UX: internal surface gating", command: "node", args: ["apps/web/test/integration/internal-surface-gating.test.cjs"] },
+  ],
 };
 
 SUITES.uiux = [
@@ -102,6 +106,7 @@ SUITES.full = [
   ...SUITES.operations,
   ...SUITES.governance,
   ...SUITES.reporting,
+  ...SUITES.cleanup,
 ];
 
 function spawnCommand(step) {
