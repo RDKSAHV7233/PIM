@@ -123,6 +123,7 @@
     "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
     "test:e2e:dashboard-priority-drilldown": "playwright test apps/web/test/e2e/dashboard-priority-drilldown.spec.js --config=playwright.config.cjs",
     "test:e2e:channels-connector-detail-drilldown": "playwright test apps/web/test/e2e/channels-connector-detail-drilldown.spec.js --config=playwright.config.cjs",
+    "test:e2e:operations-import-repair": "playwright test apps/web/test/e2e/operations-import-repair.spec.js --config=playwright.config.cjs",
     "test:e2e:playwright:headed": "playwright test --config=playwright.config.cjs --headed",
     "test:e2e:playwright:ui": "playwright test --config=playwright.config.cjs --ui",
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",

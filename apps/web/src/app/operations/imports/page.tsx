@@ -423,7 +423,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                         </p>
                         {canWrite ? (
                           <div className="mt-3">
-                            <RowRepairForm row={row} jobId={selectedBulkJobId} role={actorRole} />
+                            <RowRepairForm row={row} jobId={selectedBulkJobId} />
                           </div>
                         ) : (
                           <p className="mt-2 text-xs text-slate-500">This action is read-only for your role.</p>
