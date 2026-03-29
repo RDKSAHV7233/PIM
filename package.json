@@ -123,6 +123,7 @@
     "test:e2e:playwright": "playwright test --config=playwright.config.cjs",
     "test:e2e:admin-api-keys": "playwright test apps/web/test/e2e/admin-api-keys.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
+    "test:e2e:admin-privacy-export": "playwright test apps/web/test/e2e/admin-privacy-export.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-users-lifecycle": "playwright test apps/web/test/e2e/admin-users-lifecycle.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-webhooks": "playwright test apps/web/test/e2e/admin-webhooks.spec.js --config=playwright.config.cjs",
     "test:e2e:auth-workspace": "playwright test apps/web/test/e2e/auth.workspace.spec.js --config=playwright.config.cjs",
