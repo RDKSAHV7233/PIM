@@ -120,6 +120,7 @@
     "test:product:cleanup": "node scripts/run-product-suite.cjs cleanup",
     "test:product:uiux": "node scripts/run-product-suite.cjs uiux",
     "test:e2e:playwright": "playwright test --config=playwright.config.cjs",
+    "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
     "test:e2e:playwright:headed": "playwright test --config=playwright.config.cjs --headed",
     "test:e2e:playwright:ui": "playwright test --config=playwright.config.cjs --ui",
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
