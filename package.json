@@ -133,6 +133,7 @@
     "test:e2e:catalog-delete": "playwright test apps/web/test/e2e/catalog-delete.spec.js --config=playwright.config.cjs",
     "test:e2e:notifications": "playwright test apps/web/test/e2e/notifications.spec.js --config=playwright.config.cjs",
     "test:e2e:public-signup": "node scripts/run-playwright-public-signup.cjs",
+    "test:e2e:dashboard-signup-drilldown": "node scripts/run-playwright-dashboard-signup-drilldown.cjs",
     "test:e2e:dashboard-priority-drilldown": "playwright test apps/web/test/e2e/dashboard-priority-drilldown.spec.js --config=playwright.config.cjs",
     "test:e2e:channels-connector-detail-drilldown": "playwright test apps/web/test/e2e/channels-connector-detail-drilldown.spec.js --config=playwright.config.cjs",
     "test:e2e:operations-import-repair": "playwright test apps/web/test/e2e/operations-import-repair.spec.js --config=playwright.config.cjs",
