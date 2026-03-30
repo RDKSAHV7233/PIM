@@ -122,6 +122,7 @@
     "test:product:uiux": "node scripts/run-product-suite.cjs uiux",
     "test:e2e:playwright": "playwright test --config=playwright.config.cjs",
     "test:e2e:admin-api-keys": "playwright test apps/web/test/e2e/admin-api-keys.spec.js --config=playwright.config.cjs",
+    "test:e2e:admin-connectors-audit-followup": "playwright test apps/web/test/e2e/admin-connectors-audit-followup.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-plan-billing-contact": "playwright test apps/web/test/e2e/admin-plan-billing-contact.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-privacy-export": "playwright test apps/web/test/e2e/admin-privacy-export.spec.js --config=playwright.config.cjs",
     "test:e2e:admin-plan-upgrade-request": "node scripts/run-playwright-admin-plan-upgrade-request.cjs",
