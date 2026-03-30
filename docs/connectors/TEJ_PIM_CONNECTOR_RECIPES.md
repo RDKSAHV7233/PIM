@@ -17,7 +17,7 @@ For repo implementation details, use:
 
 Current connector reality:
 - `flipkart` is the live publish-capable reference path
-- `amazon-in` is still a stub
+- `amazon-in` is partially implemented and still launch-gated
 - `meesho` is still export-only in design, but export generation is not yet complete
 - broad rollout evidence is still incomplete under `INC-08`
 

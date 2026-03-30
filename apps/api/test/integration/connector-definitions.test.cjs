@@ -8,6 +8,10 @@ const { spawn, execFileSync } = require("node:child_process");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 
+function resolveAuthPassword() {
+  return String(process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password");
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -182,7 +186,7 @@ async function run() {
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
-      password: "tej-pim-demo-password",
+      password: resolveAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "admin login");
@@ -212,7 +216,7 @@ async function run() {
       );
     }
 
-    assert(amazon.implementationStatus === "stub", `amazon-in implementationStatus expected stub, got ${amazon.implementationStatus}`);
+    assert(amazon.implementationStatus === "partial", `amazon-in implementationStatus expected partial, got ${amazon.implementationStatus}`);
     assert(meesho.implementationStatus === "partial", `meesho implementationStatus expected partial, got ${meesho.implementationStatus}`);
     assert(flipkart.implementationStatus === "full", `flipkart implementationStatus expected full, got ${flipkart.implementationStatus}`);
 

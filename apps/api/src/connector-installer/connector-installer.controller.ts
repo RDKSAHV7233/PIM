@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
@@ -73,6 +73,45 @@ export class ConnectorInstallerController {
   @Roles(...APP_ROLES)
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
+  }
+
+  @Post(":id/oauth/callback")
+  @Roles(...APP_ROLES)
+  @HttpCode(200)
+  @ApiOperation({ summary: "Complete OAuth callback for a connector installation" })
+  @ApiResponse({ status: 200, description: "OAuth callback handled and credentials persisted" })
+  oauthCallback(
+    @Param("id") installationId: string,
+    @Body() params: Record<string, string>,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.handleOAuthCallback(
+      installationId,
+      params ?? {},
+      this.resolveActor(request),
+    );
+  }
+
+  @Get(":id/product-type-schema")
+  @ApiOperation({ summary: "Fetch connector product type schema for an installed account" })
+  @ApiResponse({ status: 200, description: "Product type schema fetched" })
+  productTypeSchema(
+    @Param("id") installationId: string,
+    @Query("productType") productType: string | undefined,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const normalizedProductType = String(productType ?? "").trim();
+    if (!normalizedProductType) {
+      throw new BadRequestException({
+        error: "PRODUCT_TYPE_REQUIRED",
+        message: "productType query parameter is required.",
+      });
+    }
+    return this.connectorInstallerService.fetchProductTypeSchema(
+      installationId,
+      normalizedProductType,
+      this.resolveActor(request),
+    );
   }
 
   @Post(":id/payload-preview")

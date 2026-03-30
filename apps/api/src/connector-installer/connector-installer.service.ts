@@ -265,6 +265,19 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "amazon-in") {
+        try {
+          await this.captureAndValidateAmazonCredentials({
+            tenantKey,
+            connectorId: String(definition.id),
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -672,6 +685,57 @@ export class ConnectorInstallerService {
     );
   }
 
+  async handleOAuthCallback(
+    installationId: string,
+    params: Record<string, string>,
+    actor: ConnectorActor,
+  ): Promise<{ id: string; status: "CONNECTED" }> {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.handleOAuthCallback) {
+      throw new BadRequestException({
+        error: "CONNECTOR_OAUTH_CALLBACK_UNSUPPORTED",
+        message: `${installation.slug} does not support OAuth callback handling.`,
+      });
+    }
+
+    await connector.handleOAuthCallback(this.buildConnectorContext(installation), params);
+    return { id: installationId, status: "CONNECTED" };
+  }
+
+  async fetchProductTypeSchema(
+    installationId: string,
+    productType: string,
+    actor: ConnectorActor,
+  ) {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.fetchProductTypeSchema) {
+      throw new BadRequestException({
+        error: "CONNECTOR_PRODUCT_TYPE_SCHEMA_UNSUPPORTED",
+        message: `${installation.slug} does not expose product type schemas.`,
+      });
+    }
+
+    return connector.fetchProductTypeSchema(this.buildConnectorContext(installation), productType);
+  }
+
   private hasConnectorCredentialInput(dto: InstallConnectorDto): boolean {
     return Boolean(
       String(dto.clientId ?? "").trim() ||
@@ -741,6 +805,68 @@ export class ConnectorInstallerService {
     }
   }
 
+  private async captureAndValidateAmazonCredentials(input: {
+    tenantKey: string;
+    connectorId: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const clientId = String(input.dto.clientId ?? "").trim();
+    const clientSecret = String(input.dto.clientSecret ?? "").trim();
+    const refreshToken = String(input.dto.refreshToken ?? "").trim();
+
+    if (!clientId && !clientSecret && !refreshToken) {
+      return;
+    }
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new BadRequestException({
+        error: "AMAZON_CREDENTIALS_INCOMPLETE",
+        message: "Amazon installation requires client ID, client secret, and refresh token together.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_id",
+      plainValue: clientId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "client_secret",
+      plainValue: clientSecret,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "refresh_token",
+      plainValue: refreshToken,
+      metadata: { source: "install_form" },
+    });
+
+    const connector = this.connectorRegistry.getConnector("amazon-in");
+    const validated = await connector.validateCredentials({
+      tenantId: input.tenantKey,
+      installationId: input.installationId,
+      connectorId: input.connectorId,
+      sellerId: input.externalAccountRef ?? undefined,
+      marketplaceId: "A21TJRUUN4KGV",
+      getAccessToken: async () => "",
+    });
+
+    if (!validated) {
+      throw new BadRequestException({
+        error: "AMAZON_CREDENTIALS_INVALID",
+        message: "Amazon credentials could not be validated. Check the client ID, client secret, and refresh token.",
+      });
+    }
+  }
+
   private async cleanupInstallationArtifacts(tenantKey: string, installationId: string): Promise<void> {
     // RLS-BYPASS: manual tenant filter
     await this.prisma.tenant(tenantKey).$executeRawUnsafe(
@@ -792,6 +918,75 @@ export class ConnectorInstallerService {
       id: String(row.id),
       slug: String(row.slug),
       accountAlias: String(row.accountAlias),
+    };
+  }
+
+  private async requireInstallationRuntimeRecord(
+    installationId: string,
+    tenantKey: string,
+  ): Promise<{
+    id: string;
+    tenantKey: string;
+    connectorId: string;
+    slug: string;
+    accountAlias: string;
+    externalAccountRef: string | null;
+    metadata: Record<string, unknown>;
+  }> {
+    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `
+      SELECT
+        ci.id,
+        ci.tenant_key AS "tenantKey",
+        ci.connector_id AS "connectorId",
+        ci.account_alias AS "accountAlias",
+        ci.external_account_ref AS "externalAccountRef",
+        ci.metadata,
+        cd.slug
+      FROM connector_installations ci
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.id = $1 AND ci.tenant_key = $2
+      LIMIT 1
+      `,
+      installationId,
+      tenantKey,
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    return {
+      id: String(row.id),
+      tenantKey: String(row.tenantKey),
+      connectorId: String(row.connectorId),
+      slug: String(row.slug),
+      accountAlias: String(row.accountAlias),
+      externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
+      metadata: parseMetadata(row.metadata),
+    };
+  }
+
+  private buildConnectorContext(installation: {
+    id: string;
+    tenantKey: string;
+    connectorId: string;
+    slug: string;
+    externalAccountRef: string | null;
+    metadata: Record<string, unknown>;
+  }) {
+    const metadataSellerId = String(installation.metadata.sellerId ?? "").trim();
+    const metadataMarketplaceId = String(installation.metadata.marketplaceId ?? "").trim();
+    return {
+      tenantId: installation.tenantKey,
+      installationId: installation.id,
+      connectorId: installation.connectorId,
+      sellerId: metadataSellerId || installation.externalAccountRef || undefined,
+      marketplaceId:
+        metadataMarketplaceId ||
+        (installation.slug === "amazon-in" ? "A21TJRUUN4KGV" : undefined),
+      getAccessToken: async () => "",
     };
   }
 }

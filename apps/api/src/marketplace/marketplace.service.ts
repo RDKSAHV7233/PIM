@@ -33,6 +33,7 @@ import { ConnectorMappingService } from "./connector-mapping.service";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { MARKETPLACE_CHANNELS } from "./dto/simulate-marketplace.dto";
 import { UpdateMappingTemplateDto } from "./dto/update-mapping-template.dto";
+import { buildAmazonFallbackIssues, runAmazonAuthoritativeValidation } from "../connectors/amazon/amazon-validation";
 
 type MarketplaceChannel = (typeof MARKETPLACE_CHANNELS)[number];
 
@@ -55,13 +56,6 @@ type AuthoritativeChannelIssue = {
   fieldPath: string;
   sellerMessage: string;
   message: string;
-};
-
-type AmazonValidationResult = {
-  authoritative: boolean;
-  missingFields: string[];
-  channelIssues: AuthoritativeChannelIssue[];
-  warnings: string[];
 };
 
 function resolveStubConnectorSlugs(): Set<string> {
@@ -1528,19 +1522,22 @@ export class MarketplaceService implements OnModuleInit {
     let validationWarnings: string[] = [];
 
     if (mapping.channel === "amazon") {
-      const amazonValidation = await this.runAmazonValidation({
+      const amazonValidation = await runAmazonAuthoritativeValidation({
         productId: product.id,
         displayName: mapping.displayName,
         requiredFields: mapping.requiredFields,
-        localMissingFields,
-        localChannelIssues,
+        fallbackMissingFields: localMissingFields,
+        fallbackIssues: buildAmazonFallbackIssues(mapping.displayName, localMissingFields),
         mappedPayload,
       });
       if (amazonValidation) {
-        validationWarnings = amazonValidation.warnings;
+        validationWarnings = amazonValidation.warningMessages;
         missingFields = amazonValidation.missingFields;
-        channelIssues = amazonValidation.channelIssues;
-        if (amazonValidation.authoritative) {
+        channelIssues = amazonValidation.issues.map((issue) => ({
+          ...issue,
+          message: issue.sellerMessage,
+        }));
+        if (amazonValidation.source === "LIVE_API") {
           validationSource = "amazon_sp_api";
         }
       }
@@ -1584,134 +1581,6 @@ export class MarketplaceService implements OnModuleInit {
         fix: `Provide ${fieldPath} before publishing to ${mapping.displayName}.`,
       })),
     };
-  }
-
-  private async runAmazonValidation(input: {
-    productId: string;
-    displayName: string;
-    requiredFields: string[];
-    localMissingFields: string[];
-    localChannelIssues: AuthoritativeChannelIssue[];
-    mappedPayload: Record<string, unknown>;
-  }): Promise<AmazonValidationResult | null> {
-    const featureEnabled =
-      String(process.env.FEATURE_REAL_SPAPI_VALIDATION ?? "false")
-        .trim()
-        .toLowerCase() === "true";
-    if (!featureEnabled) {
-      return null;
-    }
-
-    const endpoint = String(process.env.PIM_AMAZON_VALIDATION_ENDPOINT ?? "").trim();
-    if (!endpoint) {
-      return {
-        authoritative: false,
-        missingFields: input.localMissingFields,
-        channelIssues: input.localChannelIssues,
-        warnings: [
-          "Amazon authoritative validation is enabled, but PIM_AMAZON_VALIDATION_ENDPOINT is not configured. Falling back to local rules.",
-        ],
-      };
-    }
-
-    const token = String(process.env.PIM_AMAZON_VALIDATION_TOKEN ?? "").trim();
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          productId: input.productId,
-          requirements: "LISTING",
-          requiredFields: input.requiredFields,
-          mappedPayload: input.mappedPayload,
-        }),
-      });
-      if (!response.ok) {
-        return {
-          authoritative: false,
-          missingFields: input.localMissingFields,
-          channelIssues: input.localChannelIssues,
-          warnings: [`Amazon validation endpoint returned ${response.status}. Falling back to local rules.`],
-        };
-      }
-
-      const payload = (await response.json()) as {
-        missingFields?: unknown;
-        issues?: Array<{
-          severity?: unknown;
-          code?: unknown;
-          fieldPath?: unknown;
-          message?: unknown;
-        }>;
-        warnings?: unknown;
-      };
-      const missingFields = this.normalizeFieldList(payload.missingFields);
-      const issues = Array.isArray(payload.issues) ? payload.issues : [];
-      const channelIssues = issues
-        .map((issue) => {
-          const severity = issue.severity === "warning" ? "warning" : "error";
-          const fieldPath = typeof issue.fieldPath === "string" ? issue.fieldPath.trim() : "";
-          const code = typeof issue.code === "string" ? issue.code.trim() : "AMAZON_VALIDATION_ISSUE";
-          const message =
-            typeof issue.message === "string" && issue.message.trim().length > 0
-              ? issue.message.trim()
-              : `${fieldPath || "field"} failed Amazon validation.`;
-          if (!fieldPath) {
-            return null;
-          }
-          return {
-            severity,
-            code,
-            fieldPath,
-            sellerMessage: message,
-            message,
-          } satisfies AuthoritativeChannelIssue;
-        })
-        .filter((value): value is AuthoritativeChannelIssue => value !== null);
-
-      const warnings = Array.isArray(payload.warnings)
-        ? payload.warnings
-            .filter((warning): warning is string => typeof warning === "string")
-            .map((warning) => warning.trim())
-            .filter((warning) => warning.length > 0)
-        : [];
-
-      const resolvedMissingFields =
-        missingFields.length > 0
-          ? missingFields
-          : channelIssues
-              .filter((issue) => issue.code.includes("REQUIRED") || issue.message.toLowerCase().includes("required"))
-              .map((issue) => issue.fieldPath);
-
-      const fallbackIssues =
-        channelIssues.length > 0
-          ? channelIssues
-          : resolvedMissingFields.map((fieldPath) => ({
-              severity: "error" as const,
-              code: "CHANNEL_REQUIRED_FIELD",
-              fieldPath,
-              sellerMessage: `${fieldPath} is required for ${input.displayName}.`,
-              message: `${fieldPath} is required for ${input.displayName}.`,
-            }));
-
-      return {
-        authoritative: true,
-        missingFields: this.uniqueStrings(resolvedMissingFields),
-        channelIssues: fallbackIssues,
-        warnings,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown validation error";
-      return {
-        authoritative: false,
-        missingFields: input.localMissingFields,
-        channelIssues: input.localChannelIssues,
-        warnings: [`Amazon validation endpoint unavailable (${errorMessage}). Falling back to local rules.`],
-      };
-    }
   }
 
   private async getEffectiveMapping(
