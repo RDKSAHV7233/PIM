@@ -8,6 +8,10 @@ const { PrismaClient } = require("@prisma/client");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 
+function resolveAuthPassword() {
+  return String(process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password");
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
   for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
@@ -139,7 +143,7 @@ async function run() {
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
-      password: "tej-pim-demo-password",
+      password: resolveAuthPassword(),
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");
