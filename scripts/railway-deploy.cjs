@@ -19,7 +19,7 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   const webServiceId = requireEnv("RAILWAY_WEB_SERVICE_ID", env);
   const environmentName = String(env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
-  const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".").trim() || ".");
+  const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".tmp/railway-web-service").trim());
   const railwayBin = String(env.RAILWAY_CLI_BIN ?? "railway").trim() || "railway";
   const deployRetries = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRIES ?? "3"), 10);
   const deployRetryDelayMs = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRY_DELAY_MS ?? "5000"), 10);
@@ -153,6 +153,11 @@ function main(env = process.env) {
     cwd: repoRoot,
     env,
     label: "Railway API packaging",
+  });
+  runCommand(process.execPath, [path.join(repoRoot, "scripts", "prepare-railway-web-package.cjs")], {
+    cwd: repoRoot,
+    env,
+    label: "Railway web packaging",
   });
 
   if (!fs.existsSync(config.apiSourcePath)) {

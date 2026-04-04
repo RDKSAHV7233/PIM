@@ -19,7 +19,7 @@ function main() {
       RAILWAY_WEB_SERVICE_ID: "svc_web",
       RAILWAY_ENVIRONMENT_NAME: "staging",
       RAILWAY_API_SOURCE_PATH: ".tmp/railway-api-service",
-      RAILWAY_WEB_SOURCE_PATH: ".",
+      RAILWAY_WEB_SOURCE_PATH: ".tmp/railway-web-service",
       RAILWAY_CLI_BIN: "railway",
     },
     repoRoot,
@@ -30,7 +30,7 @@ function main() {
   assert.equal(config.webServiceId, "svc_web");
   assert.equal(config.environmentName, "staging");
   assert.equal(path.relative(repoRoot, config.apiSourcePath), path.join(".tmp", "railway-api-service"));
-  assert.equal(path.relative(repoRoot, config.webSourcePath), "");
+  assert.equal(path.relative(repoRoot, config.webSourcePath), path.join(".tmp", "railway-web-service"));
   assert.equal(config.deployRetries, 3);
   assert.equal(config.deployRetryDelayMs, 5000);
 
@@ -50,7 +50,7 @@ function main() {
   ]);
   assert.deepEqual(commands[1].args, [
     "up",
-    ".",
+    path.join(".tmp", "railway-web-service"),
     "--service",
     "svc_web",
     "--project",

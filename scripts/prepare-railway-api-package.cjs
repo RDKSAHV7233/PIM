@@ -7,6 +7,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "api");
 const schemaSource = path.join(repoRoot, "packages", "db", "prisma", "schema.prisma");
+const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
 
 function ensureDir(dir) {
@@ -41,9 +42,19 @@ function main() {
   if (!fs.existsSync(schemaSource)) {
     throw new Error(`Prisma schema not found: ${schemaSource}`);
   }
+  if (!fs.existsSync(tsconfigBaseSource)) {
+    throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
+  }
 
   removeDir(outputDir);
   copyDir(sourceDir, outputDir);
+
+  fs.copyFileSync(tsconfigBaseSource, path.join(outputDir, "tsconfig.base.json"));
+
+  const tsconfigPath = path.join(outputDir, "tsconfig.json");
+  const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
+  tsconfig.extends = "./tsconfig.base.json";
+  fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
 
   const prismaDir = path.join(outputDir, "prisma");
   ensureDir(prismaDir);
@@ -66,6 +77,7 @@ function main() {
       {
         status: "ok",
         outputDir: path.relative(repoRoot, outputDir),
+        tsconfig: path.relative(repoRoot, tsconfigPath),
         schema: path.relative(repoRoot, path.join(prismaDir, "schema.prisma")),
         packageJson: path.relative(repoRoot, packageJsonPath),
       },
