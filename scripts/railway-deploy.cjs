@@ -13,10 +13,24 @@ function requireEnv(name, env = process.env) {
   return value;
 }
 
+function optionalEnv(name, env = process.env) {
+  return String(env[name] ?? "").trim();
+}
+
+function requireOneOfEnv(names, env = process.env) {
+  for (const name of names) {
+    const value = optionalEnv(name, env);
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(`Missing required environment variable: one of ${names.join(", ")}`);
+}
+
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
-  const apiServiceId = requireEnv("RAILWAY_API_SERVICE_ID", env);
-  const webServiceId = requireEnv("RAILWAY_WEB_SERVICE_ID", env);
+  const apiServiceTarget = requireOneOfEnv(["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], env);
+  const webServiceTarget = requireOneOfEnv(["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], env);
   const environmentName = String(env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
   const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".tmp/railway-web-service").trim());
@@ -27,8 +41,8 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   return {
     repoRoot,
     projectId,
-    apiServiceId,
-    webServiceId,
+    apiServiceTarget,
+    webServiceTarget,
     environmentName,
     apiSourcePath,
     webSourcePath,
@@ -48,7 +62,7 @@ function buildDeployCommands(config) {
         "up",
         apiRelative,
         "--service",
-        config.apiServiceId,
+        config.apiServiceTarget,
         "--project",
         config.projectId,
         "--environment",
@@ -63,7 +77,7 @@ function buildDeployCommands(config) {
         "up",
         webRelative,
         "--service",
-        config.webServiceId,
+        config.webServiceTarget,
         "--project",
         config.projectId,
         "--environment",

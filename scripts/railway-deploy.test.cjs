@@ -15,6 +15,8 @@ function main() {
   const config = resolveConfig(
     {
       RAILWAY_PROJECT_ID: "proj_123",
+      RAILWAY_API_SERVICE: "API",
+      RAILWAY_WEB_SERVICE: "PIM1",
       RAILWAY_API_SERVICE_ID: "svc_api",
       RAILWAY_WEB_SERVICE_ID: "svc_web",
       RAILWAY_ENVIRONMENT_NAME: "staging",
@@ -26,8 +28,8 @@ function main() {
   );
 
   assert.equal(config.projectId, "proj_123");
-  assert.equal(config.apiServiceId, "svc_api");
-  assert.equal(config.webServiceId, "svc_web");
+  assert.equal(config.apiServiceTarget, "API");
+  assert.equal(config.webServiceTarget, "PIM1");
   assert.equal(config.environmentName, "staging");
   assert.equal(path.relative(repoRoot, config.apiSourcePath), path.join(".tmp", "railway-api-service"));
   assert.equal(path.relative(repoRoot, config.webSourcePath), path.join(".tmp", "railway-web-service"));
@@ -40,7 +42,7 @@ function main() {
     "up",
     path.join(".tmp", "railway-api-service"),
     "--service",
-    "svc_api",
+    "API",
     "--project",
     "proj_123",
     "--environment",
@@ -52,7 +54,7 @@ function main() {
     "up",
     path.join(".tmp", "railway-web-service"),
     "--service",
-    "svc_web",
+    "PIM1",
     "--project",
     "proj_123",
     "--environment",
@@ -77,6 +79,17 @@ function main() {
     false,
     "Non-timeout Railway failures should not be retried",
   );
+
+  const legacyConfig = resolveConfig(
+    {
+      RAILWAY_PROJECT_ID: "proj_legacy",
+      RAILWAY_API_SERVICE_ID: "svc_api_legacy",
+      RAILWAY_WEB_SERVICE_ID: "svc_web_legacy",
+    },
+    repoRoot,
+  );
+  assert.equal(legacyConfig.apiServiceTarget, "svc_api_legacy");
+  assert.equal(legacyConfig.webServiceTarget, "svc_web_legacy");
 
   console.log("railway-deploy.test.cjs: PASS");
 }

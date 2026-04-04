@@ -43,6 +43,12 @@ function requireEnvVar(step, name, label) {
   assert(Object.prototype.hasOwnProperty.call(env, name), `${label} missing env var: ${name}`);
 }
 
+function requireAnyEnvVar(step, names, label) {
+  const env = step?.env ?? {};
+  const hasAny = names.some((name) => Object.prototype.hasOwnProperty.call(env, name));
+  assert(hasAny, `${label} missing one of env vars: ${names.join(", ")}`);
+}
+
 function main() {
   assert(fs.existsSync(WORKFLOW_PATH), `Workflow file not found: ${WORKFLOW_PATH}`);
   const text = fs.readFileSync(WORKFLOW_PATH, "utf8");
@@ -88,8 +94,8 @@ function main() {
   const deployStep = requireStep(steps, "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_TOKEN", "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to staging");
-  requireEnvVar(deployStep, "RAILWAY_API_SERVICE_ID", "Deploy to staging");
-  requireEnvVar(deployStep, "RAILWAY_WEB_SERVICE_ID", "Deploy to staging");
+  requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
+  requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
   assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
