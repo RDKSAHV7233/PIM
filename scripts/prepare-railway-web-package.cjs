@@ -8,6 +8,7 @@ const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "web");
 const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-web-service");
+const appOutputDir = path.join(outputDir, "apps", "web");
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -46,32 +47,37 @@ function main() {
   }
 
   removeDir(outputDir);
-  copyDir(sourceDir, outputDir);
+  copyDir(sourceDir, appOutputDir);
 
   fs.copyFileSync(tsconfigBaseSource, path.join(outputDir, "tsconfig.base.json"));
 
-  const tsconfigPath = path.join(outputDir, "tsconfig.json");
-  const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
-  tsconfig.extends = "./tsconfig.base.json";
-  fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
-
-  const nextConfigPath = path.join(outputDir, "next.config.ts");
-  if (fs.existsSync(nextConfigPath)) {
-    const nextConfigSource = fs.readFileSync(nextConfigPath, "utf8");
-    const updatedNextConfigSource = nextConfigSource.replace(
-      /outputFileTracingRoot:\s*path\.join\(__dirname,\s*"\.\.\/\.\.\/"\),/,
-      "outputFileTracingRoot: __dirname,",
-    );
-    fs.writeFileSync(nextConfigPath, updatedNextConfigSource, "utf8");
-  }
+  const rootPackageJsonPath = path.join(outputDir, "package.json");
+  fs.writeFileSync(
+    rootPackageJsonPath,
+    `${JSON.stringify(
+      {
+        name: "pim1-railway-web-service",
+        private: true,
+        workspaces: ["apps/*"],
+        scripts: {
+          build: "npm run build --workspace @pim1/web",
+          start: "npm run start --workspace @pim1/web",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 
   console.log(
     JSON.stringify(
       {
         status: "ok",
         outputDir: path.relative(repoRoot, outputDir),
-        tsconfig: path.relative(repoRoot, tsconfigPath),
-        nextConfig: path.relative(repoRoot, nextConfigPath),
+        rootPackageJson: path.relative(repoRoot, rootPackageJsonPath),
+        appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
+        tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
       },
       null,
       2,
