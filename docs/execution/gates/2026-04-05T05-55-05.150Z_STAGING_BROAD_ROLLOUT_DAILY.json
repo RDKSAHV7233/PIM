@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "staging-smoke",
+  "date": "2026-04-05T05:55:05.150Z",
+  "gitTag": "sha-25008e0",
+  "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/23995451746",
+  "suite": "STAGING_BROAD_ROLLOUT_DAILY"
+}
