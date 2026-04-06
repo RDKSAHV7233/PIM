@@ -18,6 +18,76 @@ import { getServerActorRole } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
+function isDashboardApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+function DashboardUnavailableState() {
+  return (
+    <div className="space-y-5">
+      <RefreshOnInterval intervalMs={30_000} />
+      <PageHeader
+        title="Dashboard"
+        description="The workspace overview is reconnecting to the API. We will refresh automatically while staging recovers."
+        actions={
+          <>
+            <Link
+              href="/catalog/products"
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Open catalog
+            </Link>
+            <Link
+              href="/operations/imports"
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Open imports
+            </Link>
+          </>
+        }
+      />
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-amber-900">Dashboard data is temporarily unavailable</h2>
+        <p className="mt-2 text-sm text-amber-900/90">
+          We could not reach the staging API for live dashboard data. This usually clears once the API
+          service finishes restarting.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href="/dashboard"
+            className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry dashboard
+          </Link>
+          <Link
+            href="/quality/issues"
+            className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Open issue inbox
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function formatPercent(value: number): string {
   if (!Number.isFinite(value)) {
     return "0%";
@@ -682,6 +752,9 @@ export default async function DashboardPage() {
   } catch (error) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/dashboard", error));
+    }
+    if (isDashboardApiUnavailable(error)) {
+      return <DashboardUnavailableState />;
     }
     throw error;
   }
