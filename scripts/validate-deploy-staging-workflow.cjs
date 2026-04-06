@@ -73,7 +73,11 @@ function main() {
   const steps = Array.isArray(job.steps) ? job.steps : [];
   assert(steps.length > 0, "deploy-staging job has no steps");
 
-  requireStep(steps, "Checkout");
+  const checkoutStep = requireStep(steps, "Checkout");
+  assert(
+    Number.parseInt(String(checkoutStep?.with?.["fetch-depth"] ?? ""), 10) === 0,
+    "Checkout must use fetch-depth: 0 so selective deploy diffs can compare github.event.before to HEAD",
+  );
   requireStep(steps, "Setup Node");
   requireStep(steps, "Install dependencies");
   requireStep(steps, "Generate Prisma client");
