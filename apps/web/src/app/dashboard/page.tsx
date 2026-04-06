@@ -65,6 +65,8 @@ function DashboardUnavailableState() {
       />
       <section
         aria-live="polite"
+        aria-atomic="true"
+        role="status"
         className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm"
       >
         <h2 className="text-sm font-semibold text-amber-900">Dashboard data is temporarily unavailable</h2>
