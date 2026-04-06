@@ -74,6 +74,14 @@ function main() {
   assert.equal(
     isRetryableRailwayDeployError({
       message: "Railway API deploy failed with exit code 1",
+      stderr: "Build Failed: build daemon returned an error < failed to solve: Canceled: context canceled >",
+    }),
+    true,
+    "Railpack context-canceled build failures should be retryable",
+  );
+  assert.equal(
+    isRetryableRailwayDeployError({
+      message: "Railway API deploy failed with exit code 1",
       stderr: "Unauthorized. Please check that your RAILWAY_TOKEN is valid.",
     }),
     false,

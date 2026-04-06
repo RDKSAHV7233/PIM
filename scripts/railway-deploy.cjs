@@ -122,7 +122,13 @@ function isRetryableRailwayDeployError(error) {
   ]
     .join("\n")
     .toLowerCase();
-  return combined.includes("operation timed out") || combined.includes("error sending request for url");
+  return (
+    combined.includes("operation timed out") ||
+    combined.includes("error sending request for url") ||
+    combined.includes("build daemon returned an error") ||
+    combined.includes("failed to solve: canceled: context canceled") ||
+    combined.includes("context canceled")
+  );
 }
 
 function sleep(ms) {
