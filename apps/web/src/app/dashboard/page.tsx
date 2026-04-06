@@ -63,7 +63,10 @@ function DashboardUnavailableState() {
           </>
         }
       />
-      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+      <section
+        aria-live="polite"
+        className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm"
+      >
         <h2 className="text-sm font-semibold text-amber-900">Dashboard data is temporarily unavailable</h2>
         <p className="mt-2 text-sm text-amber-900/90">
           We could not reach the staging API for live dashboard data. This usually clears once the API
