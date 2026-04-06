@@ -89,6 +89,73 @@ function buildDeployCommands(config) {
   ];
 }
 
+function classifyDeployTargets(changedFiles) {
+  if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
+    return { deployApi: true, deployWeb: true };
+  }
+
+  let deployApi = false;
+  let deployWeb = false;
+
+  for (const file of changedFiles) {
+    const normalized = String(file ?? "").replace(/\\/g, "/").trim();
+    if (!normalized) {
+      continue;
+    }
+    if (
+      normalized === "package.json" ||
+      normalized === "package-lock.json" ||
+      normalized === "tsconfig.base.json" ||
+      normalized.startsWith("packages/") ||
+      normalized.startsWith("scripts/") ||
+      normalized.startsWith(".github/")
+    ) {
+      return { deployApi: true, deployWeb: true };
+    }
+    if (normalized.startsWith("apps/api/")) {
+      deployApi = true;
+    }
+    if (normalized.startsWith("apps/web/")) {
+      deployWeb = true;
+    }
+  }
+
+  if (!deployApi && !deployWeb) {
+    return { deployApi: true, deployWeb: true };
+  }
+
+  return { deployApi, deployWeb };
+}
+
+function getChangedFiles(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
+  const explicitTargets = optionalEnv("RAILWAY_DEPLOY_TARGETS", env)
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (explicitTargets.length > 0) {
+    return explicitTargets;
+  }
+
+  const before = optionalEnv("GITHUB_EVENT_BEFORE", env);
+  const sha = optionalEnv("GITHUB_SHA", env);
+  if (!before || !sha) {
+    return null;
+  }
+
+  const result = childProcess.spawnSync("git", ["diff", "--name-only", before, sha], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function runCommand(command, args, options) {
   const result = childProcess.spawnSync(command, args, {
     cwd: options.cwd,
@@ -162,6 +229,10 @@ function runDeployCommandWithRetry(command, options) {
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
+  const changedFiles = getChangedFiles(env, repoRoot);
+  const deployPlan = Array.isArray(changedFiles) && changedFiles.length > 0
+    ? classifyDeployTargets(changedFiles)
+    : { deployApi: true, deployWeb: true };
 
   runCommand(config.railwayBin, ["--version"], {
     cwd: repoRoot,
@@ -188,6 +259,14 @@ function main(env = process.env) {
   }
 
   for (const command of buildDeployCommands(config)) {
+    if (command.label === "API" && !deployPlan.deployApi) {
+      console.log("[railway-deploy] Skipping API deploy because this push has no API-impacting changes.");
+      continue;
+    }
+    if (command.label === "Web" && !deployPlan.deployWeb) {
+      console.log("[railway-deploy] Skipping Web deploy because this push has no web-impacting changes.");
+      continue;
+    }
     console.log(`[railway-deploy] Deploying ${command.label} service...`);
     runDeployCommandWithRetry(
       {
@@ -216,6 +295,8 @@ if (require.main === module) {
 
 module.exports = {
   buildDeployCommands,
+  classifyDeployTargets,
+  getChangedFiles,
   isRetryableRailwayDeployError,
   main,
   resolveConfig,

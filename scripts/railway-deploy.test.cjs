@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   buildDeployCommands,
+  classifyDeployTargets,
   isRetryableRailwayDeployError,
   resolveConfig,
 } = require("./railway-deploy.cjs");
@@ -98,6 +99,25 @@ function main() {
   );
   assert.equal(legacyConfig.apiServiceTarget, "svc_api_legacy");
   assert.equal(legacyConfig.webServiceTarget, "svc_web_legacy");
+
+  assert.deepEqual(
+    classifyDeployTargets([
+      "apps/web/src/app/dashboard/page.tsx",
+      "apps/web/test/integration/dashboard-api-fallback-ui.test.cjs",
+    ]),
+    { deployApi: false, deployWeb: true },
+    "Web-only changes should not force an API deploy.",
+  );
+  assert.deepEqual(
+    classifyDeployTargets(["apps/api/src/app.controller.ts"]),
+    { deployApi: true, deployWeb: false },
+    "API-only changes should not force a web deploy.",
+  );
+  assert.deepEqual(
+    classifyDeployTargets(["scripts/railway-deploy.cjs"]),
+    { deployApi: true, deployWeb: true },
+    "Shared release tooling changes must deploy both services.",
+  );
 
   console.log("railway-deploy.test.cjs: PASS");
 }
