@@ -64,6 +64,10 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
   const [statusError, setStatusError] = useState("");
   const [status, setStatus] = useState<PrivacyStatusPayload | null>(null);
   const exportBlockedBySuspension = status?.commercialState?.accessStatus === "suspended";
+  const scopeNote =
+    actorRole === "admin"
+      ? "This page applies only to your signed-in account. It does not manage exports or deletion requests for other workspace users."
+      : "These controls apply only to your signed-in account.";
 
   const loadStatus = useCallback(async () => {
     try {
@@ -206,12 +210,13 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Data and Privacy</h1>
         <p className="text-sm text-slate-600">
-          Manage privacy status and account deletion workflows. Account exports are prepared asynchronously and can be downloaded here when ready.
+          Manage the signed-in account&apos;s privacy status and deletion workflow. Account exports are prepared asynchronously and can be downloaded here when ready.
         </p>
+        <p className="text-sm text-slate-500">{scopeNote}</p>
       </header>
 
       <section className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-        <h2 className="text-base font-semibold text-slate-900">Current privacy status</h2>
+        <h2 className="text-base font-semibold text-slate-900">Current account privacy status</h2>
         {statusError ? (
           <p className="text-red-700">{statusError}</p>
         ) : (
@@ -272,7 +277,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
       <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-slate-900">Request data export</h2>
           <p className="text-sm text-slate-600">
-            Request an export of your account activity and privacy records. We will prepare the file in the background and email you when it is ready.
+            Request an export of the signed-in account&apos;s activity and privacy records. We will prepare the file in the background and email you when it is ready.
           </p>
         <form className="space-y-3" onSubmit={requestExport}>
           <div className="space-y-1">
@@ -305,7 +310,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
       </section>
 
       <section className="space-y-3 rounded-md border border-red-200 bg-red-50 p-4">
-        <h2 className="text-lg font-semibold text-red-900">Delete account</h2>
+        <h2 className="text-lg font-semibold text-red-900">Delete this account</h2>
         <p className="text-sm text-red-800">
           This schedules irreversible account erasure. Type <span className="font-semibold">DELETE</span> to confirm.
         </p>

@@ -1,15 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
 const adminLinks = [
-  {
-    title: "Workspace Settings",
-    description: "Tenant-level defaults and workspace configuration.",
-    href: "/admin/workspace",
-  },
   {
     title: "Plan & Usage",
     description: "Usage meters, tier controls, and plan enforcement visibility.",
@@ -37,7 +35,7 @@ const adminLinks = [
   },
   {
     title: "Privacy",
-    description: "Consent, export, and account deletion governance controls.",
+    description: "View consent, export, and deletion status for the signed-in account.",
     href: "/admin/privacy",
   },
   {
@@ -47,7 +45,12 @@ const adminLinks = [
   },
 ];
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const authHeader = await getServerAuthHeader();
+  if (!authHeader) {
+    redirect(buildLoginRedirect("/admin", 401));
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
