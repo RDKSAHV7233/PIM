@@ -48,16 +48,19 @@ function run() {
       adminSource.includes('import { buildLoginRedirect } from "@/lib/auth-redirect";') &&
       adminSource.includes('import { getServerAuthHeader } from "@/lib/server-auth";') &&
       adminSource.includes('import { getServerActorRole } from "@/lib/server-session";') &&
-      adminSource.includes('import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
+      adminSource.includes('import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
       adminSource.includes("const authHeader = await getServerAuthHeader();") &&
       adminSource.includes("if (!authHeader) {") &&
       adminSource.includes('redirect(buildLoginRedirect("/admin", 401));') &&
       adminSource.includes("const actorRole = await getServerActorRole();") &&
       adminSource.includes("const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));") &&
+      adminSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
+      adminSource.includes('description={`Workspace settings and governance controls available for your current ${actorRole} role.`}') &&
+      adminSource.includes("<CardTitle>{accessSummary.title}</CardTitle>") &&
       adminSource.includes('visibility: "admin" as AdminNavigationAudience') &&
       adminSource.includes('visibility: "editor_plus" as AdminNavigationAudience') &&
       adminSource.includes("View consent, export, and deletion status for the signed-in account."),
-    "Admin hub must require auth, describe privacy scope honestly, and filter cards to the current role.",
+    "Admin hub must require auth, describe privacy scope honestly, summarize current-role access, and filter cards to the current role.",
   );
 
   assert(
@@ -65,19 +68,21 @@ function run() {
       workspaceSource.includes('import { buildLoginRedirect } from "@/lib/auth-redirect";') &&
       workspaceSource.includes('import { getServerAuthHeader } from "@/lib/server-auth";') &&
       workspaceSource.includes('import { getServerActorRole } from "@/lib/server-session";') &&
-      workspaceSource.includes('import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
+      workspaceSource.includes('import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
       workspaceSource.includes("const authHeader = await getServerAuthHeader();") &&
       workspaceSource.includes("if (!authHeader) {") &&
       workspaceSource.includes('redirect(buildLoginRedirect("/admin/workspace", 401));') &&
       workspaceSource.includes("const actorRole = await getServerActorRole();") &&
       workspaceSource.includes("const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>") &&
       workspaceSource.includes("canViewAdminNavigationItem(actorRole, item.visibility)") &&
+      workspaceSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
       workspaceSource.includes("Workspace Admin Guide") &&
       workspaceSource.includes("This route is a compatibility handoff for older bookmarks.") &&
+      workspaceSource.includes("Use the admin modules available for your current") &&
       workspaceSource.includes('href: "/admin/api-keys"') &&
       workspaceSource.includes('href: "/admin/webhooks"') &&
       workspaceSource.includes("View export and deletion status for the signed-in account."),
-    "Admin workspace handoff must require auth, stay honest about its scope, and point legacy bookmarks to the role-appropriate admin module set.",
+    "Admin workspace handoff must require auth, explain current-role access honestly, and point legacy bookmarks to the role-appropriate admin module set.",
   );
 
   assert(
@@ -95,8 +100,11 @@ function run() {
     navigationSource.includes('export type AdminNavigationAudience = "all" | "editor_plus" | "admin";') &&
       navigationSource.includes('if (audience === "editor_plus") {') &&
       navigationSource.includes('return role === "admin" || role === "editor";') &&
-      navigationSource.includes('return role === "admin";'),
-    "Admin navigation visibility must distinguish shared, editor-plus, and admin-only surfaces.",
+      navigationSource.includes('return role === "admin";') &&
+      navigationSource.includes('title: "Full admin access"') &&
+      navigationSource.includes('title: "Limited admin access"') &&
+      navigationSource.includes('title: "Privacy-only access"'),
+    "Admin navigation helpers must distinguish shared, editor-plus, and admin-only surfaces and explain current-role access clearly.",
   );
 
   console.log(
@@ -107,6 +115,7 @@ function run() {
           "admin_hub_requires_auth_before_render",
           "admin_hub_describes_privacy_as_signed_in_account_scope",
           "admin_hub_filters_cards_by_current_role",
+          "admin_hub_summarizes_current_role_access",
           "admin_workspace_handoff_requires_auth_before_render",
           "admin_workspace_handoff_routes_bookmarks_to_real_admin_modules",
           "admin_privacy_route_requires_auth_before_mounting_client",

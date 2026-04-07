@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
-import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";
+import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -61,18 +61,24 @@ export default async function AdminPage() {
   }
   const actorRole = await getServerActorRole();
   const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));
+  const accessSummary = describeAdminAccess(actorRole);
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Admin"
-        description="Workspace settings and governance controls available for your current role."
+        description={`Workspace settings and governance controls available for your current ${actorRole} role.`}
         breadcrumb={
           <>
             Dashboard / <span className="font-semibold text-slate-700">Admin</span>
           </>
         }
       />
+
+      <Card>
+        <CardTitle>{accessSummary.title}</CardTitle>
+        <p className="mt-2 text-sm text-slate-600">{accessSummary.body}</p>
+      </Card>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visibleAdminLinks.map((item) => (
