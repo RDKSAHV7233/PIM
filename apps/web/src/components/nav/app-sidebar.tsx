@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { AppRole } from "@/lib/api";
+import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { cn } from "@/lib/utils";
 
 interface SidebarItem {
   label: string;
   href: string;
   icon: SidebarIconName;
+  visibility?: AdminNavigationAudience;
 }
 
 interface SidebarSection {
@@ -188,13 +191,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     title: "Settings",
     items: [
-      { label: "Plan & Usage", href: "/admin/plan", icon: "gauge" },
-      { label: "Users & Roles", href: "/admin/users", icon: "users" },
-      { label: "Connector Access", href: "/admin/connectors", icon: "shield" },
-      { label: "API Keys", href: "/admin/api-keys", icon: "key" },
-      { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook" },
+      { label: "Plan & Usage", href: "/admin/plan", icon: "gauge", visibility: "editor_plus" },
+      { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "editor_plus" },
+      { label: "Connector Access", href: "/admin/connectors", icon: "shield", visibility: "editor_plus" },
+      { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "admin" },
+      { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "admin" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
-      { label: "Audit Logs", href: "/admin/audit", icon: "receipt" },
+      { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "admin" },
     ],
   },
   {
@@ -216,15 +219,21 @@ function isItemActive(pathname: string, item: SidebarItem): boolean {
 }
 
 interface AppSidebarProps {
+  actorRole: AppRole;
   showInternal?: boolean;
 }
 
-export function AppSidebar({ showInternal = false }: AppSidebarProps) {
+export function AppSidebar({ actorRole, showInternal = false }: AppSidebarProps) {
   const pathname = usePathname();
   const [badges, setBadges] = useState<SidebarBadgeSummary>({ quality: 0, operations: 0 });
-  const sections = showInternal
+  const sections = (showInternal
     ? SIDEBAR_SECTIONS
-    : SIDEBAR_SECTIONS.filter((section) => section.title !== "Labs / Internal");
+    : SIDEBAR_SECTIONS.filter((section) => section.title !== "Labs / Internal"))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility)),
+    }))
+    .filter((section) => section.items.length > 0);
 
   useEffect(() => {
     const controller = new AbortController();

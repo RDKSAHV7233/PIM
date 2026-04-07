@@ -2,8 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
+import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -12,36 +14,43 @@ const workspaceAdminModules = [
     title: "Users & Roles",
     description: "Invite workspace users, update roles, and manage account access.",
     href: "/admin/users",
+    visibility: "editor_plus" as AdminNavigationAudience,
   },
   {
     title: "Plan & Usage",
     description: "Review plan status, billing contact routing, and upgrade-request state.",
     href: "/admin/plan",
+    visibility: "editor_plus" as AdminNavigationAudience,
   },
   {
     title: "Connector Access",
     description: "Grant or revoke connector permissions for the workspace.",
     href: "/admin/connectors",
+    visibility: "editor_plus" as AdminNavigationAudience,
   },
   {
     title: "API Keys",
     description: "Issue and revoke tenant-scoped machine credentials for the public API.",
     href: "/admin/api-keys",
+    visibility: "admin" as AdminNavigationAudience,
   },
   {
     title: "Outbound Webhooks",
     description: "Configure outbound event deliveries for imports, approvals, and publishing.",
     href: "/admin/webhooks",
+    visibility: "admin" as AdminNavigationAudience,
   },
   {
     title: "Privacy",
     description: "View export and deletion status for the signed-in account.",
     href: "/admin/privacy",
+    visibility: "all" as AdminNavigationAudience,
   },
   {
     title: "Audit Logs",
     description: "Review security and governance activity with actor and resource traceability.",
     href: "/admin/audit",
+    visibility: "admin" as AdminNavigationAudience,
   },
 ];
 
@@ -50,12 +59,16 @@ export default async function AdminWorkspacePage() {
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/workspace", 401));
   }
+  const actorRole = await getServerActorRole();
+  const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>
+    canViewAdminNavigationItem(actorRole, item.visibility),
+  );
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Workspace Admin Guide"
-        description="This route is a compatibility handoff for older bookmarks. Use the dedicated admin modules below for real configuration work."
+        description="This route is a compatibility handoff for older bookmarks. Use the admin modules available for your current role below."
         breadcrumb={
           <>
             Dashboard / Admin / <span className="font-semibold text-slate-700">Workspace Admin Guide</span>
@@ -66,13 +79,13 @@ export default async function AdminWorkspacePage() {
       <Card>
         <CardTitle>Choose The Admin Module You Need</CardTitle>
         <p className="mt-2 text-sm text-slate-600">
-          Workspace settings are no longer managed from one shared page. Use the dedicated modules below for users,
-          plan controls, integrations, privacy, and audit follow-up.
+          Workspace settings are no longer managed from one shared page. Use the dedicated modules below for the admin,
+          integration, and privacy tools available to your current role.
         </p>
       </Card>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {workspaceAdminModules.map((item) => (
+        {visibleWorkspaceAdminModules.map((item) => (
           <Card key={item.href}>
             <CardTitle>{item.title}</CardTitle>
             <p className="mt-2 text-sm text-slate-600">{item.description}</p>
