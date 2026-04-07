@@ -28,6 +28,11 @@ function run() {
     assert(sidebar.includes(`title: "${title}"`), `Sidebar must include ${title} section.`);
   }
   assert(
+    sidebar.includes('{ label: "API Keys", href: "/admin/api-keys", icon: "key" }') &&
+      sidebar.includes('{ label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook" }'),
+    "Settings navigation must expose API Keys and Outbound Webhooks as first-class admin tools.",
+  );
+  assert(
     sidebar.includes("function SidebarIcon(") && sidebar.includes("<SidebarIcon name={item.icon} />"),
     "Sidebar must use the current inline icon system for navigation items.",
   );
@@ -39,6 +44,7 @@ function run() {
         validated: [
           "authenticated_shell_exposes_global_search_notifications_and_role_badge",
           "sidebar_uses_icons_and_live_badges",
+          "settings_navigation_includes_api_keys_and_outbound_webhooks",
           "sidebar_sections_match_current_pim1_information_architecture",
         ],
         checkedAt: new Date().toISOString(),

@@ -60,6 +60,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
   const role = await getServerActorRole();
   const authHeader = await getServerAuthHeader();
   const status = String(query.status ?? "").trim();
+  const errorMessage = String(query.message ?? "").trim();
 
   try {
     const [endpoints, deliveries] = await Promise.all([
@@ -79,6 +80,9 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
           }
         />
 
+        {status === "webhook-error" ? (
+          <StatusBanner tone="error" message={errorMessage || "Unable to update webhook endpoint."} />
+        ) : null}
         {status === "webhook-created" ? <StatusBanner tone="success" message="Webhook endpoint created." /> : null}
         {status === "webhook-paused" ? <StatusBanner tone="info" message="Webhook endpoint paused." /> : null}
         {status === "webhook-resumed" ? <StatusBanner tone="success" message="Webhook endpoint resumed." /> : null}

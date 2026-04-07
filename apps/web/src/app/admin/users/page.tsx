@@ -79,6 +79,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const status = String(query.status ?? "").trim();
+  const errorMessage = String(query.message ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
   const canManageUsers = Boolean(authHeader);
 
@@ -124,6 +125,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           }
         />
 
+        {status === "user-error" ? (
+          <StatusBanner tone="error" message={errorMessage || "Unable to update workspace user."} />
+        ) : null}
         {status === "user-created" ? <StatusBanner tone="success" message="Workspace user invited." /> : null}
         {status === "role-updated" ? <StatusBanner tone="success" message="User role updated." /> : null}
         {status === "user-locked" ? <StatusBanner tone="success" message="User lock applied." /> : null}
@@ -148,6 +152,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
               Add a workspace user with editor, reviewer, or viewer access. Admin promotion stays explicit after the user exists.
             </p>
             <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px_auto] md:items-end">
+              <input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />
               <label className="grid gap-1 text-sm">
                 <span className="font-medium text-slate-700">User ID</span>
                 <input
