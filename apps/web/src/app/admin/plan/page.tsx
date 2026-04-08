@@ -495,6 +495,15 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           />
         </div>
       </Card>
+      {role !== "admin" ? (
+        <Card>
+          <CardTitle>Commercial Controls</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Workspace admins can manage billing contacts, request plan changes, and review signup conversion from this
+            page. You can still review current usage and commercial status above.
+          </p>
+        </Card>
+      ) : null}
       {role === "admin" && signupTrends ? (
         <div id="signup-conversion">
           <Card>

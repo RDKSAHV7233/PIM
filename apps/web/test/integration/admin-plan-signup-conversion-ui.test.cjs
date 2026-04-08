@@ -59,6 +59,13 @@ function run() {
     "Plan page must expose a window-scoped pending verification backlog summary.",
   );
   assert(
+    source.includes('role !== "admin"') &&
+      source.includes("<CardTitle>Commercial Controls</CardTitle>") &&
+      source.includes("Workspace admins can manage billing contacts, request plan changes, and review signup conversion") &&
+      source.includes("You can still review current usage and commercial status above."),
+    "Plan page must explain the read-only fallback for non-admin roles instead of silently hiding commercial controls.",
+  );
+  assert(
     source.includes("Plan changes are managed by TEJ commercial ops.") &&
       source.includes("Customer admins can review plan usage") &&
       source.includes("paid-plan changes are applied through") &&
