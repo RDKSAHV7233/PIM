@@ -25,12 +25,20 @@ function run() {
     "Connectors page must render Flipkart-specific credential fields inside the install form.",
   );
   assert(
+    pageSource.includes('definition.slug === "amazon-in"') &&
+      pageSource.includes("Amazon India live install needs seller ID plus validated LWA credentials.") &&
+      pageSource.includes("Enter Amazon seller ID") &&
+      pageSource.includes("Enter Amazon refresh token"),
+    "Connectors page must render Amazon-specific seller ID and credential guidance inside the install form.",
+  );
+  assert(
     pageSource.includes("encrypted on save and never shown again"),
-    "Flipkart install form must explain secret handling truthfully.",
+    "Connector install forms must explain secret handling truthfully.",
   );
   assert(
     pageSource.includes("installErrorMessage") &&
-      pageSource.includes("FLIPKART_CREDENTIALS_INVALID"),
+      pageSource.includes("FLIPKART_CREDENTIALS_INVALID") &&
+      pageSource.includes("AMAZON_CREDENTIALS_INVALID"),
     "Connectors page must surface install-time validation failures back to the user.",
   );
   assert(
@@ -65,7 +73,8 @@ function run() {
           "connector_workspace_hub_anchors_present",
           "connector_workspace_lanes_heading_readable",
           "flipkart_install_form_collects_credentials",
-          "flipkart_install_form_explains_secret_handling",
+          "amazon_install_form_collects_seller_credentials",
+          "connector_install_form_explains_secret_handling",
           "flipkart_install_action_surfaces_validation_error",
         ],
         checkedAt: new Date().toISOString(),

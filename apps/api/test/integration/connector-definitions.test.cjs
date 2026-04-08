@@ -216,9 +216,10 @@ async function run() {
       );
     }
 
-    assert(amazon.implementationStatus === "partial", `amazon-in implementationStatus expected partial, got ${amazon.implementationStatus}`);
+    assert(amazon.implementationStatus === "full", `amazon-in implementationStatus expected full, got ${amazon.implementationStatus}`);
     assert(meesho.implementationStatus === "partial", `meesho implementationStatus expected partial, got ${meesho.implementationStatus}`);
     assert(flipkart.implementationStatus === "full", `flipkart implementationStatus expected full, got ${flipkart.implementationStatus}`);
+    assert(amazon.launchStage === "live", `amazon-in launchStage expected live, got ${amazon.launchStage}`);
 
     console.log(
       JSON.stringify(

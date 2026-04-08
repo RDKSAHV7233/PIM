@@ -15,8 +15,8 @@ Make sure you have:
 5. product data or import files ready if you plan to onboard a catalog immediately
 
 Important repo-truth notes:
-1. Flipkart is the only live seller-ready connector path in this repo today.
-2. Amazon India is visible but not seller-ready.
+1. Flipkart and Amazon India are live seller-ready connector paths in this repo today.
+2. Amazon India install requires seller ID plus Amazon LWA credentials.
 3. Meesho is still a guided/manual workflow, not a complete self-serve connector path.
 4. ONDC is internal or feature-flagged.
 
@@ -195,7 +195,7 @@ Route: `/channels/connectors`
 
 Important repo-truth notes:
 1. Flipkart is the practical live connector path in this codebase
-2. Amazon India is shown honestly but is not ready for seller self-serve use
+2. Amazon India is also live for seller self-serve install, publish, and status sync when valid seller credentials are provided
 3. Meesho is not a finished self-serve connector workflow yet
 
 ## 10. Build and Publish a Mapping

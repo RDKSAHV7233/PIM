@@ -91,7 +91,24 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   if (value === "FLIPKART_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the client ID, client secret, and refresh token.`;
   }
+  if (value === "AMAZON_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires seller ID, client ID, client secret, and refresh token together.`;
+  }
+  if (value === "AMAZON_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
+  }
   return `${connectorLabel} install failed: ${value}`;
+}
+
+function connectorAccountReferenceLabel(slug: string): string {
+  return slug === "amazon-in" ? "Seller ID" : "External Account Ref";
+}
+
+function connectorAccountReferencePlaceholder(slug: string): string {
+  if (slug === "amazon-in") {
+    return "Enter Amazon seller ID";
+  }
+  return "Optional";
 }
 
 function isPlanBlockedReason(reason: string | null | undefined): boolean {
@@ -642,12 +659,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                               htmlFor={`install-ref-${definition.id}`}
                               className="text-xs font-semibold uppercase tracking-wide text-slate-600"
                             >
-                              External Account Ref
+                              {connectorAccountReferenceLabel(definition.slug)}
                             </label>
                             <Input
                               id={`install-ref-${definition.id}`}
                               name="externalAccountRef"
-                              placeholder="Optional"
+                              placeholder={connectorAccountReferencePlaceholder(definition.slug)}
                             />
                           </div>
                           {definition.slug === "flipkart" ? (
@@ -697,6 +714,56 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                                   type="password"
                                   autoComplete="new-password"
                                   placeholder="Enter Flipkart refresh token"
+                                />
+                              </div>
+                            </>
+                          ) : definition.slug === "amazon-in" ? (
+                            <>
+                              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                                Amazon India live install needs seller ID plus validated LWA credentials. These values are encrypted on save and never shown again.
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-client-id-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Client ID
+                                </label>
+                                <Input
+                                  id={`install-client-id-${definition.id}`}
+                                  name="clientId"
+                                  autoComplete="off"
+                                  placeholder="amzn-client-id"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-client-secret-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Client Secret
+                                </label>
+                                <Input
+                                  id={`install-client-secret-${definition.id}`}
+                                  name="clientSecret"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Enter Amazon client secret"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label
+                                  htmlFor={`install-refresh-token-${definition.id}`}
+                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                >
+                                  Refresh Token
+                                </label>
+                                <Input
+                                  id={`install-refresh-token-${definition.id}`}
+                                  name="refreshToken"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Enter Amazon refresh token"
                                 />
                               </div>
                             </>
