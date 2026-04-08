@@ -65,7 +65,11 @@ function run() {
       source.includes('status === "role-updated"') &&
       source.includes('status === "user-locked"') &&
       source.includes('status === "user-unlocked"') &&
-      source.includes('status === "user-deactivated"'),
+      source.includes('status === "user-deactivated"') &&
+      source.includes('message="Workspace user role updated."') &&
+      source.includes('message="Workspace user locked."') &&
+      source.includes('message="Workspace user unlocked."') &&
+      source.includes('message="Workspace user deactivated."'),
     "Admin users must surface invite, error, role change, lock, unlock, and deactivate outcomes through page-level status banners.",
   );
   assert(

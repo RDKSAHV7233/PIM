@@ -131,10 +131,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           <StatusBanner tone="error" message={errorMessage || "Unable to update workspace user."} />
         ) : null}
         {status === "user-created" ? <StatusBanner tone="success" message="Workspace user invited." /> : null}
-        {status === "role-updated" ? <StatusBanner tone="success" message="User role updated." /> : null}
-        {status === "user-locked" ? <StatusBanner tone="success" message="User lock applied." /> : null}
-        {status === "user-unlocked" ? <StatusBanner tone="success" message="User unlocked." /> : null}
-        {status === "user-deactivated" ? <StatusBanner tone="success" message="User deactivated." /> : null}
+        {status === "role-updated" ? <StatusBanner tone="success" message="Workspace user role updated." /> : null}
+        {status === "user-locked" ? <StatusBanner tone="success" message="Workspace user locked." /> : null}
+        {status === "user-unlocked" ? <StatusBanner tone="success" message="Workspace user unlocked." /> : null}
+        {status === "user-deactivated" ? <StatusBanner tone="success" message="Workspace user deactivated." /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
