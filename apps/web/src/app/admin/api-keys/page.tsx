@@ -65,7 +65,16 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
           <StatusBanner tone="success" message="API key revoked." />
         ) : null}
 
-        {role === "admin" ? <ApiKeyCreatePanel /> : null}
+        {role === "admin" ? (
+          <ApiKeyCreatePanel />
+        ) : (
+          <Card>
+            <CardTitle>API Key Management</CardTitle>
+            <p className="mt-3 text-sm text-slate-600">
+              Admin role is required to create or revoke API keys. You can still review the issued machine credentials below.
+            </p>
+          </Card>
+        )}
 
         <Card>
           <CardTitle>Issued API Keys</CardTitle>

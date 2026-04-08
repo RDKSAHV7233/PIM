@@ -144,7 +144,14 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
               </div>
             </form>
           </Card>
-        ) : null}
+        ) : (
+          <Card>
+            <CardTitle>Webhook Management</CardTitle>
+            <p className="mt-3 text-sm text-slate-600">
+              Admin role is required to create, test, pause, resume, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below.
+            </p>
+          </Card>
+        )}
 
         <Card>
           <CardTitle>Configured Endpoints</CardTitle>
