@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
@@ -447,25 +448,23 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 text-sm text-slate-600">
-        <Link href="/dashboard" className="underline">
-          Dashboard
-        </Link>
-        <span>/</span>
-        <Link href="/admin" className="underline">
-          Admin
-        </Link>
-        <span>/</span>
-        <span>Plan &amp; Usage</span>
-      </div>
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Plan and Usage</h1>
-        <p className="text-sm text-slate-600">
-          Plan: {usage.planTier} | Billing: {formatCommercialStatus(usage.billingStatus)} | Access:{" "}
-          {formatAccessStatus(usage.accessStatus)} | Billing month: {usage.month} | Resets on{" "}
-          {new Date(usage.billingCycleResetAt).toLocaleDateString()}
-        </p>
-      </header>
+      <PageHeader
+        title="Plan & Usage"
+        description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString()}`}
+        breadcrumb={
+          <>
+            <Link href="/dashboard" className="underline">
+              Dashboard
+            </Link>
+            <span> / </span>
+            <Link href="/admin" className="underline">
+              Admin
+            </Link>
+            <span> / </span>
+            <span className="font-semibold text-slate-700">Plan &amp; Usage</span>
+          </>
+        }
+      />
       {commercialStatusAlert ? (
         <div className={`rounded-md border px-3 py-3 text-sm ${commercialStatusAlert.tone}`}>
           <div className="font-semibold">{commercialStatusAlert.title}</div>

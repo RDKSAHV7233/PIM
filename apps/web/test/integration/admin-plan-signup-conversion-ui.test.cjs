@@ -16,6 +16,14 @@ function run() {
   const source = fs.readFileSync(PLAN_PAGE, "utf8");
 
   assert(
+    source.includes('import { PageHeader } from "@/components/ui/page-header";') &&
+      source.includes("<PageHeader") &&
+      source.includes('title="Plan & Usage"') &&
+      source.includes('Link href="/dashboard"') &&
+      source.includes('Link href="/admin"'),
+    "Plan page must use the shared admin page-header pattern with linked breadcrumbs.",
+  );
+  assert(
     source.includes("const signupTrendDays = resolveSignupTrendDays(query.days);") &&
       source.includes('role === "admin"') &&
       source.includes("getKpiTrends({ days: signupTrendDays }, { role, authHeader })"),
@@ -88,9 +96,8 @@ function run() {
       source.includes("Workspace access is suspended") &&
       source.includes("Billing needs attention") &&
       source.includes("Trial is active") &&
-      source.includes("Billing: {formatCommercialStatus(usage.billingStatus)}") &&
+      source.includes("description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString()}`}") &&
       source.includes('Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}') &&
-      source.includes("Access:") &&
       source.includes("formatAccessStatus"),
     "Plan page must expose commercial status and warning states for billing/access transitions.",
   );
