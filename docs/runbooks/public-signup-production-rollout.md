@@ -80,6 +80,19 @@ If production email delivery is available and you want full validation:
 6. Verify the new workspace can sign in.
 7. Confirm the new tenant resolves to `STARTER`.
 
+If a non-production environment is intentionally using `AUTH_EMAIL_PROVIDER=console`, you can still validate the full flow by extracting the verification link from Railway API logs:
+
+5. Set:
+   - `RAILWAY_TOKEN`
+   - `STAGING_BASE_URL`
+   - `STAGING_WEB_URL`
+6. Run:
+   - `npm run release:staging:signup-console-verify`
+7. Expect:
+   - signup create -> `pending_verification`
+   - signup verify -> `verified`
+   - login -> `201`
+
 ## 6. Post-enable monitoring
 
 Watch these signals for the first 24 hours:
