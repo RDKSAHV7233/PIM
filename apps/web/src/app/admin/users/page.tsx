@@ -147,6 +147,16 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           />
         </section>
 
+        {!canManageUsers ? (
+          <Card>
+            <CardTitle>Workspace Access Management</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              Admin role is required to invite users, change roles, or change account access state. You can still review
+              workspace users, the role matrix, and connector overrides below.
+            </p>
+          </Card>
+        ) : null}
+
         {canManageUsers && showInvite ? (
           <Card>
             <CardTitle>Invite User</CardTitle>

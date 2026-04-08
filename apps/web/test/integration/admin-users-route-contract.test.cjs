@@ -45,6 +45,12 @@ function run() {
     "Admin users must derive top-line access metrics from live billing and connector permission data.",
   );
   assert(
+    source.includes("<CardTitle>Workspace Access Management</CardTitle>") &&
+      source.includes("Admin role is required to invite users, change roles, or change account access state.") &&
+      source.includes("workspace users, the role matrix, and connector overrides below."),
+    "Admin users must explain the read-only fallback clearly when the current role cannot manage workspace access.",
+  );
+  assert(
     source.includes('href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}') &&
       source.includes("form action={createWorkspaceUserAction}") &&
       source.includes('<option value="editor">Editor</option>') &&
@@ -101,6 +107,7 @@ function run() {
           "admin_users_route_normalizes_status_and_invite_query_state",
           "admin_users_route_fetches_usage_permissions_and_users_in_parallel",
           "admin_users_route_derives_access_kpis_from_live_data",
+          "admin_users_route_explains_read_only_access_honestly",
           "admin_users_route_keeps_invite_flow_and_roles_explicit",
           "admin_users_route_surfaces_user_lifecycle_status_banners",
           "admin_users_route_keeps_error_feedback_inline",
