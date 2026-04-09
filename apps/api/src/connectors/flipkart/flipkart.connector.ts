@@ -587,9 +587,11 @@ export class FlipkartConnector implements ConnectorInterface {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, 'ACTIVE', $7, NULL, NOW(), NOW()
       )
-      ON CONFLICT (installation_id, credential_type)
+      ON CONFLICT (id)
       DO UPDATE SET
         tenant_key = EXCLUDED.tenant_key,
+        installation_id = EXCLUDED.installation_id,
+        credential_type = EXCLUDED.credential_type,
         encrypted_value = EXCLUDED.encrypted_value,
         key_version = EXCLUDED.key_version,
         status = 'ACTIVE',
