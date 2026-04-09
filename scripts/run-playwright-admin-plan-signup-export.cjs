@@ -76,7 +76,7 @@ function withConnectionLimit(databaseUrl, connectionLimit) {
 
 function main() {
   const fileEnv = loadEnvFile(envFile);
-  const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 2);
+  const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
   const runId = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   const apiPort = 4600 + Math.floor(Math.random() * 100);
   const webPort = 3600 + Math.floor(Math.random() * 100);

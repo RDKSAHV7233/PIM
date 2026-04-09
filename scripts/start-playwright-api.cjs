@@ -6,6 +6,30 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
 
+function resolveDatabaseUrl(fileEnv) {
+  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const resolved = String(
+    process.env.DATABASE_URL_POOLED ||
+      process.env.DATABASE_URL_DIRECT ||
+      process.env.DATABASE_URL ||
+      fileEnv.DATABASE_URL_POOLED ||
+      fileEnv.DATABASE_URL_DIRECT ||
+      fileEnv.DATABASE_URL ||
+      "",
+  ).trim();
+  return !resolved || /HOST:5432/i.test(resolved) ? localDatabaseUrl : resolved;
+}
+
+function withConnectionLimit(databaseUrl, connectionLimit) {
+  try {
+    const parsed = new URL(databaseUrl);
+    parsed.searchParams.set("connection_limit", String(connectionLimit));
+    return parsed.toString();
+  } catch {
+    return databaseUrl;
+  }
+}
+
 function loadEnvFile(filePath) {
   const values = {};
   if (!fs.existsSync(filePath)) {
@@ -39,6 +63,7 @@ function loadEnvFile(filePath) {
 }
 
 const fileEnv = loadEnvFile(envFile);
+const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
 const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
 const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const identityDirectory =
@@ -78,6 +103,9 @@ const env = {
   ...process.env,
   PORT: process.env.PLAYWRIGHT_API_PORT || "4001",
   APP_ENV: "development",
+  DATABASE_URL: databaseUrl,
+  DATABASE_URL_POOLED: databaseUrl,
+  DATABASE_URL_DIRECT: databaseUrl,
   AUTH_MODE: authMode,
   PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password",
   PIM_DEFAULT_TENANT_KEY: process.env.PLAYWRIGHT_TENANT_KEY || "default",
@@ -86,6 +114,21 @@ const env = {
   PIM_AUTH_REDIS_DISABLED: "true",
   JWT_BLOCKLIST_REDIS_DISABLED: "true",
   DASHBOARD_CACHE_REDIS_DISABLED: "true",
+  JWT_SECRET: process.env.JWT_SECRET || fileEnv.JWT_SECRET || "tej-pim-local-dev-jwt-secret-minimum-length-32",
+  CREDENTIAL_ENCRYPTION_KEY_V1:
+    process.env.CREDENTIAL_ENCRYPTION_KEY_V1 ||
+    fileEnv.CREDENTIAL_ENCRYPTION_KEY_V1 ||
+    "tej-pim-local-encryption-key-v1-minimum-32",
+  CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION:
+    process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION ||
+    fileEnv.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION ||
+    "1",
+  REDIS_URL: process.env.REDIS_URL || fileEnv.REDIS_URL || "redis://localhost:6379",
+  R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || fileEnv.R2_ACCOUNT_ID || "local-dev",
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || fileEnv.R2_ACCESS_KEY_ID || "local-dev",
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || fileEnv.R2_SECRET_ACCESS_KEY || "local-dev",
+  R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || fileEnv.R2_BUCKET_NAME || "tej-pim-local",
+  R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || fileEnv.R2_PUBLIC_URL || "https://example.com/tej-pim-local",
   PIM_WEB_BASE_URL: process.env.PIM_WEB_BASE_URL || playwrightBaseUrl,
   PIM_AUTH_IDENTITIES_JSON: identityDirectory,
 };
