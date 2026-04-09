@@ -96,6 +96,10 @@ const CONFIG = {
   smokeUser: String(process.env.STAGING_SMOKE_USER ?? "").trim(),
   smokePassword: String(process.env.STAGING_SMOKE_PASSWORD ?? "").trim(),
   tenantId: String(process.env.STAGING_SMOKE_TENANT_ID ?? "default").trim() || "default",
+  amazonSellerId: String(process.env.STAGING_AMAZON_SELLER_ID ?? "").trim(),
+  amazonClientId: String(process.env.STAGING_AMAZON_CLIENT_ID ?? "").trim(),
+  amazonClientSecret: String(process.env.STAGING_AMAZON_CLIENT_SECRET ?? "").trim(),
+  amazonRefreshToken: String(process.env.STAGING_AMAZON_REFRESH_TOKEN ?? "").trim(),
 };
 
 const reportState = {
@@ -671,20 +675,38 @@ async function ensureAmazonInstallationForExports() {
     return String(existing.id);
   }
 
+  if (!hasConfiguredAmazonInstallCredentials()) {
+    skip("amazon-in installation unavailable for export jobs (staging amazon credentials not configured)");
+  }
+
   const installResult = await api("POST", "/connectors/amazon-in/install", {
     token: ctx.adminToken,
-    json: {
-      accountAlias: `E2E Export ${runTag}`,
-      clientId: "e2e-client-id",
-      clientSecret: "e2e-client-secret",
-      refreshToken: "e2e-refresh-token",
-    },
+    json: buildAmazonInstallPayload(`E2E Export ${runTag}`),
   });
   if (installResult.status === 201 && installResult.body?.id) {
     ctx.connectorInstallId = String(installResult.body.id);
     return ctx.connectorInstallId;
   }
   skip(`amazon-in installation unavailable for export jobs (${installResult.status})`);
+}
+
+function hasConfiguredAmazonInstallCredentials() {
+  return Boolean(
+    CONFIG.amazonSellerId &&
+      CONFIG.amazonClientId &&
+      CONFIG.amazonClientSecret &&
+      CONFIG.amazonRefreshToken,
+  );
+}
+
+function buildAmazonInstallPayload(accountAlias) {
+  return {
+    accountAlias,
+    externalAccountRef: CONFIG.amazonSellerId || undefined,
+    clientId: CONFIG.amazonClientId || undefined,
+    clientSecret: CONFIG.amazonClientSecret || undefined,
+    refreshToken: CONFIG.amazonRefreshToken || undefined,
+  };
 }
 
 function toCookie(token) {
@@ -1752,14 +1774,12 @@ function buildChecks() {
   });
 
   add("connectors", "install_connector", async () => {
+    if (!hasConfiguredAmazonInstallCredentials()) {
+      skip("staging amazon seller credentials not configured");
+    }
     const result = await api("POST", "/connectors/amazon-in/install", {
       token: ctx.adminToken,
-      json: {
-        accountAlias: `E2E Amazon Account ${runTag}`,
-        clientId: "e2e-client-id",
-        clientSecret: "e2e-client-secret",
-        refreshToken: "e2e-refresh-token",
-      },
+      json: buildAmazonInstallPayload(`E2E Amazon Account ${runTag}`),
     });
     assertStatus(result, [201, 402, 422], "POST /connectors/amazon-in/install");
     if (result.status === 201 && result.body?.id) {
