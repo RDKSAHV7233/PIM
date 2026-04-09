@@ -506,13 +506,16 @@ export class AuthService implements OnModuleDestroy {
 
     if (identity) {
       const resetToken = await this.createRecoveryToken(identity, "password_reset");
-      await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
-        tenantId: identity.tenantId,
-        userId: identity.userId,
-        kind: "account_unlock",
-        workspaceSlug: workspace?.workspaceSlug ?? workspaceSlug,
-        resetToken,
-      } satisfies AuthEmailJobPayload);
+      await this.dispatchAuthEmail(
+        {
+          tenantId: identity.tenantId,
+          userId: identity.userId,
+          kind: "account_unlock",
+          workspaceSlug: workspace?.workspaceSlug ?? workspaceSlug,
+          resetToken,
+        } satisfies AuthEmailJobPayload,
+        "resend_unlock",
+      );
     }
 
     await this.auditService.record({
@@ -565,13 +568,16 @@ export class AuthService implements OnModuleDestroy {
         };
         const resetToken = await this.createRecoveryToken(resolvedIdentity, "password_reset");
         const workspace = await this.tenantDirectoryService.resolveTenantAlias(resolvedIdentity.tenantId);
-        await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
-          tenantId: resolvedIdentity.tenantId,
-          userId: resolvedIdentity.userId,
-          kind: "password_reset",
-          workspaceSlug: workspace?.workspaceSlug ?? null,
-          resetToken,
-        } satisfies AuthEmailJobPayload);
+        await this.dispatchAuthEmail(
+          {
+            tenantId: resolvedIdentity.tenantId,
+            userId: resolvedIdentity.userId,
+            kind: "password_reset",
+            workspaceSlug: workspace?.workspaceSlug ?? null,
+            resetToken,
+          } satisfies AuthEmailJobPayload,
+          "request_password_reset",
+        );
       }
     }
 
@@ -789,12 +795,15 @@ export class AuthService implements OnModuleDestroy {
       },
     });
 
-    await this.queueService.enqueue(QUEUE_NAMES.ACCOUNT_EXPORT, {
-      jobId,
-      tenantId,
-      userId,
-      format: result.format,
-    } satisfies AccountExportJobPayload);
+    await this.dispatchAccountExport(
+      {
+        jobId,
+        tenantId,
+        userId,
+        format: result.format,
+      } satisfies AccountExportJobPayload,
+      "request_account_export",
+    );
 
     return result;
   }
@@ -1458,12 +1467,15 @@ export class AuthService implements OnModuleDestroy {
         },
       });
 
-      await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, {
-        tenantId,
-        userId: payload.userId,
-        kind: "account_export_ready",
-        jobId: payload.jobId,
-      } satisfies AuthEmailJobPayload);
+      await this.dispatchAuthEmail(
+        {
+          tenantId,
+          userId: payload.userId,
+          kind: "account_export_ready",
+          jobId: payload.jobId,
+        } satisfies AuthEmailJobPayload,
+        "account_export_ready",
+      );
     } catch (error: unknown) {
       const errorMessage = this.toErrorMessage(error);
       await tenantPrisma.accountExportRequest.updateMany({
@@ -1642,6 +1654,28 @@ export class AuthService implements OnModuleDestroy {
         createdAt: row.createdAt.toISOString(),
       })),
     };
+  }
+
+  private async dispatchAuthEmail(payload: AuthEmailJobPayload, context: string): Promise<void> {
+    try {
+      await this.queueService.enqueue(QUEUE_NAMES.AUTH_EMAIL, payload);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Auth email queue unavailable during ${context}; processing inline instead. ${this.toErrorMessage(error)}`,
+      );
+      await this.processAuthEmailJob(payload);
+    }
+  }
+
+  private async dispatchAccountExport(payload: AccountExportJobPayload, context: string): Promise<void> {
+    try {
+      await this.queueService.enqueue(QUEUE_NAMES.ACCOUNT_EXPORT, payload);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Account export queue unavailable during ${context}; processing inline instead. ${this.toErrorMessage(error)}`,
+      );
+      await this.processAccountExportJob(payload);
+    }
   }
 
   private renderAccountExportCsv(exportDocument: Record<string, unknown>): string {

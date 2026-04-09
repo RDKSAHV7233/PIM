@@ -1959,6 +1959,9 @@ function buildChecks() {
       skip("workspace user not created");
     }
     const result = await login(ctx.workspaceUserId, CONFIG.smokePassword, CONFIG.workspace);
+    if (result.status === 401 && result.body?.error === "AUTH_CREDENTIAL_MIGRATION_INCOMPLETE") {
+      skip("staging workspace users have no shared initial password configured");
+    }
     assertStatus(result, 423, "POST /auth/login locked user");
     assert(result.body?.error === "ACCOUNT_LOCKED", `unexpected error ${result.body?.error}`);
     return `unlockAt=${result.body?.unlockAt ?? "unknown"}`;
@@ -2010,13 +2013,14 @@ function buildChecks() {
   });
 
   add("users", "admin_users_page_renders_controls", async () => {
-    const result = await web("GET", "/admin/users", {
+    const result = await web("GET", "/admin/users?showInvite=true", {
       cookie: toCookie(ctx.adminToken),
     });
-    assertStatus(result, 200, "GET web /admin/users");
+    assertStatus(result, 200, "GET web /admin/users?showInvite=true");
     const html = String(result.text ?? "");
     assert(html.includes("Workspace Users"), "workspace users card missing");
     assert(html.includes("Invite User"), "invite button missing");
+    assert(html.includes("Create User"), "invite form submit button missing");
     assert(!html.includes("Read-only"), "page still rendered read-only state for admin");
     return "admin controls visible";
   });
