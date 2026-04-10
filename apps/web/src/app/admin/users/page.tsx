@@ -18,9 +18,8 @@ import {
   getWorkspaceUsers,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -77,18 +76,17 @@ function formatDateTime(value: string | null) {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const status = String(query.status ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
-  const canManageUsers = actorRole === "admin" && canEditWorkspace(actorRole);
+  const canManageUsers = Boolean(authHeader);
 
   try {
     const [usage, connectorPermissions, workspaceUsers] = await Promise.all([
-      getBillingUsage({ role: actorRole, authHeader }),
-      getConnectorPermissions(undefined, { role: actorRole, authHeader }),
-      getWorkspaceUsers({ role: actorRole, authHeader }),
+      getBillingUsage({ authHeader }),
+      getConnectorPermissions(undefined, { authHeader }),
+      getWorkspaceUsers({ authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {

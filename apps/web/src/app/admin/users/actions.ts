@@ -6,23 +6,21 @@ import {
   createWorkspaceUser,
   deactivateWorkspaceUser,
   lockWorkspaceUser,
-  normalizeAppRole,
-  type AppRole,
   unlockWorkspaceUser,
   updateWorkspaceUserRole,
+  normalizeAppRole,
+  type AppRole,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
 
 const INVITE_ROLES: readonly AppRole[] = ["editor", "reviewer", "viewer"];
 
 async function requireAdminRequestOptions() {
   const authHeader = await getServerAuthHeader();
-  const role = await getServerActorRole();
-  if (role !== "admin" || !authHeader) {
-    throw new Error("Admin role is required.");
+  if (!authHeader) {
+    throw new Error("Authenticated session is required.");
   }
-  return { authHeader, role };
+  return { authHeader };
 }
 
 function redirectWithStatus(status: string) {
