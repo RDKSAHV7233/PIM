@@ -50,6 +50,7 @@ try {
   );
   assert(
     script.includes('web("GET", "/admin/users?showInvite=true"') &&
+      script.includes('assert(html.includes("Close Invite"), "invite toggle missing")') &&
       script.includes('assert(html.includes("Create User"), "invite form submit button missing")'),
     "admin users page check must verify the invite form on the explicit showInvite route",
   );

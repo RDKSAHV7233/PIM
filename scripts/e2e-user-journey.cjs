@@ -2019,7 +2019,7 @@ function buildChecks() {
     assertStatus(result, 200, "GET web /admin/users?showInvite=true");
     const html = String(result.text ?? "");
     assert(html.includes("Workspace Users"), "workspace users card missing");
-    assert(html.includes("Invite User"), "invite button missing");
+    assert(html.includes("Close Invite"), "invite toggle missing");
     assert(html.includes("Create User"), "invite form submit button missing");
     assert(!html.includes("Read-only"), "page still rendered read-only state for admin");
     return "admin controls visible";

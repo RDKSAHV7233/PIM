@@ -1674,7 +1674,13 @@ export class AuthService implements OnModuleDestroy {
       this.logger.warn(
         `Account export queue unavailable during ${context}; processing inline instead. ${this.toErrorMessage(error)}`,
       );
-      await this.processAccountExportJob(payload);
+      try {
+        await this.processAccountExportJob(payload);
+      } catch (inlineError: unknown) {
+        this.logger.error(
+          `Inline account export processing failed during ${context}. ${this.toErrorMessage(inlineError)}`,
+        );
+      }
     }
   }
 
