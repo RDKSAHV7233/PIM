@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getIssueInbox, getStats } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canDecideApproval, canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -21,6 +22,8 @@ function toPercent(numerator: number, denominator: number): number {
 export default async function QualityPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const canTriageWarnings = canEditWorkspace(actorRole);
+  const canRecordReviewDecisions = canDecideApproval(actorRole);
 
   try {
     const [health, stats, inbox] = await Promise.all([
@@ -74,7 +77,9 @@ export default async function QualityPage() {
           <Card>
             <CardTitle>Issue Inbox</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              Triage blocking and warning issues with scope filters and ownership.
+              {canTriageWarnings
+                ? "Triage blocking and warning issues with scope filters and ownership."
+                : "Review blocking and warning issues with scope filters and ownership. Workspace editors and admins resolve warnings."}
             </p>
             <div className="mt-3 flex items-center gap-2">
               <StatusChip
@@ -133,10 +138,12 @@ export default async function QualityPage() {
           <Card>
             <CardTitle>Approval Queue</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              Review staged approval workflow and pending approvals when enabled.
+              {canRecordReviewDecisions
+                ? "Review products in workflow review and record final approval decisions."
+                : "Review products in workflow review. Final approval decisions require reviewer, editor, or admin access."}
             </p>
             <Link href="/quality/approvals" className="mt-4 inline-flex text-sm font-medium text-blue-700 hover:underline">
-              Open Approval Queue
+              {canRecordReviewDecisions ? "Open Approval Queue" : "Review Approval Queue"}
             </Link>
           </Card>
         </section>

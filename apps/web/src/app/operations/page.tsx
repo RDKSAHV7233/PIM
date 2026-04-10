@@ -10,6 +10,7 @@ import {
   getSubmissions,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -28,6 +29,7 @@ export const dynamic = "force-dynamic";
 export default async function OperationsPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const canRunWriteOperations = canEditWorkspace(actorRole);
 
   try {
     const [imports, submissionsResponse, deadLetterResponse] = await Promise.all([
@@ -76,9 +78,13 @@ export default async function OperationsPage() {
             href="/operations/repair"
           />
           <KpiCard
-            label="Bulk Edit Control"
-            value="Preview first"
-            helper="Use scoped preview before applying any mass change."
+            label={canRunWriteOperations ? "Bulk Edit Control" : "Bulk Edit Review"}
+            value={canRunWriteOperations ? "Preview first" : "Read only"}
+            helper={
+              canRunWriteOperations
+                ? "Use scoped preview before applying any mass change."
+                : "Workspace editors and admins apply bulk changes after preview."
+            }
             tone="info"
             href="/operations/bulk-edit"
           />
@@ -87,16 +93,24 @@ export default async function OperationsPage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardTitle>Imports</CardTitle>
-            <p className="mt-2 text-sm text-slate-600">Track import jobs and repair failed rows.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {canRunWriteOperations
+                ? "Track import jobs and repair failed rows."
+                : "Track import jobs and repair backlog. Workspace editors and admins start new imports."}
+            </p>
             <Link href="/operations/imports" className="mt-4 inline-flex text-sm font-medium underline">
-              Open Imports
+              {canRunWriteOperations ? "Open Imports" : "Review Imports"}
             </Link>
           </Card>
           <Card>
             <CardTitle>Bulk Edit</CardTitle>
-            <p className="mt-2 text-sm text-slate-600">Review and run scoped mass updates safely.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {canRunWriteOperations
+                ? "Review and run scoped mass updates safely."
+                : "Review pending bulk-edit scope safely. Workspace editors and admins apply mass changes."}
+            </p>
             <Link href="/operations/bulk-edit" className="mt-4 inline-flex text-sm font-medium underline">
-              Open Bulk Edit
+              {canRunWriteOperations ? "Open Bulk Edit" : "Review Bulk Edit"}
             </Link>
           </Card>
           <Card>
@@ -108,9 +122,13 @@ export default async function OperationsPage() {
           </Card>
           <Card>
             <CardTitle>Repair Center</CardTitle>
-            <p className="mt-2 text-sm text-slate-600">Investigate dead-letter and row-level failures with guided recovery.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {canRunWriteOperations
+                ? "Investigate dead-letter and row-level failures with guided recovery."
+                : "Review dead-letter and row-level failures. Workspace editors and admins complete guided recovery."}
+            </p>
             <Link href="/operations/repair" className="mt-4 inline-flex text-sm font-medium underline">
-              Open Repair Center
+              {canRunWriteOperations ? "Open Repair Center" : "Review Repair Center"}
             </Link>
           </Card>
         </section>
