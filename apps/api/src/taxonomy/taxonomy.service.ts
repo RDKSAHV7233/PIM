@@ -268,7 +268,10 @@ export class TaxonomyService {
     let index = 0;
     while (true) {
       const candidate = index === 0 ? root : `${root}-${index}`;
-      const existing = await this.prisma.tenant().category.findUnique({ where: { slug: candidate } });
+      const existing = await this.prisma.tenant().category.findFirst({
+        where: { slug: candidate },
+        select: { id: true },
+      });
       if (!existing || existing.id === currentId) {
         return candidate;
       }

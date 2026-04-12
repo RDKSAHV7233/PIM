@@ -1,0 +1,360 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawn, execFileSync } = require("node:child_process");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const TINY_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2Z0xkAAAAASUVORK5CYII=";
+
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    if (!line || /^\s*#/.test(line)) {
+      continue;
+    }
+    const separator = line.indexOf("=");
+    if (separator === -1) {
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim().replace(/^"|"$/g, "");
+    if (key && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function setDefaultEnv(name, value) {
+  if (!process.env[name] || String(process.env[name]).trim().length === 0) {
+    process.env[name] = value;
+  }
+}
+
+function prepareEnv() {
+  readEnvFile(path.join(REPO_ROOT, ".env"));
+  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+    process.env.DATABASE_URL = localDatabaseUrl;
+  }
+  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+    process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
+  }
+  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+    process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
+  }
+  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_EXPIRY", "4h");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
+  setDefaultEnv("REDIS_URL", "redis://localhost:6379");
+  setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
+  setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
+  setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
+  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("APP_ENV", "development");
+  setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
+  setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForHealth(baseUrl, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/health`, { method: "GET" });
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      // Retry until timeout.
+    }
+    await sleep(400);
+  }
+  throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
+}
+
+async function apiRequest(baseUrl, method, route, token, body) {
+  const headers = { Accept: "application/json" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const options = {
+    method,
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${baseUrl}${route}`, options);
+  const text = await response.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = text;
+  }
+  return { status: response.status, payload };
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertStatus(result, expected, context) {
+  if (result.status !== expected) {
+    throw new Error(
+      `${context} failed: expected ${expected}, got ${result.status}; payload=${JSON.stringify(result.payload)}`,
+    );
+  }
+}
+
+async function login(baseUrl, userId, workspaceSlug) {
+  const response = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+    userId,
+    workspaceSlug,
+    password: process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password",
+    expiresInMinutes: 30,
+  });
+  assertStatus(response, 201, `login ${userId}`);
+  const token = String(response.payload?.accessToken ?? "");
+  assert(token.length > 10, `missing access token for ${userId}`);
+  return token;
+}
+
+async function createProduct(baseUrl, token, categoryId, title) {
+  const response = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
+    title,
+    brand: "TEJ PIM",
+    description: "media tenant boundary coverage",
+    categoryId,
+    status: "draft",
+    hsnCode: "62046200",
+    gstRate: 18,
+    attributes: {},
+  });
+  assertStatus(response, 201, `create product ${title}`);
+  return response.payload;
+}
+
+async function run() {
+  prepareEnv();
+  if (!fs.existsSync(API_ENTRY)) {
+    throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
+  }
+
+  const runId = Date.now().toString();
+  const apiPort = 6520 + Math.floor(Math.random() * 120);
+  const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
+  const tenantA = `media-boundary-a-${runId}`;
+  const tenantB = `media-boundary-b-${runId}`;
+  const workspaceSlugA = `mba-${runId}`.slice(0, 24);
+  const workspaceSlugB = `mbb-${runId}`.slice(0, 24);
+  const adminA = `media-boundary-admin-a-${runId}`;
+  const adminB = `media-boundary-admin-b-${runId}`;
+
+  const env = {
+    ...process.env,
+    PORT: String(apiPort),
+    PIM_ALLOW_LEGACY_HEADERS: "false",
+    PIM_DEFAULT_TENANT_KEY: tenantA,
+    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
+      [adminA]: { tenantId: tenantA, role: "admin", workspaceSlug: workspaceSlugA },
+      [adminB]: { tenantId: tenantB, role: "admin", workspaceSlug: workspaceSlugB },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlugA]: { tenantId: tenantA, displayName: "Media Boundary A" },
+      [workspaceSlugB]: { tenantId: tenantB, displayName: "Media Boundary B" },
+    }),
+  };
+
+  const stdoutBuffer = [];
+  const stderrBuffer = [];
+  const apiProcess = spawn("node", [API_ENTRY], {
+    cwd: REPO_ROOT,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  apiProcess.stdout.on("data", (chunk) => {
+    stdoutBuffer.push(String(chunk));
+    if (stdoutBuffer.length > 200) {
+      stdoutBuffer.shift();
+    }
+  });
+  apiProcess.stderr.on("data", (chunk) => {
+    stderrBuffer.push(String(chunk));
+    if (stderrBuffer.length > 200) {
+      stderrBuffer.shift();
+    }
+  });
+
+  try {
+    await waitForHealth(baseUrl, 60_000);
+
+    const tokenA = await login(baseUrl, adminA, workspaceSlugA);
+    const tokenB = await login(baseUrl, adminB, workspaceSlugB);
+
+    const categoryA = await apiRequest(baseUrl, "POST", "/taxonomy/categories", tokenA, {
+      name: `Media Boundary Category ${runId}`,
+    });
+    const categoryB = await apiRequest(baseUrl, "POST", "/taxonomy/categories", tokenB, {
+      name: `Media Boundary Category ${runId}`,
+    });
+    assertStatus(categoryA, 201, "create tenant A category");
+    assertStatus(categoryB, 201, "create tenant B category");
+
+    const productA = await createProduct(baseUrl, tokenA, categoryA.payload.id, `Media Boundary Product A ${runId}`);
+    const productB = await createProduct(baseUrl, tokenB, categoryB.payload.id, `Media Boundary Product B ${runId}`);
+
+    const sharedSku = `MEDIA-SHARED-${runId}`;
+    const variantA = await apiRequest(baseUrl, "POST", `/catalog/products/${productA.id}/variants`, tokenA, {
+      skuCode: sharedSku,
+      attributes: { color: "red" },
+      inventoryQty: 3,
+      status: "draft",
+    });
+    const variantB = await apiRequest(baseUrl, "POST", `/catalog/products/${productB.id}/variants`, tokenB, {
+      skuCode: sharedSku,
+      attributes: { color: "blue" },
+      inventoryQty: 7,
+      status: "draft",
+    });
+    assertStatus(variantA, 201, "create tenant A variant");
+    assertStatus(variantB, 201, "create tenant B variant");
+
+    const bulkFor = (token, skuCode, fileName) =>
+      apiRequest(baseUrl, "POST", "/media/bulk-associations", token, {
+        rows: [
+          {
+            skuCode,
+            contentBase64: TINY_PNG_BASE64,
+            mimeType: "image/png",
+            fileName,
+          },
+        ],
+      });
+
+    const firstA = await bulkFor(tokenA, sharedSku, `tenant-a-${runId}.png`);
+    assertStatus(firstA, 201, "first tenant A media bulk association");
+    assert(firstA.payload?.successRows === 1, `expected first tenant A insert to succeed; payload=${JSON.stringify(firstA.payload)}`);
+    const assetAId = String(firstA.payload?.rows?.[0]?.assetId ?? "");
+    assert(assetAId.length > 10, `expected tenant A asset id, payload=${JSON.stringify(firstA.payload)}`);
+    assert(firstA.payload?.rows?.[0]?.deduplicated !== true, "first tenant A insert must not be marked deduplicated");
+
+    const duplicateA = await bulkFor(tokenA, sharedSku, `tenant-a-duplicate-${runId}.png`);
+    assertStatus(duplicateA, 201, "duplicate tenant A media bulk association");
+    assert(duplicateA.payload?.successRows === 1, `expected duplicate tenant A insert to succeed; payload=${JSON.stringify(duplicateA.payload)}`);
+    assert(
+      String(duplicateA.payload?.rows?.[0]?.assetId ?? "") === assetAId,
+      `same-tenant duplicate upload must return original asset id; payload=${JSON.stringify(duplicateA.payload)}`,
+    );
+    assert(duplicateA.payload?.rows?.[0]?.deduplicated === true, "same-tenant duplicate upload must be marked deduplicated");
+
+    const firstB = await bulkFor(tokenB, sharedSku, `tenant-b-${runId}.png`);
+    assertStatus(firstB, 201, "first tenant B media bulk association");
+    assert(firstB.payload?.successRows === 1, `expected first tenant B insert to succeed; payload=${JSON.stringify(firstB.payload)}`);
+    const assetBId = String(firstB.payload?.rows?.[0]?.assetId ?? "");
+    assert(assetBId.length > 10, `expected tenant B asset id, payload=${JSON.stringify(firstB.payload)}`);
+    assert(assetBId !== assetAId, `cross-tenant duplicate content must not deduplicate across tenants; tenantA=${assetAId} tenantB=${assetBId}`);
+
+    const getA = await apiRequest(baseUrl, "GET", `/media/assets/${encodeURIComponent(assetAId)}`, tokenA);
+    const getAFromB = await apiRequest(baseUrl, "GET", `/media/assets/${encodeURIComponent(assetAId)}`, tokenB);
+    assertStatus(getA, 200, "tenant A get own asset");
+    assertStatus(getAFromB, 404, "tenant B blocked from tenant A asset id");
+
+    const listA = await apiRequest(
+      baseUrl,
+      "GET",
+      `/media/assets?variantId=${encodeURIComponent(variantA.payload.id)}`,
+      tokenA,
+    );
+    const listAFromB = await apiRequest(
+      baseUrl,
+      "GET",
+      `/media/assets?variantId=${encodeURIComponent(variantA.payload.id)}`,
+      tokenB,
+    );
+    assertStatus(listA, 200, "tenant A list own variant assets");
+    assertStatus(listAFromB, 200, "tenant B list tenant A variant assets");
+    assert(
+      Array.isArray(listA.payload) && listA.payload.some((asset) => asset.id === assetAId),
+      `tenant A must see own asset in variant list; payload=${JSON.stringify(listA.payload)}`,
+    );
+    assert(
+      Array.isArray(listAFromB.payload) && listAFromB.payload.length === 0,
+      `tenant B must not see tenant A assets in variant list; payload=${JSON.stringify(listAFromB.payload)}`,
+    );
+
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          tenantA,
+          tenantB,
+          validated: [
+            "media_same_tenant_duplicate_uploads_deduplicate",
+            "media_cross_tenant_duplicate_uploads_do_not_deduplicate",
+            "media_asset_get_is_tenant_scoped",
+            "media_asset_list_is_tenant_scoped",
+            "bulk_media_shared_sku_resolves_within_tenant",
+          ],
+          checkedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    const stdout = stdoutBuffer.join("").slice(-4000);
+    const stderr = stderrBuffer.join("").slice(-4000);
+    console.error("Media tenant boundary integration test failed:");
+    console.error(details);
+    if (stdout) {
+      console.error("--- API stdout tail ---");
+      console.error(stdout);
+    }
+    if (stderr) {
+      console.error("--- API stderr tail ---");
+      console.error(stderr);
+    }
+    process.exitCode = 1;
+  } finally {
+    if (!apiProcess.killed && apiProcess.pid) {
+      if (process.platform === "win32") {
+        try {
+          execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], { stdio: "ignore" });
+        } catch {
+          // Ignore cleanup failures.
+        }
+      } else {
+        apiProcess.kill("SIGTERM");
+        await sleep(500);
+        if (!apiProcess.killed) {
+          apiProcess.kill("SIGKILL");
+        }
+      }
+    }
+  }
+}
+
+run().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
