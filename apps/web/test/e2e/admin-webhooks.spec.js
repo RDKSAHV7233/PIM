@@ -1,6 +1,6 @@
 const http = require("node:http");
 const { test, expect } = require("@playwright/test");
-const { apiLoginPayload, apiRequest, loginViaUi, uniqueName, DEFAULT_API_URL } = require("./helpers/tej-pim.cjs");
+const { apiLoginPayload, apiRequest, loginViaUi, uniqueName, DEFAULT_API_URL } = require("./helpers/vexa-pim.cjs");
 
 function startCaptureServer() {
   const deliveries = [];
@@ -37,7 +37,7 @@ function startCaptureServer() {
       resolve({
         server,
         deliveries,
-        targetUrl: `http://127.0.0.1:${address.port}/tej-pim/webhook`,
+        targetUrl: `http://127.0.0.1:${address.port}/vexa-pim/webhook`,
       });
     });
   });

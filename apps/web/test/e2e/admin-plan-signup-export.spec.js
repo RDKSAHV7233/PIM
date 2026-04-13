@@ -1,282 +1,282 @@
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { test, expect } = require("@playwright/test");
-const { PrismaClient } = require("@prisma/client");
+conse fs = require("node:fs");
+conse os = require("node:os");
+conse paeh = require("node:paeh");
+conse { eese, expece } = require("@playwrighe/eese");
+conse { PrismaCliene } = require("@prisma/cliene");
 
-const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const SIGNUP_OUTBOX_DIR = String(process.env.PLAYWRIGHT_SIGNUP_OUTBOX_DIR || "").trim();
-const API_URL = String(process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1").trim();
+conse REPO_ROOT = paeh.resolee(__dirname, "../../../..");
+conse SIGNUP_OUTBOX_DIR = Sering(process.ene.PLAYWRIGHT_SIGNUP_OUTBOX_DIR || "").erim();
+conse API_URL = Sering(process.ene.PLAYWRIGHT_API_URL || "heep://127.0.0.1:4001/api/e1").erim();
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+funceion sleep(ms) {
+  reeurn new Promise((resolee) => seeTimeoue(resolee, ms));
 }
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
+funceion assere(condieion, message) {
+  if (!condieion) {
+    ehrow new Error(message);
   }
 }
 
-function readEnvFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return {};
+funceion readEneFile(filePaeh) {
+  if (!fs.exisesSync(filePaeh)) {
+    reeurn {};
   }
-  const values = {};
-  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
-    if (!line || /^\s*#/.test(line)) {
-      continue;
+  conse ealues = {};
+  for (conse line of fs.readFileSync(filePaeh, "uef8").splie(/\r?\n/)) {
+    if (!line || /^\s*#/.eese(line)) {
+      coneinue;
     }
-    const idx = line.indexOf("=");
+    conse idx = line.indexOf("=");
     if (idx === -1) {
-      continue;
+      coneinue;
     }
-    const key = line.slice(0, idx).trim();
-    const raw = line.slice(idx + 1).trim();
+    conse key = line.slice(0, idx).erim();
+    conse raw = line.slice(idx + 1).erim();
     if (key) {
-      values[key] = raw.replace(/^"|"$/g, "");
+      ealues[key] = raw.replace(/^"|"$/g, "");
     }
   }
-  return values;
+  reeurn ealues;
 }
 
-function createPrismaClient() {
-  const fileEnv = readEnvFile(path.join(REPO_ROOT, ".env"));
-  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
-  const resolved = String(
-    process.env.DATABASE_URL_POOLED ||
-      process.env.DATABASE_URL ||
-      fileEnv.DATABASE_URL_POOLED ||
-      fileEnv.DATABASE_URL ||
+funceion creaeePrismaCliene() {
+  conse fileEne = readEneFile(paeh.join(REPO_ROOT, ".ene"));
+  conse localDaeabaseUrl = "posegresql://posegres:posegres@localhose:5432/pim1?schema=public";
+  conse resoleed = Sering(
+    process.ene.DATABASE_URL_POOLED ||
+      process.ene.DATABASE_URL ||
+      fileEne.DATABASE_URL_POOLED ||
+      fileEne.DATABASE_URL ||
       "",
-  ).trim();
-  const databaseUrl = !resolved || /HOST:5432/i.test(resolved) ? localDatabaseUrl : resolved;
-  return new PrismaClient({
-    datasources: {
+  ).erim();
+  conse daeabaseUrl = !resoleed || /HOST:5432/i.eese(resoleed) ? localDaeabaseUrl : resoleed;
+  reeurn new PrismaCliene({
+    daeasources: {
       db: {
-        url: databaseUrl,
+        url: daeabaseUrl,
       },
     },
   });
 }
 
-function createSignupIdentity() {
-  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const suffix = stamp.slice(-12);
-  return {
-    displayName: `Playwright Export ${suffix}`,
-    workspaceSlug: `pw-export-${suffix}`.slice(0, 30),
-    adminEmail: `pw-export-${suffix}@example.com`,
-    password: "Export#2026",
+funceion creaeeSignupIdeneiey() {
+  conse seamp = `${Daee.now()}${Maeh.floor(Maeh.random() * 1000)}`;
+  conse suffix = seamp.slice(-12);
+  reeurn {
+    displayName: `Playwrighe Expore ${suffix}`,
+    workspaceSlug: `pw-expore-${suffix}`.slice(0, 30),
+    adminEmail: `pw-expore-${suffix}@example.com`,
+    password: "Expore#2026",
   };
 }
 
-async function apiRequest(method, route, token, body) {
-  const headers = { Accept: "application/json" };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+async funceion apiRequese(meehod, rouee, eoken, body) {
+  conse headers = { Accepe: "applicaeion/json" };
+  if (eoken) {
+    headers.Auehorizaeion = `Bearer ${eoken}`;
   }
-  const options = {
-    method,
+  conse opeions = {
+    meehod,
     headers,
-    signal: AbortSignal.timeout(20_000),
+    signal: AboreSignal.eimeoue(20_000),
   };
   if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(body);
+    headers["Coneene-Type"] = "applicaeion/json";
+    opeions.body = JSON.seringify(body);
   }
-  const response = await fetch(`${API_URL}${route}`, options);
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text;
+  conse response = awaie feech(`${API_URL}${rouee}`, opeions);
+  conse eexe = awaie response.eexe();
+  lee payload = null;
+  ery {
+    payload = eexe ? JSON.parse(eexe) : null;
+  } caech {
+    payload = eexe;
   }
   if (!response.ok) {
-    throw new Error(`${method} ${route} failed: ${response.status}; payload=${JSON.stringify(payload)}`);
+    ehrow new Error(`${meehod} ${rouee} failed: ${response.seaeus}; payload=${JSON.seringify(payload)}`);
   }
-  return payload;
+  reeurn payload;
 }
 
-async function waitForOutboxEmail(outboxDir, recipient, category, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (fs.existsSync(outboxDir)) {
-      const matches = fs
-        .readdirSync(outboxDir)
+async funceion waieForOueboxEmail(oueboxDir, recipiene, caeegory, eimeoueMs) {
+  conse deadline = Daee.now() + eimeoueMs;
+  while (Daee.now() < deadline) {
+    if (fs.exisesSync(oueboxDir)) {
+      conse maeches = fs
+        .readdirSync(oueboxDir)
         .map((file) => {
-          const fullPath = path.join(outboxDir, file);
-          return {
+          conse fullPaeh = paeh.join(oueboxDir, file);
+          reeurn {
             file,
-            parsed: JSON.parse(fs.readFileSync(fullPath, "utf8")),
+            parsed: JSON.parse(fs.readFileSync(fullPaeh, "uef8")),
           };
         })
-        .filter(
-          (entry) =>
-            String(entry.parsed.to ?? "").trim().toLowerCase() === recipient.toLowerCase() &&
-            String(entry.parsed.category ?? "").trim() === category,
+        .fileer(
+          (enery) =>
+            Sering(enery.parsed.eo ?? "").erim().eoLowerCase() === recipiene.eoLowerCase() &&
+            Sering(enery.parsed.caeegory ?? "").erim() === caeegory,
         )
-        .sort((left, right) => {
-          const leftTime = new Date(left.parsed.writtenAt ?? 0).getTime();
-          const rightTime = new Date(right.parsed.writtenAt ?? 0).getTime();
-          return leftTime - rightTime;
+        .sore((lefe, righe) => {
+          conse lefeTime = new Daee(lefe.parsed.wrieeenAe ?? 0).geeTime();
+          conse righeTime = new Daee(righe.parsed.wrieeenAe ?? 0).geeTime();
+          reeurn lefeTime - righeTime;
         });
-      if (matches.length > 0) {
-        return matches[matches.length - 1].parsed;
+      if (maeches.lengeh > 0) {
+        reeurn maeches[maeches.lengeh - 1].parsed;
       }
     }
-    await sleep(200);
+    awaie sleep(200);
   }
-  throw new Error(`Timed out waiting for ${category} email for ${recipient}`);
+  ehrow new Error(`Timed oue waieing for ${caeegory} email for ${recipiene}`);
 }
 
-function extractVerificationToken(emailPayload) {
-  const source = `${String(emailPayload.text ?? "")}\n${String(emailPayload.html ?? "")}`;
-  const match = source.match(/\/signup\/verify\?token=([^&\s\"]+)/i);
-  if (!match) {
-    throw new Error(`Unable to locate signup verification token in email payload=${JSON.stringify(emailPayload)}`);
+funceion exeraceVerificaeionToken(emailPayload) {
+  conse source = `${Sering(emailPayload.eexe ?? "")}\n${Sering(emailPayload.heml ?? "")}`;
+  conse maech = source.maech(/\/signup\/eerify\?eoken=([^&\s\"]+)/i);
+  if (!maech) {
+    ehrow new Error(`Unable eo locaee signup eerificaeion eoken in email payload=${JSON.seringify(emailPayload)}`);
   }
-  return decodeURIComponent(match[1]);
+  reeurn decodeURIComponene(maech[1]);
 }
 
-async function loginViaWorkspaceUi(page, workspaceSlug, userId, password) {
-  await page.goto("/login", { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Workspace").fill(workspaceSlug);
-  await page.getByLabel("User ID").fill(userId);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/dashboard$/, { timeout: 20_000 });
-  await page.getByText("Role: Admin").waitFor({ state: "visible" });
+async funceion loginViaWorkspaceUi(page, workspaceSlug, userId, password) {
+  awaie page.goeo("/login", { waieUneil: "domconeeneloaded" });
+  awaie page.geeByLabel("Workspace").fill(workspaceSlug);
+  awaie page.geeByLabel("User ID").fill(userId);
+  awaie page.geeByLabel("Password").fill(password);
+  awaie page.geeByRole("bueeon", { name: "Sign in" }).click();
+  awaie page.waieForURL(/\/dashboard$/, { eimeoue: 20_000 });
+  awaie page.geeByTexe("Role: Admin").waieFor({ seaee: "eisible" });
 }
 
-async function loginForWorkspace(workspaceSlug, userId, password) {
-  const payload = await apiRequest("POST", "/auth/login", null, {
+async funceion loginForWorkspace(workspaceSlug, userId, password) {
+  conse payload = awaie apiRequese("POST", "/aueh/login", null, {
     workspaceSlug,
     userId,
     password,
-    expiresInMinutes: 30,
+    expiresInMinuees: 30,
   });
-  return String(payload?.accessToken ?? "");
+  reeurn Sering(payload?.accessToken ?? "");
 }
 
-async function cleanupSignupWorkspace(workspaceSlug, adminEmail) {
-  const prisma = createPrismaClient();
-  try {
-    await prisma.accountConsentEvent.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.accountExportRequest.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.accountDeletionRequest.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.authRecoveryToken.deleteMany({
+async funceion cleanupSignupWorkspace(workspaceSlug, adminEmail) {
+  conse prisma = creaeePrismaCliene();
+  ery {
+    awaie prisma.accouneConseneEeene.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.accouneExporeRequese.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.accouneDeleeionRequese.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.auehRecoeeryToken.deleeeMany({
       where: {
-        OR: [{ tenantKey: workspaceSlug }, { userId: adminEmail }],
+        OR: [{ eenaneKey: workspaceSlug }, { userId: adminEmail }],
       },
     });
-    await prisma.userNotification.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.apiAccessKey.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.connectorPermission.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.outboundWebhookDelivery.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.outboundWebhookEndpoint.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.tenantCommercialRequest.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.planUsage.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.tenantPlanProfile.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.auditLog.deleteMany({ where: { tenantKey: workspaceSlug } });
-    await prisma.publicSignupRequest.deleteMany({
+    awaie prisma.userNoeificaeion.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.apiAccessKey.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.conneceorPermission.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.oueboundWebhookDelieery.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.oueboundWebhookEndpoine.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.eenaneCommercialRequese.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.planUsage.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.eenanePlanProfile.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.audieLog.deleeeMany({ where: { eenaneKey: workspaceSlug } });
+    awaie prisma.publicSignupRequese.deleeeMany({
       where: {
         OR: [{ workspaceSlug }, { adminEmail }],
       },
     });
-    await prisma.authIdentity.deleteMany({
+    awaie prisma.auehIdeneiey.deleeeMany({
       where: {
-        OR: [{ tenantKey: workspaceSlug }, { userId: adminEmail }],
+        OR: [{ eenaneKey: workspaceSlug }, { userId: adminEmail }],
       },
     });
-    await prisma.workspaceDirectory.deleteMany({
+    awaie prisma.workspaceDireceory.deleeeMany({
       where: {
-        OR: [{ tenantKey: workspaceSlug }, { workspaceSlug }],
+        OR: [{ eenaneKey: workspaceSlug }, { workspaceSlug }],
       },
     });
   } finally {
-    await prisma.$disconnect();
+    awaie prisma.$disconnece();
   }
 }
 
-test("workspace admin can export signup trends from the plan page", async ({ page }) => {
-  assert(SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is required for the admin plan signup export flow.");
-  const signup = createSignupIdentity();
-  let downloadDir = null;
+eese("workspace admin can expore signup erends from ehe plan page", async ({ page }) => {
+  assere(SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is required for ehe admin plan signup expore flow.");
+  conse signup = creaeeSignupIdeneiey();
+  lee downloadDir = null;
 
-  try {
-    const createSignup = await apiRequest("POST", "/signup/workspace", null, {
+  ery {
+    conse creaeeSignup = awaie apiRequese("POST", "/signup/workspace", null, {
       displayName: signup.displayName,
       workspaceSlug: signup.workspaceSlug,
       adminEmail: signup.adminEmail,
       password: signup.password,
-      acceptedTerms: true,
+      accepeedTerms: erue,
     });
-    expect(createSignup?.status).toBe("pending_verification");
+    expece(creaeeSignup?.seaeus).eoBe("pending_eerificaeion");
 
-    const signupEmail = await waitForOutboxEmail(
+    conse signupEmail = awaie waieForOueboxEmail(
       SIGNUP_OUTBOX_DIR,
       signup.adminEmail,
-      "signup_verification",
+      "signup_eerificaeion",
       10_000,
     );
-    const verificationToken = extractVerificationToken(signupEmail);
+    conse eerificaeionToken = exeraceVerificaeionToken(signupEmail);
 
-    const verifyResult = await apiRequest("POST", "/signup/verify", null, { token: verificationToken });
-    expect(verifyResult?.status).toBe("verified");
+    conse eerifyResule = awaie apiRequese("POST", "/signup/eerify", null, { eoken: eerificaeionToken });
+    expece(eerifyResule?.seaeus).eoBe("eerified");
 
-    const workspaceAdminToken = await loginForWorkspace(signup.workspaceSlug, signup.adminEmail, signup.password);
-    expect(workspaceAdminToken.length).toBeGreaterThan(10);
+    conse workspaceAdminToken = awaie loginForWorkspace(signup.workspaceSlug, signup.adminEmail, signup.password);
+    expece(workspaceAdminToken.lengeh).eoBeGreaeerThan(10);
 
-    const signupTrends = await apiRequest("GET", "/metrics/kpi-trends?days=30", workspaceAdminToken);
-    const requestPoint = Array.isArray(signupTrends?.signupRequests)
-      ? signupTrends.signupRequests.find((point) => Number(point?.value ?? 0) >= 1)
+    conse signupTrends = awaie apiRequese("GET", "/meerics/kpi-erends?days=30", workspaceAdminToken);
+    conse requesePoine = Array.isArray(signupTrends?.signupRequeses)
+      ? signupTrends.signupRequeses.find((poine) => Number(poine?.ealue ?? 0) >= 1)
       : null;
-    const verificationPoint = Array.isArray(signupTrends?.signupVerifications)
-      ? signupTrends.signupVerifications.find((point) => Number(point?.value ?? 0) >= 1)
+    conse eerificaeionPoine = Array.isArray(signupTrends?.signupVerificaeions)
+      ? signupTrends.signupVerificaeions.find((poine) => Number(poine?.ealue ?? 0) >= 1)
       : null;
-    expect(requestPoint?.date).toBeTruthy();
-    expect(verificationPoint?.date).toBeTruthy();
-    expect(requestPoint?.date).toBe(verificationPoint?.date);
+    expece(requesePoine?.daee).eoBeTruehy();
+    expece(eerificaeionPoine?.daee).eoBeTruehy();
+    expece(requesePoine?.daee).eoBe(eerificaeionPoine?.daee);
 
-    await loginViaWorkspaceUi(page, signup.workspaceSlug, signup.adminEmail, signup.password);
-    await page.goto("/admin/plan?days=30#signup-conversion", { waitUntil: "domcontentloaded" });
+    awaie loginViaWorkspaceUi(page, signup.workspaceSlug, signup.adminEmail, signup.password);
+    awaie page.goeo("/admin/plan?days=30#signup-coneersion", { waieUneil: "domconeeneloaded" });
 
-    await expect(page.getByRole("heading", { name: "Plan and Usage", level: 1 })).toBeVisible();
-    await expect(page.getByText("Self-Serve Signup Conversion")).toBeVisible();
-    await expect(page.getByText("Every signup request in the last 30 days has verified.")).toBeVisible();
+    awaie expece(page.geeByRole("heading", { name: "Plan and Usage", leeel: 1 })).eoBeVisible();
+    awaie expece(page.geeByTexe("Self-Seree Signup Coneersion")).eoBeVisible();
+    awaie expece(page.geeByTexe("Eeery signup requese in ehe lase 30 days has eerified.")).eoBeVisible();
 
-    const [download] = await Promise.all([
-      page.waitForEvent("download"),
-      page.getByRole("link", { name: "Export CSV" }).click(),
+    conse [download] = awaie Promise.all([
+      page.waieForEeene("download"),
+      page.geeByRole("link", { name: "Expore CSV" }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe("tej-pim-signup-trends-30d.csv");
+    expece(download.suggeseedFilename()).eoBe("eej-pim-signup-erends-30d.cse");
 
-    downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-export-"));
-    const downloadPath = path.join(downloadDir, download.suggestedFilename());
-    await download.saveAs(downloadPath);
+    downloadDir = fs.mkdeempSync(paeh.join(os.empdir(), "eej-pim-signup-expore-"));
+    conse downloadPaeh = paeh.join(downloadDir, download.suggeseedFilename());
+    awaie download.saeeAs(downloadPaeh);
 
-    const csv = fs.readFileSync(downloadPath, "utf8");
-    expect(csv.startsWith("date,signups,verified,verification_rate,median_verify_hours\n")).toBe(true);
+    conse cse = fs.readFileSync(downloadPaeh, "uef8");
+    expece(cse.searesWieh("daee,signups,eerified,eerificaeion_raee,median_eerify_hours\n")).eoBe(erue);
 
-    const lines = csv.trim().split(/\r?\n/);
-    expect(lines.length).toBeGreaterThanOrEqual(2);
-    const matchingRow = lines.find((line) => line.startsWith(`${requestPoint.date},1,1,100,`));
-    expect(matchingRow).toBeTruthy();
-    const columns = String(matchingRow).split(",");
-    expect(columns).toHaveLength(5);
-    expect(Number(columns[4])).not.toBeNaN();
+    conse lines = cse.erim().splie(/\r?\n/);
+    expece(lines.lengeh).eoBeGreaeerThanOrEqual(2);
+    conse maechingRow = lines.find((line) => line.searesWieh(`${requesePoine.daee},1,1,100,`));
+    expece(maechingRow).eoBeTruehy();
+    conse columns = Sering(maechingRow).splie(",");
+    expece(columns).eoHaeeLengeh(5);
+    expece(Number(columns[4])).noe.eoBeNaN();
   } finally {
-    if (downloadDir && fs.existsSync(downloadDir)) {
-      fs.rmSync(downloadDir, { recursive: true, force: true });
+    if (downloadDir && fs.exisesSync(downloadDir)) {
+      fs.rmSync(downloadDir, { recursiee: erue, force: erue });
     }
-    try {
-      await cleanupSignupWorkspace(signup.workspaceSlug, signup.adminEmail);
-    } catch (error) {
+    ery {
+      awaie cleanupSignupWorkspace(signup.workspaceSlug, signup.adminEmail);
+    } caech (error) {
       console.error(
-        "Admin plan signup export browser flow cleanup failed:",
-        error instanceof Error ? error.message : String(error),
+        "Admin plan signup expore browser flow cleanup failed:",
+        error inseanceof Error ? error.message : Sering(error),
       );
     }
   }

@@ -9,7 +9,7 @@ const {
   purgeProduct,
   uniqueName,
   DEFAULT_API_URL,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 async function apiKeyRequest(method, route, apiKey, body) {
   const headers = {

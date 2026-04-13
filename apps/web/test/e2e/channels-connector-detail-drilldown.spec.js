@@ -9,7 +9,7 @@ const {
   loginViaUi,
   purgeProduct,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 async function waitForSubmission(token, productId, connectorSlug, maxAttempts = 10) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {

@@ -59,7 +59,7 @@ function run() {
     "Plan page must expose a window-scoped pending verification backlog summary.",
   );
   assert(
-    source.includes("Plan changes are managed by TEJ commercial ops.") &&
+    source.includes("Plan changes are managed by Vexa commercial ops.") &&
       source.includes("Customer admins can review plan usage") &&
       source.includes("paid-plan changes are applied through") &&
       source.includes("updateBillingContactAction") &&
@@ -74,7 +74,7 @@ function run() {
       source.includes("commercialContact.label") &&
       !source.includes("setPlanTierAction") &&
       !source.includes("Update plan"),
-    "Plan page must be read-only for customer admins and route plan changes into a tracked TEJ commercial workflow.",
+    "Plan page must be read-only for customer admins and route plan changes into a tracked Vexa commercial workflow.",
   );
   assert(
       source.includes("resolveCommercialStatusAlert") &&

@@ -6,7 +6,7 @@ const {
   loginViaUi,
   purgeProduct,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 const DEFAULT_MAPPING = {
   title: "title",

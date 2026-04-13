@@ -10,7 +10,7 @@ const {
   loginViaUi,
   purgeProduct,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 test("editor can archive a product from the workbench", async ({ page }) => {
   const adminToken = await apiLogin("admin");

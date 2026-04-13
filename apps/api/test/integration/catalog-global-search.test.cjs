@@ -34,17 +34,17 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
 }
@@ -144,19 +144,19 @@ async function run() {
     const adminALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug: workspaceSlugA,
       userId: adminA,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     const reviewerALogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug: workspaceSlugA,
       userId: reviewerA,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     const adminBLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug: workspaceSlugB,
       userId: adminB,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(adminALogin, 201, "tenant A admin login");
@@ -174,7 +174,7 @@ async function run() {
 
     const titleProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
       title: `Aurora Search Jacket ${runId}`,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "title search coverage",
       categoryId: categoryA.payload.id,
       status: "draft",
@@ -186,7 +186,7 @@ async function run() {
 
     const skuProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
       title: `Variant Search Product ${runId}`,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "sku search coverage",
       categoryId: categoryA.payload.id,
       status: "draft",
@@ -208,7 +208,7 @@ async function run() {
 
     const otherTenantProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminBToken, {
       title: `Aurora Search Jacket ${runId}`,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "tenant isolation coverage",
       categoryId: categoryB.payload.id,
       status: "draft",

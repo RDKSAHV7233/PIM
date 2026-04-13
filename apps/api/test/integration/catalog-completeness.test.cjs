@@ -43,17 +43,17 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
 
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
@@ -115,7 +115,7 @@ async function login(baseUrl, userId, tenantId) {
     userId,
     tenantId,
     role: "admin",
-    password: "tej-pim-demo-password",
+    password: "vexa-pim-demo-password",
     expiresInMinutes: 30,
   });
   if (!response || !response.accessToken) {
@@ -192,7 +192,7 @@ async function run() {
 
     await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: lowTitle,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "Missing HSN/GST/material on purpose",
       categoryId: category.id,
       status: "draft",
@@ -200,7 +200,7 @@ async function run() {
     });
     await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: highTitle,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "Complete product",
       categoryId: category.id,
       hsnCode: "62046200",

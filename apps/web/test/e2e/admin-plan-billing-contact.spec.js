@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { apiLogin, apiRequest, loginViaUi, DEFAULT_API_URL } = require("./helpers/tej-pim.cjs");
+const { apiLogin, apiRequest, loginViaUi, DEFAULT_API_URL } = require("./helpers/vexa-pim.cjs");
 
 test("admin can set and clear billing contact from the plan page", async ({ page }) => {
   const adminToken = await apiLogin("admin");

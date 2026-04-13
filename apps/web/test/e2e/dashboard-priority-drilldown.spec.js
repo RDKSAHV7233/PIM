@@ -9,7 +9,7 @@ const {
   purgeProduct,
   uniqueName,
   updateProduct,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 test("admin can drill from dashboard priority queue into product detail", async ({ page }) => {
   const adminToken = await apiLogin("admin");

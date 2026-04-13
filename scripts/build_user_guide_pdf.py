@@ -169,7 +169,7 @@ html_doc = f"""<!doctype html>
 <html>
 <head>
 <meta charset=\"utf-8\" />
-<title>TEJ PIM User Guide (Action Navigation)</title>
+<title>Vexa PIM User Guide (Action Navigation)</title>
 <style>
 :root {{ --bg:#f8fafc; --surface:#ffffff; --border:#dbe3ef; --text:#0f172a; --muted:#475569; --link:#0f4aa3; }}
 * {{ box-sizing:border-box; }}
@@ -204,7 +204,7 @@ th {{ background:#f1f5f9; text-align:left; }}
 <body>
 <div class=\"layout\">
   <aside>
-    <div class=\"toc-title\">TEJ PIM User Guide Navigation</div>
+    <div class=\"toc-title\">Vexa PIM User Guide Navigation</div>
     <nav>{''.join(nav_items)}</nav>
   </aside>
   <main>

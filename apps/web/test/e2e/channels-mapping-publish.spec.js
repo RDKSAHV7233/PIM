@@ -10,10 +10,10 @@ const {
   loginViaUi,
   purgeProduct,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 const STEP_UP_HEADER = "x-pim-step-up-token";
-const STEP_UP_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password";
+const STEP_UP_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
 
 function buildMappingsUrl(categoryId, productId, extra = {}) {
   const params = new URLSearchParams({

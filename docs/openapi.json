@@ -3918,8 +3918,8 @@
     }
   },
   "info": {
-    "title": "TEJ PIM API",
-    "description": "TEJ PIM API OpenAPI specification",
+    "title": "Vexa PIM API",
+    "description": "Vexa PIM API OpenAPI specification",
     "version": "1.0.0",
     "contact": {}
   },
