@@ -1,13 +1,13 @@
 const DEFAULT_WORKSPACE = process.env.PLAYWRIGHT_WORKSPACE || "default";
 const DEFAULT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const DEFAULT_API_URL = process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1";
-const DEFAULT_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password";
+const DEFAULT_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
 
 const USERS = {
-  admin: { userId: process.env.PLAYWRIGHT_ADMIN_USER || "admin@tej-pim.local", roleBadge: "Role: Admin" },
-  editor: { userId: process.env.PLAYWRIGHT_EDITOR_USER || "editor@tej-pim.local", roleBadge: "Role: Editor" },
-  reviewer: { userId: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@tej-pim.local", roleBadge: "Role: Reviewer" },
-  viewer: { userId: process.env.PLAYWRIGHT_VIEWER_USER || "viewer@tej-pim.local", roleBadge: "Role: Viewer" },
+  admin: { userId: process.env.PLAYWRIGHT_ADMIN_USER || "admin@vexa-pim.local", roleBadge: "Role: Admin" },
+  editor: { userId: process.env.PLAYWRIGHT_EDITOR_USER || "editor@vexa-pim.local", roleBadge: "Role: Editor" },
+  reviewer: { userId: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@vexa-pim.local", roleBadge: "Role: Reviewer" },
+  viewer: { userId: process.env.PLAYWRIGHT_VIEWER_USER || "viewer@vexa-pim.local", roleBadge: "Role: Viewer" },
 };
 
 const LOGIN_CACHE = new Map();
