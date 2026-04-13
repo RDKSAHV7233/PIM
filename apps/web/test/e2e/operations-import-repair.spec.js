@@ -54,7 +54,7 @@ test("editor can repair a dead-letter import from repair center and clear the ba
       {
         title: "",
         description: "repair center journey",
-        brand: "TEJ PIM",
+        brand: "Vexa PIM",
         hsnCode: "62046200",
         gstRate: 18,
         status: "draft",

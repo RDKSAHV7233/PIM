@@ -84,7 +84,7 @@ test("admin can create, validate, and publish a connector mapping version from t
   const category = await createCategory(adminToken, uniqueName("mapping-publish-cat"));
   const product = await createProduct(adminToken, {
     title: uniqueName("mapping-publish-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "browser mapping publish flow",
     categoryId: category.id,
     status: "draft",

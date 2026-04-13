@@ -12,8 +12,16 @@ import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TEJ PIM",
-  description: "India-first product information manager",
+  title: "Vexa PIM",
+  description: "Product information management for catalog, quality, and marketplace operations.",
+  icons: {
+    icon: [
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand/app_icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/brand/favicon.svg",
+    apple: "/brand/app_icon.svg",
+  },
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -26,7 +34,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="flex w-full items-center justify-between gap-4 px-5 py-3 md:px-8">
             <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="inline-flex items-center" aria-label="TEJ PIM home">
+              <Link href="/dashboard" className="inline-flex items-center" aria-label="Vexa PIM home">
                 <BrandLogo variant="compact" />
               </Link>
               {hasAuthToken ? <GlobalSearch /> : null}

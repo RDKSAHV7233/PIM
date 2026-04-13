@@ -321,7 +321,7 @@ async function run() {
     const signupPage = await request(webBaseUrl, "GET", "/signup", undefined, null);
     assertStatus(signupPage, 200, "signup page renders");
     assert(
-      String(signupPage.text).includes("Create your TEJ PIM workspace"),
+      String(signupPage.text).includes("Create your Vexa PIM workspace"),
       "Expected signup page to include the workspace creation heading.",
     );
 
@@ -331,7 +331,7 @@ async function run() {
       "POST",
       "/api/signup/workspace",
       {
-        displayName: "TEJ Web Signup Workspace",
+        displayName: "Vexa Web Signup Workspace",
         workspaceSlug,
         adminEmail,
         password,

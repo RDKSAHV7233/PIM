@@ -18,7 +18,7 @@ module.exports = async function globalSetup() {
   const workspace = process.env.PLAYWRIGHT_WORKSPACE || "default";
 
   if (!workspace || workspace.trim().length === 0) {
-    throw new Error("PLAYWRIGHT_WORKSPACE is required for TEJ PIM E2E.");
+    throw new Error("PLAYWRIGHT_WORKSPACE is required for Vexa PIM E2E.");
   }
 
   await assertReachable(`${baseURL}/login`, 200, "web login reachability");

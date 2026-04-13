@@ -67,7 +67,7 @@ export function ConsentPageClient() {
         <BrandLogo variant="lockup" className="mb-3" />
         <h1 className="text-2xl font-semibold text-slate-900">Consent required</h1>
         <p className="text-sm text-slate-600">
-          Before using TEJ PIM, confirm that you agree to data processing under our DPDP policy.
+          Before using Vexa PIM, confirm that you agree to data processing under our DPDP policy.
         </p>
       </header>
 

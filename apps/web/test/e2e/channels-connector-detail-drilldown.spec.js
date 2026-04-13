@@ -31,7 +31,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
   const category = await createCategory(adminToken, uniqueName("e2e-channels-cat"));
   const product = await createProduct(adminToken, {
     title: uniqueName("e2e-channel-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "submission drilldown",
     categoryId: category.id,
     status: "draft",

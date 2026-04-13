@@ -16,7 +16,7 @@ test("admin can drill from dashboard priority queue into product detail", async 
   const category = await createCategory(adminToken, uniqueName("e2e-dashboard-cat"));
   const product = await createProduct(adminToken, {
     title: uniqueName("e2e-dashboard-priority"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "",
     categoryId: category.id,
     status: "draft",

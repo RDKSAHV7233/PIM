@@ -18,7 +18,7 @@ test("editor can archive a product from the workbench", async ({ page }) => {
   const category = await createCategory(adminToken, uniqueName("e2e-archive-cat"));
   const product = await createProduct(editorToken, {
     title: uniqueName("e2e-archive-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "archive flow",
     categoryId: category.id,
     status: "draft",
@@ -61,7 +61,7 @@ test("admin sees archive and permanent delete safeguards on product detail", asy
   const category = await createCategory(adminToken, uniqueName("e2e-purge-cat"));
   const product = await createProduct(adminToken, {
     title: uniqueName("e2e-purge-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "purge flow",
     categoryId: category.id,
     status: "draft",

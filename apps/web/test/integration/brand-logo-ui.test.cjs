@@ -22,30 +22,30 @@ try {
   const locked = read("apps/web/src/components/auth/account-locked-page-client.tsx");
   const reset = read("apps/web/src/components/auth/password-reset-page-client.tsx");
   const consent = read("apps/web/src/components/auth/consent-page-client.tsx");
-  const tejWordmarkPattern = />\s*TEJ\s*</;
+  const vexaWordmarkPattern = /\bVexa\b/;
 
   assert(
     brandLogo.includes('variant?: "compact" | "lockup"') &&
-      brandLogo.includes("Product Information Management"),
-    "Brand logo component must expose compact and lockup variants with the TEJ tagline lockup.",
+      brandLogo.includes('/brand/dark_logo.svg'),
+    "Brand logo component must expose compact and lockup variants backed by the Vexa logo assets.",
   );
   assert(
     brandLogo.includes('variant = "compact"') &&
-      brandLogo.includes("drop-shadow-[0_6px_18px_rgba(37,99,235,0.28)]") &&
-      tejWordmarkPattern.test(brandLogo),
-    "Brand logo component must render the TEJ mark and wordmark in the shared UI component.",
+      brandLogo.includes('/brand/app_icon.svg') &&
+      vexaWordmarkPattern.test(brandLogo),
+    "Brand logo component must render the Vexa app icon and wordmark in the shared UI component.",
   );
   assert(
     layout.includes('import { BrandLogo } from "@/components/ui/brand-logo";') &&
-      layout.includes('aria-label="TEJ PIM home"') &&
+      layout.includes('aria-label="Vexa PIM home"') &&
       layout.includes('<BrandLogo variant="compact" />'),
-    "Root layout must use the compact TEJ logo in the authenticated header.",
+    "Root layout must use the compact Vexa logo in the authenticated header.",
   );
   for (const source of [login, locked, reset, consent]) {
     assert(
       source.includes('import { BrandLogo } from "@/components/ui/brand-logo";') &&
         source.includes('<BrandLogo variant="lockup" className="mb-3" />'),
-      "Auth and consent entry screens must use the lockup TEJ logo.",
+      "Auth and consent entry screens must use the lockup Vexa logo.",
     );
   }
 
