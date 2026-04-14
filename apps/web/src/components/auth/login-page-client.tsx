@@ -171,9 +171,8 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       <div className="relative space-y-5">
       <header className="space-y-4 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
         <BrandLogo variant="lockup" className="mb-0" />
-        <div className="space-y-2">
+        <div>
           <h1 className="text-[2rem] font-semibold tracking-tight text-slate-950">{authCopy.loginTitle}</h1>
-          <p className="max-w-sm text-sm leading-6 text-slate-600">{authCopy.loginSubtitle}</p>
         </div>
       </header>
       {loginReasonMessage ? (
