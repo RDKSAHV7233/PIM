@@ -164,15 +164,15 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
 
   return (
     <div
-      className="relative mx-auto max-w-md overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_28px_70px_rgba(148,163,184,0.18)] backdrop-blur"
+      className="relative mx-auto max-w-[26rem] overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-5 md:p-6 shadow-[0_28px_70px_rgba(148,163,184,0.18)] backdrop-blur"
       suppressHydrationWarning
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.18),_rgba(255,255,255,0)_60%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.12),_rgba(255,255,255,0)_52%)]" />
       <div className="relative space-y-5">
-      <header className="space-y-4 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+      <header className="space-y-4 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
         <BrandLogo variant="lockup" className="mb-0" />
         <div>
-          <h1 className="text-[2rem] font-semibold tracking-tight text-slate-950">{authCopy.loginTitle}</h1>
+          <h1 className="text-[1.85rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">{authCopy.loginTitle}</h1>
         </div>
       </header>
       {loginReasonMessage ? (
