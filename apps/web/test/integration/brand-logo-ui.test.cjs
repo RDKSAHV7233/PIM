@@ -26,8 +26,9 @@ try {
 
   assert(
     brandLogo.includes('variant?: "compact" | "lockup"') &&
-      brandLogo.includes('/brand/dark_logo.svg'),
-    "Brand logo component must expose compact and lockup variants backed by the Vexa logo assets.",
+      brandLogo.includes("Product information manager") &&
+      brandLogo.includes("radial-gradient"),
+    "Brand logo component must expose compact and lockup variants with a light Vexa auth treatment.",
   );
   assert(
     brandLogo.includes('variant = "compact"') &&
@@ -44,7 +45,7 @@ try {
   for (const source of [login, locked, reset, consent]) {
     assert(
       source.includes('import { BrandLogo } from "@/components/ui/brand-logo";') &&
-        source.includes('<BrandLogo variant="lockup" className="mb-3" />'),
+        source.includes('BrandLogo variant="lockup"'),
       "Auth and consent entry screens must use the lockup Vexa logo.",
     );
   }

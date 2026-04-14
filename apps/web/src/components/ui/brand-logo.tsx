@@ -30,8 +30,22 @@ export function BrandLogo({ variant = "compact", className }: BrandLogoProps) {
   }
 
   return (
-    <div className={cn("inline-flex rounded-2xl bg-slate-950 px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.12)] ring-1 ring-slate-200", className)}>
-      <img src="/brand/dark_logo.svg" alt="Vexa PIM" className="h-14 w-auto sm:h-16" />
+    <div
+      className={cn(
+        "inline-flex items-center gap-3 rounded-[22px] border border-violet-100/80 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.18),_rgba(255,255,255,0.98)_58%),linear-gradient(135deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.95))] px-4 py-3 shadow-[0_20px_44px_rgba(148,163,184,0.18)] ring-1 ring-white/70",
+        className,
+      )}
+    >
+      <BrandMark className="h-11 w-11 rounded-[18px] shadow-[0_14px_34px_rgba(99,102,241,0.24)]" />
+      <div className="flex min-w-0 flex-col leading-none">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[1.85rem] font-semibold tracking-tight text-slate-950">Vexa</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.32em] text-indigo-500">PIM</span>
+        </div>
+        <span className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          Product information manager
+        </span>
+      </div>
     </div>
   );
 }
