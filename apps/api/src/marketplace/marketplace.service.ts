@@ -2229,6 +2229,7 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ storagePath: string | null }>>(
       `
         SELECT storage_path AS "storagePath"
