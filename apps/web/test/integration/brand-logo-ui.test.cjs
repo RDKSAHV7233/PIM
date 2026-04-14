@@ -22,6 +22,8 @@ try {
   const locked = read("apps/web/src/components/auth/account-locked-page-client.tsx");
   const reset = read("apps/web/src/components/auth/password-reset-page-client.tsx");
   const consent = read("apps/web/src/components/auth/consent-page-client.tsx");
+  const signup = read("apps/web/src/components/auth/signup-page-client.tsx");
+  const signupVerify = read("apps/web/src/components/auth/signup-verify-page-client.tsx");
   const vexaWordmarkPattern = /\bVexa\b/;
 
   assert(
@@ -39,10 +41,10 @@ try {
   assert(
     layout.includes('import { BrandLogo } from "@/components/ui/brand-logo";') &&
       layout.includes('aria-label="Vexa PIM home"') &&
-      layout.includes('<BrandLogo variant="compact" />'),
+      layout.includes('BrandLogo variant="compact"'),
     "Root layout must use the compact Vexa logo in the authenticated header.",
   );
-  for (const source of [login, locked, reset, consent]) {
+  for (const source of [login, locked, reset, consent, signup, signupVerify]) {
     assert(
       source.includes('import { BrandLogo } from "@/components/ui/brand-logo";') &&
         source.includes('BrandLogo variant="lockup"'),

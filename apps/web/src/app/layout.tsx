@@ -41,7 +41,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <div className={`flex w-full items-center justify-between gap-4 px-5 md:px-8 ${hasAuthToken ? "py-3" : "py-2.5"}`}>
             <div className="flex items-center gap-4">
               <Link href="/dashboard" className="inline-flex items-center" aria-label="Vexa PIM home">
-                <BrandLogo variant="compact" />
+                <BrandLogo variant="compact" className={hasAuthToken ? undefined : "origin-left scale-[0.95] opacity-90"} />
               </Link>
               {hasAuthToken ? <GlobalSearch /> : null}
             </div>
