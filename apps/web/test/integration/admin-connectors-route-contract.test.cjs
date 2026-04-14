@@ -49,16 +49,20 @@ function run() {
     "Admin connectors must keep grant and revoke actions admin-only while preserving an honest read-only fallback for non-admin roles.",
   );
   assert(
-    source.includes("Manage connector action permissions (install, reconnect, uninstall) for users and roles.") &&
+    source.includes("Define who can install, reconnect, or disable each connector account without exposing raw permission internals.") &&
+      source.includes("Policy coverage") &&
+      source.includes("Permission Builder") &&
+      source.includes("Current Policies") &&
       source.includes("Create one permission row per role or user.") &&
       source.includes('No connector permissions configured for this tenant.'),
-    "Admin connectors must explain the connector action model and surface an honest empty state.",
+    "Admin connectors must explain the policy-builder model and surface an honest empty state.",
   );
   assert(
     source.includes('{permission.accountAlias === "*" ? "All aliases" : permission.accountAlias}') &&
       source.includes("{permission.createdBy || \"-\"}") &&
-      source.includes("new Date(permission.updatedAt).toLocaleString()"),
-    "Admin connectors must surface wildcard alias coverage plus audit-friendly creator and update metadata.",
+      source.includes("new Date(permission.updatedAt).toLocaleString()") &&
+      source.includes("describeConnectorPermission(permission)"),
+    "Admin connectors must surface readable policy summaries plus audit-friendly creator and update metadata.",
   );
   assert(
     source.includes('redirect(buildLoginRedirect("/admin/connectors", error));'),

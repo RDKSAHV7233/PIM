@@ -30,10 +30,10 @@ function run() {
     "Mappings page must conditionally fetch history, resolved snapshot, taxonomy, and product context data.",
   );
   assert(
-    source.includes("Load version history") &&
-      source.includes("Load product context") &&
-      source.includes("Load taxonomy alignment") &&
-      source.includes("Load resolved snapshot"),
+    source.includes("Open version history") &&
+      source.includes("Open product context") &&
+      source.includes("Open taxonomy alignment") &&
+      source.includes("Review resolved snapshot"),
     "Mappings page must expose on-demand load actions for deferred secondary panels.",
   );
 

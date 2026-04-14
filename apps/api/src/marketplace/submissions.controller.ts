@@ -14,6 +14,7 @@ export class SubmissionsController {
   listSubmissions(
     @Query("productId") productId?: string,
     @Query("connectorSlug") connectorSlug?: string,
+    @Query("installationId") installationId?: string,
     @Query("status") status?: string,
     @Query("minAttempt") minAttempt?: string,
     @Query() pagination?: CursorPaginationDto,
@@ -22,6 +23,7 @@ export class SubmissionsController {
       {
         productId,
         connectorSlug,
+        installationId,
         status,
         minAttempt: minAttempt ? Number(minAttempt) : undefined,
       },

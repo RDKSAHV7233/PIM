@@ -5,6 +5,7 @@ export async function getSubmissions(
   filters?: {
     productId?: string;
     connectorSlug?: string;
+    installationId?: string;
     status?: string;
     minAttempt?: number;
     cursor?: string;
@@ -18,6 +19,9 @@ export async function getSubmissions(
   }
   if (filters?.connectorSlug) {
     params.set("connectorSlug", filters.connectorSlug);
+  }
+  if (filters?.installationId) {
+    params.set("installationId", filters.installationId);
   }
   if (filters?.status) {
     params.set("status", filters.status);

@@ -27,7 +27,9 @@ function run() {
   );
   assert(
     formSource.includes('const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"]') &&
+      formSource.includes("Policy preview") &&
       formSource.includes("Leave blank to apply this permission to all aliases") &&
+      formSource.includes("Use role rules for broad access. Use user-specific rules only when someone needs an exception.") &&
       formSource.includes("Grant access to one specific user in this workspace."),
     "Connector Access form must provide explicit role options, wildcard alias guidance, and user-scoped helper copy.",
   );

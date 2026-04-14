@@ -27,10 +27,14 @@ function run() {
     "Mappings page must compose the workflow header and context summary cards.",
   );
   assert(
-    workflowSource.includes("Complete this mapping to publish") &&
-      workflowSource.includes("Map required fields") &&
-      workflowSource.includes("Validate draft") &&
-      workflowSource.includes("Review publish gate"),
+    pageSource.includes("Mapping Workbench") &&
+      pageSource.includes("Choose scope") &&
+      pageSource.includes("Build the draft") &&
+      pageSource.includes("Validate and publish") &&
+      workflowSource.includes("Build a publish-ready") &&
+      workflowSource.includes("Choose scope") &&
+      workflowSource.includes("Build draft") &&
+      workflowSource.includes("Validate and publish"),
     "Mappings workflow header must show the publish task context and 3-step progression.",
   );
   assert(
@@ -42,8 +46,9 @@ function run() {
   );
   assert(
     versionSource.includes('id="mapping-history"') &&
+      versionSource.includes("Step 3: Validate and publish") &&
       versionSource.includes("After you save a draft, validate it here."),
-    "Version manager must be anchored as the second step in the workflow.",
+    "Version manager must be anchored as the validation-and-publish step in the workflow.",
   );
   assert(
     editorSource.includes('id="mapping-readiness"') &&

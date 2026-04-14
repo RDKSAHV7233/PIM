@@ -100,6 +100,7 @@ type MarketplaceReadinessSummary = {
 type SubmissionFilters = {
   productId?: string;
   connectorSlug?: string;
+  installationId?: string;
   status?: string;
   minAttempt?: number;
 };
@@ -419,27 +420,7 @@ export class MarketplaceService implements OnModuleInit {
     templateId?: string,
     channelOverride?: string,
   ) {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        ci.id,
-        cd.slug AS "connectorSlug"
-      FROM connector_installations ci
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE ci.id = $1
-        AND ci.tenant_key = $2
-      LIMIT 1
-      `,
-      installationId,
-      tenantKey,
-    )) as Array<{ id: string; connectorSlug: string }>;
-
-    const installation = rows[0];
-    if (!installation) {
-      throw new NotFoundException("Connector installation not found.");
-    }
+    const installation = await this.resolveInstallationConnectorSummary(installationId);
 
     const channel = channelOverride
       ? this.parseChannel(channelOverride)
@@ -494,6 +475,7 @@ export class MarketplaceService implements OnModuleInit {
     });
     const job = await this.prisma.tenant().marketplaceExportJob.create({
       data: {
+        createdBy: actorId?.trim() ? actorId.trim() : null,
         productId,
         categoryId: product.categoryId,
         channel: simulation.channel as MarketplaceChannelDb,
@@ -510,14 +492,6 @@ export class MarketplaceService implements OnModuleInit {
       },
       include: { template: true },
     });
-    if (actorId?.trim()) {
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
-        `UPDATE "MarketplaceExportJob" SET created_by = $1 WHERE id = $2`,
-        actorId.trim(),
-        job.id,
-      );
-    }
     await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
@@ -623,35 +597,35 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async listSubmissions(filters?: SubmissionFilters, pagination?: CursorPaginationQuery) {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const productId = filters?.productId ? String(filters.productId).trim() : "";
     const connectorSlug = filters?.connectorSlug ? String(filters.connectorSlug).trim().toLowerCase() : "";
+    const installationId = filters?.installationId ? String(filters.installationId).trim() : "";
     const status = filters?.status ? String(filters.status).trim().toUpperCase() : "";
     const minAttempt = Number.isFinite(filters?.minAttempt)
       ? Math.max(1, Math.floor(filters?.minAttempt ?? 1))
       : null;
-
-    const params: Array<string | number | Date> = [tenantKey];
-    const clauses: string[] = ["cs.tenant_key = $1"];
-
-    if (productId) {
-      params.push(productId);
-      clauses.push(`cs.product_id = $${params.length}`);
-    }
-    if (connectorSlug) {
-      params.push(connectorSlug);
-      clauses.push(`LOWER(cd.slug) = $${params.length}`);
-    }
-    if (status) {
-      params.push(status);
-      clauses.push(`UPPER(cs.status) = $${params.length}`);
-    }
-    if (minAttempt !== null) {
-      params.push(minAttempt);
-      clauses.push(`cs.attempt_number >= $${params.length}`);
+    const connectorInstallationIds = installationId
+      ? [installationId]
+      : connectorSlug
+      ? await this.resolveInstallationIdsForConnectorSlug(connectorSlug)
+      : null;
+    if ((installationId || connectorSlug) && connectorInstallationIds && connectorInstallationIds.length === 0) {
+      if (isCursorPagination(pagination)) {
+        return {
+          items: [],
+          limit: resolveCursorLimit(pagination?.limit),
+          nextCursor: null,
+        };
+      }
+      return [];
     }
 
-    const whereSql = `WHERE ${clauses.join(" AND ")}`;
+    const baseWhere: Prisma.ConnectorSubmissionWhereInput = {
+      ...(productId ? { productId } : {}),
+      ...(status ? { status } : {}),
+      ...(minAttempt !== null ? { attemptNumber: { gte: minAttempt } } : {}),
+      ...(connectorInstallationIds ? { installationId: { in: connectorInstallationIds } } : {}),
+    };
 
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
@@ -663,58 +637,47 @@ export class MarketplaceService implements OnModuleInit {
       if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
         throw new BadRequestException("Invalid cursor.");
       }
-      if (token && cursorDate) {
-        params.push(cursorDate);
-        const dateParam = params.length;
-        params.push(token.id);
-        const idParam = params.length;
-        clauses.push(`(cs.submitted_at < $${dateParam} OR (cs.submitted_at = $${dateParam} AND cs.id < $${idParam}))`);
-      }
-
-      const pagedWhereSql = `WHERE ${clauses.join(" AND ")}`;
-      params.push(limit + 1);
-      const limitParam = params.length;
-      // RLS-BYPASS: manual tenant filter
-      const rows = (await this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          cs.id,
-          cs.product_id AS "productId",
-          cs.variant_id AS "variantId",
-          cs.installation_id AS "installationId",
-          cd.slug AS "connectorSlug",
-          cd.display_name AS "connectorDisplayName",
-          cs.idempotency_key AS "idempotencyKey",
-          cs.submission_type AS "submissionType",
-          cs.source,
-          cs.attempt_number AS "attemptNumber",
-          cs.status,
-          cs.external_ref AS "externalRef",
-          cs.payload_snapshot_url AS "payloadSnapshotUrl",
-          cs.submitted_at AS "submittedAt",
-          cs.resolved_at AS "resolvedAt",
-          cs.channel_errors AS "channelErrors"
-        FROM connector_submissions cs
-        JOIN connector_installations ci ON ci.id = cs.installation_id
-        JOIN connector_definitions cd ON cd.id = ci.connector_id
-        ${pagedWhereSql}
-        ORDER BY cs.submitted_at DESC, cs.id DESC
-        LIMIT $${limitParam}
-        `,
-        ...params,
-      )) as Array<Record<string, unknown>>;
-
+      const rows = await this.prisma.tenant().connectorSubmission.findMany({
+        where: {
+          ...baseWhere,
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { submittedAt: { lt: cursorDate } },
+                  { submittedAt: cursorDate, id: { lt: token.id } },
+                ],
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+          productId: true,
+          variantId: true,
+          installationId: true,
+          idempotencyKey: true,
+          submissionType: true,
+          source: true,
+          attemptNumber: true,
+          status: true,
+          externalRef: true,
+          payloadSnapshotUrl: true,
+          submittedAt: true,
+          resolvedAt: true,
+          channelErrors: true,
+        },
+        orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
       const hasNext = rows.length > limit;
       const items = hasNext ? rows.slice(0, limit) : rows;
-      const last = items[items.length - 1] as { id?: unknown; submittedAt?: unknown } | undefined;
-      const submittedAt = last?.submittedAt instanceof Date
-        ? last.submittedAt
-        : typeof last?.submittedAt === "string"
-          ? new Date(last.submittedAt)
-          : null;
+      const normalizedItems = await this.hydrateSubmissionRows(
+        items.map((item) => item as unknown as Record<string, unknown>),
+      );
+      const last = items[items.length - 1];
+      const submittedAt = last?.submittedAt ?? null;
 
       return {
-        items: items.map((item) => this.normalizeSubmissionRow(item)),
+        items: normalizedItems,
         limit,
         nextCursor:
           hasNext &&
@@ -729,38 +692,28 @@ export class MarketplaceService implements OnModuleInit {
       };
     }
 
-    params.push(50);
-    const limitParam = params.length;
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        cs.id,
-        cs.product_id AS "productId",
-        cs.variant_id AS "variantId",
-        cs.installation_id AS "installationId",
-        cd.slug AS "connectorSlug",
-        cd.display_name AS "connectorDisplayName",
-        cs.idempotency_key AS "idempotencyKey",
-        cs.submission_type AS "submissionType",
-        cs.source,
-        cs.attempt_number AS "attemptNumber",
-        cs.status,
-        cs.external_ref AS "externalRef",
-        cs.payload_snapshot_url AS "payloadSnapshotUrl",
-        cs.submitted_at AS "submittedAt",
-        cs.resolved_at AS "resolvedAt",
-        cs.channel_errors AS "channelErrors"
-      FROM connector_submissions cs
-      JOIN connector_installations ci ON ci.id = cs.installation_id
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      ${whereSql}
-      ORDER BY cs.submitted_at DESC, cs.id DESC
-      LIMIT $${limitParam}
-      `,
-      ...params,
-    )) as Array<Record<string, unknown>>;
-    return rows.map((row) => this.normalizeSubmissionRow(row));
+    const rows = await this.prisma.tenant().connectorSubmission.findMany({
+      where: baseWhere,
+      select: {
+        id: true,
+        productId: true,
+        variantId: true,
+        installationId: true,
+        idempotencyKey: true,
+        submissionType: true,
+        source: true,
+        attemptNumber: true,
+        status: true,
+        externalRef: true,
+        payloadSnapshotUrl: true,
+        submittedAt: true,
+        resolvedAt: true,
+        channelErrors: true,
+      },
+      orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+      take: 50,
+    });
+    return this.hydrateSubmissionRows(rows.map((row) => row as unknown as Record<string, unknown>));
   }
 
   async listDeadLetterSubmissions(pagination?: CursorPaginationQuery) {
@@ -823,42 +776,34 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async getSubmission(submissionId: string) {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        cs.id,
-        cs.product_id AS "productId",
-        cs.variant_id AS "variantId",
-        cs.installation_id AS "installationId",
-        cd.slug AS "connectorSlug",
-        cd.display_name AS "connectorDisplayName",
-        cs.idempotency_key AS "idempotencyKey",
-        cs.submission_type AS "submissionType",
-        cs.source,
-        cs.attempt_number AS "attemptNumber",
-        cs.status,
-        cs.external_ref AS "externalRef",
-        cs.payload_snapshot AS "payloadSnapshot",
-        cs.payload_snapshot_url AS "payloadSnapshotUrl",
-        cs.channel_errors AS "channelErrors",
-        cs.submitted_at AS "submittedAt",
-        cs.resolved_at AS "resolvedAt"
-      FROM connector_submissions cs
-      JOIN connector_installations ci ON ci.id = cs.installation_id
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE cs.tenant_key = $1
-        AND cs.id = $2
-      LIMIT 1
-      `,
-      tenantKey,
-      submissionId,
-    )) as Array<Record<string, unknown>>;
+    const row = await this.prisma.tenant().connectorSubmission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        productId: true,
+        variantId: true,
+        installationId: true,
+        idempotencyKey: true,
+        submissionType: true,
+        source: true,
+        attemptNumber: true,
+        status: true,
+        externalRef: true,
+        payloadSnapshot: true,
+        payloadSnapshotUrl: true,
+        channelErrors: true,
+        submittedAt: true,
+        resolvedAt: true,
+      },
+    });
+    if (!row) {
+      throw new NotFoundException("Submission not found");
+    }
+    const rows = await this.hydrateSubmissionRows([row as unknown as Record<string, unknown>], true);
     if (rows.length === 0) {
       throw new NotFoundException("Submission not found");
     }
-    return this.normalizeSubmissionRow(rows[0], true);
+    return rows[0];
   }
 
   async getSubmissionIssues(submissionId: string) {
@@ -868,33 +813,15 @@ export class MarketplaceService implements OnModuleInit {
 
   async syncSubmissionStatus(submissionId: string) {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        cs.id,
-        cs.product_id AS "productId",
-        cs.installation_id AS "installationId",
-        cs.external_ref AS "externalRef",
-        cd.slug AS "connectorSlug"
-      FROM connector_submissions cs
-      JOIN connector_installations ci ON ci.id = cs.installation_id
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE cs.tenant_key = $1
-        AND cs.id = $2
-      LIMIT 1
-      `,
-      tenantKey,
-      submissionId,
-    )) as Array<{
-      id: string;
-      productId: string;
-      installationId: string;
-      externalRef: string | null;
-      connectorSlug: string;
-    }>;
-
-    const submission = rows[0];
+    const submission = await this.prisma.tenant().connectorSubmission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        productId: true,
+        installationId: true,
+        externalRef: true,
+      },
+    });
     if (!submission) {
       throw new NotFoundException("Submission not found");
     }
@@ -902,7 +829,8 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("Submission cannot be synced because no external reference is stored.");
     }
 
-    const installation = await this.connectorFramework.requireInstallation(tenantKey, submission.connectorSlug);
+    const installationSummary = await this.resolveInstallationConnectorSummary(submission.installationId);
+    const installation = await this.connectorFramework.requireInstallation(tenantKey, installationSummary.connectorSlug);
     const statusLookupRef = await this.buildSubmissionStatusLookupRef(
       submission.productId,
       submission.externalRef,
@@ -915,23 +843,14 @@ export class MarketplaceService implements OnModuleInit {
       sellerMessage: issue.sellerMessage,
     }));
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
-      `
-      UPDATE connector_submissions
-      SET
-        status = $3,
-        channel_errors = $4::jsonb,
-        resolved_at = $5
-      WHERE tenant_key = $1
-        AND id = $2
-      `,
-      tenantKey,
-      submissionId,
-      update.status,
-      JSON.stringify(normalizedErrors),
-      update.resolvedAt ?? null,
-    );
+    await this.prisma.tenant().connectorSubmission.update({
+      where: { id: submissionId },
+      data: {
+        status: update.status,
+        channelErrors: normalizedErrors as Prisma.InputJsonValue,
+        resolvedAt: update.resolvedAt ?? null,
+      },
+    });
 
     return this.getSubmission(submissionId);
   }
@@ -1879,6 +1798,138 @@ export class MarketplaceService implements OnModuleInit {
     throw new BadRequestException(`Unsupported connector slug '${slug}' for payload preview.`);
   }
 
+  private async resolveInstallationIdsForConnectorSlug(connectorSlug: string): Promise<string[]> {
+    const connectorDefinition = await this.prisma.tenant().connectorDefinition.findFirst({
+      where: { slug: connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDefinition) {
+      return [];
+    }
+    const installations = await this.prisma.tenant().connectorInstallation.findMany({
+      where: { connectorId: connectorDefinition.id },
+      select: { id: true },
+    });
+    return installations.map((installation) => installation.id);
+  }
+
+  private async resolveInstallationConnectorSummary(installationId: string): Promise<{
+    id: string;
+    connectorSlug: string;
+    connectorDisplayName: string;
+  }> {
+    const installation = await this.prisma.tenant().connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: {
+        id: true,
+        connectorId: true,
+      },
+    });
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+    const connectorDefinition = await this.prisma.tenant().connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: {
+        slug: true,
+        displayName: true,
+      },
+    });
+    if (!connectorDefinition) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+    return {
+      id: installation.id,
+      connectorSlug: connectorDefinition.slug,
+      connectorDisplayName: connectorDefinition.displayName,
+    };
+  }
+
+  private async hydrateSubmissionRows(
+    rows: Array<Record<string, unknown>>,
+    includePayload = false,
+  ): Promise<Record<string, unknown>[]> {
+    const installationIds = this.uniqueStrings(
+      rows
+        .map((row) => String(row.installationId ?? "").trim())
+        .filter((value) => value.length > 0),
+    );
+    if (installationIds.length === 0) {
+      return [];
+    }
+
+    const installations = await this.prisma.tenant().connectorInstallation.findMany({
+      where: {
+        id: { in: installationIds },
+      },
+      select: {
+        id: true,
+        connectorId: true,
+      },
+    });
+    const connectorIds = this.uniqueStrings(installations.map((installation) => installation.connectorId));
+    const connectorDefinitions = connectorIds.length > 0
+      ? await this.prisma.tenant().connectorDefinition.findMany({
+          where: {
+            id: { in: connectorIds },
+          },
+          select: {
+            id: true,
+            slug: true,
+            displayName: true,
+          },
+        })
+      : [];
+
+    const connectorMap = new Map(
+      connectorDefinitions.map((connector) => [
+        connector.id,
+        {
+          connectorSlug: connector.slug,
+          connectorDisplayName: connector.displayName,
+        },
+      ]),
+    );
+    const installationMap = new Map(
+      installations
+        .map((installation) => {
+          const connector = connectorMap.get(installation.connectorId);
+          if (!connector) {
+            return null;
+          }
+          return [installation.id, connector] as const;
+        })
+        .filter(
+          (
+            item,
+          ): item is readonly [
+            string,
+            {
+              connectorSlug: string;
+              connectorDisplayName: string;
+            },
+          ] => item !== null,
+        ),
+    );
+
+    return rows
+      .map((row) => {
+        const installation = installationMap.get(String(row.installationId ?? ""));
+        if (!installation) {
+          return null;
+        }
+        return this.normalizeSubmissionRow(
+          {
+            ...row,
+            connectorSlug: installation.connectorSlug,
+            connectorDisplayName: installation.connectorDisplayName,
+          },
+          includePayload,
+        );
+      })
+      .filter((row): row is Record<string, unknown> => row !== null);
+  }
+
   private normalizeSubmissionRow(
     row: Record<string, unknown>,
     includePayload = false,
@@ -2212,21 +2263,12 @@ export class MarketplaceService implements OnModuleInit {
       return attributeUrl;
     }
 
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ storagePath: string | null }>>(
-      `
-      SELECT storage_path AS "storagePath"
-      FROM media_assets
-      WHERE tenant_key = $1
-        AND product_id = $2
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      tenantKey,
-      productId,
-    );
-    const storagePath = String(rows[0]?.storagePath ?? "").trim();
+    const mediaAsset = await this.prisma.tenant().mediaAsset.findFirst({
+      where: { productId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { storagePath: true },
+    });
+    const storagePath = String(mediaAsset?.storagePath ?? "").trim();
     const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
     if (!storagePath || !publicBase) {
       return "";

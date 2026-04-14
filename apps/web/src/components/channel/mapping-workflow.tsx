@@ -50,13 +50,13 @@ export function MappingWorkflowHeader({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapping workflow</p>
             <h2 className="text-2xl font-semibold text-slate-950">
               {productLabel
-                ? `Complete this mapping to publish ${productLabel}`
-                : `Complete this ${presentChannel(channel)} mapping`}
+                ? `Build a publish-ready mapping for ${productLabel}`
+                : `Build a publish-ready ${presentChannel(channel)} mapping`}
             </h2>
             <p className="max-w-3xl text-sm text-slate-600">
               {productLabel
-                ? `This ${presentChannel(channel)} mapping is blocking publish for ${productLabel}. Start by filling the missing required fields, then validate and publish the draft version.`
-                : `Start by mapping the missing required fields for this ${presentChannel(channel)} category. Validate the draft version after the required fields are mapped, then publish it.`}
+                ? `This ${presentChannel(channel)} mapping is blocking publish for ${productLabel}. Confirm the scope, build the draft, then validate and promote the version that clears readiness.`
+                : `Confirm the scope for this ${presentChannel(channel)} category, build the draft around the required fields, then validate and publish the version that clears readiness.`}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -83,21 +83,21 @@ export function MappingWorkflowHeader({
             </div>
           ) : null}
         </div>
-        <div className="grid gap-2 sm:grid-cols-3 xl:w-[360px]">
-          <a href="#mapping-draft" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
+        <div className="grid gap-2 sm:grid-cols-3 xl:w-[420px]">
+          <a href="#mapping-scope" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">Map required fields</p>
-            <p className="mt-1 text-xs text-slate-500">Fix the missing required fields first.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">Choose scope</p>
+            <p className="mt-1 text-xs text-slate-500">Lock the channel, category, and product context first.</p>
+          </a>
+          <a href="#mapping-draft" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">Build draft</p>
+            <p className="mt-1 text-xs text-slate-500">Map the required fields and save the draft version.</p>
           </a>
           <a href="#mapping-history" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">Validate draft</p>
-            <p className="mt-1 text-xs text-slate-500">Validate the saved draft version in history.</p>
-          </a>
-          <a href="#mapping-readiness" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 3</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">Review publish gate</p>
-            <p className="mt-1 text-xs text-slate-500">Check blockers before publishing the validated version.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">Validate and publish</p>
+            <p className="mt-1 text-xs text-slate-500">Validate in history, then clear readiness and promote the version.</p>
           </a>
         </div>
       </div>
