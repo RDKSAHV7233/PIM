@@ -175,18 +175,6 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           <h1 className="text-[2rem] font-semibold tracking-tight text-slate-950">{authCopy.loginTitle}</h1>
           <p className="max-w-sm text-sm leading-6 text-slate-600">{authCopy.loginSubtitle}</p>
         </div>
-        {signupEnabled ? (
-          <p className="text-sm leading-6 text-slate-600">
-            {authCopy.signupLinkPrompt}{" "}
-            <Link
-              href={`/signup?lang=${encodeURIComponent(locale)}`}
-              className="font-semibold text-indigo-600 underline decoration-indigo-200 underline-offset-4"
-            >
-              {authCopy.signupLinkCta}
-            </Link>
-            .
-          </p>
-        ) : null}
       </header>
       {loginReasonMessage ? (
         <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
@@ -280,6 +268,22 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
               .
             </p>
           )}
+
+          <div className="space-y-2 pt-1 text-center">
+            <p className="text-xs leading-5 text-slate-500">{authCopy.loginSubtitle}</p>
+            {signupEnabled ? (
+              <p className="text-sm leading-6 text-slate-600">
+                {authCopy.signupLinkPrompt}{" "}
+                <Link
+                  href={`/signup?lang=${encodeURIComponent(locale)}`}
+                  className="font-semibold text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+                >
+                  {authCopy.signupLinkCta}
+                </Link>
+                .
+              </p>
+            ) : null}
+          </div>
         </form>
       )}
       </div>
