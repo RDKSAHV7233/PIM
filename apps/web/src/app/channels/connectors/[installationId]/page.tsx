@@ -8,6 +8,7 @@ import {
   ApiHttpError,
   getConnectorPermissions,
   getInstalledConnectors,
+  getProductList,
   getSubmissions,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -73,6 +74,31 @@ function describePermissionRule(permission: {
   return `${subject} can ${action} this connector for ${scope}.`;
 }
 
+function summarizeSubmissionOutcome(submission: {
+  status: string;
+  source: string;
+  channelErrors: Array<{ sellerMessage: string }>;
+  externalRef: string | null;
+}) {
+  const firstError = submission.channelErrors[0]?.sellerMessage?.trim();
+  if (firstError) {
+    return firstError;
+  }
+  if (submission.status === "SUCCESS") {
+    return submission.externalRef ? `Published as ${submission.externalRef}.` : "Completed successfully.";
+  }
+  if (submission.status === "PENDING" || submission.status === "RETRYING") {
+    return `Waiting on ${submission.source.toLowerCase().replace(/_/g, " ")} processing.`;
+  }
+  if (submission.status === "SUPPRESSED") {
+    return "Suppressed by connector rules or duplicate protection.";
+  }
+  if (submission.status === "REJECTED") {
+    return "Rejected by the channel. Review the connector errors and product data.";
+  }
+  return "Needs operator review.";
+}
+
 export default async function ChannelConnectorDetailPage({
   params,
 }: ChannelConnectorDetailPageProps) {
@@ -87,11 +113,13 @@ export default async function ChannelConnectorDetailPage({
       notFound();
     }
 
-    const [permissions, submissionsRaw] = await Promise.all([
+    const [permissions, submissionsRaw, products] = await Promise.all([
       getConnectorPermissions(installation.slug, { role: actorRole, authHeader }),
       getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
     const submissions = toItems(submissionsRaw);
+    const productsById = new Map(products.map((product) => [product.id, product]));
     const failedSubmissions = submissions.filter(
       (item) => item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED",
     );
@@ -211,30 +239,37 @@ export default async function ChannelConnectorDetailPage({
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Submission</th>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Outcome</th>
                     <th className="px-3 py-2">Attempt</th>
                     <th className="px-3 py-2">Submitted</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {submissions.slice(0, 50).map((submission) => (
+                  {submissions.slice(0, 50).map((submission) => {
+                    const product = productsById.get(submission.productId);
+                    return (
                     <tr key={submission.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                      <td className="px-3 py-2.5 font-mono text-xs">{submission.id}</td>
                       <td className="px-3 py-2.5">
                         <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="text-blue-700 hover:underline">
-                          Open product
+                          {product?.title || "Open product"}
                         </Link>
-                        <p className="mt-1 text-xs text-slate-500">{submission.productId}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {product?.brand ? `${product.brand} · ` : ""}{submission.productId}
+                        </p>
                       </td>
                       <td className="px-3 py-2.5">
                         <StatusChip label={submission.status} tone={submissionStatusTone(submission.status)} />
                       </td>
+                      <td className="px-3 py-2.5 text-sm text-slate-700">
+                        <p>{summarizeSubmissionOutcome(submission)}</p>
+                        <p className="mt-1 font-mono text-[11px] text-slate-500">{submission.id}</p>
+                      </td>
                       <td className="px-3 py-2.5">{submission.attemptNumber}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

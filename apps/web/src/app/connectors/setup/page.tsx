@@ -1,0 +1,473 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { installConnectorAction } from "@/app/actions";
+import { Button } from "@/components/ui/button";
+import { Card, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { StatusChip } from "@/components/ui/status-chip";
+import {
+  ApiHttpError,
+  type ConnectorDefinition,
+  type ConnectorInstallation,
+  getConnectorDefinitions,
+  getInstalledConnectors,
+} from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
+
+export const dynamic = "force-dynamic";
+
+interface ConnectorSetupPageProps {
+  searchParams: Promise<{
+    slug?: string;
+    q?: string;
+    status?: string;
+    connectorSlug?: string;
+    installError?: string;
+  }>;
+}
+
+type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
+
+function formatStatusMessage(raw: string): string | null {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (value === "installed") {
+    return "Connector installation created.";
+  }
+  return null;
+}
+
+function formatInstallErrorMessage(raw: string, connectorSlug?: string): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    return null;
+  }
+  const connectorLabel =
+    connectorSlug === "flipkart"
+      ? "Flipkart"
+      : connectorSlug === "amazon-in"
+        ? "Amazon India"
+        : connectorSlug === "meesho"
+          ? "Meesho"
+          : "connector";
+
+  if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires client ID, client secret, and refresh token together.`;
+  }
+  if (value === "FLIPKART_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the client ID, client secret, and refresh token.`;
+  }
+  if (value === "AMAZON_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires seller ID, client ID, client secret, and refresh token together.`;
+  }
+  if (value === "AMAZON_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
+  }
+  return `${connectorLabel} install failed: ${value}`;
+}
+
+function connectorAccountReferenceLabel(slug: string): string {
+  return slug === "amazon-in" ? "Seller ID" : "External Account Ref";
+}
+
+function connectorAccountReferencePlaceholder(slug: string): string {
+  if (slug === "amazon-in") {
+    return "Enter Amazon seller ID";
+  }
+  return "Optional";
+}
+
+function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
+  if (stage === "live") {
+    return "success";
+  }
+  if (stage === "manual") {
+    return "warning";
+  }
+  return "info";
+}
+
+function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
+  if (stage === "manual") {
+    return "guided rollout";
+  }
+  if (stage === "planned") {
+    return "not seller-ready";
+  }
+  return "live";
+}
+
+function connectorStatusNote(
+  slug: string,
+  implementationStatus: string | undefined,
+): string | null {
+  if (implementationStatus === "stub") {
+    return "Credential validation and publish are not yet available for this connector. Seller self-serve install remains hidden until the connector is fully implemented.";
+  }
+  if (implementationStatus === "partial") {
+    if (slug === "meesho") {
+      return "Meesho uses Excel export only. After exporting, upload the file manually in Meesho Supplier Panel. Direct publish is not supported by Meesho.";
+    }
+    return "This connector has limited functionality. Check the channel guide for details.";
+  }
+  return null;
+}
+
+function summarizeDefinitionWorkspace(
+  definition: ConnectorDefinition,
+  installedForDefinition: ConnectorInstallation[],
+): { label: string; tone: StatusTone; description: string } {
+  const activeAccounts = installedForDefinition.filter(
+    (installation) => String(installation.status ?? "").trim().toUpperCase() === "ACTIVE",
+  ).length;
+
+  if (activeAccounts > 0) {
+    return {
+      label: "Expand footprint",
+      tone: "success",
+      description: `${activeAccounts} active account${activeAccounts === 1 ? "" : "s"} already installed. Add another alias only when the workflow really needs a second account.`,
+    };
+  }
+  if (definition.launchStage === "manual") {
+    return {
+      label: "Guided rollout",
+      tone: "warning",
+      description: "Operationally limited. Coordinate installs with the rollout owner before you connect a new account.",
+    };
+  }
+  if (definition.launchStage === "planned") {
+    return {
+      label: "Planned",
+      tone: "info",
+      description: "Tracked in the roadmap but not open for seller self-serve install yet.",
+    };
+  }
+  if (definition.actions?.install.allowed) {
+    return {
+      label: "Ready to install",
+      tone: "info",
+      description: "This marketplace is ready for its first account connection and downstream mapping work.",
+    };
+  }
+  return {
+    label: "Action blocked",
+    tone: "warning",
+    description: "Install is currently blocked by server policy or plan limits.",
+  };
+}
+
+function connectorMatchesQuery(query: string, definition: ConnectorDefinition, installedForDefinition: ConnectorInstallation[]): boolean {
+  if (!query) {
+    return true;
+  }
+  const searchable = [
+    definition.displayName,
+    definition.slug,
+    definition.authType,
+    definition.connectorVersion,
+    definition.launchStage,
+    definition.launchNote ?? "",
+    definition.implementationStatus ?? "",
+    ...definition.capabilities,
+    ...installedForDefinition.flatMap((installation) => [
+      installation.accountAlias,
+      installation.externalAccountRef ?? "",
+      installation.status,
+      ...installation.capabilities,
+    ]),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return searchable.includes(query);
+}
+
+function ConnectorCredentialFields({ definitionId, slug }: { definitionId: string; slug: string }) {
+  if (slug === "flipkart") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID
+          </label>
+          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="fk-client-id" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client Secret
+          </label>
+          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Flipkart client secret" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Refresh Token
+          </label>
+          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Flipkart refresh token" />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "amazon-in") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          Amazon India live install needs seller ID plus validated LWA credentials. These values are encrypted on save and never shown again.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID
+          </label>
+          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="amzn-client-id" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client Secret
+          </label>
+          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Amazon client secret" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Refresh Token
+          </label>
+          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Amazon refresh token" />
+        </div>
+      </>
+    );
+  }
+
+  return null;
+}
+
+export default async function ConnectorSetupPage({ searchParams }: ConnectorSetupPageProps) {
+  const query = await searchParams;
+  const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
+  const selectedSlug = String(query.slug ?? "").trim().toLowerCase();
+  const searchValue = String(query.q ?? "").trim();
+  const normalizedSearch = searchValue.toLowerCase();
+  const actionStatusMessage = formatStatusMessage(String(query.status ?? ""));
+  const installErrorMessage = formatInstallErrorMessage(
+    String(query.installError ?? ""),
+    String(query.connectorSlug ?? selectedSlug).trim().toLowerCase(),
+  );
+
+  try {
+    const [definitions, installations] = await Promise.all([
+      getConnectorDefinitions({ role: actorRole, authHeader }),
+      getInstalledConnectors({ role: actorRole, authHeader }),
+    ]);
+
+    const liveDefinitions = definitions
+      .map((definition) => {
+        const installedForDefinition = installations.filter(
+          (installation) => installation.connectorId === definition.id,
+        );
+        return {
+          definition,
+          installedForDefinition,
+          statusNote: connectorStatusNote(definition.slug, definition.implementationStatus),
+          workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
+        };
+      })
+      .filter((item) => item.definition.launchStage === "live")
+      .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
+      .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
+      .sort((left, right) => left.definition.displayName.localeCompare(right.definition.displayName));
+
+    const returnToBase = selectedSlug || searchValue
+      ? `/channels/connectors/setup?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries({
+              slug: selectedSlug || undefined,
+              q: searchValue || undefined,
+            }).filter(([, value]) => Boolean(value)),
+          ) as Record<string, string>,
+        ).toString()}`
+      : "/channels/connectors/setup";
+
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Connector Setup"
+          description="Complete credential entry and alias setup in one focused workspace, then return to the connector portfolio once the account is installed."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="hover:underline">
+                Dashboard
+              </Link>{" "}
+              /{" "}
+              <Link href="/channels" className="hover:underline">
+                Channels
+              </Link>{" "}
+              /{" "}
+              <Link href="/channels/connectors" className="hover:underline">
+                Connectors
+              </Link>{" "}
+              / <span className="font-semibold text-slate-700">Setup</span>
+            </>
+          }
+          actions={
+            <Link
+              href="/channels/connectors"
+              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back to connector portfolio
+            </Link>
+          }
+        />
+
+        {actionStatusMessage ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {actionStatusMessage}
+          </div>
+        ) : null}
+        {installErrorMessage ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            {installErrorMessage}
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
+          <Card className="border-slate-200 bg-white">
+            <CardTitle>Find a setup lane</CardTitle>
+            <form method="GET" action="/channels/connectors/setup" className="mt-3 flex flex-col gap-3 md:flex-row md:items-end">
+              <div className="flex-1 space-y-2">
+                <label htmlFor="connector-setup-search" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Search setup lanes
+                </label>
+                <Input
+                  id="connector-setup-search"
+                  name="q"
+                  defaultValue={searchValue}
+                  placeholder="Search marketplaces, aliases, capabilities, or rollout notes"
+                />
+                {selectedSlug ? <input type="hidden" name="slug" value={selectedSlug} /> : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit">Apply filters</Button>
+                {(searchValue || selectedSlug) ? (
+                  <Link
+                    href="/channels/connectors/setup"
+                    className="inline-flex items-center rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Clear
+                  </Link>
+                ) : null}
+              </div>
+            </form>
+          </Card>
+          <Card className="border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))]">
+            <CardTitle>Setup guardrails</CardTitle>
+            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+              <li>Use one alias per real selling account. Avoid duplicates unless the workflow truly needs them.</li>
+              <li>Secrets are encrypted on save and never shown again.</li>
+              <li>Finish install here, then return to mappings or account detail from the portfolio.</li>
+            </ul>
+          </Card>
+        </div>
+
+        {liveDefinitions.length === 0 ? (
+          <EmptyState
+            icon="PLUG"
+            title={searchValue || selectedSlug ? "No live setup lanes match this filter" : "No live setup lanes available"}
+            description={
+              searchValue || selectedSlug
+                ? "Try a broader search term or clear the slug filter to inspect the full setup workspace."
+                : "Live connector definitions have not been seeded for this workspace."
+            }
+          />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {liveDefinitions.map((item) => {
+              const { definition, installedForDefinition, statusNote, workspaceState } = item;
+              const existingAliases = installedForDefinition.map((installation) => installation.accountAlias).join(", ");
+
+              return (
+                <section key={definition.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">{definition.displayName}</h3>
+                      <p className="mt-1 font-mono text-xs text-slate-500">{definition.slug}</p>
+                      <p className="mt-2 text-sm text-slate-600">{workspaceState.description}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
+                      <StatusChip label={connectorLaunchLabel(definition.launchStage)} tone={connectorLaunchTone(definition.launchStage)} />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Existing aliases</p>
+                      <p className="mt-2 text-sm text-slate-700">{existingAliases || "No accounts installed yet"}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capabilities</p>
+                      <p className="mt-2 text-sm text-slate-700">{definition.capabilities.join(", ") || "-"}</p>
+                    </div>
+                  </div>
+
+                  {definition.launchNote ? (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      {definition.launchNote}
+                    </p>
+                  ) : null}
+                  {statusNote ? (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      {statusNote}
+                    </p>
+                  ) : null}
+
+                  <form action={installConnectorAction} className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                    <input type="hidden" name="slug" value={definition.slug} />
+                    <input type="hidden" name="returnTo" value={returnToBase} />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label htmlFor={`install-alias-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Account Alias
+                        </label>
+                        <Input id={`install-alias-${definition.id}`} name="accountAlias" defaultValue="primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <label htmlFor={`install-external-account-${definition.id}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          {connectorAccountReferenceLabel(definition.slug)}
+                        </label>
+                        <Input
+                          id={`install-external-account-${definition.id}`}
+                          name="externalAccountRef"
+                          autoComplete="off"
+                          placeholder={connectorAccountReferencePlaceholder(definition.slug)}
+                        />
+                      </div>
+                    </div>
+
+                    <ConnectorCredentialFields definitionId={definition.id} slug={definition.slug} />
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                      <p className="text-xs text-slate-500">
+                        Install here, then return to the portfolio to open mappings, detail, or account operations.
+                      </p>
+                      <PendingSubmitButton type="submit" idleLabel="Install connector" pendingLabel="Installing connector..." />
+                    </div>
+                  </form>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  } catch (error: unknown) {
+    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+      redirect(buildLoginRedirect("/channels/connectors/setup", error));
+    }
+    throw error;
+  }
+}

@@ -71,7 +71,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
       <div className="space-y-5">
         <PageHeader
           title="Connector Access"
-          description="Define who can install, reconnect, or disable each connector account without exposing raw permission internals."
+          description="Set connector access using plain-language policies for roles and specific users without exposing raw permission internals."
           breadcrumb={
             <>
               <Link href="/dashboard" className="hover:underline">
@@ -125,7 +125,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
           <Card>
             <CardTitle>Permission Builder</CardTitle>
             <p className="mt-3 text-sm text-slate-600">
-              Create one permission row per role or user. Most teams should grant by role first, then add user-specific exceptions only when needed.
+              Create one policy row per role or user. Most teams should grant by role first, then add user-specific exceptions only when needed.
             </p>
             <ConnectorPermissionForm definitions={definitions} grantAction={grantConnectorPermissionAction} />
           </Card>

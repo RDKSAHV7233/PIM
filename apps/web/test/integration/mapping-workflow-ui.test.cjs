@@ -31,6 +31,7 @@ function run() {
       pageSource.includes("Choose scope") &&
       pageSource.includes("Build the draft") &&
       pageSource.includes("Validate and publish") &&
+      pageSource.includes("Operator flow") &&
       workflowSource.includes("Build a publish-ready") &&
       workflowSource.includes("Choose scope") &&
       workflowSource.includes("Build draft") &&

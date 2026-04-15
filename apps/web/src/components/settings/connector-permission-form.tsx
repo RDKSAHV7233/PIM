@@ -39,7 +39,7 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
   return (
     <form action={grantAction} className="mt-3 grid gap-4">
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Policy preview</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Policy sentence</p>
         <p className="mt-2 text-sm text-slate-700">{policyPreview}</p>
         <p className="mt-2 text-xs text-slate-500">
           Use role rules for broad access. Use user-specific rules only when someone needs an exception.
@@ -67,7 +67,7 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
       </div>
       <div className="space-y-1">
         <label htmlFor="principal-type" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Principal Type
+          Who gets access
         </label>
         <select
           id="principal-type"
@@ -80,14 +80,14 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
             setPrincipalId(nextType === "user" ? "" : "editor");
           }}
         >
-          <option value="role">role</option>
-          <option value="user">user</option>
+          <option value="role">Entire role</option>
+          <option value="user">Specific user</option>
         </select>
-        <p className="text-xs text-slate-500">Decide whether this rule applies broadly by role or narrowly to one user.</p>
+        <p className="text-xs text-slate-500">Apply the rule broadly to a role or narrowly to one named user.</p>
       </div>
       <div className="space-y-1">
         <label htmlFor="principal-id" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          {principalType === "role" ? "Role" : "User ID"}
+          {principalType === "role" ? "Role to grant" : "Specific user"}
         </label>
         {principalType === "role" ? (
           <>
@@ -123,7 +123,7 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
       </div>
       <div className="space-y-1">
         <label htmlFor="permission-action" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Action
+          Allowed action
         </label>
         <select
           id="permission-action"
@@ -136,11 +136,11 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
           <option value="reconnect">reconnect</option>
           <option value="uninstall">uninstall</option>
         </select>
-        <p className="text-xs text-slate-500">Choose the exact action this rule unlocks.</p>
+        <p className="text-xs text-slate-500">Choose the exact action this policy unlocks.</p>
       </div>
       <div className="space-y-1">
         <label htmlFor="account-alias" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Account Scope
+          Which accounts
         </label>
         <input
           id="account-alias"
@@ -150,10 +150,10 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
           value={accountAlias}
           onChange={(event) => setAccountAlias(event.currentTarget.value)}
         />
-        <p className="text-xs text-slate-500">Leave blank to apply this permission to all aliases for the selected connector.</p>
+        <p className="text-xs text-slate-500">Leave blank to apply this policy to all aliases for the selected connector.</p>
       </div>
       <div className="flex items-end">
-        <PendingSubmitButton type="submit" idleLabel="Save permission" pendingLabel="Saving..." />
+        <PendingSubmitButton type="submit" idleLabel="Save policy" pendingLabel="Saving policy..." />
       </div>
       </div>
     </form>

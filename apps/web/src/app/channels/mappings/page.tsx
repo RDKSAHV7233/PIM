@@ -176,35 +176,21 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       <div className="space-y-5">
         <PageHeader title="Mapping Workbench" description="Choose scope, build the draft, then validate and publish with clear readiness gates for each channel." breadcrumb={<>Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span></>} actions={<Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open connector portfolio</Link>} />
         <MappingStepUpAlert message={stepUpMessage} />
-        <section id="mapping-scope" className="grid gap-3 lg:grid-cols-3">
-          <Card className="border-slate-200 bg-slate-50/80">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 1</p>
-            <div className="mt-3">
-              <CardTitle>Choose scope</CardTitle>
+        <Card id="mapping-scope" className="border-slate-200 bg-slate-50/80">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Operator flow</CardTitle>
+              <p className="mt-2 text-sm text-slate-600">
+                Lock the scope, update the draft, then validate and promote from history when the readiness gate is clear.
+              </p>
             </div>
-            <p className="mt-2 text-sm text-slate-600">
-              Anchor the workbench to the right channel, category, and optional product before editing the draft.
-            </p>
-          </Card>
-          <Card className="border-slate-200 bg-slate-50/80">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 2</p>
-            <div className="mt-3">
-              <CardTitle>Build the draft</CardTitle>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">1. Choose scope</span>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">2. Build the draft</span>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">3. Validate and publish</span>
             </div>
-            <p className="mt-2 text-sm text-slate-600">
-              Map required fields first, then add optional coverage and fallback behavior only where it helps.
-            </p>
-          </Card>
-          <Card className="border-slate-200 bg-slate-50/80">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Step 3</p>
-            <div className="mt-3">
-              <CardTitle>Validate and publish</CardTitle>
-            </div>
-            <p className="mt-2 text-sm text-slate-600">
-              Use version history and readiness gates to promote only validated mappings into live channel operations.
-            </p>
-          </Card>
-        </section>
+          </div>
+        </Card>
         <MappingsFilterCard
           categories={categories}
           channels={channels}
@@ -235,9 +221,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ) : (
               <DeferredMappingPanelCard
                 title="Version History"
-                description="Draft history, validation, publish, archive, and rollback actions now load only when you need them."
+                description="Open history only when you need version review, validation, publish, archive, or rollback."
                 href={buildMappingHref(query, { showHistory: "1" })}
-                actionLabel="Open version history"
+                actionLabel="Open history"
               />
             )}
           </div>
@@ -255,9 +241,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ) : (
               <DeferredMappingPanelCard
                 title="Context"
-                description="Product context and resolved compatibility load on demand when you need to inspect the blocked product or mapped category."
+                description="Open product and scope context only when you need to inspect the blocked product or mapped category."
                 href={buildMappingHref(query, { showContext: "1" })}
-                actionLabel="Open product context"
+                actionLabel="Open context"
               />
             )}
             <PublishReadinessCard preflight={preflight} readiness={readiness} />
@@ -266,9 +252,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ) : (
               <DeferredMappingPanelCard
                 title="Taxonomy Alignment"
-                description="Taxonomy search results and unmapped category inventory stay deferred until you open alignment details or run a taxonomy query."
+                description="Open taxonomy alignment only when you need search results or unmapped category review."
                 href={buildMappingHref(query, { showTaxonomy: "1" })}
-                actionLabel="Open taxonomy alignment"
+                actionLabel="Open taxonomy"
               />
             )}
             {showResolved ? (
@@ -276,9 +262,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             ) : (
               <DeferredMappingPanelCard
                 title="Resolved Mapping Snapshot"
-                description="Resolved mapping JSON and matched-version diagnostics load only when you need advanced troubleshooting."
+                description="Open the resolved snapshot only for advanced troubleshooting and matched-version diagnostics."
                 href={buildMappingHref(query, { showResolved: "1" })}
-                actionLabel="Review resolved snapshot"
+                actionLabel="Open snapshot"
               />
             )}
           </div>

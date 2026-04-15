@@ -49,11 +49,11 @@ function run() {
     "Admin connectors must keep grant and revoke actions admin-only while preserving an honest read-only fallback for non-admin roles.",
   );
   assert(
-    source.includes("Define who can install, reconnect, or disable each connector account without exposing raw permission internals.") &&
+    source.includes("Set connector access using plain-language policies for roles and specific users without exposing raw permission internals.") &&
       source.includes("Policy coverage") &&
       source.includes("Permission Builder") &&
       source.includes("Current Policies") &&
-      source.includes("Create one permission row per role or user.") &&
+      source.includes("Create one policy row per role or user.") &&
       source.includes('No connector permissions configured for this tenant.'),
     "Admin connectors must explain the policy-builder model and surface an honest empty state.",
   );
