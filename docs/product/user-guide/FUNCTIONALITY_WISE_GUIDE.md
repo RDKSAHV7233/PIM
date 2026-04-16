@@ -1,4 +1,4 @@
-# TEJ PIM Functionality Runbook (How-To)
+# Vexa PIM Functionality Runbook (How-To)
 
 This document explains how to perform core workflows across pages.
 

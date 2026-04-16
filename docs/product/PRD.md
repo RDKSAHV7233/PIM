@@ -1,4 +1,4 @@
-# TEJ PIM Product Requirements Document (PRD)
+# Vexa PIM Product Requirements Document (PRD)
 
 - Product: TEJ PIM
 - Version: 1.0 (March 2026 consolidation)

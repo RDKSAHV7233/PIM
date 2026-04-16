@@ -1,4 +1,4 @@
-# TEJ PIM Page Action Playbook Index
+# Vexa PIM Page Action Playbook Index
 
 This index focuses on **how to perform actions** page-by-page.
 

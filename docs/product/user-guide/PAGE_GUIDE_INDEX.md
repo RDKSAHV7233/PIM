@@ -1,4 +1,4 @@
-# TEJ PIM Page-wise User Guide Index
+# Vexa PIM Page-wise User Guide Index
 
 Generated from apps/web/src/app route files.
 

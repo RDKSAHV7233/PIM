@@ -1,4 +1,4 @@
-# TEJ PIM Privacy Policy
+# Vexa PIM Privacy Policy
 
 - Document owner: Product + Legal + CTO
 - Status: Active baseline for controlled rollout

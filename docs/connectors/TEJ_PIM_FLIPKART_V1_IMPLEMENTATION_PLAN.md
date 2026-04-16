@@ -1,4 +1,4 @@
-# TEJ PIM Flipkart v1 Implementation Plan
+# Vexa PIM Flipkart v1 Implementation Plan
 
 Status: Contract locked for implementation
 Date: 2026-03-10
@@ -19,7 +19,7 @@ It is intentionally strict. It freezes the decisions that must not drift during 
 
 This is a TEJ PIM implementation plan, not a generic marketplace architecture note.
 
-## 2. Validated TEJ PIM Surfaces
+## 2. Validated Vexa PIM Surfaces
 
 Flipkart v1 will build on these existing TEJ PIM surfaces:
 

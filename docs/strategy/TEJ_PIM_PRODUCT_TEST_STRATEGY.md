@@ -1,4 +1,4 @@
-# TEJ PIM Product Test Strategy
+# Vexa PIM Product Test Strategy
 
 Status: Current-state product test architecture for TEJ PIM  
 Last updated: 2026-03-11

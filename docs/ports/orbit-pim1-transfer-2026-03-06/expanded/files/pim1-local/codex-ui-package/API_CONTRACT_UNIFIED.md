@@ -1,4 +1,4 @@
-# TEJ PIM Local UI Package - Contract Reference
+# Vexa PIM Local UI Package - Contract Reference
 
 Date: 2026-03-06
 

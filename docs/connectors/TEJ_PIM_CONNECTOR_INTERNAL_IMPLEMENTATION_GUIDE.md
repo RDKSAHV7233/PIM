@@ -1,4 +1,4 @@
-# TEJ PIM Connector Internal Implementation Guide
+# Vexa PIM Connector Internal Implementation Guide
 
 Status: Active internal engineering guide  
 Date: 2026-03-23  

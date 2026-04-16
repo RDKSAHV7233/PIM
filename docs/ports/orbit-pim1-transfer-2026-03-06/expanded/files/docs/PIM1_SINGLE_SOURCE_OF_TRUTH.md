@@ -1,4 +1,4 @@
-# TEJ PIM Single Source of Truth (SSOT)
+# Vexa PIM Single Source of Truth (SSOT)
 
 Date: 2026-03-06  
 Scope: Full TEJ PIM documentation governance for this repository

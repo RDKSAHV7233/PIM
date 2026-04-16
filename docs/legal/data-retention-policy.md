@@ -1,4 +1,4 @@
-# TEJ PIM Data Retention Policy
+# Vexa PIM Data Retention Policy
 
 - Document owner: Product Ops + Compliance + CTO
 - Status: Active operational baseline

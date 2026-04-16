@@ -1,8 +1,8 @@
 {
   "meta": {
-    "project": "TEJ PIM",
+    "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-03-18",
+    "lastUpdated": "2026-04-16",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -2163,6 +2163,38 @@
             "GitHub Actions deploy-staging.yml run 23177719863",
             "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run1 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage -> billing_run1 200 1.982041",
             "curl.exe --resolve api-staging-4faf.up.railway.app:443:66.33.22.1 -sS -o NUL -w \"billing_run2 %{http_code} %{time_total}\\n\" -H \"Authorization: Bearer <token>\" https://api-staging-4faf.up.railway.app/api/v1/billing/usage -> billing_run2 200 1.555168"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-22",
+      "name": "Brand Alignment + Flipkart Token Expiry Alerting",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-BRAND-ALIGN-001",
+          "title": "Retire TEJ PIM brand from internal doc headers",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": [
+            "node -e \"const d=JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); if(d.meta.project!=='Vexa PIM') throw new Error('brand not updated'); console.log('INCREMENT_STATE.json: ok')\""
+          ]
+        },
+        {
+          "storyId": "ST-FLIPKART-TOKEN-EXPIRY-001",
+          "title": "Add proactive Flipkart refresh token expiry detection and alerting",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run lint --workspace @pim1/api",
+            "npm run build --workspace @pim1/api",
+            "node apps/api/test/integration/flipkart-token-expiry-alerting.test.cjs"
           ]
         }
       ]

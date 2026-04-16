@@ -1,4 +1,4 @@
-# TEJ PIM PRD to Engineering Backlog
+# Vexa PIM PRD to Engineering Backlog
 
 - Source: `docs/product/PRD.md`
 - Current execution source of truth: `docs/execution/INCREMENT_STATE.json`
