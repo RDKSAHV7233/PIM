@@ -131,7 +131,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       />
       <div className="relative">
         <nav aria-label="Product detail tabs" className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-white/80 to-transparent sm:hidden" />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-white/80 to-transparent sm:hidden" />
       </div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_290px]">
         <div className="space-y-5">

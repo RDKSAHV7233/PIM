@@ -22,7 +22,8 @@ function formatTrend(trend: string): string {
   if (trend === "up") return "↑ Improving";
   if (trend === "down") return "↓ Getting worse";
   if (trend === "stable" || trend === "flat") return "→ Stable";
-  return trend;
+  const normalized = trend.trim();
+  return normalized.length > 0 ? normalized : "—";
 }
 
 export default async function QualityPage() {
