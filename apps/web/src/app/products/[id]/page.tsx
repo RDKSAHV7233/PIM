@@ -116,7 +116,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const sellerSku = (() => {
     const attributes = asRecord(product.attributes);
     const rawSku = attributes.sku;
-    return typeof rawSku === "string" && rawSku.trim().length > 0 ? rawSku.trim() : "";
+    if (typeof rawSku !== "string") return "";
+    const normalizedSku = rawSku.trim();
+    return normalizedSku.length > 0 ? normalizedSku : "";
   })();
 
   return (

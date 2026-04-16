@@ -19,9 +19,15 @@ function toPercent(numerator: number, denominator: number): number {
 }
 
 function formatTrend(trend: string): string {
-  if (trend === "up") return "↑ Improving";
-  if (trend === "down") return "↓ Getting worse";
-  if (trend === "stable" || trend === "flat") return "→ Stable";
+  switch (trend) {
+    case "up":
+      return "↑ Improving";
+    case "down":
+      return "↓ Getting worse";
+    case "stable":
+    case "flat":
+      return "→ Stable";
+  }
   const normalized = trend.trim();
   return normalized.length > 0 ? normalized : "—";
 }
