@@ -116,7 +116,7 @@ const DEFAULT_SP_API_BASE_URL = "https://sellingpartnerapi-eu.amazon.com";
 const DEFAULT_MARKETPLACE_ID = "A21TJRUUN4KGV";
 const DEFAULT_ISSUE_LOCALE = "en_IN";
 const DEFAULT_CURRENCY_CODE = "INR";
-const DEFAULT_USER_AGENT = "TEJPIMAmazonConnector/0.1 (Language=TypeScript/Node.js)";
+const DEFAULT_USER_AGENT = "VexaPIMAmazonConnector/0.1 (Language=TypeScript/Node.js)";
 const AMAZON_RELAY_SIGNATURE_HEADER = "x-pim1-webhook-signature";
 const AMAZON_RELAY_TIMESTAMP_HEADER = "x-pim1-webhook-timestamp";
 const AMAZON_RELAY_SECRET_ENV = "PIM_AMAZON_WEBHOOK_SECRET";

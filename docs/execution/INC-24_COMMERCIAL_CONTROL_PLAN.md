@@ -1,5 +1,5 @@
 ---
-title: TEJ PIM Commercial Control Plan
+title: Vexa PIM Commercial Control Plan
 status: proposed
 owner: Product + CTO
 last_updated: 2026-03-26
@@ -7,7 +7,7 @@ last_updated: 2026-03-26
 
 ## 1. Purpose
 
-Define the next commercial-control increment for TEJ PIM so the product can distinguish:
+Define the next commercial-control increment for Vexa PIM so the product can distinguish:
 
 - pricing plan
 - billing state
@@ -213,7 +213,7 @@ Keep `/admin/plan`, but change it to:
 The customer-facing CTA should be framed as:
 
 - `Request upgrade`
-- `Contact TEJ`
+- `Contact Vexa`
 
 not as immediate self-serve paid-plan mutation unless TEJ later ships real checkout.
 

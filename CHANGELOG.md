@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to PIM1. Format: [date] - commit SHA - summary.
+All notable changes to Vexa PIM. Legacy technical codename: `PIM1`. Format: [date] - commit SHA - summary.
 
 ---
 

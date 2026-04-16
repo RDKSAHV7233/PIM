@@ -1,4 +1,9 @@
-# TEJ PIM Monorepo
+# Vexa PIM Monorepo
+
+Product naming note:
+- Product brand: `Vexa PIM`
+- Company/internal working references: `TEJ`
+- Legacy technical codename retained in package names, env prefixes, and repo history: `PIM1`
 
 India-first PIM SaaS foundation on locked stack:
 - Web: Next.js 15 + TypeScript + Tailwind

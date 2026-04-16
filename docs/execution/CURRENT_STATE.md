@@ -2,7 +2,8 @@
 
 - Date: 2026-03-24
 - Repo HEAD: `0be8f44`
-- Scope: canonical snapshot of the current TEJ PIM implementation, execution ledger, and reviewer-facing documentation state
+- Scope: canonical snapshot of the current Vexa PIM implementation, execution ledger, and reviewer-facing documentation state
+- Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`, and some internal legacy docs still reference `TEJ`.
 
 ## 1. Canonical Source-of-Truth Files
 - Product baseline: `docs/product/PRD.md`
