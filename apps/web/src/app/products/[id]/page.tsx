@@ -110,9 +110,14 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     warningIssueCount: product.validationIssues?.filter((issue) => issue.severity === "warning").length ?? 0,
     recentJobs: exportJobs.slice(0, 5), readinessBlockers: readiness.blockers ?? [], readinessWarnings: readiness.warnings ?? [],
     fallbackAckRequired: (readiness.blockers ?? []).includes("fallback_ack_required"),
-    canQueueExportWithAck: (readiness.blockers ?? []).filter((item) => item !== "fallback_acknowledgement_required").length === 0,
+    canQueueExportWithAck: (readiness.blockers ?? []).filter((item) => item !== "fallback_ack_required").length === 0,
     deleteConfirmToken: (variants.find((variant) => variant.skuCode)?.skuCode ?? product.id).trim(),
   };
+  const sellerSku = (() => {
+    const attributes = asRecord(product.attributes);
+    const rawSku = attributes.sku;
+    return typeof rawSku === "string" && rawSku.trim().length > 0 ? rawSku.trim() : "";
+  })();
 
   return (
     <div className="space-y-5">
@@ -120,22 +125,27 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       <PageHeader
         className="sticky top-[4.5rem] z-20"
         title={product.title}
-        description={`SKU ${product.id.slice(0, 8)} | ${product.category?.path ?? product.categoryId}`}
+        description={`${sellerSku ? `SKU ${sellerSku}` : product.id.slice(0, 8)} | ${product.category?.path ?? product.categoryId}`}
         breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link> / <Link href="/catalog/products" className="hover:underline">Catalog</Link> / <span className="font-semibold text-slate-700">Product Detail</span></>}
         actions={<>{returnTo ? <Link href={returnTo} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to inbox</Link> : null}<StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} /><StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />{canWrite ? <button type="submit" form="product-edit-form" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save</button> : null}{canWrite ? <button type="submit" form="product-validate-form" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Validate</button> : null}{canWrite ? <Link href={tabHref("channels")} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Submit</Link> : null}</>}
       />
-      <nav className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
+      <div className="relative">
+        <nav className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-white/80 to-transparent sm:hidden" />
+      </div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_290px]">
         <div className="space-y-5">
           <ProductDetailStatusAlerts updateStatus={updateStatus} conflictVersion={conflictVersion} deleteStatus={deleteStatus} deleteError={deleteError} />
-          <OverviewTab data={pageData} />
-          {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} /> : null}
-          <ContentTab data={pageData} />
-          <VariantsTab data={pageData} />
-          <MediaTab data={pageData} />
-          <ChannelsTab data={pageData} />
-          <QualityTab data={pageData} />
-          <ActivityTab data={pageData} />
+          {activeTab === "overview" && <OverviewTab data={pageData} />}
+          {(activeTab === "overview" || activeTab === "channels" || activeTab === "quality") && (
+            <ProductReadinessSummaryBar productId={id} role={actorRole} />
+          )}
+          {(activeTab === "content" || activeTab === "attributes") && <ContentTab data={pageData} />}
+          {activeTab === "variants" && <VariantsTab data={pageData} />}
+          {activeTab === "media" && <MediaTab data={pageData} />}
+          {activeTab === "channels" && <ChannelsTab data={pageData} />}
+          {activeTab === "quality" && <QualityTab data={pageData} />}
+          {activeTab === "activity" && <ActivityTab data={pageData} />}
         </div>
         <ProductDetailSideRail data={pageData} />
       </div>

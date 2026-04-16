@@ -44,12 +44,8 @@ export default async function ChannelsOverviewPage() {
       <div className="space-y-5">
         <PageHeader
           title="Channels"
-          description="Marketplace operations cockpit for connector setup, mappings, submissions, and health."
-          breadcrumb={
-            <>
-              Dashboard / <span className="font-semibold text-slate-700">Channels</span>
-            </>
-          }
+          description="Your connected marketplaces — set up, publish, and monitor listings."
+          breadcrumb={<span className="font-semibold text-slate-700">Channels</span>}
         />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Installed Connectors" value={connectors.length} helper={`${activeConnectors} active`} />
@@ -81,7 +77,7 @@ export default async function ChannelsOverviewPage() {
           </div>
         </Card>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className={`grid gap-4 md:grid-cols-2 ${actorRole === "admin" ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
           <Card className="space-y-3">
             <CardTitle>Connectors</CardTitle>
             <p className="text-sm text-slate-600">Install, reconnect, and review account-level connector status.</p>
@@ -110,13 +106,15 @@ export default async function ChannelsOverviewPage() {
               Open channel health
             </Link>
           </Card>
-          <Card className="space-y-3">
-            <CardTitle>Connector Access</CardTitle>
-            <p className="text-sm text-slate-600">Govern connector permissions and plan-based access controls.</p>
-            <Link href="/admin/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Manage access
-            </Link>
-          </Card>
+          {actorRole === "admin" && (
+            <Card className="space-y-3">
+              <CardTitle>Connector Access</CardTitle>
+              <p className="text-sm text-slate-600">Govern connector permissions and plan-based access controls.</p>
+              <Link href="/admin/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Manage access
+              </Link>
+            </Card>
+          )}
         </section>
       </div>
     );
