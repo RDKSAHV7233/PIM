@@ -3,27 +3,32 @@
 const { PrismaClient } = require("@prisma/client");
 
 const TEST_PREFIXES = [
-  "Phase2 ",
-  "Phase3 ",
-  "Phase4 ",
-  "Phase5 ",
-  "Phase6 ",
-  "Phase7 ",
-  "Phase8 ",
-  "Smoke ",
-  "RBAC ",
-  "Concurrency ",
-  "Audit ",
-  "Benchmark",
-  "Metrics ",
-  "Reject Score ",
-  "Media Smoke ",
-  "ONDC Smoke ",
-  "AI Smoke ",
-  "Pilot ",
-  "Template ",
-  "Version ",
-  "Xlsx ",
+  "phase2 ",
+  "phase3 ",
+  "phase4 ",
+  "phase5 ",
+  "phase6 ",
+  "phase7 ",
+  "phase8 ",
+  "smoke ",
+  "rbac ",
+  "concurrency ",
+  "audit ",
+  "benchmark",
+  "metrics ",
+  "reject score ",
+  "media smoke ",
+  "ondc smoke ",
+  "ai smoke ",
+  "pilot ",
+  "template ",
+  "version ",
+  "xlsx ",
+  "e2e-",
+  "qa flow ",
+  "pim1 qa flow ",
+  "ui-reality-",
+  "manual cat ",
 ];
 
 function parseArgs(argv) {
@@ -49,7 +54,7 @@ function escapeLike(value) {
 }
 
 function buildOrPrefixMatchSql(columnName) {
-  return TEST_PREFIXES.map((prefix) => `${columnName} ILIKE '${escapeLike(prefix)}%'`).join(" OR ");
+  return TEST_PREFIXES.map((prefix) => `LOWER(${columnName}) LIKE '${escapeLike(prefix)}%'`).join(" OR ");
 }
 
 async function run() {
@@ -64,7 +69,7 @@ async function run() {
   const productMatch = `(${buildOrPrefixMatchSql('"title"')})`;
 
   const mediaCountSql = hasMediaAssets
-    ? `(SELECT COUNT(*)::int FROM media_assets m WHERE m.tenant_key = '${tenantLiteral}' AND (m.product_id IN (SELECT id FROM matched_products) OR m.variant_id IN (SELECT id FROM "Variant" v WHERE v."productId" IN (SELECT id FROM matched_products)))) AS media_assets`
+    ? `(SELECT COUNT(*)::int FROM media_assets m WHERE m.product_id IN (SELECT id FROM matched_products) OR m.variant_id IN (SELECT id FROM "Variant" v WHERE v."productId" IN (SELECT id FROM matched_products))) AS media_assets`
     : `0::int AS media_assets`;
 
   const countsSql = `
@@ -76,8 +81,8 @@ async function run() {
     matched_products AS (
       SELECT p.id
       FROM "Product" p
-      WHERE p."tenantKey" = '${tenantLiteral}'
-        AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+      WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+         OR p."categoryId" IN (SELECT id FROM matched_categories)
     ),
     matched_jobs AS (
       SELECT j.id
@@ -106,15 +111,15 @@ async function run() {
     SELECT
       (SELECT COUNT(*)::int FROM matched_categories) AS categories,
       (SELECT COUNT(*)::int FROM matched_products) AS products,
-      (SELECT COUNT(*)::int FROM "Variant" v WHERE v."tenantKey" = '${tenantLiteral}' AND v."productId" IN (SELECT id FROM matched_products)) AS variants,
-      (SELECT COUNT(*)::int FROM "ValidationIssue" vi WHERE vi."tenantKey" = '${tenantLiteral}' AND vi."productId" IN (SELECT id FROM matched_products)) AS validation_issues,
+      (SELECT COUNT(*)::int FROM "Variant" v WHERE v."productId" IN (SELECT id FROM matched_products)) AS variants,
+      (SELECT COUNT(*)::int FROM "ValidationIssue" vi WHERE vi."productId" IN (SELECT id FROM matched_products)) AS validation_issues,
       (SELECT COUNT(*)::int FROM "AttributeDefinition" a WHERE a."tenantKey" = '${tenantLiteral}' AND a."categoryId" IN (SELECT id FROM matched_categories)) AS attribute_definitions,
       (SELECT COUNT(*)::int FROM "ComplianceRule" r WHERE r."tenantKey" = '${tenantLiteral}' AND r."categoryId" IN (SELECT id FROM matched_categories)) AS compliance_rules,
       (SELECT COUNT(*)::int FROM "ChannelMappingTemplate" t WHERE t."tenantKey" = '${tenantLiteral}' AND t."categoryId" IN (SELECT id FROM matched_categories)) AS mapping_templates,
       (SELECT COUNT(*)::int FROM "MarketplaceExportJob" e WHERE e.id IN (SELECT id FROM matched_export_jobs)) AS export_jobs,
       (SELECT COUNT(*)::int FROM "BulkImportTemplate" bt WHERE bt."tenantKey" = '${tenantLiteral}' AND bt."categoryId" IN (SELECT id FROM matched_categories)) AS bulk_import_templates,
       (SELECT COUNT(*)::int FROM "BulkImportJob" bj WHERE bj.id IN (SELECT id FROM matched_jobs)) AS bulk_import_jobs,
-      (SELECT COUNT(*)::int FROM "BulkImportRow" br WHERE br."tenantKey" = '${tenantLiteral}' AND (br."jobId" IN (SELECT id FROM matched_jobs) OR br."productId" IN (SELECT id FROM matched_products))) AS bulk_import_rows,
+      (SELECT COUNT(*)::int FROM "BulkImportRow" br WHERE br."jobId" IN (SELECT id FROM matched_jobs) OR br."productId" IN (SELECT id FROM matched_products)) AS bulk_import_rows,
       (SELECT COUNT(*)::int FROM "BulkEditOperation" bo WHERE bo.id IN (SELECT id FROM matched_operations)) AS bulk_edit_operations,
       (SELECT COUNT(*)::int FROM "BulkEditOperationItem" bi WHERE bi."tenantKey" = '${tenantLiteral}' AND (bi."operationId" IN (SELECT id FROM matched_operations) OR bi."productId" IN (SELECT id FROM matched_products))) AS bulk_edit_items,
       ${mediaCountSql}
@@ -143,18 +148,16 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       ),
       matched_variants AS (
         SELECT v.id
         FROM "Variant" v
-        WHERE v."tenantKey" = '${tenantLiteral}'
-          AND v."productId" IN (SELECT id FROM matched_products)
+        WHERE v."productId" IN (SELECT id FROM matched_products)
       )
       DELETE FROM media_assets
-      WHERE tenant_key = '${tenantLiteral}'
-        AND (product_id IN (SELECT id FROM matched_products) OR variant_id IN (SELECT id FROM matched_variants))
+      WHERE product_id IN (SELECT id FROM matched_products) OR variant_id IN (SELECT id FROM matched_variants)
     `);
   }
   deleteSqlStatements.push(
@@ -165,12 +168,11 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       )
       DELETE FROM "ValidationIssue"
-      WHERE "tenantKey" = '${tenantLiteral}'
-        AND "productId" IN (SELECT id FROM matched_products)
+      WHERE "productId" IN (SELECT id FROM matched_products)
     `,
     `
       WITH matched_categories AS (
@@ -179,18 +181,16 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       ),
       matched_operations AS (
         SELECT DISTINCT i."operationId"
         FROM "BulkEditOperationItem" i
-        WHERE i."tenantKey" = '${tenantLiteral}'
-          AND i."productId" IN (SELECT id FROM matched_products)
+        WHERE i."productId" IN (SELECT id FROM matched_products)
       )
       DELETE FROM "BulkEditOperationItem"
-      WHERE "tenantKey" = '${tenantLiteral}'
-        AND ("operationId" IN (SELECT "operationId" FROM matched_operations) OR "productId" IN (SELECT id FROM matched_products))
+      WHERE "operationId" IN (SELECT "operationId" FROM matched_operations) OR "productId" IN (SELECT id FROM matched_products)
     `,
     `
       WITH matched_categories AS (
@@ -199,12 +199,11 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       )
       DELETE FROM "Variant"
-      WHERE "tenantKey" = '${tenantLiteral}'
-        AND "productId" IN (SELECT id FROM matched_products)
+      WHERE "productId" IN (SELECT id FROM matched_products)
     `,
     `
       WITH matched_categories AS (
@@ -213,12 +212,11 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       )
       DELETE FROM "MarketplaceExportJob"
-      WHERE "tenantKey" = '${tenantLiteral}'
-        AND ("productId" IN (SELECT id FROM matched_products) OR "categoryId" IN (SELECT id FROM matched_categories))
+      WHERE "productId" IN (SELECT id FROM matched_products) OR "categoryId" IN (SELECT id FROM matched_categories)
     `,
     `
       WITH matched_categories AS (
@@ -230,12 +228,11 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       )
       DELETE FROM "BulkImportRow"
-      WHERE "tenantKey" = '${tenantLiteral}'
-        AND ("jobId" IN (SELECT id FROM matched_jobs) OR "productId" IN (SELECT id FROM matched_products))
+      WHERE "jobId" IN (SELECT id FROM matched_jobs) OR "productId" IN (SELECT id FROM matched_products)
     `,
     `
       WITH matched_categories AS (
@@ -252,8 +249,8 @@ async function run() {
       matched_products AS (
         SELECT p.id
         FROM "Product" p
-        WHERE p."tenantKey" = '${tenantLiteral}'
-          AND (${productMatch} OR p."categoryId" IN (SELECT id FROM matched_categories))
+        WHERE (p."tenantKey" = '${tenantLiteral}' AND ${productMatch})
+           OR p."categoryId" IN (SELECT id FROM matched_categories)
       )
       DELETE FROM "Product"
       WHERE id IN (SELECT id FROM matched_products)

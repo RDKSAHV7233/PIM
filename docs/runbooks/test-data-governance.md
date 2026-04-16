@@ -10,7 +10,7 @@ Keep seller-facing workflows free from smoke/test artifacts while preserving saf
 
 ## Test Data Detection Rules
 - Source of truth: [test-data-filter.ts](C:\Users\Om Computers\PIM1\apps\web\src\lib\test-data-filter.ts)
-- Prefix-based matching is used (`Phase2`, `Phase3`, `Smoke`, `RBAC`, `Benchmark`, etc.).
+- Prefix-based matching is used after case-normalization (`Phase2`, `Phase3`, `Smoke`, `RBAC`, `Benchmark`, `e2e-`, `QA Flow`, `PIM1 QA Flow`, `UI-REALITY-`, `Manual Cat`, etc.).
 
 ## Seller-Facing Default Behavior
 - Source of truth: [page.tsx](C:\Users\Om Computers\PIM1\apps\web\src\app\page.tsx)
