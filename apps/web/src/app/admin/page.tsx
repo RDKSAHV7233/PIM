@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -50,17 +51,17 @@ export default async function AdminPage() {
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin", 401));
   }
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    redirect("/dashboard");
+  }
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Admin"
         description="Governance controls for access, plan, privacy, and audit."
-        breadcrumb={
-          <>
-            Dashboard / <span className="font-semibold text-slate-700">Admin</span>
-          </>
-        }
+        breadcrumb={<span className="font-semibold text-slate-700">Admin</span>}
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

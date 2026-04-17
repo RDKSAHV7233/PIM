@@ -202,7 +202,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
               type="text"
               value={workspaceSlug}
               onChange={(event) => setWorkspaceSlug(event.target.value)}
-              autoComplete="organization"
+              autoComplete="off"
               required
               placeholder={authCopy.workspacePlaceholder}
               suppressHydrationWarning
@@ -216,10 +216,10 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             </label>
             <input
               id="user-id"
-              type="text"
+              type="email"
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
-              autoComplete="username"
+              autoComplete="email"
               required
               suppressHydrationWarning
               className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
@@ -255,18 +255,16 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
               {errorMessage}
             </p>
           )}
-          {typeof attemptsRemaining === "number" && attemptsRemaining <= 2 && (
-            <p className="text-xs leading-5 text-slate-600">
-              {authCopy.forgotPasswordPrefix}{" "}
-              <Link
-                href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
-                className="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
-              >
-                {authCopy.forgotPasswordSuffix}
-              </Link>
-              .
-            </p>
-          )}
+          <p className="text-xs leading-5 text-slate-600">
+            {authCopy.forgotPasswordPrefix}{" "}
+            <Link
+              href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
+              className="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+            >
+              {authCopy.forgotPasswordSuffix}
+            </Link>
+            .
+          </p>
 
           <div className="space-y-2 pt-1 text-center">
             <p className="text-xs leading-5 text-slate-500">{authCopy.loginSubtitle}</p>
