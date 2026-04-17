@@ -10,6 +10,8 @@ interface ToastItem {
   tone: ToastTone;
 }
 
+let toastCounter = 0;
+
 const toneClass: Record<ToastTone, string> = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-900",
   error: "border-red-200 bg-red-50 text-red-900",
@@ -27,7 +29,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo(
     () => ({
       pushToast: (tone: ToastTone, message: string) => {
-        const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const id =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `toast-${Date.now()}-${++toastCounter}`;
         setToasts((current) => [...current, { id, tone, message }].slice(-3));
         window.setTimeout(() => {
           setToasts((current) => current.filter((item) => item.id !== id));

@@ -49,11 +49,15 @@ export default async function OperationsPage() {
   try {
     const [imports, submissionsResponse, deadLetterResponse] = await Promise.all([
       getBulkImportJobs({ role: actorRole, authHeader }),
-      // Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
-      // TODO: replace with count endpoint when available.
+      /*
+       * Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
+       * TODO: replace with count endpoint when available.
+       */
       getSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
-      // Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
-      // TODO: replace with count endpoint when available.
+      /*
+       * Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
+       * TODO: replace with count endpoint when available.
+       */
       getDeadLetterSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
     ]);
 

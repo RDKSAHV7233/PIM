@@ -22,13 +22,13 @@ export function RoleBadge({ role }: RoleBadgeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
+    function onMouseDown(event: MouseEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     }
-    window.addEventListener("mousedown", onPointerDown);
-    return () => window.removeEventListener("mousedown", onPointerDown);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => window.removeEventListener("mousedown", onMouseDown);
   }, []);
 
   const description =

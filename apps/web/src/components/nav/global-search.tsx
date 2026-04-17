@@ -160,7 +160,10 @@ export function GlobalSearch() {
         className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       />
       <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-        <kbd className="hidden items-center gap-0.5 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 sm:inline-flex">
+        <kbd
+          title="Shortcut: ⌘K / Ctrl+K"
+          className="hidden items-center gap-0.5 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 sm:inline-flex"
+        >
           ⌘K
         </kbd>
       </div>

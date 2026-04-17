@@ -20,10 +20,11 @@ function toPercent(numerator: number, denominator: number): number {
 }
 
 function formatTrend(trend: string): string {
-  if (trend === "up" || trend === "improving") {
+  const normalized = trend.trim().toLowerCase();
+  if (normalized === "up" || normalized === "improving") {
     return "↑ Improving";
   }
-  if (trend === "down" || trend === "worsening") {
+  if (normalized === "down" || normalized === "worsening") {
     return "↓ Getting worse";
   }
   return "→ Stable";
