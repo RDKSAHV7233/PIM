@@ -18,15 +18,23 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "BulkEditOperationItem",
   "BulkImportTemplate",
   "AuditLog",
+  "DashboardSnapshot",
+  "KpiMetricEvent",
   "MediaAsset",
   "ConnectorInstallation",
   "ConnectorCredential",
   "ConnectorSubmission",
+  "ConnectorMappingVersion",
+  "ConnectorMappingEvent",
   "ConnectorWebhookEvent",
   "TenantPlanProfile",
   "ConnectorPermission",
   "OndcMapping",
   "PlanUsage",
+  "UserNotification",
+  "AccountConsentEvent",
+  "AccountExportRequest",
+  "AccountDeletionRequest",
 ]);
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([

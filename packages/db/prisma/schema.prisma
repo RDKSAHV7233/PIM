@@ -105,7 +105,7 @@ model Category {
   id                   String                @id @default(cuid())
   tenantKey            String                @default("default")
   name                 String
-  slug                 String                @unique
+  slug                 String
   path                 String
   parentId             String?
   parent               Category?             @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
@@ -123,6 +123,7 @@ model Category {
   @@index([parentId])
   @@index([path])
   @@index([tenantKey])
+  @@unique([tenantKey, slug])
 }
 
 model BulkImportTemplate {
@@ -159,6 +160,7 @@ model Product {
   gstRate          Float?
   attributes       Json              @default("{}")
   variants         Variant[]
+  mediaAssets      MediaAsset[]
   validationIssues ValidationIssue[] @relation("ProductValidationIssues")
   exportJobs       MarketplaceExportJob[]
   importedRows     BulkImportRow[]
@@ -182,7 +184,8 @@ model Variant {
   tenantKey        String            @default("default")
   productId        String
   product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  skuCode          String            @unique
+  skuCode          String
+  mediaAssets      MediaAsset[]
   attributes       Json              @default("{}")
   mrp              Float?
   sellingPrice     Float?
@@ -195,6 +198,33 @@ model Variant {
   @@index([productId])
   @@index([status])
   @@index([tenantKey])
+  @@unique([tenantKey, skuCode])
+}
+
+model MediaAsset {
+  id         String   @id
+  tenantKey  String   @default("default") @map("tenant_key")
+  productId  String?  @map("product_id")
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId  String?  @map("variant_id")
+  variant    Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  entityType String   @default("product") @map("entity_type")
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  storagePath String  @map("storage_path")
+  width      Int?
+  height     Int?
+  sizeBytes  Int      @map("size_bytes")
+  checksum   String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  @@index([tenantKey], map: "idx_media_assets_tenant_key")
+  @@index([tenantKey, createdAt(sort: Desc)], map: "idx_media_assets_tenant_created_at")
+  @@index([productId, createdAt(sort: Desc)], map: "idx_media_assets_product_created_at")
+  @@index([variantId, createdAt(sort: Desc)], map: "idx_media_assets_variant_created_at")
+  @@map("media_assets")
 }
 
 model AttributeDefinition {
@@ -494,6 +524,39 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model DashboardSnapshot {
+  id                      String   @id
+  tenantKey               String   @default("default") @map("tenant_key")
+  capturedAt              DateTime @default(now()) @map("captured_at")
+  totalSkus               Int      @map("total_skus")
+  completeSkus            Int      @map("complete_skus")
+  incompleteSkus          Int      @map("incomplete_skus")
+  publishReadyByConnector Json     @default("{}") @map("publish_ready_by_connector")
+  blockedByConnector      Json     @default("{}") @map("blocked_by_connector")
+  rejectionRiskHigh       Int      @default(0) @map("rejection_risk_high")
+  openIssuesBlocking      Int      @default(0) @map("open_issues_blocking")
+  openIssuesWarning       Int      @default(0) @map("open_issues_warning")
+
+  @@index([tenantKey, capturedAt(sort: Desc)], map: "idx_dashboard_snapshots_tenant_captured_at")
+  @@map("dashboard_snapshots")
+}
+
+model KpiMetricEvent {
+  id            String   @id
+  tenantKey     String   @default("default") @map("tenant_key")
+  connectorSlug String?  @map("connector_slug")
+  metricKey     String   @map("metric_key")
+  metricValue   Float    @map("metric_value")
+  unit          String?
+  tags          Json     @default("{}")
+  observedAt    DateTime @default(now()) @map("observed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, metricKey, observedAt(sort: Desc)], map: "idx_kpi_metric_events_tenant_metric_time")
+  @@index([tenantKey, connectorSlug, observedAt(sort: Desc)], map: "idx_kpi_metric_events_tenant_connector_time")
+  @@map("kpi_metric_events")
+}
+
 model PlanLimits {
   id                     String   @id @default(cuid())
   planTier               String   @unique
@@ -570,6 +633,138 @@ model TenantCommercialRequest {
   @@index([tenantKey, requestType, createdAt(sort: Desc)], map: "idx_tenant_commercial_requests_tenant_type_created")
   @@index([requestedBy, createdAt(sort: Desc)], map: "idx_tenant_commercial_requests_requester_created")
   @@map("tenant_commercial_requests")
+}
+
+model ConnectorDefinition {
+  id               String   @id
+  slug             String   @unique
+  displayName      String   @map("display_name")
+  authType         String   @map("auth_type")
+  capabilities     String[]
+  marketplaceId    String?  @map("marketplace_id")
+  connectorVersion String   @default("1.0.0") @map("connector_version")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @map("updated_at")
+
+  @@map("connector_definitions")
+}
+
+model ConnectorInstallation {
+  id                 String    @id
+  tenantKey          String    @default("default") @map("tenant_key")
+  connectorId        String    @map("connector_id")
+  accountAlias       String    @default("primary") @map("account_alias")
+  externalAccountRef String?   @map("external_account_ref")
+  status             String    @default("ACTIVE")
+  metadata           Json      @default("{}")
+  installedAt        DateTime  @default(now()) @map("installed_at")
+  installedBy        String    @map("installed_by")
+  lastSyncAt         DateTime? @map("last_sync_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @default(now()) @map("updated_at")
+
+  @@unique([tenantKey, connectorId, accountAlias], map: "connector_installations_tenant_connector_alias_unique")
+  @@index([tenantKey, installedAt(sort: Desc), id(sort: Desc)], map: "idx_connector_installations_tenant_installed_at")
+  @@map("connector_installations")
+}
+
+model ConnectorCredential {
+  id              String    @id
+  tenantKey       String    @default("default") @map("tenant_key")
+  installationId  String    @map("installation_id")
+  credentialType  String    @map("credential_type")
+  encryptedValue  String    @map("encrypted_value")
+  keyVersion      String    @default("v1") @map("key_version")
+  status          String    @default("ACTIVE")
+  scope           String?
+  expiresAt       DateTime? @map("expires_at")
+  lastValidatedAt DateTime? @map("last_validated_at")
+  lastRefreshAt   DateTime? @map("last_refresh_at")
+  failureReason   String?   @map("failure_reason")
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+
+  @@unique([installationId, credentialType], map: "connector_credentials_installation_type_unique")
+  @@map("connector_credentials")
+}
+
+model ConnectorSubmission {
+  id                 String    @id
+  tenantKey          String    @default("default") @map("tenant_key")
+  installationId     String    @map("installation_id")
+  productId          String    @map("product_id")
+  variantId          String?   @map("variant_id")
+  idempotencyKey     String    @map("idempotency_key")
+  submissionType     String    @map("submission_type")
+  source             String
+  attemptNumber      Int       @default(1) @map("attempt_number")
+  status             String
+  externalRef        String?   @map("external_ref")
+  payloadSnapshot    Json      @map("payload_snapshot")
+  payloadSnapshotUrl String?   @map("payload_snapshot_url")
+  channelErrors      Json?     @map("channel_errors")
+  submittedAt        DateTime  @default(now()) @map("submitted_at")
+  resolvedAt         DateTime? @map("resolved_at")
+
+  @@unique([tenantKey, installationId, idempotencyKey], map: "idx_connector_submissions_tenant_installation_idempotency")
+  @@index([tenantKey, status, submittedAt(sort: Desc)], map: "idx_connector_submissions_tenant_status")
+  @@map("connector_submissions")
+}
+
+model ConnectorWebhookEvent {
+  id              String    @id
+  tenantKey       String    @default("default") @map("tenant_key")
+  installationId  String    @map("installation_id")
+  externalEventId String    @map("external_event_id")
+  eventType       String    @map("event_type")
+  payload         Json
+  receivedAt      DateTime  @default(now()) @map("received_at")
+  processedAt     DateTime? @map("processed_at")
+  submissionId    String?   @map("submission_id")
+
+  @@unique([installationId, externalEventId], map: "connector_webhook_installation_event_unique")
+  @@index([tenantKey, installationId, processedAt], map: "idx_connector_webhooks_tenant_processed")
+  @@map("connector_webhook_events")
+}
+
+model ConnectorMappingVersion {
+  id                         String    @id
+  tenantKey                  String    @default("default") @map("tenant_key")
+  connectorSlug              String    @map("connector_slug")
+  categoryScope              String    @map("category_scope")
+  mappingLevel               String    @map("mapping_level")
+  lifecycleState             String    @map("lifecycle_state")
+  connectorDefinitionId      String    @map("connector_definition_id")
+  connectorDefinitionVersion String    @map("connector_definition_version")
+  compatibilityState         String    @default("compatible") @map("compatibility_state")
+  mappingRules               Json      @default("{}") @map("mapping_rules")
+  fallbackPolicy             Json      @default("{}") @map("fallback_policy")
+  fallbackAckRequired        Boolean   @default(false) @map("fallback_ack_required")
+  publishedAt                DateTime? @map("published_at")
+  supersededBy               String?   @map("superseded_by")
+  createdBy                  String?   @map("created_by")
+  archivedAt                 DateTime? @map("archived_at")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantKey, connectorSlug, categoryScope, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_lookup")
+  @@index([tenantKey, connectorSlug, compatibilityState, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_compat")
+  @@map("connector_mapping_versions")
+}
+
+model ConnectorMappingEvent {
+  id               String   @id
+  tenantKey        String   @default("default") @map("tenant_key")
+  mappingVersionId String   @map("mapping_version_id")
+  eventType        String   @map("event_type")
+  actorId          String?  @map("actor_id")
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantKey, mappingVersionId, createdAt(sort: Desc)], map: "idx_connector_mapping_events_lookup")
+  @@map("connector_mapping_events")
 }
 
 model ConnectorPermission {
