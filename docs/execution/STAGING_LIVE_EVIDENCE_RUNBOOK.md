@@ -51,6 +51,8 @@ gh auth status
    - `STAGING_SMOKE_TENANT_ID`
    - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` (optional; defaults to `false` when omitted)
 
+   Security note: do not share staging usernames, passwords, tokens, or connection strings in chat, tickets, or docs. Treat all staging credentials as secrets and retrieve/rotate them only through the repository/environment secret-management path.
+
 3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
 
 4. The target branch contains the current workflow guards:
