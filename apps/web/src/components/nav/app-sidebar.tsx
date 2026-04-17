@@ -46,6 +46,8 @@ type SidebarIconName =
   | "gauge"
   | "users"
   | "shield"
+  | "key"
+  | "webhook"
   | "lock"
   | "receipt"
   | "code"
@@ -112,6 +114,10 @@ function SidebarIcon({ name, className }: { name: SidebarIconName; className?: s
       return <svg {...props}><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.5" /><path d="M4.5 19a4.5 4.5 0 0 1 9 0" /><path d="M14.5 19a3.5 3.5 0 0 1 5 0" /></svg>;
     case "shield":
       return <svg {...props}><path d="M12 4 6 6.5V11c0 4 2.6 7.2 6 8.5 3.4-1.3 6-4.5 6-8.5V6.5L12 4Z" /></svg>;
+    case "key":
+      return <svg {...props}><circle cx="8.5" cy="12" r="3.5" /><path d="M12 12h8" /><path d="M17 12v2.5" /><path d="M19 12v1.5" /></svg>;
+    case "webhook":
+      return <svg {...props}><path d="M9 7.5a4.5 4.5 0 1 1 4.2 6" /><path d="M15 16.5A4.5 4.5 0 1 1 10.8 10" /><path d="M12 12h.01" /></svg>;
     case "lock":
       return <svg {...props}><rect x="5.5" y="11" width="13" height="9" rx="2" /><path d="M8 11V8.5a4 4 0 0 1 8 0V11" /></svg>;
     case "receipt":
@@ -182,10 +188,11 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     title: "Settings",
     items: [
-      { label: "Workspace Settings", href: "/admin/workspace", icon: "building" },
       { label: "Plan & Usage", href: "/admin/plan", icon: "gauge" },
       { label: "Users & Roles", href: "/admin/users", icon: "users" },
       { label: "Connector Access", href: "/admin/connectors", icon: "shield" },
+      { label: "API Keys", href: "/admin/api-keys", icon: "key" },
+      { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
       { label: "Audit Logs", href: "/admin/audit", icon: "receipt" },
     ],

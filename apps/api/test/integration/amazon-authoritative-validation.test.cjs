@@ -10,7 +10,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 
 function resolveAuthPassword() {
-  return String(process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password");
+  return String(process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password");
 }
 
 function readEnvFile(filePath) {
@@ -49,17 +49,17 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
 
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   // This scenario must force authoritative mode even if local .env sets false.
@@ -267,7 +267,7 @@ async function run() {
 
     const authoritativeProduct = await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: "Authoritative Product",
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "Product for authoritative validation path",
       categoryId: category.id,
       status: "draft",
@@ -293,7 +293,7 @@ async function run() {
 
     const fallbackProduct = await apiJson(baseUrl, "POST", "/catalog/products", token, {
       title: "Fallback Trigger Product",
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "Product for fallback validation path",
       categoryId: category.id,
       status: "draft",

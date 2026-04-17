@@ -19,6 +19,20 @@ function toPercent(numerator: number, denominator: number): number {
   return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)));
 }
 
+function formatTrend(trend: string): string {
+  switch (trend) {
+    case "up":
+      return "↑ Improving";
+    case "down":
+      return "↓ Getting worse";
+    case "stable":
+    case "flat":
+      return "→ Stable";
+  }
+  const normalized = trend.trim();
+  return normalized.length > 0 ? normalized : "—";
+}
+
 export default async function QualityPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
@@ -39,11 +53,7 @@ export default async function QualityPage() {
         <PageHeader
           title="Quality"
           description="Find problems fast, understand impact, and move products to publish-ready."
-          breadcrumb={
-            <>
-              Dashboard / <span className="font-semibold text-slate-700">Quality</span>
-            </>
-          }
+          breadcrumb={<span className="font-semibold text-slate-700">Quality</span>}
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -61,9 +71,9 @@ export default async function QualityPage() {
           />
           <KpiCard
             label="Completeness"
-            value={`${completeness}%`}
-            helper={`${health.snapshot.completeSkus}/${stats.products} complete`}
-            tone={completeness >= 90 ? "success" : completeness >= 70 ? "info" : "warning"}
+            value={stats.products === 0 ? "—" : `${completeness}%`}
+            helper={stats.products === 0 ? "Add products to track completeness" : `${health.snapshot.completeSkus}/${stats.products} complete`}
+            tone={stats.products === 0 ? "default" : completeness >= 90 ? "success" : completeness >= 70 ? "info" : "warning"}
           />
           <KpiCard
             label="Rejected Risk High"
@@ -104,7 +114,7 @@ export default async function QualityPage() {
             <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
               <span>Resolved today: {inbox.resolvedToday}</span>
               <span>|</span>
-              <span>Trend: {inbox.trend}</span>
+              <span>Trend: {formatTrend(inbox.trend)}</span>
             </div>
             <Link href="/quality/validation" className="mt-4 inline-flex text-sm font-medium text-blue-700 hover:underline">
               Open Validation

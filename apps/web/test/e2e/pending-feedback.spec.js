@@ -4,7 +4,7 @@ const {
   apiRequest,
   loginViaUi,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 const DEFAULT_MAPPING = {
   title: "title",
@@ -51,7 +51,7 @@ test("editor sees pending feedback while uploading and starting an import", asyn
   const startButtonLabel = "Starting import...";
   const uploadRows = [
     "title,description,brand,hsnCode,gstRate,status,attributes",
-    `"${uniqueName("e2e-pending-upload")}","upload pending proof","TEJ PIM","62046200",18,"draft","{}"`,
+    `"${uniqueName("e2e-pending-upload")}","upload pending proof","Vexa PIM","62046200",18,"draft","{}"`,
   ].join("\n");
 
   await page.locator('select[name="categoryId"]').selectOption(categoryId);
@@ -83,7 +83,7 @@ test("editor sees pending feedback while uploading and starting an import", asyn
       {
         title: uniqueName("e2e-pending-start"),
         description: "start pending proof",
-        brand: "TEJ PIM",
+        brand: "Vexa PIM",
         hsnCode: "62046200",
         gstRate: 18,
         status: "draft",

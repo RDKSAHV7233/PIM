@@ -30,6 +30,13 @@ function run() {
     "Privacy page must surface suspended commercial state with a dedicated banner.",
   );
   assert(
+    source.includes("Manage the signed-in account&apos;s privacy status and deletion workflow.") &&
+      source.includes("This page applies only to your signed-in account.") &&
+      source.includes("Current account privacy status") &&
+      source.includes("Delete this account"),
+    "Privacy page must be honest that these controls apply to the signed-in account, not the whole workspace.",
+  );
+  assert(
     source.includes('payload.error === "TENANT_SUSPENDED"') &&
       source.includes("New export requests are paused while the workspace is suspended."),
     "Privacy page must translate suspended export 403 responses into suspension-specific guidance.",
@@ -47,6 +54,7 @@ function run() {
         status: "ok",
         validated: [
           "privacy_page_reads_commercial_state",
+          "privacy_page_scopes_controls_to_signed_in_account",
           "privacy_page_shows_suspension_banner",
           "privacy_page_handles_tenant_suspended_export_errors",
           "privacy_page_disables_export_requests_while_suspended",

@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "page.tsx");
+const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,6 +15,7 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS, "utf8");
 
   assert(
     source.includes("const authHeader = await getServerAuthHeader();") &&
@@ -51,11 +53,13 @@ function run() {
   );
   assert(
     source.includes('status === "user-created"') &&
+      source.includes('status === "user-error"') &&
+      source.includes('message={errorMessage || "Unable to update workspace user."}') &&
       source.includes('status === "role-updated"') &&
       source.includes('status === "user-locked"') &&
       source.includes('status === "user-unlocked"') &&
       source.includes('status === "user-deactivated"'),
-    "Admin users must surface invite, role change, lock, unlock, and deactivate outcomes through page-level status banners.",
+    "Admin users must surface invite, error, role change, lock, unlock, and deactivate outcomes through page-level status banners.",
   );
   assert(
     source.includes("const isSelf = user.userId === currentUserId;") &&
@@ -76,6 +80,13 @@ function run() {
     "Admin users must keep the role matrix and connector override visibility linked into connector access management.",
   );
   assert(
+    source.includes('const errorMessage = String(query.message ?? "").trim();') &&
+      source.includes('<input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to invite workspace user.", errorRedirectTo);') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update workspace user.");'),
+    "Admin users must keep invite errors inline and preserve the invite state instead of surfacing opaque server-action failures.",
+  );
+  assert(
     source.includes('redirect(buildLoginRedirect("/admin/users", error));'),
     "Admin users must redirect expired or forbidden sessions through the shared login helper.",
   );
@@ -91,6 +102,7 @@ function run() {
           "admin_users_route_derives_access_kpis_from_live_data",
           "admin_users_route_keeps_invite_flow_and_roles_explicit",
           "admin_users_route_surfaces_user_lifecycle_status_banners",
+          "admin_users_route_keeps_error_feedback_inline",
           "admin_users_route_enforces_self_protection_and_read_only_fallback",
           "admin_users_route_surfaces_role_matrix_and_connector_overrides",
           "admin_users_route_redirects_auth_failures",

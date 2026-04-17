@@ -16,15 +16,15 @@ const { DashboardService } = require(path.join(
 async function run() {
   const staleCapturedAt = new Date(Date.now() - 7 * 60 * 60 * 1000);
   const staleRow = {
-    captured_at: staleCapturedAt,
-    total_skus: 7,
-    complete_skus: 5,
-    incomplete_skus: 2,
-    publish_ready_by_connector: { flipkart: 3 },
-    blocked_by_connector: { flipkart: 1 },
-    rejection_risk_high: 0,
-    open_issues_blocking: 4,
-    open_issues_warning: 2,
+    capturedAt: staleCapturedAt,
+    totalSkus: 7,
+    completeSkus: 5,
+    incompleteSkus: 2,
+    publishReadyByConnector: { flipkart: 3 },
+    blockedByConnector: { flipkart: 1 },
+    rejectionRiskHigh: 0,
+    openIssuesBlocking: 4,
+    openIssuesWarning: 2,
   };
 
   const prisma = {
@@ -33,7 +33,9 @@ async function run() {
         product: {
           count: async () => 2,
         },
-        $queryRawUnsafe: async () => [staleRow],
+        dashboardSnapshot: {
+          findMany: async () => [staleRow],
+        },
       };
     },
   };

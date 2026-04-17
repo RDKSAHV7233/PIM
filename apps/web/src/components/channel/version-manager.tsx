@@ -106,7 +106,7 @@ export function VersionManagerCard({
 
   return (
     <Card id="mapping-history">
-      <CardTitle>Mapping History</CardTitle>
+      <CardTitle>Step 3: Validate and publish</CardTitle>
       <div className="mt-2 flex flex-wrap gap-2">
         <StatusChip label={`${draftCount} draft`} tone="info" />
         <StatusChip label={`${validatedCount} ready to publish`} tone={validatedCount > 0 ? "warning" : "neutral"} />

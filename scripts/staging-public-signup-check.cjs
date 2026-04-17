@@ -151,7 +151,7 @@ async function main() {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: {
-      displayName: "TEJ staging signup probe",
+      displayName: "Vexa staging signup probe",
       workspaceSlug: probeSlug,
       adminEmail: probeEmail,
       password: "Signup#2026",
@@ -183,7 +183,7 @@ async function main() {
     const signupPage = await request(webBaseUrl, "/signup", { retries: 2 });
     assertStatus(signupPage, 200, "signup page when feature enabled");
     assert(
-      String(signupPage.text).includes("Create your TEJ PIM workspace"),
+      String(signupPage.text).includes("Create your Vexa PIM workspace"),
       "signup page did not include the expected heading",
     );
     validated.push("signup_page_renders_when_enabled");

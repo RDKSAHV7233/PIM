@@ -921,6 +921,7 @@ export async function installConnectorAction(formData: FormData) {
   const clientId = String(formData.get("clientId") ?? "").trim();
   const clientSecret = String(formData.get("clientSecret") ?? "").trim();
   const refreshToken = String(formData.get("refreshToken") ?? "").trim();
+  const returnTo = String(formData.get("returnTo") ?? "").trim() || "/channels/connectors";
   if (!slug) {
     throw new Error("Connector slug is required.");
   }
@@ -937,7 +938,7 @@ export async function installConnectorAction(formData: FormData) {
     rethrowRedirectError(error);
     const installError = resolveInstallConnectorError(error);
     redirect(
-      appendQueryParams("/channels/connectors", {
+      appendQueryParams(returnTo, {
         installError,
         connectorSlug: slug,
       }),
@@ -945,10 +946,14 @@ export async function installConnectorAction(formData: FormData) {
   }
 
   revalidatePath("/channels/connectors");
+  revalidatePath("/connectors");
   revalidatePath("/channels");
+  if (returnTo.startsWith("/")) {
+    revalidatePath(returnTo);
+  }
   revalidatePath("/");
   redirect(
-    appendQueryParams("/channels/connectors", {
+    appendQueryParams(returnTo, {
       status: "installed",
       connectorSlug: slug,
     }),

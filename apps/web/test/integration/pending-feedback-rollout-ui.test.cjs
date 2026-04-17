@@ -17,6 +17,7 @@ function assert(condition, message) {
 
 try {
   const connectorsPage = read("apps/web/src/app/connectors/page.tsx");
+  const connectorsSetupPage = read("apps/web/src/app/connectors/setup/page.tsx");
   const approvalsPage = read("apps/web/src/app/quality/approvals/page.tsx");
   const categoriesPage = read("apps/web/src/app/catalog/categories/page.tsx");
   const categoryDeleteButton = read("apps/web/src/components/catalog/category-delete-button.tsx");
@@ -31,11 +32,11 @@ try {
   );
 
   assert(
-    connectorsPage.includes('pendingLabel="Installing connector..."') &&
+    connectorsSetupPage.includes('pendingLabel="Installing connector..."') &&
       connectorsPage.includes('pendingLabel="Reconnecting..."') &&
       connectorsPage.includes('pendingLabel="Disabling..."') &&
       connectorsPage.includes('pendingLabel="Deleting record..."'),
-    "connectors page must add pending feedback to install/reconnect/disable/delete actions",
+    "connector setup and operations surfaces must add pending feedback to install/reconnect/disable/delete actions",
   );
 
   assert(
@@ -68,7 +69,7 @@ try {
   );
 
   assert(
-    connectorPermissionForm.includes('pendingLabel="Granting..."'),
+    connectorPermissionForm.includes('pendingLabel="Saving policy..."'),
     "connector permission form must add pending feedback to grant action",
   );
 

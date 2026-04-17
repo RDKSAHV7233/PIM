@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "page.tsx");
+const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "actions.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,6 +15,7 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
+  const actionsSource = fs.readFileSync(ACTIONS, "utf8");
 
   assert(
     source.includes("const role = await getServerActorRole();") &&
@@ -33,12 +35,14 @@ function run() {
     "Admin webhooks must expose the canonical event label map for the supported outbound webhook events.",
   );
   assert(
-    source.includes('status === "webhook-created"') &&
+    source.includes('status === "webhook-error"') &&
+      source.includes('message={errorMessage || "Unable to update webhook endpoint."}') &&
+      source.includes('status === "webhook-created"') &&
       source.includes('status === "webhook-paused"') &&
       source.includes('status === "webhook-resumed"') &&
       source.includes('status === "webhook-test-queued"') &&
       source.includes('status === "webhook-deleted"'),
-    "Admin webhooks must surface create, pause, resume, test, and delete state banners at the page level.",
+    "Admin webhooks must surface create, error, pause, resume, test, and delete state banners at the page level.",
   );
   assert(
     source.includes('role === "admin" ? (') &&
@@ -62,6 +66,13 @@ function run() {
     "Admin webhooks must surface endpoint lifecycle and delivery health states with meaningful status chips and failure detail.",
   );
   assert(
+    source.includes('const errorMessage = String(query.message ?? "").trim();') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to create webhook endpoint.");') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update webhook endpoint.");') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to delete webhook endpoint.");'),
+    "Admin webhooks must keep action failures inline instead of surfacing opaque server-action errors.",
+  );
+  assert(
     source.includes('href="/admin/audit"') &&
       source.includes('redirect(buildLoginRedirect("/admin/webhooks", error));'),
     "Admin webhooks must link to audit evidence and redirect auth failures through the shared login helper.",
@@ -76,6 +87,7 @@ function run() {
           "admin_webhooks_route_fetches_endpoints_and_deliveries_in_parallel",
           "admin_webhooks_route_exposes_canonical_event_labels",
           "admin_webhooks_route_surfaces_status_banners",
+          "admin_webhooks_route_keeps_error_feedback_inline",
           "admin_webhooks_route_keeps_mutations_admin_only",
           "admin_webhooks_route_documents_signing_and_empty_states",
           "admin_webhooks_route_surfaces_endpoint_and_delivery_status",

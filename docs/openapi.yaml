@@ -1266,6 +1266,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: installationId
+          required: true
+          in: query
+          schema:
+            type: string
         - name: status
           required: true
           in: query
@@ -2301,8 +2306,8 @@ paths:
           description: ""
       tags: *a21
 info:
-  title: TEJ PIM API
-  description: TEJ PIM API OpenAPI specification
+  title: Vexa PIM API
+  description: Vexa PIM API OpenAPI specification
   version: 1.0.0
   contact: {}
 tags: []

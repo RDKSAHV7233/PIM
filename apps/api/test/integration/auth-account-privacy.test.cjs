@@ -4,7 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const http = require("node:http");
+const { randomUUID } = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
+const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
@@ -45,21 +47,21 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
 
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
 }
 
 function sleep(ms) {
@@ -233,6 +235,7 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
   const platformToken = `auth-privacy-${runId}`;
   const tenantId = `auth-privacy-tenant-${runId}`;
+  const shadowTenantId = `auth-privacy-shadow-${runId}`;
   const workspaceSlug = `ap-${runId}`.slice(0, 24);
   const userId = `auth-privacy-user-${runId}@example.com`;
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-export-email-"));
@@ -258,6 +261,14 @@ async function run() {
     cwd: REPO_ROOT,
     env,
     stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL,
+      },
+    },
   });
 
   apiProcess.stdout.on("data", (chunk) => {
@@ -310,6 +321,21 @@ async function run() {
     });
     assertStatus(consentResult, 200, "Consent endpoint failed");
 
+    const shadowConsentPurpose = `shadow-consent-${runId}`;
+    const shadowExportJobId = `exp_shadow_${runId}`;
+    const shadowDeletionId = `del_shadow_${runId}`;
+    await prisma.accountConsentEvent.create({
+      data: {
+        id: randomUUID(),
+        tenantKey: shadowTenantId,
+        userId,
+        accepted: true,
+        policyVersion: "shadow-v1",
+        purpose: shadowConsentPurpose,
+        consentRecordedAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
     const exportResult = await apiRequest(baseUrl, "POST", "/auth/account/export", token, {
       format: "json",
     });
@@ -318,11 +344,45 @@ async function run() {
       throw new Error(`Account export did not return queued status. payload=${JSON.stringify(exportResult.payload)}`);
     }
 
+    await prisma.accountExportRequest.create({
+      data: {
+        id: shadowExportJobId,
+        tenantKey: shadowTenantId,
+        userId,
+        actorRole: "admin",
+        format: "json",
+        status: "completed",
+        requestedAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        estimatedReadyInSeconds: 0,
+        artifactPath: "shadow/export.json",
+        artifactFileName: "shadow-export.json",
+        completedAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      },
+    });
+    await prisma.accountDeletionRequest.create({
+      data: {
+        id: shadowDeletionId,
+        tenantKey: shadowTenantId,
+        userId,
+        actorRole: "admin",
+        reason: "shadow delete",
+        status: "scheduled",
+        requestedAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+        scheduledFor: new Date(Date.now() + 4 * 60 * 60 * 1000),
+      },
+    });
+
     const statusPayload = await waitForExportReady(baseUrl, token, 15_000);
     if (String(statusPayload?.commercialState?.accessStatus ?? "") !== "active") {
       throw new Error(
         `Privacy status should expose active commercial access state. payload=${JSON.stringify(statusPayload)}`,
       );
+    }
+    if (String(statusPayload?.latestConsent?.purpose ?? "") !== "catalog_operations") {
+      throw new Error(`Privacy status leaked consent data across tenants. payload=${JSON.stringify(statusPayload)}`);
+    }
+    if (String(statusPayload?.latestExport?.jobId ?? "") === shadowExportJobId) {
+      throw new Error(`Privacy status leaked export data across tenants. payload=${JSON.stringify(statusPayload)}`);
     }
     if (statusPayload?.latestExport?.downloadAvailable !== true) {
       throw new Error(`Completed export should expose downloadAvailable=true. payload=${JSON.stringify(statusPayload)}`);
@@ -354,6 +414,13 @@ async function run() {
     if (!downloadText.includes(userId) || !downloadText.includes(statusPayload.latestExport.jobId)) {
       throw new Error(`Export download content mismatch. body=${downloadText}`);
     }
+    if (
+      downloadText.includes(shadowConsentPurpose) ||
+      downloadText.includes(shadowExportJobId) ||
+      downloadText.includes(shadowDeletionId)
+    ) {
+      throw new Error(`Account export leaked cross-tenant privacy records. body=${downloadText}`);
+    }
 
     const badDeleteResult = await apiRequest(baseUrl, "DELETE", "/auth/account", token, {
       confirmation: "REMOVE",
@@ -366,6 +433,12 @@ async function run() {
       reason: "test requested erasure",
     });
     assertStatus(deleteResult, 202, "Delete account endpoint failed");
+
+    const postDeleteStatus = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", token);
+    assertStatus(postDeleteStatus, 200, "Privacy status after delete failed");
+    if (String(postDeleteStatus.payload?.latestDeletion?.ticketId ?? "") !== String(deleteResult.payload?.ticketId ?? "")) {
+      throw new Error(`Privacy status leaked deletion data across tenants. payload=${JSON.stringify(postDeleteStatus.payload)}`);
+    }
 
     const auditResult = await apiRequest(baseUrl, "GET", `/audit/logs?limit=100&actorId=${encodeURIComponent(userId)}`, token);
     assertStatus(auditResult, 200, "Audit logs endpoint failed");
@@ -392,9 +465,12 @@ async function run() {
             "consent_acceptance_200",
             "account_export_202_queued",
             "account_export_completes_and_returns_presigned_download",
+            "privacy_status_blocks_cross_tenant_spoofed_records",
+            "account_export_blocks_cross_tenant_spoofed_records",
             "privacy_status_exposes_active_commercial_state",
             "delete_account_confirmation_guard_400",
             "delete_account_202_scheduled",
+            "deletion_status_blocks_cross_tenant_spoofed_records",
             "audit_actions_recorded",
           ],
           checkedAt: new Date().toISOString(),
@@ -420,6 +496,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     fs.rmSync(outboxDir, { recursive: true, force: true });
+    await prisma.$disconnect().catch(() => undefined);
     await fakeR2.close().catch(() => undefined);
     if (!apiProcess.killed && apiProcess.pid) {
       if (process.platform === "win32") {

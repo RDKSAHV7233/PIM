@@ -41,8 +41,8 @@ function run() {
   );
   assert(
     routeSource.includes("date,signups,verified,verification_rate,median_verify_hours") &&
-      routeSource.includes('attachment; filename="tej-pim-signup-trends-${days}d.csv"'),
-    "Signup trend export route must emit CSV output with the TEJ PIM filename.",
+      routeSource.includes('attachment; filename="vexa-pim-signup-trends-${days}d.csv"'),
+    "Signup trend export route must emit CSV output with the Vexa PIM filename.",
   );
 
   console.log(

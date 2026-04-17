@@ -155,7 +155,7 @@ test("workspace admin can submit an upgrade request from the plan page", async (
   try {
     await page.goto("/signup", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("heading", { name: "Create your TEJ PIM workspace" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your Vexa PIM workspace" })).toBeVisible();
     await page.getByLabel("Workspace name").fill(signup.displayName);
     const workspaceInput = page.getByLabel("Workspace", { exact: true });
     await workspaceInput.fill(signup.workspaceSlug);

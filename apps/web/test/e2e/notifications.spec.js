@@ -12,7 +12,7 @@ const {
   reviewProduct,
   uniqueName,
   updateProduct,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 test("editor can open notification center and mark approval notifications read", async ({ page }) => {
   const reviewerAuth = await apiLoginPayload("reviewer");
@@ -23,7 +23,7 @@ test("editor can open notification center and mark approval notifications read",
   const category = await createCategory(adminToken, uniqueName("e2e-notify-cat"));
   const product = await createProduct(editorToken, {
     title: uniqueName("e2e-notify-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "notification approval flow",
     categoryId: category.id,
     status: "draft",

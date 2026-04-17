@@ -1,15 +1,14 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
 const adminLinks = [
-  {
-    title: "Workspace Settings",
-    description: "Tenant-level defaults and workspace configuration.",
-    href: "/admin/workspace",
-  },
   {
     title: "Plan & Usage",
     description: "Usage meters, tier controls, and plan enforcement visibility.",
@@ -37,7 +36,7 @@ const adminLinks = [
   },
   {
     title: "Privacy",
-    description: "Consent, export, and account deletion governance controls.",
+    description: "View consent, export, and deletion status for the signed-in account.",
     href: "/admin/privacy",
   },
   {
@@ -47,17 +46,22 @@ const adminLinks = [
   },
 ];
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const authHeader = await getServerAuthHeader();
+  if (!authHeader) {
+    redirect(buildLoginRedirect("/admin", 401));
+  }
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Admin"
         description="Governance controls for access, plan, privacy, and audit."
-        breadcrumb={
-          <>
-            Dashboard / <span className="font-semibold text-slate-700">Admin</span>
-          </>
-        }
+        breadcrumb={<span className="font-semibold text-slate-700">Admin</span>}
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

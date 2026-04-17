@@ -39,10 +39,11 @@ function run() {
     "Channel connector detail must resolve the installation from the shared connectors list and 404 missing installations.",
   );
   assert(
-    source.includes("const [permissions, submissionsRaw] = await Promise.all([") &&
+    source.includes("const [permissions, submissionsRaw, products] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
-      source.includes("getSubmissions({ connectorSlug: installation.slug, limit: 100 }, { role: actorRole, authHeader })"),
-    "Channel connector detail must load permissions and submissions together from the selected installation slug.",
+      source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
+      source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
+    "Channel connector detail must load permissions, submissions, and product lookup data together from the selected installation id.",
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
@@ -51,18 +52,20 @@ function run() {
     "Channel connector detail must normalize submission payload shapes and derive failed submission counts from live statuses.",
   );
   assert(
-    source.includes('label="Capabilities"') &&
+    source.includes('label="Account health"') &&
       source.includes('label="Submissions"') &&
       source.includes('label="Errors / Rejections"') &&
-      source.includes('label="Permission Rules"'),
-    "Channel connector detail must surface installation capabilities, submission volume, failure load, and permission rule KPIs.",
+      source.includes('label="Access rules"'),
+    "Channel connector detail must surface account health, submission volume, failure load, and access-rule KPIs.",
   );
   assert(
     source.includes('href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}') &&
       source.includes('href="/admin/connectors"') &&
-      source.includes('No connector-specific permission overrides.') &&
-      source.includes('No submissions recorded for this connector yet.'),
-    "Channel connector detail must expose mapping/access-management deep links and honest empty states for permissions and submissions.",
+      source.includes('No connector-specific permission overrides. Workspace defaults are currently in effect.') &&
+      source.includes('No submissions recorded for this account yet.') &&
+      source.includes("summarizeSubmissionOutcome") &&
+      source.includes("productsById"),
+    "Channel connector detail must expose mapping/access-management deep links and human-readable submission context.",
   );
   assert(
     source.includes("new Date(installation.installedAt).toLocaleString()") &&

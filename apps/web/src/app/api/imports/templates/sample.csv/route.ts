@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const SAMPLE_CSV = [
   "title,description,brand,hsnCode,gstRate,status,attributes",
-  "\"Classic Cotton Tee\",\"Soft crew-neck t-shirt\",\"TEJ PIM\",\"61091000\",12,\"draft\",\"{\"\"material\"\":\"\"cotton\"\",\"\"color\"\":\"\"black\"\",\"\"size\"\":\"\"M\"\"}\"",
+  "\"Classic Cotton Tee\",\"Soft crew-neck t-shirt\",\"Vexa PIM\",\"61091000\",12,\"draft\",\"{\"\"material\"\":\"\"cotton\"\",\"\"color\"\":\"\"black\"\",\"\"size\"\":\"\"M\"\"}\"",
 ].join("\n");
 
 export async function GET() {
@@ -10,7 +10,7 @@ export async function GET() {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="tej-pim-bulk-import-sample.csv"',
+      "Content-Disposition": 'attachment; filename="vexa-pim-bulk-import-sample.csv"',
       "Cache-Control": "no-store",
     },
   });

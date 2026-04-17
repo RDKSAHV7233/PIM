@@ -60,6 +60,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
   const role = await getServerActorRole();
   const authHeader = await getServerAuthHeader();
   const status = String(query.status ?? "").trim();
+  const errorMessage = String(query.message ?? "").trim();
 
   try {
     const [endpoints, deliveries] = await Promise.all([
@@ -71,7 +72,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
       <div className="space-y-5">
         <PageHeader
           title="Outbound Webhooks"
-          description="Send TEJ PIM notification events to tenant-managed HTTP endpoints."
+          description="Send Vexa notification events to tenant-managed HTTP endpoints."
           breadcrumb={
             <>
               Dashboard / Admin / <span className="font-semibold text-slate-700">Outbound Webhooks</span>
@@ -79,6 +80,9 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
           }
         />
 
+        {status === "webhook-error" ? (
+          <StatusBanner tone="error" message={errorMessage || "Unable to update webhook endpoint."} />
+        ) : null}
         {status === "webhook-created" ? <StatusBanner tone="success" message="Webhook endpoint created." /> : null}
         {status === "webhook-paused" ? <StatusBanner tone="info" message="Webhook endpoint paused." /> : null}
         {status === "webhook-resumed" ? <StatusBanner tone="success" message="Webhook endpoint resumed." /> : null}
@@ -116,7 +120,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                   name="targetUrl"
                   required
                   className="w-full rounded-md border border-slate-200 px-3 py-2"
-                  placeholder="https://example.com/webhooks/tej-pim"
+                  placeholder="https://example.com/webhooks/vexa-pim"
                 />
               </label>
               <label className="space-y-1 text-sm">
@@ -131,7 +135,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
               </label>
               <div className="md:col-span-2 xl:col-span-4 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 <span>
-                  TEJ PIM signs each delivery with <code>x-pim1-webhook-signature</code> using HMAC SHA-256 over
+                  Vexa PIM signs each delivery with <code>x-pim1-webhook-signature</code> using HMAC SHA-256 over
                   <code>{" timestamp.body"}</code>.
                 </span>
                 <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white">

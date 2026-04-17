@@ -535,14 +535,14 @@ export class SignupService implements OnModuleDestroy {
     const verifyUrl = `${this.resolveWebBaseUrl()}/signup/verify?token=${encodeURIComponent(input.verificationToken)}&email=${encodeURIComponent(input.adminEmail)}&workspace=${encodeURIComponent(input.workspaceSlug)}`;
     await this.authEmailService.send({
       to: input.adminEmail,
-      subject: "Verify your TEJ PIM workspace",
+      subject: "Verify your Vexa PIM workspace",
       text:
-        `Verify your TEJ PIM workspace to finish setup.\n\n` +
+        `Verify your Vexa PIM workspace to finish setup.\n\n` +
         `Workspace: ${input.workspaceSlug}\n` +
         `Verification link: ${verifyUrl}\n\n` +
         `This link expires at ${input.expiresAt.toISOString()}.`,
       html:
-        `<p>Verify your TEJ PIM workspace to finish setup.</p>` +
+        `<p>Verify your Vexa PIM workspace to finish setup.</p>` +
         `<p><strong>Workspace:</strong> ${this.escapeHtml(input.workspaceSlug)}</p>` +
         `<p><a href="${verifyUrl}">Verify your workspace</a></p>` +
         `<p>This link expires at ${this.escapeHtml(input.expiresAt.toISOString())}.</p>`,
@@ -775,4 +775,3 @@ export class SignupService implements OnModuleDestroy {
     }
   }
 }
-

@@ -47,10 +47,10 @@ const identityDirectory =
     : authMode === "db"
       ? ""
       : JSON.stringify({
-          "admin@tej-pim.local": { tenantId: "default", role: "admin" },
-          "editor@tej-pim.local": { tenantId: "default", role: "editor" },
-          "reviewer@tej-pim.local": { tenantId: "default", role: "reviewer" },
-          "viewer@tej-pim.local": { tenantId: "default", role: "viewer" },
+          "admin@vexa-pim.local": { tenantId: "default", role: "admin" },
+          "editor@vexa-pim.local": { tenantId: "default", role: "editor" },
+          "reviewer@vexa-pim.local": { tenantId: "default", role: "reviewer" },
+          "viewer@vexa-pim.local": { tenantId: "default", role: "viewer" },
         });
 const workspaceDirectory =
   process.env.PLAYWRIGHT_AUTH_WORKSPACES_JSON !== undefined
@@ -79,7 +79,7 @@ const env = {
   PORT: process.env.PLAYWRIGHT_API_PORT || "4001",
   APP_ENV: "development",
   AUTH_MODE: authMode,
-  PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password",
+  PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password",
   PIM_DEFAULT_TENANT_KEY: process.env.PLAYWRIGHT_TENANT_KEY || "default",
   PIM_DEFAULT_WORKSPACE_SLUG: process.env.PLAYWRIGHT_WORKSPACE || "default",
   PIM_AUTH_IP_ATTEMPT_LIMIT: process.env.PLAYWRIGHT_AUTH_IP_ATTEMPT_LIMIT || "100",

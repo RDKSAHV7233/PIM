@@ -309,9 +309,9 @@ test("admin can follow a commercial request into the filtered audit trail", asyn
       page.waitForEvent("download"),
       page.getByRole("link", { name: "Export CSV" }).click(),
     ]);
-    expect(download.suggestedFilename()).toContain("tej-pim-audit-events-");
+    expect(download.suggestedFilename()).toContain("vexa-pim-audit-events-");
 
-    downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-commercial-audit-"));
+    downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-commercial-audit-"));
     const downloadPath = path.join(downloadDir, download.suggestedFilename());
     await download.saveAs(downloadPath);
 
