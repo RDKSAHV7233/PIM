@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CHANNELS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "page.tsx");
+const ROLE_CAPABILITIES = path.join(REPO_ROOT, "apps", "web", "src", "lib", "role-capabilities.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,6 +15,7 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(CHANNELS_PAGE, "utf8");
+  const roleCapabilitiesSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
 
   assert(
     source.includes("const authHeader = await getServerAuthHeader();") &&
@@ -55,6 +57,15 @@ function run() {
     "Channels overview must deep-link operators into connectors, mappings, submissions, health, and access-management workspaces.",
   );
   assert(
+    roleCapabilitiesSource.includes('return role === "admin" || role === "editor";') &&
+      source.includes("const canEditChannelSetup = canEditWorkspace(actorRole);") &&
+      source.includes('const canManageConnectorAccess = actorRole === "admin";') &&
+      source.includes("Workspace editors and admins apply mapping changes.") &&
+      source.includes("Workspace admins manage connector permissions and plan-based access.") &&
+      source.includes('{canManageConnectorAccess ? "Manage access" : "Review access rules"}'),
+    "Channels overview must describe connector setup, mappings, and connector access honestly for read-only roles.",
+  );
+  assert(
     source.includes('redirect(buildLoginRedirect("/channels", error));'),
     "Channels overview must redirect expired or forbidden sessions through the centralized login redirect helper.",
   );
@@ -69,6 +80,7 @@ function run() {
           "channels_overview_route_normalizes_submission_list_shapes",
           "channels_overview_route_derives_live_publishing_kpis",
           "channels_overview_route_links_to_core_channel_workspaces",
+          "channels_overview_route_adjusts_setup_copy_for_read_only_roles",
           "channels_overview_route_redirects_auth_failures",
         ],
         checkedAt: new Date().toISOString(),

@@ -44,6 +44,7 @@ const SUITES = {
   ],
   operations: [
     { label: "UI/UX: ops cockpit", command: "node", args: ["apps/web/test/integration/ops-cockpit-ui.test.cjs"] },
+    { label: "UI/UX: operations overview route contract", command: "node", args: ["apps/web/test/integration/operations-overview-route-contract.test.cjs"] },
     { label: "UI/UX: operations imports route contract", command: "node", args: ["apps/web/test/integration/operations-imports-route-contract.test.cjs"] },
     { label: "UI/UX: operations jobs route contract", command: "node", args: ["apps/web/test/integration/operations-jobs-route-contract.test.cjs"] },
     { label: "UI/UX: operations bulk edit route contract", command: "node", args: ["apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs"] },
@@ -62,6 +63,7 @@ const SUITES = {
     { label: "UI/UX: admin api keys route contract", command: "node", args: ["apps/web/test/integration/admin-api-keys-route-contract.test.cjs"] },
     { label: "UI/UX: admin webhooks route contract", command: "node", args: ["apps/web/test/integration/admin-webhooks-route-contract.test.cjs"] },
     { label: "UI/UX: quality reviewer role", command: "node", args: ["apps/web/test/integration/quality-reviewer-role-ui.test.cjs"] },
+    { label: "UI/UX: quality overview route contract", command: "node", args: ["apps/web/test/integration/quality-overview-route-contract.test.cjs"] },
     { label: "UI/UX: quality approvals route contract", command: "node", args: ["apps/web/test/integration/quality-approvals-route-contract.test.cjs"] },
     { label: "UI/UX: quality issues route contract", command: "node", args: ["apps/web/test/integration/quality-issues-route-contract.test.cjs"] },
     { label: "API: api keys", command: "npm", args: ["run", "test:integration:api-keys"] },

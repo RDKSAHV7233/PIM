@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getInstalledConnectors, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -24,6 +25,8 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
 export default async function ChannelsOverviewPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const canEditChannelSetup = canEditWorkspace(actorRole);
+  const canManageConnectorAccess = actorRole === "admin";
 
   try {
     const [connectors, submissionsResponse, health] = await Promise.all([
@@ -44,8 +47,12 @@ export default async function ChannelsOverviewPage() {
       <div className="space-y-5">
         <PageHeader
           title="Channels"
-          description="Your connected marketplaces — set up, publish, and monitor listings."
-          breadcrumb={<span className="font-semibold text-slate-700">Channels</span>}
+          description="Marketplace operations cockpit for connector setup, mappings, submissions, and health."
+          breadcrumb={
+            <>
+              Dashboard / <span className="font-semibold text-slate-700">Channels</span>
+            </>
+          }
         />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Installed Connectors" value={connectors.length} helper={`${activeConnectors} active`} />
@@ -77,19 +84,27 @@ export default async function ChannelsOverviewPage() {
           </div>
         </Card>
 
-        <section className={`grid gap-4 md:grid-cols-2 ${actorRole === "admin" ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card className="space-y-3">
             <CardTitle>Connectors</CardTitle>
-            <p className="text-sm text-slate-600">Install, reconnect, and review account-level connector status.</p>
+            <p className="text-sm text-slate-600">
+              {canEditChannelSetup
+                ? "Install, reconnect, and review account-level connector status."
+                : "Review connector status and coordinate install or reconnect requests with a workspace editor or admin."}
+            </p>
             <Link href="/channels/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Open connectors
+              {canEditChannelSetup ? "Open connectors" : "Review connectors"}
             </Link>
           </Card>
           <Card className="space-y-3">
             <CardTitle>Mappings</CardTitle>
-            <p className="text-sm text-slate-600">Maintain channel field and category mappings before submission.</p>
+            <p className="text-sm text-slate-600">
+              {canEditChannelSetup
+                ? "Maintain channel field and category mappings before submission."
+                : "Review channel field and category mappings. Workspace editors and admins apply mapping changes."}
+            </p>
             <Link href="/channels/mappings" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Open mapping manager
+              {canEditChannelSetup ? "Open mapping manager" : "Review mappings"}
             </Link>
           </Card>
           <Card className="space-y-3">
@@ -106,15 +121,17 @@ export default async function ChannelsOverviewPage() {
               Open channel health
             </Link>
           </Card>
-          {actorRole === "admin" && (
-            <Card className="space-y-3">
-              <CardTitle>Connector Access</CardTitle>
-              <p className="text-sm text-slate-600">Govern connector permissions and plan-based access controls.</p>
-              <Link href="/admin/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Manage access
-              </Link>
-            </Card>
-          )}
+          <Card className="space-y-3">
+            <CardTitle>Connector Access</CardTitle>
+            <p className="text-sm text-slate-600">
+              {canManageConnectorAccess
+                ? "Govern connector permissions and plan-based access controls."
+                : "Workspace admins manage connector permissions and plan-based access. Review the current access rules and request changes when needed."}
+            </p>
+            <Link href="/admin/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              {canManageConnectorAccess ? "Manage access" : "Review access rules"}
+            </Link>
+          </Card>
         </section>
       </div>
     );
