@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
   CursorPaginationQuery,
@@ -7,6 +8,7 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { ListAuditEventsDto, type AuditEntityTypeFilter } from "./dto/list-audit-events.dto";
 
@@ -16,6 +18,7 @@ export interface AuditLogRecordInput {
   action: string;
   resource: string;
   resourceId?: string | null;
+  tenantKey?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -30,6 +33,43 @@ type AuditExplorerRow = {
   createdAt: Date | string;
   entityType?: string;
 };
+
+const PLAN_AUDIT_ACTIONS = [
+  "PLAN_TIER_CHANGE",
+  "TENANT_ACCESS_SUSPENDED",
+  "TENANT_ACCESS_RESUMED",
+  "TENANT_BILLING_STATUS_SET",
+  "TENANT_BILLING_CONTACT_UPDATED",
+  "TENANT_COMMERCIAL_STATE_UPDATED",
+  "COMMERCIAL_MUTATION_BLOCKED",
+  "COMMERCIAL_UPGRADE_REQUEST_CREATED",
+  "COMMERCIAL_UPGRADE_REQUEST_REUSED",
+  "COMMERCIAL_UPGRADE_REQUEST_LISTED",
+  "COMMERCIAL_UPGRADE_REQUEST_EXPORTED",
+  "COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED",
+  "COMMERCIAL_OVERVIEW_VIEWED",
+  "COMMERCIAL_TENANT_EXPORTED",
+] as const;
+
+const AUDIT_SELECT = {
+  id: true,
+  actorId: true,
+  actorRole: true,
+  action: true,
+  resource: true,
+  resourceId: true,
+  metadata: true,
+  createdAt: true,
+} satisfies Prisma.AuditLogSelect;
+
+const AUDIT_ORDER_BY = [
+  { createdAt: "desc" },
+  { id: "desc" },
+] satisfies Prisma.AuditLogOrderByWithRelationInput[];
+
+type AuditLogRow = Prisma.AuditLogGetPayload<{
+  select: typeof AUDIT_SELECT;
+}>;
 
 @Injectable()
 export class AuditService {
@@ -76,29 +116,20 @@ export class AuditService {
   }
 
   async record(input: AuditLogRecordInput) {
-    const metadata = JSON.stringify(this.sanitizeMetadata(input.metadata ?? {}));
+    const metadata = this.sanitizeMetadata(input.metadata ?? {});
+    const tenantKey = input.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
     try {
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
-        `
-        INSERT INTO audit_logs (
-          id,
-          actor_id,
-          actor_role,
-          action,
-          resource,
-          resource_id,
-          metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-        `,
-        randomUUID(),
-        input.actorId,
-        input.actorRole,
-        input.action,
-        input.resource,
-        input.resourceId ?? null,
-        metadata,
-      );
+      await this.prisma.tenant(tenantKey).auditLog.create({
+        data: {
+          id: randomUUID(),
+          actorId: input.actorId,
+          actorRole: input.actorRole,
+          action: input.action,
+          resource: input.resource,
+          resourceId: input.resourceId ?? null,
+          metadata: metadata as Prisma.InputJsonValue,
+        },
+      });
     } catch {
       // Audit logging should not break the primary request path.
     }
@@ -112,60 +143,27 @@ export class AuditService {
         throw new BadRequestException("Invalid cursor.");
       }
       const cursorDate = token ? new Date(token.sort) : null;
-      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+      const cursorId = typeof token?.id === "string" ? token.id.trim() : "";
+      if (token && (!cursorDate || Number.isNaN(cursorDate.getTime()) || !cursorId)) {
         throw new BadRequestException("Invalid cursor.");
       }
-
-      const params: Array<string | number | Date> = [];
-      const clauses: string[] = [];
-      if (actorId) {
-        params.push(actorId);
-        clauses.push(`actor_id = $${params.length}`);
-      }
-      if (token && cursorDate) {
-        params.push(cursorDate);
-        const dateParam = params.length;
-        params.push(token.id);
-        const idParam = params.length;
-        clauses.push(
-          `(created_at < $${dateParam} OR (created_at = $${dateParam} AND id < $${idParam}))`,
-        );
-      }
-
-      const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-      params.push(safeLimit + 1);
-      const limitParam = params.length;
-      // RLS-BYPASS: manual tenant filter
-      const rows = (await this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          id,
-          actor_id AS "actorId",
-          actor_role AS "actorRole",
-          action,
-          resource,
-          resource_id AS "resourceId",
-          metadata,
-          created_at AS "createdAt"
-        FROM audit_logs
-        ${whereSql}
-        ORDER BY created_at DESC, id DESC
-        LIMIT $${limitParam}
-        `,
-        ...params,
-      )) as Array<Record<string, unknown>>;
+      const rows = await this.prisma.tenant().auditLog.findMany({
+        where: this.combineWhere(
+          actorId ? { actorId } : undefined,
+          token && cursorDate ? this.buildCursorWhere(cursorDate, cursorId) : undefined,
+        ),
+        orderBy: AUDIT_ORDER_BY,
+        take: safeLimit + 1,
+        select: AUDIT_SELECT,
+      });
 
       const hasNext = rows.length > safeLimit;
       const items = hasNext ? rows.slice(0, safeLimit) : rows;
-      const last = items[items.length - 1] as { id?: string; createdAt?: unknown } | undefined;
-      const createdAt = last?.createdAt instanceof Date
-        ? last.createdAt
-        : typeof last?.createdAt === "string"
-        ? new Date(last.createdAt)
-        : null;
+      const last = items[items.length - 1];
+      const createdAt = last?.createdAt ?? null;
 
       return {
-        items,
+        items: items.map((row) => this.normalizeAuditRow(row)),
         limit: safeLimit,
         nextCursor: hasNext && last?.id && createdAt && !Number.isNaN(createdAt.getTime())
           ? encodeCursorToken({
@@ -177,47 +175,13 @@ export class AuditService {
     }
 
     const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 200) : 50;
-    if (actorId) {
-      // RLS-BYPASS: manual tenant filter
-      return this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          id,
-          actor_id AS "actorId",
-          actor_role AS "actorRole",
-          action,
-          resource,
-          resource_id AS "resourceId",
-          metadata,
-          created_at AS "createdAt"
-        FROM audit_logs
-        WHERE actor_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2
-        `,
-        actorId,
-        safeLimit,
-      );
-    }
-
-    // RLS-BYPASS: manual tenant filter
-    return this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        id,
-        actor_id AS "actorId",
-        actor_role AS "actorRole",
-        action,
-        resource,
-        resource_id AS "resourceId",
-        metadata,
-        created_at AS "createdAt"
-      FROM audit_logs
-      ORDER BY created_at DESC
-      LIMIT $1
-      `,
-      safeLimit,
-    );
+    const rows = await this.prisma.tenant().auditLog.findMany({
+      where: actorId ? { actorId } : undefined,
+      orderBy: AUDIT_ORDER_BY,
+      take: safeLimit,
+      select: AUDIT_SELECT,
+    });
+    return rows.map((row) => this.normalizeAuditRow(row));
   }
 
   private parseDateBoundary(value: string | undefined, mode: "from" | "to"): Date | null {
@@ -233,181 +197,47 @@ export class AuditService {
     return candidate;
   }
 
-  private entityTypeCaseSql() {
-    return `
-      CASE
-        WHEN COALESCE(metadata->>'model', '') = 'Product' OR resource ILIKE '%product%' THEN 'product'
-        WHEN COALESCE(metadata->>'model', '') = 'Category' OR resource ILIKE '%categor%' THEN 'category'
-        WHEN resource ILIKE '%mapping%' OR COALESCE(metadata->>'lifecycle_state', '') <> '' THEN 'mapping'
-        WHEN resource ILIKE '%connector%' OR resource = 'CONNECTOR_PERMISSION' THEN 'connector'
-        WHEN resource ILIKE '%billing%'
-          OR resource = 'TENANT_PLAN_PROFILE'
-          OR resource ILIKE '%plan_profile%'
-          OR action IN (
-            'PLAN_TIER_CHANGE',
-            'TENANT_ACCESS_SUSPENDED',
-            'TENANT_ACCESS_RESUMED',
-            'TENANT_BILLING_STATUS_SET',
-            'TENANT_BILLING_CONTACT_UPDATED',
-            'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED',
-              'COMMERCIAL_UPGRADE_REQUEST_CREATED',
-              'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-                'COMMERCIAL_OVERVIEW_VIEWED',
-                'COMMERCIAL_TENANT_EXPORTED'
-              ) THEN 'plan'
-        WHEN resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%' THEN 'privacy'
-        WHEN resource ILIKE 'auth.%' OR resource = 'auth.step_up' THEN 'auth'
-        WHEN resource ILIKE '%import%' THEN 'import'
-        WHEN resource ILIKE '%job%' OR resource ILIKE '%submission%' THEN 'job'
-        WHEN resource ILIKE '%user%' THEN 'user'
-        ELSE 'other'
-      END
-    `;
-  }
-
-  private applyEntityTypeClause(entityType: AuditEntityTypeFilter, clauses: string[]) {
-    switch (entityType) {
-      case "product":
-        clauses.push(`(COALESCE(metadata->>'model', '') = 'Product' OR resource ILIKE '%product%')`);
-        break;
-      case "category":
-        clauses.push(`(COALESCE(metadata->>'model', '') = 'Category' OR resource ILIKE '%categor%')`);
-        break;
-      case "mapping":
-        clauses.push(`(resource ILIKE '%mapping%' OR COALESCE(metadata->>'lifecycle_state', '') <> '')`);
-        break;
-      case "connector":
-        clauses.push(`(resource ILIKE '%connector%' OR resource = 'CONNECTOR_PERMISSION')`);
-        break;
-      case "user":
-        clauses.push(`resource ILIKE '%user%'`);
-        break;
-      case "plan":
-        clauses.push(`(
-          resource ILIKE '%billing%'
-          OR resource = 'TENANT_PLAN_PROFILE'
-          OR resource ILIKE '%plan_profile%'
-          OR action IN (
-            'PLAN_TIER_CHANGE',
-            'TENANT_ACCESS_SUSPENDED',
-            'TENANT_ACCESS_RESUMED',
-            'TENANT_BILLING_STATUS_SET',
-            'TENANT_BILLING_CONTACT_UPDATED',
-            'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED',
-              'COMMERCIAL_UPGRADE_REQUEST_CREATED',
-              'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-                'COMMERCIAL_OVERVIEW_VIEWED',
-                'COMMERCIAL_TENANT_EXPORTED'
-              )
-        )`);
-        break;
-      case "privacy":
-        clauses.push(`(resource ILIKE '%account%' OR action LIKE 'consent.%' OR action LIKE 'account.%')`);
-        break;
-      case "auth":
-        clauses.push(`(resource ILIKE 'auth.%' OR resource = 'auth.step_up')`);
-        break;
-      case "import":
-        clauses.push(`resource ILIKE '%import%'`);
-        break;
-      case "job":
-        clauses.push(`(resource ILIKE '%job%' OR resource ILIKE '%submission%')`);
-        break;
-      case "other":
-        clauses.push(`NOT (
-          COALESCE(metadata->>'model', '') IN ('Product', 'Category')
-          OR resource ILIKE '%product%'
-          OR resource ILIKE '%categor%'
-          OR resource ILIKE '%mapping%'
-          OR COALESCE(metadata->>'lifecycle_state', '') <> ''
-          OR resource ILIKE '%connector%'
-          OR resource = 'CONNECTOR_PERMISSION'
-          OR resource ILIKE '%billing%'
-          OR resource = 'TENANT_PLAN_PROFILE'
-          OR resource ILIKE '%plan_profile%'
-          OR action IN (
-            'PLAN_TIER_CHANGE',
-            'TENANT_ACCESS_SUSPENDED',
-            'TENANT_ACCESS_RESUMED',
-            'TENANT_BILLING_STATUS_SET',
-            'TENANT_BILLING_CONTACT_UPDATED',
-            'TENANT_COMMERCIAL_STATE_UPDATED',
-            'COMMERCIAL_MUTATION_BLOCKED',
-              'COMMERCIAL_UPGRADE_REQUEST_CREATED',
-              'COMMERCIAL_UPGRADE_REQUEST_REUSED',
-                'COMMERCIAL_UPGRADE_REQUEST_LISTED',
-                'COMMERCIAL_UPGRADE_REQUEST_EXPORTED',
-                'COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED',
-                'COMMERCIAL_OVERVIEW_VIEWED',
-                'COMMERCIAL_TENANT_EXPORTED'
-              )
-          OR resource ILIKE '%account%'
-          OR action LIKE 'consent.%'
-          OR action LIKE 'account.%'
-          OR resource ILIKE 'auth.%'
-          OR resource = 'auth.step_up'
-          OR resource ILIKE '%import%'
-          OR resource ILIKE '%job%'
-          OR resource ILIKE '%submission%'
-          OR resource ILIKE '%user%'
-        )`);
-        break;
-    }
-  }
-
   private buildExplorerWhere(query: ListAuditEventsDto, cursorDate?: Date | null, cursorId?: string | null) {
-    const params: Array<string | number | Date> = [];
-    const clauses: string[] = [];
+    const clauses: Prisma.AuditLogWhereInput[] = [];
+    const scalarWhere: Prisma.AuditLogWhereInput = {};
     const actorId = String(query.actorId ?? "").trim();
     const action = String(query.action ?? "").trim();
     const resourceId = String(query.resourceId ?? "").trim();
     if (actorId) {
-      params.push(actorId);
-      clauses.push(`actor_id = $${params.length}`);
+      scalarWhere.actorId = actorId;
     }
     if (action) {
-      params.push(action);
-      clauses.push(`action = $${params.length}`);
+      scalarWhere.action = action;
     }
     if (resourceId) {
-      params.push(resourceId);
-      clauses.push(`resource_id = $${params.length}`);
-    }
-    if (query.entityType) {
-      this.applyEntityTypeClause(query.entityType, clauses);
+      scalarWhere.resourceId = resourceId;
     }
 
+    const createdAt: Prisma.DateTimeFilter = {};
     const dateFrom = this.parseDateBoundary(query.dateFrom, "from");
     if (dateFrom) {
-      params.push(dateFrom);
-      clauses.push(`created_at >= $${params.length}`);
+      createdAt.gte = dateFrom;
     }
     const dateTo = this.parseDateBoundary(query.dateTo, "to");
     if (dateTo) {
-      params.push(dateTo);
-      clauses.push(`created_at <= $${params.length}`);
+      createdAt.lte = dateTo;
+    }
+    if (Object.keys(createdAt).length > 0) {
+      scalarWhere.createdAt = createdAt;
+    }
+
+    if (Object.keys(scalarWhere).length > 0) {
+      clauses.push(scalarWhere);
+    }
+    if (query.entityType) {
+      clauses.push(this.buildEntityTypeWhere(query.entityType));
     }
 
     if (cursorDate && cursorId) {
-      params.push(cursorDate);
-      const dateParam = params.length;
-      params.push(cursorId);
-      const idParam = params.length;
-      clauses.push(`(created_at < $${dateParam} OR (created_at = $${dateParam} AND id < $${idParam}))`);
+      clauses.push(this.buildCursorWhere(cursorDate, cursorId));
     }
 
-    return {
-      params,
-      whereSql: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "",
-    };
+    return this.combineWhere(...clauses);
   }
 
   async listEvents(query: ListAuditEventsDto) {
@@ -422,42 +252,20 @@ export class AuditService {
       throw new BadRequestException("Invalid cursor.");
     }
 
-    const { params, whereSql } = this.buildExplorerWhere(query, cursorDate, token?.id ?? null);
-    params.push(safeLimit + 1);
-    const limitParam = params.length;
-    const entityTypeSql = this.entityTypeCaseSql();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        id,
-        actor_id AS "actorId",
-        actor_role AS "actorRole",
-        action,
-        resource,
-        resource_id AS "resourceId",
-        metadata,
-        created_at AS "createdAt",
-        ${entityTypeSql} AS "entityType"
-      FROM audit_logs
-      ${whereSql}
-      ORDER BY created_at DESC, id DESC
-      LIMIT $${limitParam}
-      `,
-      ...params,
-    )) as AuditExplorerRow[];
+    const rows = await this.prisma.tenant().auditLog.findMany({
+      where: this.buildExplorerWhere(query, cursorDate, token?.id ?? null),
+      orderBy: AUDIT_ORDER_BY,
+      take: safeLimit + 1,
+      select: AUDIT_SELECT,
+    });
 
     const hasNext = rows.length > safeLimit;
     const items = hasNext ? rows.slice(0, safeLimit) : rows;
     const last = items[items.length - 1];
-    const lastDate = last
-      ? last.createdAt instanceof Date
-        ? last.createdAt
-        : new Date(String(last.createdAt))
-      : null;
+    const lastDate = last?.createdAt ?? null;
 
     return {
-      items,
+      items: items.map((row) => this.normalizeExplorerRow(row)),
       limit: safeLimit,
       nextCursor:
         hasNext && last?.id && lastDate && !Number.isNaN(lastDate.getTime())
@@ -512,6 +320,325 @@ export class AuditService {
       return `"${normalized.replace(/"/g, "\"\"")}"`;
     }
     return normalized;
+  }
+
+  private normalizeAuditRow(row: AuditLogRow): AuditExplorerRow {
+    return {
+      id: row.id,
+      actorId: row.actorId,
+      actorRole: row.actorRole,
+      action: row.action,
+      resource: row.resource,
+      resourceId: row.resourceId,
+      metadata: this.normalizeMetadata(row.metadata),
+      createdAt: row.createdAt,
+    };
+  }
+
+  private normalizeExplorerRow(row: AuditLogRow): AuditExplorerRow {
+    const normalized = this.normalizeAuditRow(row);
+    return {
+      ...normalized,
+      entityType: this.inferEntityType(normalized),
+    };
+  }
+
+  private normalizeMetadata(value: Prisma.JsonValue): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private combineWhere(...clauses: Array<Prisma.AuditLogWhereInput | undefined>): Prisma.AuditLogWhereInput {
+    const valid = clauses
+      .filter((clause): clause is Prisma.AuditLogWhereInput => clause !== undefined)
+      .filter((clause) => Object.keys(clause).length > 0);
+    if (valid.length === 0) {
+      return {};
+    }
+    if (valid.length === 1) {
+      return valid[0];
+    }
+    return { AND: valid };
+  }
+
+  private buildCursorWhere(createdAt: Date, id: string): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          createdAt: {
+            lt: createdAt,
+          },
+        },
+        {
+          createdAt,
+          id: {
+            lt: id,
+          },
+        },
+      ],
+    };
+  }
+
+  private buildEntityTypeWhere(entityType: AuditEntityTypeFilter): Prisma.AuditLogWhereInput {
+    switch (entityType) {
+      case "product":
+        return this.productEntityWhere();
+      case "category":
+        return this.categoryEntityWhere();
+      case "mapping":
+        return this.mappingEntityWhere();
+      case "connector":
+        return this.connectorEntityWhere();
+      case "user":
+        return this.userEntityWhere();
+      case "plan":
+        return this.planEntityWhere();
+      case "privacy":
+        return this.privacyEntityWhere();
+      case "auth":
+        return this.authEntityWhere();
+      case "import":
+        return this.importEntityWhere();
+      case "job":
+        return this.jobEntityWhere();
+      case "other":
+        return {
+          NOT: [
+            this.productEntityWhere(),
+            this.categoryEntityWhere(),
+            this.mappingEntityWhere(),
+            this.connectorEntityWhere(),
+            this.userEntityWhere(),
+            this.planEntityWhere(),
+            this.privacyEntityWhere(),
+            this.authEntityWhere(),
+            this.importEntityWhere(),
+            this.jobEntityWhere(),
+          ],
+        };
+    }
+  }
+
+  private productEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          metadata: {
+            path: ["model"],
+            equals: "Product",
+          },
+        },
+        {
+          resource: {
+            contains: "product",
+            mode: "insensitive",
+          },
+        },
+      ],
+    };
+  }
+
+  private categoryEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          metadata: {
+            path: ["model"],
+            equals: "Category",
+          },
+        },
+        {
+          resource: {
+            contains: "categor",
+            mode: "insensitive",
+          },
+        },
+      ],
+    };
+  }
+
+  private mappingEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            contains: "mapping",
+            mode: "insensitive",
+          },
+        },
+        {
+          metadata: {
+            path: ["lifecycle_state"],
+            not: "",
+          },
+        },
+      ],
+    };
+  }
+
+  private connectorEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            contains: "connector",
+            mode: "insensitive",
+          },
+        },
+        {
+          resource: "CONNECTOR_PERMISSION",
+        },
+      ],
+    };
+  }
+
+  private userEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      resource: {
+        contains: "user",
+        mode: "insensitive",
+      },
+    };
+  }
+
+  private planEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            contains: "billing",
+            mode: "insensitive",
+          },
+        },
+        {
+          resource: "TENANT_PLAN_PROFILE",
+        },
+        {
+          resource: {
+            contains: "plan_profile",
+            mode: "insensitive",
+          },
+        },
+        {
+          action: {
+            in: [...PLAN_AUDIT_ACTIONS],
+          },
+        },
+      ],
+    };
+  }
+
+  private privacyEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            contains: "account",
+            mode: "insensitive",
+          },
+        },
+        {
+          action: {
+            startsWith: "consent.",
+          },
+        },
+        {
+          action: {
+            startsWith: "account.",
+          },
+        },
+      ],
+    };
+  }
+
+  private authEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            startsWith: "auth.",
+            mode: "insensitive",
+          },
+        },
+        {
+          resource: "auth.step_up",
+        },
+      ],
+    };
+  }
+
+  private importEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      resource: {
+        contains: "import",
+        mode: "insensitive",
+      },
+    };
+  }
+
+  private jobEntityWhere(): Prisma.AuditLogWhereInput {
+    return {
+      OR: [
+        {
+          resource: {
+            contains: "job",
+            mode: "insensitive",
+          },
+        },
+        {
+          resource: {
+            contains: "submission",
+            mode: "insensitive",
+          },
+        },
+      ],
+    };
+  }
+
+  private inferEntityType(row: AuditExplorerRow): AuditEntityTypeFilter {
+    const metadata = row.metadata;
+    const model = typeof metadata?.model === "string" ? metadata.model : "";
+    const lifecycleState = typeof metadata?.lifecycle_state === "string" ? metadata.lifecycle_state : "";
+    const resource = row.resource.toLowerCase();
+    const action = row.action;
+
+    if (model === "Product" || resource.includes("product")) {
+      return "product";
+    }
+    if (model === "Category" || resource.includes("categor")) {
+      return "category";
+    }
+    if (resource.includes("mapping") || lifecycleState.trim().length > 0) {
+      return "mapping";
+    }
+    if (resource.includes("connector") || row.resource === "CONNECTOR_PERMISSION") {
+      return "connector";
+    }
+    if (
+      resource.includes("billing") ||
+      row.resource === "TENANT_PLAN_PROFILE" ||
+      resource.includes("plan_profile") ||
+      PLAN_AUDIT_ACTIONS.includes(action as (typeof PLAN_AUDIT_ACTIONS)[number])
+    ) {
+      return "plan";
+    }
+    if (resource.includes("account") || action.startsWith("consent.") || action.startsWith("account.")) {
+      return "privacy";
+    }
+    if (resource.startsWith("auth.") || row.resource === "auth.step_up") {
+      return "auth";
+    }
+    if (resource.includes("import")) {
+      return "import";
+    }
+    if (resource.includes("job") || resource.includes("submission")) {
+      return "job";
+    }
+    if (resource.includes("user")) {
+      return "user";
+    }
+    return "other";
   }
 }
 

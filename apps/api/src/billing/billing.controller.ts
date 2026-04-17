@@ -571,3 +571,19 @@ export class BillingController {
     return { actorId, actorRole };
   }
 }
+import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
+      tenantKey: profile.tenantKey,
+      tenantKey: result.item.tenantKey,
+      tenantKey: this.resolveCommercialAuditTenantKey(),
+      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
+      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
+      tenantKey: item.tenantKey,
+      tenantKey: this.resolveCommercialAuditTenantKey(),
+      tenantKey: this.resolveCommercialAuditTenantKey(),
+      tenantKey: profile.tenantKey,
+      tenantKey: profile.tenantKey,
+
+  private resolveCommercialAuditTenantKey(tenantKey?: string | null): string {
+    const normalized = String(tenantKey ?? "").trim();
+    return normalized.length > 0 ? normalizeTenantKey(normalized) : DEFAULT_TENANT_KEY;
+  }
