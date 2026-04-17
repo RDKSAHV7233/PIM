@@ -129,6 +129,25 @@ async function login(baseUrl, userId, workspaceSlug) {
   return response.accessToken;
 }
 
+async function loginWithRetry(baseUrl, userId, workspaceSlug, maxAttempts = 8, delayMs = 600) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await login(baseUrl, userId, workspaceSlug);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("401") && !message.includes("INVALID_CREDENTIALS")) {
+        throw error;
+      }
+      if (attempt < maxAttempts) {
+        await sleep(delayMs);
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function run() {
   prepareEnv();
   if (!fs.existsSync(API_ENTRY)) {
@@ -187,9 +206,12 @@ async function run() {
 
   try {
     await waitForHealth(baseUrl, 60_000);
+    // Allow the auth module's onModuleInit to finish loading injected identities
+    // before attempting login. waitForHealth only confirms the HTTP server is up.
+    await sleep(800);
 
-    const tokenA = await login(baseUrl, userA, workspaceSlugA);
-    const tokenB = await login(baseUrl, userB, workspaceSlugB);
+    const tokenA = await loginWithRetry(baseUrl, userA, workspaceSlugA);
+    const tokenB = await loginWithRetry(baseUrl, userB, workspaceSlugB);
 
     await apiJson(baseUrl, "POST", "/taxonomy/categories", tokenA, { name: categoryA });
     await apiJson(baseUrl, "POST", "/taxonomy/categories", tokenB, { name: categoryB });
@@ -289,6 +311,5 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
 
 
