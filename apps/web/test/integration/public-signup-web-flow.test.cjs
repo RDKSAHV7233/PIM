@@ -44,9 +44,9 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
@@ -54,11 +54,11 @@ function prepareEnv() {
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
 }
 
 function assert(condition, message) {
@@ -274,7 +274,7 @@ async function run() {
   const webPort = 6000 + Math.floor(Math.random() * 80);
   const apiBaseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const webBaseUrl = `http://127.0.0.1:${webPort}`;
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-web-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-web-"));
   const workspaceSlug = `tej-web-${runId.slice(-8)}`;
   const adminEmail = `tej-web-${runId}@example.com`;
   const password = "Signup#2026";
@@ -321,7 +321,7 @@ async function run() {
     const signupPage = await request(webBaseUrl, "GET", "/signup", undefined, null);
     assertStatus(signupPage, 200, "signup page renders");
     assert(
-      String(signupPage.text).includes("Create your TEJ PIM workspace"),
+      String(signupPage.text).includes("Create your Vexa PIM workspace"),
       "Expected signup page to include the workspace creation heading.",
     );
 
@@ -331,7 +331,7 @@ async function run() {
       "POST",
       "/api/signup/workspace",
       {
-        displayName: "TEJ Web Signup Workspace",
+        displayName: "Vexa Web Signup Workspace",
         workspaceSlug,
         adminEmail,
         password,

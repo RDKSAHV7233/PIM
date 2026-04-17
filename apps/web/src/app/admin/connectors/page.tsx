@@ -6,6 +6,7 @@ import {
 } from "@/app/actions";
 import { ConnectorPermissionForm } from "@/components/settings/connector-permission-form";
 import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getConnectorDefinitions, getConnectorPermissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -39,23 +40,23 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <Link href="/dashboard" className="underline">
-            Dashboard
-          </Link>
-          <span>/</span>
-          <Link href="/admin" className="underline">
-            Admin
-          </Link>
-          <span>/</span>
-          <span>Connector Access</span>
-        </div>
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Connector Access</h1>
-          <p className="text-sm text-slate-600">
-            Manage connector action permissions (install, reconnect, uninstall) for users and roles.
-          </p>
-        </header>
+        <PageHeader
+          title="Connector Access"
+          description="Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="underline">
+                Dashboard
+              </Link>
+              <span> / </span>
+              <Link href="/admin" className="underline">
+                Admin
+              </Link>
+              <span> / </span>
+              <span className="font-semibold text-slate-700">Connector Access</span>
+            </>
+          }
+        />
 
         {status === "permission-granted" ? <StatusBanner tone="success" message="Connector permission granted." /> : null}
         {status === "permission-revoked" ? <StatusBanner tone="success" message="Connector permission revoked." /> : null}
@@ -83,7 +84,9 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
         ) : (
           <Card>
             <CardTitle>Connector Permission Management</CardTitle>
-            <p className="mt-3 text-sm text-slate-600">Admin role is required to grant or revoke connector permissions.</p>
+            <p className="mt-3 text-sm text-slate-600">
+              Admin role is required to grant or revoke connector permissions. You can still review the current access matrix below.
+            </p>
           </Card>
         )}
 

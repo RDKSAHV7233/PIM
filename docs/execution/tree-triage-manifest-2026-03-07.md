@@ -1,4 +1,4 @@
-# TEJ PIM Dirty Tree Triage Manifest (2026-03-07)
+# Vexa PIM Dirty Tree Triage Manifest (2026-03-07)
 
 - Repo: `C:\Users\Om Computers\PIM1`
 - Current HEAD before archive-ignore closure: `2a9bc48`

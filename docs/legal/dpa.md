@@ -1,4 +1,4 @@
-# TEJ PIM Data Processing Agreement (DPA)
+# Vexa PIM Data Processing Agreement (DPA)
 
 - Document owner: Legal + CTO
 - Status: Operational baseline pending customer-specific annexes

@@ -16,6 +16,14 @@ function run() {
   const source = fs.readFileSync(PAGE, "utf8");
 
   assert(
+    source.includes("<PageHeader") &&
+      source.includes("Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only.") &&
+      source.includes('<Link href="/dashboard" className="underline">') &&
+      source.includes('<Link href="/admin" className="underline">') &&
+      source.includes('<span className="font-semibold text-slate-700">Connector Access</span>'),
+    "Admin connectors must use the shared page-header pattern and explain the read-only fallback honestly.",
+  );
+  assert(
     source.includes("const role = await getServerActorRole();") &&
       source.includes("const authHeader = await getServerAuthHeader();"),
     "Admin connectors must derive shared server auth/session context before loading connector access data.",
@@ -44,12 +52,12 @@ function run() {
       source.includes("<ConnectorPermissionForm definitions={definitions} grantAction={grantConnectorPermissionAction} />") &&
       source.includes("form action={revokeConnectorPermissionAction}") &&
       source.includes('<CardTitle>Connector Permission Management</CardTitle>') &&
-      source.includes("Admin role is required to grant or revoke connector permissions.") &&
+      source.includes("Admin role is required to grant or revoke connector permissions. You can still review the current access matrix below.") &&
       source.includes('<span className="text-xs text-slate-500">Read-only</span>'),
     "Admin connectors must keep grant and revoke actions admin-only while preserving an honest read-only fallback for non-admin roles.",
   );
   assert(
-    source.includes("Manage connector action permissions (install, reconnect, uninstall) for users and roles.") &&
+    source.includes("Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only.") &&
       source.includes("Create one permission row per role or user.") &&
       source.includes('No connector permissions configured for this tenant.'),
     "Admin connectors must explain the connector action model and surface an honest empty state.",
@@ -70,6 +78,7 @@ function run() {
       {
         status: "ok",
         validated: [
+          "admin_connectors_route_uses_shared_page_header",
           "admin_connectors_route_uses_shared_server_auth_context",
           "admin_connectors_route_normalizes_status_query_state",
           "admin_connectors_route_fetches_definitions_and_permissions_in_parallel",

@@ -10,10 +10,10 @@ const {
   loginViaUi,
   purgeProduct,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 const STEP_UP_HEADER = "x-pim-step-up-token";
-const STEP_UP_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "tej-pim-demo-password";
+const STEP_UP_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
 
 function buildMappingsUrl(categoryId, productId, extra = {}) {
   const params = new URLSearchParams({
@@ -84,7 +84,7 @@ test("admin can create, validate, and publish a connector mapping version from t
   const category = await createCategory(adminToken, uniqueName("mapping-publish-cat"));
   const product = await createProduct(adminToken, {
     title: uniqueName("mapping-publish-product"),
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "browser mapping publish flow",
     categoryId: category.id,
     status: "draft",

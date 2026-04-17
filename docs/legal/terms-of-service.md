@@ -1,4 +1,4 @@
-# TEJ PIM Terms of Service
+# Vexa PIM Terms of Service
 
 - Document owner: Product + Legal + CTO
 - Status: Active baseline for controlled rollout

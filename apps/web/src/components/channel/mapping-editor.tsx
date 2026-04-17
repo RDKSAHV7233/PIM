@@ -277,7 +277,7 @@ export function MappingEditorCard({
 
   return (
     <Card id="mapping-draft">
-      <CardTitle>Map required fields first</CardTitle>
+      <CardTitle>Step 2: Build draft mapping</CardTitle>
       {canWrite ? (
         <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
           <RoleHiddenInput role={actorRole} />
@@ -355,7 +355,7 @@ export function MappingEditorCard({
             </div>
             <div className="space-y-4 p-3">
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-sm font-semibold text-amber-900">Required fields still missing</p>
+              <p className="text-sm font-semibold text-amber-900">Required fields still missing</p>
                 <p className="mt-1 text-xs text-amber-800">
                   Finish these required fields before you move to validation and publish.
                 </p>

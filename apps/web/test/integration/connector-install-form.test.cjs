@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
+const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
@@ -15,44 +16,46 @@ function assert(condition, message) {
 
 function run() {
   const pageSource = fs.readFileSync(CONNECTORS_PAGE, "utf8");
+  const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
-    pageSource.includes('definition.slug === "flipkart"') &&
-      pageSource.includes("Client ID") &&
-      pageSource.includes("Client Secret") &&
-      pageSource.includes("Refresh Token"),
-    "Connectors page must render Flipkart-specific credential fields inside the install form.",
+    setupSource.includes('if (slug === "flipkart")') &&
+      setupSource.includes("Client ID") &&
+      setupSource.includes("Client Secret") &&
+      setupSource.includes("Refresh Token"),
+    "Connector setup page must render Flipkart-specific credential fields inside the dedicated setup workspace.",
   );
   assert(
-    pageSource.includes('definition.slug === "amazon-in"') &&
-      pageSource.includes("Amazon India live install needs seller ID plus validated LWA credentials.") &&
-      pageSource.includes("Enter Amazon seller ID") &&
-      pageSource.includes("Enter Amazon refresh token"),
-    "Connectors page must render Amazon-specific seller ID and credential guidance inside the install form.",
+    setupSource.includes('if (slug === "amazon-in")') &&
+      setupSource.includes("Amazon India live install needs seller ID plus validated LWA credentials.") &&
+      setupSource.includes("Enter Amazon seller ID") &&
+      setupSource.includes("Enter Amazon refresh token"),
+    "Connector setup page must render Amazon-specific seller ID and credential guidance inside the dedicated setup workspace.",
   );
   assert(
-    pageSource.includes("encrypted on save and never shown again"),
-    "Connector install forms must explain secret handling truthfully.",
+    setupSource.includes("encrypted on save and never shown again"),
+    "Connector setup forms must explain secret handling truthfully.",
   );
   assert(
-    pageSource.includes("installErrorMessage") &&
-      pageSource.includes("FLIPKART_CREDENTIALS_INVALID") &&
-      pageSource.includes("AMAZON_CREDENTIALS_INVALID"),
-    "Connectors page must surface install-time validation failures back to the user.",
+    setupSource.includes("installErrorMessage") &&
+      setupSource.includes("FLIPKART_CREDENTIALS_INVALID") &&
+      setupSource.includes("AMAZON_CREDENTIALS_INVALID"),
+    "Connector setup flow must surface install-time validation failures back to the user.",
   );
   assert(
-    pageSource.includes("Portfolio Summary") &&
-      pageSource.includes("Live marketplaces") &&
-      pageSource.includes("Needs setup") &&
-      pageSource.includes("Workspace lanes") &&
+    pageSource.includes("Action rail") &&
+      pageSource.includes("Marketplace catalog") &&
       pageSource.includes("Connected accounts") &&
       pageSource.includes("Search connectors"),
     "Connectors page must render the operator-facing workspace anchors for the marketplace hub.",
   );
   assert(
-    pageSource.includes('font-semibold text-white">Workspace lanes</h2>'),
-    "Connectors page must keep the Workspace lanes heading readable on its dark card.",
+    pageSource.includes('href="/channels/connectors/setup"') &&
+      pageSource.includes('href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}') &&
+      pageSource.includes('id="connector-catalog"') &&
+      setupSource.includes("Back to connector portfolio"),
+    "Connectors hub must route install work into the dedicated setup page instead of embedding credential forms inline.",
   );
   assert(
     actionsSource.includes("clientId: clientId || undefined") &&
@@ -71,7 +74,7 @@ function run() {
         status: "ok",
         validated: [
           "connector_workspace_hub_anchors_present",
-          "connector_workspace_lanes_heading_readable",
+          "connector_workspace_routes_setup_to_dedicated_page",
           "flipkart_install_form_collects_credentials",
           "amazon_install_form_collects_seller_credentials",
           "connector_install_form_explains_secret_handling",

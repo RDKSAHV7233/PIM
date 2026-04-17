@@ -19,7 +19,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerSessionClaims } from "@/lib/server-session";
+import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -76,17 +76,19 @@ function formatDateTime(value: string | null) {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const status = String(query.status ?? "").trim();
+  const errorMessage = String(query.message ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
-  const canManageUsers = Boolean(authHeader);
+  const canManageUsers = actorRole === "admin";
 
   try {
     const [usage, connectorPermissions, workspaceUsers] = await Promise.all([
-      getBillingUsage({ authHeader }),
-      getConnectorPermissions(undefined, { authHeader }),
-      getWorkspaceUsers({ authHeader }),
+      getBillingUsage({ role: actorRole, authHeader }),
+      getConnectorPermissions(undefined, { role: actorRole, authHeader }),
+      getWorkspaceUsers({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -124,11 +126,14 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           }
         />
 
+        {status === "user-error" ? (
+          <StatusBanner tone="error" message={errorMessage || "Unable to update workspace user."} />
+        ) : null}
         {status === "user-created" ? <StatusBanner tone="success" message="Workspace user invited." /> : null}
-        {status === "role-updated" ? <StatusBanner tone="success" message="User role updated." /> : null}
-        {status === "user-locked" ? <StatusBanner tone="success" message="User lock applied." /> : null}
-        {status === "user-unlocked" ? <StatusBanner tone="success" message="User unlocked." /> : null}
-        {status === "user-deactivated" ? <StatusBanner tone="success" message="User deactivated." /> : null}
+        {status === "role-updated" ? <StatusBanner tone="success" message="Workspace user role updated." /> : null}
+        {status === "user-locked" ? <StatusBanner tone="success" message="Workspace user locked." /> : null}
+        {status === "user-unlocked" ? <StatusBanner tone="success" message="Workspace user unlocked." /> : null}
+        {status === "user-deactivated" ? <StatusBanner tone="success" message="Workspace user deactivated." /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
@@ -141,6 +146,16 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           />
         </section>
 
+        {!canManageUsers ? (
+          <Card>
+            <CardTitle>Workspace Access Management</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              Admin role is required to invite users, change roles, or change account access state. You can still review
+              workspace users, the role matrix, and connector overrides below.
+            </p>
+          </Card>
+        ) : null}
+
         {canManageUsers && showInvite ? (
           <Card>
             <CardTitle>Invite User</CardTitle>
@@ -148,6 +163,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
               Add a workspace user with editor, reviewer, or viewer access. Admin promotion stays explicit after the user exists.
             </p>
             <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px_auto] md:items-end">
+              <input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />
               <label className="grid gap-1 text-sm">
                 <span className="font-medium text-slate-700">User ID</span>
                 <input

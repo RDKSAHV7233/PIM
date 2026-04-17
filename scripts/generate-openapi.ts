@@ -15,8 +15,8 @@ async function generate(): Promise<void> {
   );
 
   const config = new DocumentBuilder()
-    .setTitle("TEJ PIM API")
-    .setDescription("TEJ PIM API OpenAPI specification")
+    .setTitle("Vexa PIM API")
+    .setDescription("Vexa PIM API OpenAPI specification")
     .setVersion("1.0.0")
     .addBearerAuth()
     .build();

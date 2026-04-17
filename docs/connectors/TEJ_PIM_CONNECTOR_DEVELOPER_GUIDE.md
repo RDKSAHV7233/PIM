@@ -1,4 +1,4 @@
-# TEJ PIM Connector Developer Guide
+# Vexa PIM Connector Developer Guide
 
 Status: Active developer-facing connector guide  
 Date: 2026-03-23  

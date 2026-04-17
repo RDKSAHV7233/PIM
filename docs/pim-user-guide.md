@@ -1,4 +1,4 @@
-# TEJ PIM User Guide
+# Vexa PIM User Guide
 
 This guide explains how to use TEJ PIM as it exists in this repository today.
 

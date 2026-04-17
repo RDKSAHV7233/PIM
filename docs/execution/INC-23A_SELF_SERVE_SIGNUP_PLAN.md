@@ -1,4 +1,4 @@
-# TEJ PIM INC-23A Self-Serve Signup Plan
+# Vexa PIM INC-23A Self-Serve Signup Plan
 
 - Date: 2026-03-26
 - Status: proposed

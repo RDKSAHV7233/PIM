@@ -41,17 +41,18 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
@@ -127,13 +128,17 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `media-ssrf-${runId}`;
   const userId = `media-ssrf-user-${runId}`;
+  const workspaceSlug = `mssrf-${runId}`.slice(0, 24);
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Media SSRF" },
     }),
   };
 
@@ -162,7 +167,8 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      password: "tej-pim-demo-password",
+      workspaceSlug,
+      password: process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "login");
@@ -176,7 +182,7 @@ async function run() {
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Media SSRF Product ${runId}`,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "SSRF guard product",
       categoryId: category.payload.id,
       status: "draft",

@@ -164,31 +164,25 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
 
   return (
     <div
-      className="mx-auto max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6"
+      className="relative mx-auto max-w-[26rem] overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-5 md:p-6 shadow-[0_28px_70px_rgba(148,163,184,0.18)] backdrop-blur"
       suppressHydrationWarning
     >
-      <header className="space-y-1">
-        <BrandLogo variant="lockup" className="mb-3" />
-        <h1 className="text-2xl font-semibold text-slate-900">{authCopy.loginTitle}</h1>
-        <p className="text-sm text-slate-600">{authCopy.loginSubtitle}</p>
-        {signupEnabled ? (
-          <p className="text-sm text-slate-600">
-            {authCopy.signupLinkPrompt}{" "}
-            <Link href={`/signup?lang=${encodeURIComponent(locale)}`} className="font-medium underline">
-              {authCopy.signupLinkCta}
-            </Link>
-            .
-          </p>
-        ) : null}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.18),_rgba(255,255,255,0)_60%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.12),_rgba(255,255,255,0)_52%)]" />
+      <div className="relative space-y-5">
+      <header className="space-y-4 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+        <BrandLogo variant="lockup" className="mb-0" />
+        <div>
+          <h1 className="text-[1.85rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">{authCopy.loginTitle}</h1>
+        </div>
       </header>
       {loginReasonMessage ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
           {loginReasonMessage}
         </div>
       ) : null}
 
       {isRateLimited ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="rounded-xl border border-amber-300/80 bg-amber-50 p-4 text-sm text-amber-900 shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
           <p className="font-medium">{authCopy.rateLimitedTitle}</p>
           <p className="mt-1">{authCopy.rateLimitedBody}</p>
           {showRateLimitCountdown && (
@@ -199,8 +193,8 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
         </div>
       ) : (
         <form className="space-y-4" onSubmit={onSubmit} suppressHydrationWarning>
-          <div className="space-y-1">
-            <label htmlFor="workspace" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="space-y-1.5">
+            <label htmlFor="workspace" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               {authCopy.workspaceLabel}
             </label>
             <input
@@ -208,32 +202,32 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
               type="text"
               value={workspaceSlug}
               onChange={(event) => setWorkspaceSlug(event.target.value)}
-              autoComplete="organization"
+              autoComplete="off"
               required
               placeholder={authCopy.workspacePlaceholder}
               suppressHydrationWarning
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
             />
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="user-id" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="space-y-1.5">
+            <label htmlFor="user-id" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               {authCopy.emailLabel}
             </label>
             <input
               id="user-id"
-              type="text"
+              type="email"
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
-              autoComplete="username"
+              autoComplete="email"
               required
               suppressHydrationWarning
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
             />
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="space-y-1.5">
+            <label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               {authCopy.passwordLabel}
             </label>
             <input
@@ -243,7 +237,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
               onChange={(event) => setPassword(event.target.value)}
               required
               suppressHydrationWarning
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
             />
           </div>
 
@@ -251,28 +245,45 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             type="submit"
             disabled={submitting}
             suppressHydrationWarning
-            className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
           >
             {submitting ? authCopy.signingIn : authCopy.signIn}
           </button>
 
           {errorMessage && (
-            <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{errorMessage}</p>
-          )}
-          {typeof attemptsRemaining === "number" && attemptsRemaining <= 2 && (
-            <p className="text-xs text-slate-600">
-              {authCopy.forgotPasswordPrefix}{" "}
-              <Link
-                href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
-                className="underline"
-              >
-                {authCopy.forgotPasswordSuffix}
-              </Link>
-              .
+            <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
+              {errorMessage}
             </p>
           )}
+          <p className="text-xs leading-5 text-slate-600">
+            {authCopy.forgotPasswordPrefix}{" "}
+            <Link
+              href={`/login/reset?lang=${encodeURIComponent(locale)}&email=${encodeURIComponent(userId.trim())}&workspace=${encodeURIComponent(workspaceSlug.trim().toLowerCase())}`}
+              className="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+            >
+              {authCopy.forgotPasswordSuffix}
+            </Link>
+            .
+          </p>
+
+          <div className="space-y-2 pt-1 text-center">
+            <p className="text-xs leading-5 text-slate-500">{authCopy.loginSubtitle}</p>
+            {signupEnabled ? (
+              <p className="text-sm leading-6 text-slate-600">
+                {authCopy.signupLinkPrompt}{" "}
+                <Link
+                  href={`/signup?lang=${encodeURIComponent(locale)}`}
+                  className="font-semibold text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+                >
+                  {authCopy.signupLinkCta}
+                </Link>
+                .
+              </p>
+            ) : null}
+          </div>
         </form>
       )}
+      </div>
     </div>
   );
 }

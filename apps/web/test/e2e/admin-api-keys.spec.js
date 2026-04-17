@@ -9,7 +9,7 @@ const {
   purgeProduct,
   uniqueName,
   DEFAULT_API_URL,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 async function apiKeyRequest(method, route, apiKey, body) {
   const headers = {
@@ -75,7 +75,7 @@ test("admin can create and revoke an API key from the browser", async ({ page })
 
     const createWithApiKey = await apiKeyRequest("POST", "/catalog/products", plainTextKey, {
       title: productTitle,
-      brand: "TEJ PIM",
+      brand: "Vexa PIM",
       description: "Created with browser-issued API key",
       categoryId: category.id,
       status: "draft",

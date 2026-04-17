@@ -47,6 +47,12 @@ Current repo state:
   - `npm run dev:web`
 - If the local Next.js runtime serves stale chunks:
   - `tools/dev/recover-web-runtime.ps1`
+- If the staging URL is not reachable in Chrome (Railway domain DNS not resolving on Windows):
+  - Set `STAGING_BASE_URL` and `STAGING_WEB_URL` (and optionally `STAGING_RESOLVE_IP`) in your `.env` or shell
+  - Run as Administrator: `tools/dev/patch-browser-dns.ps1`
+  - This writes the required hosts-file entries so all browsers resolve Railway domains to the correct IP
+  - Run `ipconfig /flushdns` afterwards if the change is not picked up immediately
+  - To undo: `tools/dev/patch-browser-dns.ps1 -Remove`
 - Infrastructure logs:
   - `npm run infra:logs`
 - Stop infrastructure:

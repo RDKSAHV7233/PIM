@@ -1,0 +1,21 @@
+<svg width="420" height="120" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#A78BFA"/>
+    </linearGradient>
+  </defs>
+  <circle cx="45" cy="30" r="4" fill="url(#gradDark)" />
+  <circle cx="70" cy="55" r="6" fill="url(#gradDark)" />
+  <circle cx="35" cy="85" r="4" fill="url(#gradDark)" />
+  <circle cx="90" cy="85" r="4" fill="url(#gradDark)" />
+  <path d="M45 30 Q65 40 70 55" stroke="url(#gradDark)" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M70 55 Q50 72 35 85" stroke="url(#gradDark)" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M70 55 Q80 72 90 85" stroke="url(#gradDark)" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="130" y="55" font-family="Sora, Inter, Arial" font-size="36" fill="#FFFFFF" font-weight="600">
+    Vexa
+  </text>
+  <text x="130" y="85" font-family="Inter, Arial" font-size="12" fill="#D1D5DB" letter-spacing="2.5">
+    PRODUCT INFORMATION MANAGEMENT
+  </text>
+</svg>

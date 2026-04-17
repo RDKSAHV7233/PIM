@@ -1,4 +1,4 @@
-# TEJ PIM Connector Developer Guide (CTO Validated, Single Source of Truth)
+# Vexa PIM Connector Developer Guide (CTO Validated, Single Source of Truth)
 
 Date: 2026-03-06  
 Canonical file: `docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE_CTO_VALIDATED.md`
@@ -78,7 +78,7 @@ CTO/PO decision for TEJ PIM:
   - `GET /admin/connectors/:id/config` (`src/auth/protected-routes.ts:1773`)
   - `/admin/connectors/:id/circuit-breaker*` (`src/auth/protected-routes.ts:1796`)
 
-## 5) Target Profile Mapping (TEJ PIM Local Package -> Current Backend)
+## 5) Target Profile Mapping (Vexa PIM Local Package -> Current Backend)
 
 | TEJ PIM package reference | Current backend mapping | Status |
 |---|---|---|

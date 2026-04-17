@@ -8,6 +8,7 @@ import {
   ApiHttpError,
   getConnectorPermissions,
   getInstalledConnectors,
+  getProductList,
   getSubmissions,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -44,6 +45,60 @@ function submissionStatusTone(status: string): "neutral" | "success" | "warning"
   return "neutral";
 }
 
+function installationStatusTone(status: string): "neutral" | "success" | "warning" | "danger" {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (normalized === "ACTIVE") {
+    return "success";
+  }
+  if (normalized === "CREDENTIAL_EXPIRED" || normalized === "FAILED" || normalized === "ERROR") {
+    return "danger";
+  }
+  if (normalized === "PAUSED" || normalized === "DISABLED" || normalized === "INACTIVE") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function describePermissionRule(permission: {
+  principalType: string;
+  principalId: string;
+  action: string;
+  accountAlias: string;
+}) {
+  const subject =
+    permission.principalType === "role"
+      ? `${permission.principalId} role holders`
+      : `user ${permission.principalId}`;
+  const action = permission.action === "uninstall" ? "disable" : permission.action;
+  const scope = permission.accountAlias === "*" ? "all aliases" : `alias "${permission.accountAlias}"`;
+  return `${subject} can ${action} this connector for ${scope}.`;
+}
+
+function summarizeSubmissionOutcome(submission: {
+  status: string;
+  source: string;
+  channelErrors: Array<{ sellerMessage: string }>;
+  externalRef: string | null;
+}) {
+  const firstError = submission.channelErrors[0]?.sellerMessage?.trim();
+  if (firstError) {
+    return firstError;
+  }
+  if (submission.status === "SUCCESS") {
+    return submission.externalRef ? `Published as ${submission.externalRef}.` : "Completed successfully.";
+  }
+  if (submission.status === "PENDING" || submission.status === "RETRYING") {
+    return `Waiting on ${submission.source.toLowerCase().replace(/_/g, " ")} processing.`;
+  }
+  if (submission.status === "SUPPRESSED") {
+    return "Suppressed by connector rules or duplicate protection.";
+  }
+  if (submission.status === "REJECTED") {
+    return "Rejected by the channel. Review the connector errors and product data.";
+  }
+  return "Needs operator review.";
+}
+
 export default async function ChannelConnectorDetailPage({
   params,
 }: ChannelConnectorDetailPageProps) {
@@ -58,20 +113,25 @@ export default async function ChannelConnectorDetailPage({
       notFound();
     }
 
-    const [permissions, submissionsRaw] = await Promise.all([
+    const [permissions, submissionsRaw, products] = await Promise.all([
       getConnectorPermissions(installation.slug, { role: actorRole, authHeader }),
-      getSubmissions({ connectorSlug: installation.slug, limit: 100 }, { role: actorRole, authHeader }),
+      getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
     const submissions = toItems(submissionsRaw);
+    const productsById = new Map(products.map((product) => [product.id, product]));
     const failedSubmissions = submissions.filter(
       (item) => item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED",
+    );
+    const pendingSubmissions = submissions.filter(
+      (item) => item.status === "PENDING" || item.status === "RETRYING",
     );
 
     return (
       <div className="space-y-5">
         <PageHeader
-          title={`${installation.displayName} Connector`}
-          description={`Account alias: ${installation.accountAlias}`}
+          title={`${installation.displayName} / ${installation.accountAlias}`}
+          description="Account-level connector health, access policy, and submission activity for this installation only."
           breadcrumb={
             <>
               <Link href="/dashboard" className="hover:underline">
@@ -92,13 +152,13 @@ export default async function ChannelConnectorDetailPage({
             <>
               <StatusChip
                 label={installation.status}
-                tone={installation.status === "ACTIVE" ? "success" : "warning"}
+                tone={installationStatusTone(installation.status)}
               />
               <Link
                 href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Open Mapping Manager
+                Open mapping workspace
               </Link>
             </>
           }
@@ -106,27 +166,32 @@ export default async function ChannelConnectorDetailPage({
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            label="Capabilities"
-            value={installation.capabilities.length}
-            helper={installation.capabilities.length > 0 ? installation.capabilities.join(", ") : "No capabilities configured"}
+            label="Account health"
+            value={installation.status === "ACTIVE" ? "Healthy" : installation.status}
+            helper={installation.lastSyncAt ? `Last sync ${new Date(installation.lastSyncAt).toLocaleString()}` : "No sync recorded yet"}
+            tone={installationStatusTone(installation.status) === "danger" ? "danger" : installationStatusTone(installation.status) === "warning" ? "warning" : "default"}
           />
-          <KpiCard label="Submissions" value={submissions.length} />
+          <KpiCard label="Submissions" value={submissions.length} helper={`${pendingSubmissions.length} pending or retrying`} />
           <KpiCard
             label="Errors / Rejections"
             value={failedSubmissions.length}
             tone={failedSubmissions.length > 0 ? "danger" : "success"}
           />
           <KpiCard
-            label="Permission Rules"
+            label="Access rules"
             value={permissions.length}
-            helper="User and role overrides"
+            helper="Role and user policy overrides"
           />
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardTitle>Overview</CardTitle>
+            <CardTitle>Account Profile</CardTitle>
             <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+              <dt className="text-slate-500">Connector</dt>
+              <dd>{installation.displayName}</dd>
+              <dt className="text-slate-500">Account alias</dt>
+              <dd>{installation.accountAlias}</dd>
               <dt className="text-slate-500">Installation ID</dt>
               <dd className="font-mono text-xs text-slate-700">{installation.id}</dd>
               <dt className="text-slate-500">Slug</dt>
@@ -141,17 +206,17 @@ export default async function ChannelConnectorDetailPage({
           </Card>
 
           <Card>
-            <CardTitle>Permissions</CardTitle>
+            <CardTitle>Access Policy</CardTitle>
             {permissions.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">No connector-specific permission overrides.</p>
+              <p className="mt-2 text-sm text-slate-600">No connector-specific permission overrides. Workspace defaults are currently in effect.</p>
             ) : (
               <ul className="mt-2 space-y-2 text-sm">
                 {permissions.map((permission) => (
                   <li key={permission.id} className="rounded-md border border-slate-200 px-3 py-2">
-                    <p className="font-medium text-slate-800">
-                      {permission.principalType}:{permission.principalId}
+                    <p className="font-medium text-slate-800">{describePermissionRule(permission)}</p>
+                    <p className="text-xs text-slate-500">
+                      Created by {permission.createdBy || "system"} · updated {new Date(permission.updatedAt).toLocaleString()}
                     </p>
-                    <p className="text-slate-600">action={permission.action} | alias={permission.accountAlias}</p>
                   </li>
                 ))}
               </ul>
@@ -160,43 +225,51 @@ export default async function ChannelConnectorDetailPage({
               href="/admin/connectors"
               className="mt-3 inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Manage Connector Access
+              Manage connector access
             </Link>
           </Card>
         </section>
 
         <Card>
-          <CardTitle>Submission History</CardTitle>
+          <CardTitle>Submission Activity</CardTitle>
           {submissions.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">No submissions recorded for this connector yet.</p>
+            <p className="mt-2 text-sm text-slate-600">No submissions recorded for this account yet.</p>
           ) : (
             <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Submission</th>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Outcome</th>
                     <th className="px-3 py-2">Attempt</th>
                     <th className="px-3 py-2">Submitted</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {submissions.slice(0, 50).map((submission) => (
+                  {submissions.slice(0, 50).map((submission) => {
+                    const product = productsById.get(submission.productId);
+                    return (
                     <tr key={submission.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                      <td className="px-3 py-2.5 font-mono text-xs">{submission.id}</td>
                       <td className="px-3 py-2.5">
                         <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="text-blue-700 hover:underline">
-                          {submission.productId}
+                          {product?.title || "Open product"}
                         </Link>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {product?.brand ? `${product.brand} · ` : ""}{submission.productId}
+                        </p>
                       </td>
                       <td className="px-3 py-2.5">
                         <StatusChip label={submission.status} tone={submissionStatusTone(submission.status)} />
                       </td>
+                      <td className="px-3 py-2.5 text-sm text-slate-700">
+                        <p>{summarizeSubmissionOutcome(submission)}</p>
+                        <p className="mt-1 font-mono text-[11px] text-slate-500">{submission.id}</p>
+                      </td>
                       <td className="px-3 py-2.5">{submission.attemptNumber}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

@@ -30,7 +30,7 @@ const IMPORT_FIELD_GUIDE = [
   },
   {
     name: "brand",
-    example: "TEJ PIM",
+    example: "Vexa PIM",
     notes: "Brand label used in product search and merchandising.",
   },
   {
@@ -59,7 +59,7 @@ const SAMPLE_JSON_PREVIEW = `[
   {
     "title": "Classic Cotton Tee",
     "description": "Soft crew-neck t-shirt",
-    "brand": "TEJ PIM",
+    "brand": "Vexa PIM",
     "hsnCode": "61091000",
     "gstRate": 12,
     "status": "draft",

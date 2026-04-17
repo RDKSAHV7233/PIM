@@ -27,6 +27,15 @@ function run() {
     "Sidebar must use seller-facing Settings language instead of Admin in the main navigation.",
   );
   assert(
+    sidebarSource.includes('label: "API Keys"') &&
+      sidebarSource.includes('href: "/admin/api-keys"') &&
+      sidebarSource.includes('icon: "key"') &&
+      sidebarSource.includes('label: "Outbound Webhooks"') &&
+      sidebarSource.includes('href: "/admin/webhooks"') &&
+      sidebarSource.includes('icon: "webhook"'),
+    "Settings navigation must keep integration governance tools visible alongside core admin controls.",
+  );
+  assert(
     sidebarSource.indexOf('title: "Quality"') < sidebarSource.indexOf('title: "Operations"'),
     "Sidebar must place Quality before Operations in the merchandiser workflow.",
   );
@@ -74,6 +83,7 @@ function run() {
         status: "ok",
         validated: [
           "sidebar_promotes_catalog_first_hierarchy",
+          "settings_navigation_keeps_integration_governance_tools_visible",
           "dashboard_groups_catalog_publishing_and_operations",
           "dashboard_and_sidebar_expose_task_drilldowns",
         ],

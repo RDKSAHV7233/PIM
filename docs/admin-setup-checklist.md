@@ -1,4 +1,4 @@
-# TEJ PIM Admin Setup Checklist
+# Vexa PIM Admin Setup Checklist
 
 This checklist is for workspace admins setting up a tenant in the current TEJ PIM application.
 

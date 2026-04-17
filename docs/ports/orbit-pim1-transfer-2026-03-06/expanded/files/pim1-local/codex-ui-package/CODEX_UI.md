@@ -1,4 +1,4 @@
-# TEJ PIM — Frontend Codex Execution Instructions
+# Vexa PIM — Frontend Codex Execution Instructions
 **Stack:** Next.js 14 App Router · TypeScript strict · Tailwind CSS · shadcn/ui · React Query v5
 **API:** NestJS at `NEXT_PUBLIC_API_URL`. Auth: JWT in Authorization header, refresh token rotation.
 **Target:** Mid-market Indian sellers, 500–5000 SKUs, Amazon India · Flipkart · Meesho

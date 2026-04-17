@@ -30,10 +30,13 @@ function run() {
     "Admin API keys must surface revoke success through the page-level status banner contract.",
   );
   assert(
-    source.includes('role === "admin" ? <ApiKeyCreatePanel /> : null') &&
+    source.includes('role === "admin" ? (') &&
+      source.includes("<ApiKeyCreatePanel />") &&
+      source.includes("<CardTitle>API Key Management</CardTitle>") &&
+      source.includes("Admin role is required to create or revoke API keys. You can still review the issued machine credentials below.") &&
       source.includes("form action={revokeApiAccessKeyAction}") &&
       source.includes('name="keyId" value={key.id}'),
-    "Admin API keys must keep creation and revocation actions admin-only at the page contract level.",
+    "Admin API keys must keep creation and revocation actions admin-only while explaining the read-only fallback at the page contract level.",
   );
   assert(
     source.includes("function resolveStatus(key: ApiAccessKey)") &&

@@ -1,4 +1,4 @@
-# TEJ PIM Documentation Structure (Canonical)
+# Vexa PIM Documentation Structure (Canonical)
 
 - Current canonical snapshot: `docs/execution/CURRENT_STATE.md`
 - Connector documentation entry point: `docs/connectors/README.md`

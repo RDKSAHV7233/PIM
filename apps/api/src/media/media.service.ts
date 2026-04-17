@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { promises as fs } from "node:fs";
@@ -13,8 +14,6 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
-import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
-import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
@@ -171,7 +170,7 @@ export class MediaService {
         if (!skuCode) {
           throw new BadRequestException("skuCode is required.");
         }
-        const variant = await this.prisma.tenant().variant.findUnique({
+        const variant = await this.prisma.tenant().variant.findFirst({
           where: { skuCode },
           select: {
             id: true,
@@ -230,7 +229,6 @@ export class MediaService {
   }
 
   async listAssets(productId?: string, variantId?: string, pagination?: CursorPaginationQuery) {
-    const tenantKey = this.getCurrentTenantKey();
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -242,67 +240,29 @@ export class MediaService {
         throw new BadRequestException("Invalid cursor.");
       }
 
-      const params: Array<string | Date | number> = [];
-      const clauses: string[] = [];
-
-      params.push(tenantKey);
-      clauses.push(`tenant_key = $${params.length}`);
-
-      if (variantId) {
-        params.push(variantId);
-        clauses.push(`variant_id = $${params.length}`);
-      } else if (productId) {
-        params.push(productId);
-        clauses.push(`product_id = $${params.length}`);
-      }
-
-      if (token && cursorDate) {
-        params.push(cursorDate);
-        const dateParam = params.length;
-        params.push(token.id);
-        const idParam = params.length;
-        clauses.push(
-          `(created_at < $${dateParam} OR (created_at = $${dateParam} AND id < $${idParam}))`,
-        );
-      }
-
-      const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-      params.push(limit + 1);
-      const limitParam = params.length;
-      // RLS-BYPASS: manual tenant filter
-      const rows = (await this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          id,
-          product_id AS "productId",
-          variant_id AS "variantId",
-          entity_type AS "entityType",
-          file_name AS "fileName",
-          mime_type AS "mimeType",
-          storage_path AS "storagePath",
-          width,
-          height,
-          size_bytes AS "sizeBytes",
-          checksum,
-          metadata,
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM media_assets
-        ${whereSql}
-        ORDER BY created_at DESC, id DESC
-        LIMIT $${limitParam}
-        `,
-        ...params,
-      )) as Array<Record<string, unknown>>;
+      const rows = await this.prisma.tenant().mediaAsset.findMany({
+        where: {
+          ...(variantId ? { variantId } : productId ? { productId } : {}),
+          ...(token && cursorDate
+            ? {
+                OR: [
+                  { createdAt: { lt: cursorDate } },
+                  {
+                    createdAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      });
 
       const hasNext = rows.length > limit;
       const items = hasNext ? rows.slice(0, limit) : rows;
-      const last = items[items.length - 1] as { id?: string; createdAt?: unknown } | undefined;
-      const createdAt = last?.createdAt instanceof Date
-        ? last.createdAt
-        : typeof last?.createdAt === "string"
-        ? new Date(last.createdAt)
-        : null;
+      const last = items[items.length - 1];
+      const createdAt = last?.createdAt ?? null;
 
       return {
         items,
@@ -317,120 +277,29 @@ export class MediaService {
     }
 
     if (variantId) {
-      // RLS-BYPASS: manual tenant filter
-      return this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          id,
-          product_id AS "productId",
-          variant_id AS "variantId",
-          entity_type AS "entityType",
-          file_name AS "fileName",
-          mime_type AS "mimeType",
-          storage_path AS "storagePath",
-          width,
-          height,
-          size_bytes AS "sizeBytes",
-          checksum,
-          metadata,
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM media_assets
-        WHERE tenant_key = $1
-          AND variant_id = $2
-        ORDER BY created_at DESC
-        `,
-        tenantKey,
-        variantId,
-      );
+      return this.prisma.tenant().mediaAsset.findMany({
+        where: { variantId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
     }
     if (productId) {
-      // RLS-BYPASS: manual tenant filter
-      return this.prisma.tenant().$queryRawUnsafe(
-        `
-        SELECT
-          id,
-          product_id AS "productId",
-          variant_id AS "variantId",
-          entity_type AS "entityType",
-          file_name AS "fileName",
-          mime_type AS "mimeType",
-          storage_path AS "storagePath",
-          width,
-          height,
-          size_bytes AS "sizeBytes",
-          checksum,
-          metadata,
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM media_assets
-        WHERE tenant_key = $1
-          AND product_id = $2
-        ORDER BY created_at DESC
-        `,
-        tenantKey,
-        productId,
-      );
+      return this.prisma.tenant().mediaAsset.findMany({
+        where: { productId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
     }
-    // RLS-BYPASS: manual tenant filter
-    return this.prisma.tenant().$queryRawUnsafe(`
-      SELECT
-        id,
-        product_id AS "productId",
-        variant_id AS "variantId",
-        entity_type AS "entityType",
-        file_name AS "fileName",
-        mime_type AS "mimeType",
-        storage_path AS "storagePath",
-        width,
-        height,
-        size_bytes AS "sizeBytes",
-        checksum,
-        metadata,
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM media_assets
-      WHERE tenant_key = $1
-      ORDER BY created_at DESC
-      LIMIT 200
-    `,
-    tenantKey,
-    );
+    return this.prisma.tenant().mediaAsset.findMany({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 200,
+    });
   }
 
   async getAsset(assetId: string) {
-    const tenantKey = this.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        id,
-        product_id AS "productId",
-        variant_id AS "variantId",
-        entity_type AS "entityType",
-        file_name AS "fileName",
-        mime_type AS "mimeType",
-        storage_path AS "storagePath",
-        width,
-        height,
-        size_bytes AS "sizeBytes",
-        checksum,
-        metadata,
-        created_at AS "createdAt",
-        updated_at AS "updatedAt"
-      FROM media_assets
-      WHERE tenant_key = $1
-        AND id = $2
-      LIMIT 1
-      `,
-      tenantKey,
-      assetId,
-    )) as Array<Record<string, unknown>>;
-
-    if (rows.length === 0) {
+    const asset = await this.prisma.tenant().mediaAsset.findUnique({ where: { id: assetId } });
+    if (!asset) {
       throw new NotFoundException("Media asset not found");
     }
-    return rows[0];
+    return asset;
   }
 
   async validateAsset(assetId: string, channelInput: string) {
@@ -488,7 +357,6 @@ export class MediaService {
     source: "direct_upload" | "bulk_association";
     sourceRef: string | null;
   }) {
-    const tenantKey = this.getCurrentTenantKey();
     const fileBuffer = input.contentBuffer;
     if (fileBuffer.length === 0) {
       throw new BadRequestException("Uploaded media content is empty.");
@@ -502,25 +370,17 @@ export class MediaService {
     const height = input.height ?? detectedDimensions?.height ?? null;
     const checksum = createHash("sha256").update(fileBuffer).digest("hex");
 
-    // RLS-BYPASS: manual tenant filter
-    const existing = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT id
-      FROM media_assets
-      WHERE tenant_key = $1
-        AND checksum = $2
-        AND product_id IS NOT DISTINCT FROM $3
-        AND variant_id IS NOT DISTINCT FROM $4
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      tenantKey,
-      checksum,
-      input.entity.productId,
-      input.entity.variantId,
-    )) as Array<{ id: string }>;
-    if (existing.length > 0) {
-      const asset = (await this.getAsset(existing[0].id)) as Record<string, unknown>;
+    const existing = await this.prisma.tenant().mediaAsset.findFirst({
+      where: {
+        checksum,
+        productId: input.entity.productId,
+        variantId: input.entity.variantId,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    if (existing) {
+      const asset = (await this.getAsset(existing.id)) as Record<string, unknown>;
       return {
         ...asset,
         deduplicated: true,
@@ -535,32 +395,27 @@ export class MediaService {
     const storagePath = path.join(storageDir, `${assetId}${extension}`);
     await fs.writeFile(storagePath, fileBuffer);
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
-      `
-      INSERT INTO media_assets (
-        id, tenant_key, product_id, variant_id, entity_type, file_name, mime_type, storage_path, width, height, size_bytes, checksum, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
-      `,
-      assetId,
-      tenantKey,
-      input.entity.productId,
-      input.entity.variantId,
-      input.entity.entityType,
-      input.fileName.trim(),
-      input.mimeType.trim().toLowerCase(),
-      storagePath,
-      width,
-      height,
-      fileBuffer.length,
-      checksum,
-      JSON.stringify({
-        extension,
-        extractedFrom: detectedDimensions ? "png_header" : input.width && input.height ? "provided" : "none",
-        source: input.source,
-        sourceRef: input.sourceRef,
-      }),
-    );
+    await this.prisma.tenant().mediaAsset.create({
+      data: {
+        id: assetId,
+        productId: input.entity.productId,
+        variantId: input.entity.variantId,
+        entityType: input.entity.entityType,
+        fileName: input.fileName.trim(),
+        mimeType: input.mimeType.trim().toLowerCase(),
+        storagePath,
+        width,
+        height,
+        sizeBytes: fileBuffer.length,
+        checksum,
+        metadata: {
+          extension,
+          extractedFrom: detectedDimensions ? "png_header" : input.width && input.height ? "provided" : "none",
+          source: input.source,
+          sourceRef: input.sourceRef,
+        } as Prisma.JsonObject,
+      },
+    });
 
     return this.getAsset(assetId);
   }
@@ -943,10 +798,6 @@ export class MediaService {
       return normalized;
     }
     throw new BadRequestException("Unsupported channel. Use amazon, flipkart, or meesho.");
-  }
-
-  private getCurrentTenantKey(): string {
-    return normalizeTenantKey(getTenantKeyFromContext());
   }
 }
 

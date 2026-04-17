@@ -16,6 +16,14 @@ function run() {
   const source = fs.readFileSync(PLAN_PAGE, "utf8");
 
   assert(
+    source.includes('import { PageHeader } from "@/components/ui/page-header";') &&
+      source.includes("<PageHeader") &&
+      source.includes('title="Plan & Usage"') &&
+      source.includes('Link href="/dashboard"') &&
+      source.includes('Link href="/admin"'),
+    "Plan page must use the shared admin page-header pattern with linked breadcrumbs.",
+  );
+  assert(
     source.includes("const signupTrendDays = resolveSignupTrendDays(query.days);") &&
       source.includes('role === "admin"') &&
       source.includes("getKpiTrends({ days: signupTrendDays }, { role, authHeader })"),
@@ -59,6 +67,13 @@ function run() {
     "Plan page must expose a window-scoped pending verification backlog summary.",
   );
   assert(
+    source.includes('role !== "admin"') &&
+      source.includes("<CardTitle>Commercial Controls</CardTitle>") &&
+      source.includes("Workspace admins can manage billing contacts, request plan changes, and review signup conversion") &&
+      source.includes("You can still review current usage and commercial status above."),
+    "Plan page must explain the read-only fallback for non-admin roles instead of silently hiding commercial controls.",
+  );
+  assert(
     source.includes("Plan changes are managed by TEJ commercial ops.") &&
       source.includes("Customer admins can review plan usage") &&
       source.includes("paid-plan changes are applied through") &&
@@ -81,9 +96,8 @@ function run() {
       source.includes("Workspace access is suspended") &&
       source.includes("Billing needs attention") &&
       source.includes("Trial is active") &&
-      source.includes("Billing: {formatCommercialStatus(usage.billingStatus)}") &&
+      source.includes("description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString()}`}") &&
       source.includes('Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}') &&
-      source.includes("Access:") &&
       source.includes("formatAccessStatus"),
     "Plan page must expose commercial status and warning states for billing/access transitions.",
   );

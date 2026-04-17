@@ -45,9 +45,9 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
 
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
@@ -55,11 +55,11 @@ function prepareEnv() {
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
 }
 
 function assert(condition, message) {
@@ -284,7 +284,7 @@ async function runFeatureFlagOffCase(baseEnv) {
 }
 
 async function runValidationCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-validation-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-validation-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5660 + Math.floor(Math.random() * 60)),
@@ -322,7 +322,7 @@ async function runValidationCase(baseEnv) {
 }
 
 async function runHappyPathCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-happy-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-happy-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5720 + Math.floor(Math.random() * 60)),
@@ -480,7 +480,7 @@ async function runHappyPathCase(baseEnv) {
 }
 
 async function runVerificationDeliveryFailureRecoveryCase(baseEnv) {
-  const brokenOutboxPath = path.join(os.tmpdir(), `tej-pim-signup-broken-outbox-${Date.now()}.json`);
+  const brokenOutboxPath = path.join(os.tmpdir(), `vexa-pim-signup-broken-outbox-${Date.now()}.json`);
   fs.writeFileSync(brokenOutboxPath, "broken");
   const failingEnv = buildBaseRuntimeEnv({
     ...baseEnv,
@@ -538,7 +538,7 @@ async function runVerificationDeliveryFailureRecoveryCase(baseEnv) {
     await stopApi(failingApi.processHandle);
   }
 
-  const goodOutboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-recovery-"));
+  const goodOutboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-recovery-"));
   const recoveryEnv = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5770 + Math.floor(Math.random() * 20)),
@@ -576,7 +576,7 @@ async function runVerificationDeliveryFailureRecoveryCase(baseEnv) {
 }
 
 async function runIpRateLimitCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-ip-rate-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-ip-rate-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5780 + Math.floor(Math.random() * 60)),
@@ -613,7 +613,7 @@ async function runIpRateLimitCase(baseEnv) {
 }
 
 async function runEmailRateLimitCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-email-rate-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-email-rate-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5840 + Math.floor(Math.random() * 60)),
@@ -655,7 +655,7 @@ async function runEmailRateLimitCase(baseEnv) {
 }
 
 async function runResendRateLimitCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-resend-rate-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-resend-rate-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5900 + Math.floor(Math.random() * 60)),
@@ -698,7 +698,7 @@ async function runResendRateLimitCase(baseEnv) {
 }
 
 async function runConcurrentDuplicateCase(baseEnv) {
-  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-concurrent-"));
+  const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-concurrent-"));
   const env = buildBaseRuntimeEnv({
     ...baseEnv,
     PORT: String(5960 + Math.floor(Math.random() * 60)),

@@ -1,4 +1,4 @@
-# TEJ PIM Connector Documentation Index
+# Vexa PIM Connector Documentation Index
 
 Status: Canonical connector-documentation entry point  
 Date: 2026-03-23

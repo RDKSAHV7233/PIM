@@ -43,9 +43,9 @@ function prepareEnv() {
   setDefaultEnv("AUTH_MODE", "db");
   process.env.PIM_AUTH_IDENTITIES_JSON = "";
   process.env.PIM_AUTH_WORKSPACES_JSON = "";
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
@@ -116,7 +116,7 @@ async function run() {
         tenantKey,
         title: `Marketplace Suspension Product ${runId}`,
         description: "Deterministic product for suspension worker validation",
-        brand: "TEJ PIM",
+        brand: "Vexa PIM",
         categoryId: category.id,
         status: "draft",
         hsnCode: "62046200",

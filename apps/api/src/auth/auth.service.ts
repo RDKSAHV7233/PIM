@@ -244,6 +244,66 @@ export interface AccountPrivacyStatusResult {
   } | null;
 }
 
+type AccountPrivacyConsentSummary = NonNullable<AccountPrivacyStatusResult["latestConsent"]>;
+type AccountPrivacyExportSummary = NonNullable<AccountPrivacyStatusResult["latestExport"]>;
+type AccountPrivacyDeletionSummary = NonNullable<AccountPrivacyStatusResult["latestDeletion"]>;
+
+function toIsoStringOrNull(value: Date | null | undefined): string | null {
+  return value instanceof Date ? value.toISOString() : null;
+}
+
+function toPrivacyConsentSummary(input: {
+  accepted: boolean;
+  policyVersion: string;
+  purpose: string;
+  consentRecordedAt: Date;
+}): AccountPrivacyConsentSummary {
+  return {
+    accepted: input.accepted,
+    policyVersion: input.policyVersion,
+    purpose: input.purpose,
+    consentRecordedAt: input.consentRecordedAt.toISOString(),
+  };
+}
+
+function toPrivacyExportSummary(input: {
+  id: string;
+  status: string;
+  format: string;
+  requestedAt: Date;
+  estimatedReadyInSeconds: number;
+  completedAt: Date | null;
+  failedAt: Date | null;
+  errorMessage: string | null;
+  artifactPath?: string | null;
+}): AccountPrivacyExportSummary {
+  return {
+    jobId: input.id,
+    status: input.status,
+    format: input.format,
+    requestedAt: input.requestedAt.toISOString(),
+    estimatedReadyInSeconds: input.estimatedReadyInSeconds,
+    completedAt: toIsoStringOrNull(input.completedAt),
+    failedAt: toIsoStringOrNull(input.failedAt),
+    errorMessage: input.errorMessage ?? null,
+    downloadAvailable: Boolean(input.artifactPath && input.completedAt),
+  };
+}
+
+function toPrivacyDeletionSummary(input: {
+  id: string;
+  status: string;
+  requestedAt: Date;
+  scheduledFor: Date;
+}): AccountPrivacyDeletionSummary {
+  return {
+    ticketId: input.id,
+    status: input.status,
+    requestedAt: input.requestedAt.toISOString(),
+    scheduledFor: input.scheduledFor.toISOString(),
+  };
+}
+
 export type AccountExportDownloadResult =
   | {
       kind: "ready";
@@ -702,29 +762,16 @@ export class AuthService implements OnModuleDestroy {
       policyVersion,
       purpose,
     };
-    await this.prisma
-      .tenant(tenantId)
-      // RLS-BYPASS: manual tenant filter
-      .$executeRawUnsafe(
-        `
-        INSERT INTO account_consent_events (
-          id,
-          tenant_key,
-          user_id,
-          accepted,
-          policy_version,
-          purpose,
-          consent_recorded_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
-        `,
-        randomUUID(),
-        tenantId,
+    await this.prisma.tenant(tenantId).accountConsentEvent.create({
+      data: {
+        id: randomUUID(),
         userId,
-        input.accepted,
+        accepted: input.accepted,
         policyVersion,
         purpose,
-        consentRecordedAt,
-      );
+        consentRecordedAt: new Date(consentRecordedAt),
+      },
+    });
 
     await this.auditService.record({
       actorId: userId,
@@ -757,31 +804,17 @@ export class AuthService implements OnModuleDestroy {
       note: "Your export has been queued. We will email you when it is ready to download.",
     };
 
-    await this.prisma
-      .tenant(tenantId)
-      // RLS-BYPASS: manual tenant filter
-      .$executeRawUnsafe(
-        `
-        INSERT INTO account_export_requests (
-          id,
-          tenant_key,
-          user_id,
-          actor_role,
-          format,
-          status,
-          requested_at,
-          estimated_ready_in_seconds
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8)
-        `,
-        jobId,
-        tenantId,
+    await this.prisma.tenant(tenantId).accountExportRequest.create({
+      data: {
+        id: jobId,
         userId,
-        input.role,
-        result.format,
-        EXPORT_STATUS_QUEUED,
-        requestedAt,
-        result.estimatedReadyInSeconds,
-      );
+        actorRole: input.role,
+        format: result.format,
+        status: EXPORT_STATUS_QUEUED,
+        requestedAt: new Date(requestedAt),
+        estimatedReadyInSeconds: result.estimatedReadyInSeconds,
+      },
+    });
 
     await this.auditService.record({
       actorId: userId,
@@ -811,77 +844,45 @@ export class AuthService implements OnModuleDestroy {
   async getAccountPrivacyStatus(userIdInput: string, tenantIdInput: string): Promise<AccountPrivacyStatusResult> {
     const tenantId = normalizeTenantKey(tenantIdInput);
     const userId = userIdInput.trim();
-    const [commercialProfile, rows] = await Promise.all([
+    const tenantPrisma = this.prisma.tenant(tenantId);
+    const [commercialProfile, latestConsent, latestExport, latestDeletion] = await Promise.all([
       this.planUsageService.getTenantPlanProfile(tenantId),
-      this.prisma
-        .tenant(tenantId)
-        // RLS-BYPASS: manual tenant filter
-        .$queryRawUnsafe(
-          `
-          SELECT
-            (
-              SELECT row_to_json(c)
-              FROM (
-                SELECT
-                  accepted,
-                  policy_version AS "policyVersion",
-                  purpose,
-                  consent_recorded_at AS "consentRecordedAt"
-                FROM account_consent_events
-                WHERE tenant_key = $1 AND user_id = $2
-                ORDER BY consent_recorded_at DESC
-                LIMIT 1
-              ) c
-            ) AS "latestConsent",
-            (
-              SELECT row_to_json(e)
-              FROM (
-                SELECT
-                  id AS "jobId",
-                  status,
-                  format,
-                  requested_at AS "requestedAt",
-                  estimated_ready_in_seconds AS "estimatedReadyInSeconds",
-                  completed_at AS "completedAt",
-                  failed_at AS "failedAt",
-                  error_message AS "errorMessage",
-                  (artifact_path IS NOT NULL AND completed_at IS NOT NULL) AS "downloadAvailable"
-                FROM account_export_requests
-                WHERE tenant_key = $1 AND user_id = $2
-                ORDER BY requested_at DESC
-                LIMIT 1
-              ) e
-            ) AS "latestExport",
-            (
-              SELECT row_to_json(d)
-              FROM (
-                SELECT
-                  id AS "ticketId",
-                  status,
-                  requested_at AS "requestedAt",
-                  scheduled_for AS "scheduledFor"
-                FROM account_deletion_requests
-                WHERE tenant_key = $1 AND user_id = $2
-                ORDER BY requested_at DESC
-                LIMIT 1
-              ) d
-            ) AS "latestDeletion"
-          `,
-          tenantId,
-          userId,
-        ),
+      tenantPrisma.accountConsentEvent.findFirst({
+        where: { userId },
+        orderBy: { consentRecordedAt: "desc" },
+        select: {
+          accepted: true,
+          policyVersion: true,
+          purpose: true,
+          consentRecordedAt: true,
+        },
+      }),
+      tenantPrisma.accountExportRequest.findFirst({
+        where: { userId },
+        orderBy: { requestedAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          format: true,
+          requestedAt: true,
+          estimatedReadyInSeconds: true,
+          completedAt: true,
+          failedAt: true,
+          errorMessage: true,
+          artifactPath: true,
+        },
+      }),
+      tenantPrisma.accountDeletionRequest.findFirst({
+        where: { userId },
+        orderBy: { requestedAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          requestedAt: true,
+          scheduledFor: true,
+        },
+      }),
     ]);
-    const typedRows = rows as Array<{
-      latestConsent: AccountPrivacyStatusResult["latestConsent"];
-      latestExport: AccountPrivacyStatusResult["latestExport"];
-      latestDeletion: AccountPrivacyStatusResult["latestDeletion"];
-    }>;
-
-    const first = typedRows[0] ?? {
-      latestConsent: null,
-      latestExport: null,
-      latestDeletion: null,
-    };
 
     return {
       ok: true,
@@ -893,9 +894,9 @@ export class AuthService implements OnModuleDestroy {
         suspensionReason: commercialProfile.suspensionReason,
         suspendedAt: commercialProfile.suspendedAt,
       },
-      latestConsent: first.latestConsent ?? null,
-      latestExport: first.latestExport ?? null,
-      latestDeletion: first.latestDeletion ?? null,
+      latestConsent: latestConsent ? toPrivacyConsentSummary(latestConsent) : null,
+      latestExport: latestExport ? toPrivacyExportSummary(latestExport) : null,
+      latestDeletion: latestDeletion ? toPrivacyDeletionSummary(latestDeletion) : null,
     };
   }
 
@@ -962,30 +963,16 @@ export class AuthService implements OnModuleDestroy {
       scheduledFor,
     };
 
-    await this.prisma
-      .tenant(tenantId)
-      // RLS-BYPASS: manual tenant filter
-      .$executeRawUnsafe(
-        `
-        INSERT INTO account_deletion_requests (
-          id,
-          tenant_key,
-          user_id,
-          actor_role,
-          reason,
-          status,
-          requested_at,
-          scheduled_for
-        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7::timestamptz)
-        `,
-        ticketId,
-        tenantId,
+    await this.prisma.tenant(tenantId).accountDeletionRequest.create({
+      data: {
+        id: ticketId,
         userId,
-        input.role,
-        input.reason ?? null,
-        result.status,
-        scheduledFor,
-      );
+        actorRole: input.role,
+        reason: input.reason ?? null,
+        status: result.status,
+        scheduledFor: new Date(scheduledFor),
+      },
+    });
 
     await this.auditService.record({
       actorId: userId,
@@ -1335,9 +1322,9 @@ export class AuthService implements OnModuleDestroy {
       const privacyUrl = `${webBaseUrl}/settings/privacy`;
       await this.authEmailService.send({
         to: userId,
-        subject: "Your TEJ PIM account export is ready",
-        text: `Your account export is ready. Sign in to TEJ PIM and open ${privacyUrl} to download it securely.`,
-        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to TEJ PIM</a> and open Privacy settings to download it securely.</p>`,
+        subject: "Your Vexa PIM account export is ready",
+        text: `Your account export is ready. Sign in to Vexa PIM and open ${privacyUrl} to download it securely.`,
+        html: `<p>Your account export is ready.</p><p><a href=\"${privacyUrl}\">Sign in to Vexa PIM</a> and open Privacy settings to download it securely.</p>`,
         category: "account_export_ready",
         metadata: {
           tenantId,
@@ -1353,10 +1340,10 @@ export class AuthService implements OnModuleDestroy {
 
     const resetUrl = `${webBaseUrl}/login/reset?token=${encodeURIComponent(payload.resetToken)}&email=${encodeURIComponent(userId)}&workspace=${encodeURIComponent(workspaceSlug)}`;
     const isUnlock = payload.kind === "account_unlock";
-    const subject = isUnlock ? "Unlock your TEJ PIM account" : "Reset your TEJ PIM password";
+    const subject = isUnlock ? "Unlock your Vexa PIM account" : "Reset your Vexa PIM password";
     const intro = isUnlock
       ? "Your account was locked after repeated sign-in attempts. Use the link below to set a new password and regain access."
-      : "Use the link below to set a new password for your TEJ PIM account.";
+      : "Use the link below to set a new password for your Vexa PIM account.";
 
     await this.authEmailService.send({
       to: userId,
@@ -1530,97 +1517,79 @@ export class AuthService implements OnModuleDestroy {
     });
     const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
     const tenantPrisma = this.prisma.tenant(tenantId);
-    // RLS-BYPASS: manual tenant filter
-    const consents = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        id,
-        accepted,
-        policy_version AS "policyVersion",
-        purpose,
-        consent_recorded_at AS "consentRecordedAt",
-        created_at AS "createdAt"
-      FROM account_consent_events
-      WHERE tenant_key = $1 AND user_id = $2
-      ORDER BY consent_recorded_at DESC
-      `,
-      tenantId,
-      userId,
-    );
-    // RLS-BYPASS: manual tenant filter
-    const exportRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        id,
-        actor_role AS "actorRole",
-        format,
-        status,
-        requested_at AS "requestedAt",
-        estimated_ready_in_seconds AS "estimatedReadyInSeconds",
-        artifact_file_name AS "artifactFileName",
-        completed_at AS "completedAt",
-        failed_at AS "failedAt",
-        error_message AS "errorMessage"
-      FROM account_export_requests
-      WHERE tenant_key = $1 AND user_id = $2
-      ORDER BY requested_at DESC
-      `,
-      tenantId,
-      userId,
-    );
-    // RLS-BYPASS: manual tenant filter
-    const deletionRequests = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        id,
-        actor_role AS "actorRole",
-        reason,
-        status,
-        requested_at AS "requestedAt",
-        scheduled_for AS "scheduledFor"
-      FROM account_deletion_requests
-      WHERE tenant_key = $1 AND user_id = $2
-      ORDER BY requested_at DESC
-      `,
-      tenantId,
-      userId,
-    );
-    // RLS-BYPASS: manual tenant filter
-    const notifications = await tenantPrisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        id,
-        event_type AS "eventType",
-        title,
-        message,
-        action_url AS "actionUrl",
-        action_label AS "actionLabel",
-        read_at AS "readAt",
-        created_at AS "createdAt"
-      FROM user_notifications
-      WHERE tenant_key = $1 AND user_id = $2
-      ORDER BY created_at DESC
-      `,
-      tenantId,
-      userId,
-    );
-    const auditRows = await tenantPrisma.auditLog.findMany({
-      where: {
-        actorId: userId,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      select: {
-        id: true,
-        action: true,
-        resource: true,
-        resourceId: true,
-        metadata: true,
-        createdAt: true,
-      },
-      take: 500,
-    });
+    const [consents, exportRequests, deletionRequests, notifications, auditRows] = await Promise.all([
+      tenantPrisma.accountConsentEvent.findMany({
+        where: { userId },
+        orderBy: { consentRecordedAt: "desc" },
+        select: {
+          id: true,
+          accepted: true,
+          policyVersion: true,
+          purpose: true,
+          consentRecordedAt: true,
+          createdAt: true,
+        },
+      }),
+      tenantPrisma.accountExportRequest.findMany({
+        where: { userId },
+        orderBy: { requestedAt: "desc" },
+        select: {
+          id: true,
+          actorRole: true,
+          format: true,
+          status: true,
+          requestedAt: true,
+          estimatedReadyInSeconds: true,
+          artifactFileName: true,
+          completedAt: true,
+          failedAt: true,
+          errorMessage: true,
+        },
+      }),
+      tenantPrisma.accountDeletionRequest.findMany({
+        where: { userId },
+        orderBy: { requestedAt: "desc" },
+        select: {
+          id: true,
+          actorRole: true,
+          reason: true,
+          status: true,
+          requestedAt: true,
+          scheduledFor: true,
+        },
+      }),
+      tenantPrisma.userNotification.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          eventType: true,
+          title: true,
+          message: true,
+          actionUrl: true,
+          actionLabel: true,
+          readAt: true,
+          createdAt: true,
+        },
+      }),
+      tenantPrisma.auditLog.findMany({
+        where: {
+          actorId: userId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          action: true,
+          resource: true,
+          resourceId: true,
+          metadata: true,
+          createdAt: true,
+        },
+        take: 500,
+      }),
+    ]);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -1645,10 +1614,44 @@ export class AuthService implements OnModuleDestroy {
             updatedAt: authIdentity.updatedAt.toISOString(),
           }
         : null,
-      consentEvents: consents,
-      exportRequests,
-      deletionRequests,
-      notifications,
+      consentEvents: consents.map((row) => ({
+        id: row.id,
+        accepted: row.accepted,
+        policyVersion: row.policyVersion,
+        purpose: row.purpose,
+        consentRecordedAt: row.consentRecordedAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
+      })),
+      exportRequests: exportRequests.map((row) => ({
+        id: row.id,
+        actorRole: row.actorRole,
+        format: row.format,
+        status: row.status,
+        requestedAt: row.requestedAt.toISOString(),
+        estimatedReadyInSeconds: row.estimatedReadyInSeconds,
+        artifactFileName: row.artifactFileName,
+        completedAt: toIsoStringOrNull(row.completedAt),
+        failedAt: toIsoStringOrNull(row.failedAt),
+        errorMessage: row.errorMessage,
+      })),
+      deletionRequests: deletionRequests.map((row) => ({
+        id: row.id,
+        actorRole: row.actorRole,
+        reason: row.reason,
+        status: row.status,
+        requestedAt: row.requestedAt.toISOString(),
+        scheduledFor: row.scheduledFor.toISOString(),
+      })),
+      notifications: notifications.map((row) => ({
+        id: row.id,
+        eventType: row.eventType,
+        title: row.title,
+        message: row.message,
+        actionUrl: row.actionUrl,
+        actionLabel: row.actionLabel,
+        readAt: toIsoStringOrNull(row.readAt),
+        createdAt: row.createdAt.toISOString(),
+      })),
       auditLog: auditRows.map((row) => ({
         ...row,
         createdAt: row.createdAt.toISOString(),
@@ -1773,7 +1776,7 @@ export class AuthService implements OnModuleDestroy {
       this.logger.error("PIM_AUTH_PASSWORD must be configured outside local development.");
       return false;
     }
-    const expected = configuredPassword || "tej-pim-demo-password";
+    const expected = configuredPassword || "vexa-pim-demo-password";
     const submittedBuffer = Buffer.from(password, "utf8");
     const expectedBuffer = Buffer.from(expected, "utf8");
     if (submittedBuffer.length !== expectedBuffer.length) {
