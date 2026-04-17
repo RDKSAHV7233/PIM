@@ -3,6 +3,7 @@ const path = require("node:path");
 const { test, expect } = require("@playwright/test");
 const { PrismaClient } = require("@prisma/client");
 
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const SIGNUP_OUTBOX_DIR = String(process.env.PLAYWRIGHT_SIGNUP_OUTBOX_DIR || "").trim();
 
 function sleep(ms) {
@@ -24,6 +25,57 @@ function createSignupIdentity() {
     adminEmail: `pw-signup-${suffix}@example.com`,
     password: "Signup#2026",
   };
+}
+
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+  const values = {};
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    if (!line || /^\s*#/.test(line)) {
+      continue;
+    }
+    const idx = line.indexOf("=");
+    if (idx === -1) {
+      continue;
+    }
+    const key = line.slice(0, idx).trim();
+    const raw = line.slice(idx + 1).trim();
+    if (key) {
+      values[key] = raw.replace(/^"|"$/g, "");
+    }
+  }
+  return values;
+}
+
+function createPrismaClient() {
+  const fileEnv = readEnvFile(path.join(REPO_ROOT, ".env"));
+  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const resolved = String(
+    process.env.DATABASE_URL_POOLED ||
+      process.env.DATABASE_URL ||
+      fileEnv.DATABASE_URL_POOLED ||
+      fileEnv.DATABASE_URL ||
+      "",
+  ).trim();
+  const databaseUrl = !resolved || /HOST:5432/i.test(resolved) ? localDatabaseUrl : resolved;
+  const datasourceUrl = (() => {
+    try {
+      const parsed = new URL(databaseUrl);
+      parsed.searchParams.set("connection_limit", "1");
+      return parsed.toString();
+    } catch {
+      return databaseUrl;
+    }
+  })();
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: datasourceUrl,
+      },
+    },
+  });
 }
 
 async function waitForOutboxEmail(outboxDir, recipient, category, timeoutMs) {
@@ -68,7 +120,7 @@ function extractVerificationToken(emailPayload) {
 }
 
 async function cleanupSignupWorkspace(workspaceSlug, adminEmail) {
-  const prisma = new PrismaClient();
+  const prisma = createPrismaClient();
   try {
     await prisma.accountConsentEvent.deleteMany({ where: { tenantKey: workspaceSlug } });
     await prisma.accountExportRequest.deleteMany({ where: { tenantKey: workspaceSlug } });

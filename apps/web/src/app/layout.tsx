@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </header>
         {hasAuthToken ? (
           <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <AppSidebar showInternal={false} />
+            <AppSidebar actorRole={actorRole} showInternal={false} />
             <main className="min-w-0">{children}</main>
           </div>
         ) : (

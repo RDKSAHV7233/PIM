@@ -50,10 +50,19 @@ function createPrismaClient() {
       "",
   ).trim();
   const databaseUrl = !resolved || /HOST:5432/i.test(resolved) ? localDatabaseUrl : resolved;
+  const datasourceUrl = (() => {
+    try {
+      const parsed = new URL(databaseUrl);
+      parsed.searchParams.set("connection_limit", "1");
+      return parsed.toString();
+    } catch {
+      return databaseUrl;
+    }
+  })();
   return new PrismaClient({
     datasources: {
       db: {
-        url: databaseUrl,
+        url: datasourceUrl,
       },
     },
   });
@@ -248,7 +257,7 @@ test("workspace admin can drill from dashboard signup funnel into admin plan tre
       page.getByRole("link", { name: "Open signup trends" }).click(),
     ]);
 
-    await expect(page.getByRole("heading", { name: "Plan and Usage", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Plan & Usage", level: 1 })).toBeVisible();
     await expect(page.getByText("Self-Serve Signup Conversion")).toBeVisible();
     await expect(page.getByText("Pending Verification Backlog")).toBeVisible();
     await expect(page.getByText("Every signup request in the last 30 days has verified.")).toBeVisible();

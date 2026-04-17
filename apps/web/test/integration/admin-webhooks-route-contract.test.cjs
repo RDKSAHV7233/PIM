@@ -49,8 +49,10 @@ function run() {
       source.includes("form action={createOutboundWebhookAction}") &&
       source.includes("form action={sendTestOutboundWebhookAction}") &&
       source.includes("form action={toggleOutboundWebhookAction}") &&
-      source.includes("form action={deleteOutboundWebhookAction}"),
-    "Admin webhooks must keep create, test, toggle, and delete actions explicitly admin-only at the page contract level.",
+      source.includes("form action={deleteOutboundWebhookAction}") &&
+      source.includes("<CardTitle>Webhook Management</CardTitle>") &&
+      source.includes("Admin role is required to create, test, pause, resume, or delete webhook endpoints. You can still review configured endpoints and recent deliveries below."),
+    "Admin webhooks must keep create, test, toggle, and delete actions explicitly admin-only while explaining the read-only fallback at the page contract level.",
   );
   assert(
     source.includes('x-pim1-webhook-signature') &&

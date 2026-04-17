@@ -12,15 +12,20 @@ import {
   type AppRole,
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
 
 const INVITE_ROLES: readonly AppRole[] = ["editor", "reviewer", "viewer"];
 
 async function requireAdminRequestOptions() {
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   if (!authHeader) {
     throw new Error("Authenticated session is required.");
   }
-  return { authHeader };
+  if (actorRole !== "admin") {
+    throw new Error("Admin role is required.");
+  }
+  return { role: actorRole, authHeader };
 }
 
 function redirectWithStatus(status: string) {

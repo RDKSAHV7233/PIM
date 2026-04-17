@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const {
+  createCategory,
+  deleteCategory,
   apiLogin,
   apiRequest,
   deleteProduct,
@@ -18,12 +20,13 @@ const DEFAULT_MAPPING = {
   attributes: "attributes",
 };
 
-async function resolveCategoryId(token) {
+async function resolveCategoryContext(adminToken, token) {
   const categories = await apiRequest("GET", "/taxonomy/categories?all=true", token);
-  if (!Array.isArray(categories) || categories.length === 0 || !categories[0]?.id) {
-    throw new Error("Operations repair e2e requires at least one category in the default workspace.");
+  if (Array.isArray(categories) && categories.length > 0 && categories[0]?.id) {
+    return { id: categories[0].id, created: false };
   }
-  return categories[0].id;
+  const category = await createCategory(adminToken, uniqueName("e2e-import-repair-cat"));
+  return { id: category.id, created: true };
 }
 
 async function getRow(token, jobId, rowId) {
@@ -43,8 +46,10 @@ async function getRow(token, jobId, rowId) {
 }
 
 test("editor can repair a dead-letter import from repair center and clear the backlog", async ({ page }) => {
+  const adminToken = await apiLogin("admin");
   const editorToken = await apiLogin("editor");
-  const categoryId = await resolveCategoryId(editorToken);
+  const category = await resolveCategoryContext(adminToken, editorToken);
+  const categoryId = category.id;
   const repairedTitle = uniqueName("e2e-repaired-import");
   const importJob = await apiRequest("POST", "/bulk-import/jobs", editorToken, {
     categoryId,
@@ -128,6 +133,11 @@ test("editor can repair a dead-letter import from repair center and clear the ba
       } catch {}
       try {
         await purgeProduct(editorToken, repairedProductId);
+      } catch {}
+    }
+    if (category.created) {
+      try {
+        await deleteCategory(adminToken, category.id);
       } catch {}
     }
   }

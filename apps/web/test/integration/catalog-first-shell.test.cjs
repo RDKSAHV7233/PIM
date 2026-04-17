@@ -27,8 +27,12 @@ function run() {
     "Sidebar must use seller-facing Settings language instead of Admin in the main navigation.",
   );
   assert(
-    sidebarSource.includes('{ label: "API Keys", href: "/admin/api-keys", icon: "key" }') &&
-      sidebarSource.includes('{ label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook" }'),
+    sidebarSource.includes('label: "API Keys"') &&
+      sidebarSource.includes('href: "/admin/api-keys"') &&
+      sidebarSource.includes('icon: "key"') &&
+      sidebarSource.includes('label: "Outbound Webhooks"') &&
+      sidebarSource.includes('href: "/admin/webhooks"') &&
+      sidebarSource.includes('icon: "webhook"'),
     "Settings navigation must keep integration governance tools visible alongside core admin controls.",
   );
   assert(

@@ -127,7 +127,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
     await row().locator('select[name="role"]').selectOption("reviewer");
     await row().getByRole("button", { name: "Save" }).click();
     await page.waitForURL(/status=role-updated/);
-    await expect(page.getByText("User role updated.")).toBeVisible();
+    await expect(page.getByText("Workspace user role updated.")).toBeVisible();
     await expect(row().locator('select[name="role"]')).toHaveValue("reviewer");
 
     const updatedUsers = await apiRequest("GET", "/admin/workspace/users", adminToken);
@@ -136,7 +136,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
 
     await row().getByRole("button", { name: "Lock 60m" }).click();
     await page.waitForURL(/status=user-locked/);
-    await expect(page.getByText("User lock applied.")).toBeVisible();
+    await expect(page.getByText("Workspace user locked.")).toBeVisible();
     await expect(row()).toContainText("locked");
     await expect(row().getByRole("button", { name: "Unlock" })).toBeVisible();
 
@@ -147,7 +147,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
 
     await row().getByRole("button", { name: "Unlock" }).click();
     await page.waitForURL(/status=user-unlocked/);
-    await expect(page.getByText("User unlocked.")).toBeVisible();
+    await expect(page.getByText("Workspace user unlocked.")).toBeVisible();
     await expect(row()).toContainText("active");
 
     const unlockedUsers = await apiRequest("GET", "/admin/workspace/users", adminToken);
@@ -157,7 +157,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
 
     await row().getByRole("button", { name: "Deactivate" }).click();
     await page.waitForURL(/status=user-deactivated/);
-    await expect(page.getByText("User deactivated.")).toBeVisible();
+    await expect(page.getByText("Workspace user deactivated.")).toBeVisible();
     await expect(row()).toContainText("inactive");
 
     const deactivatedUsers = await apiRequest("GET", "/admin/workspace/users", adminToken);
