@@ -14,6 +14,8 @@ interface CatalogProductsPageProps {
     hideTestData?: string;
     search?: string;
     view?: string;
+    page?: string;
+    limit?: string;
   }>;
 }
 
@@ -40,6 +42,14 @@ function resolveProductSearch(value: string | undefined): string {
   return String(value ?? "").trim().slice(0, 80);
 }
 
+function resolvePositiveInteger(value: string | undefined, fallback: number, max: number): number {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(max, parsed);
+}
+
 function mapConnectorSlugToChannel(slugInput: string): "amazon" | "flipkart" | "meesho" | null {
   const slug = String(slugInput ?? "").trim().toLowerCase();
   if (slug === "amazon-in") {
@@ -56,6 +66,8 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const hideTestData = resolveHideTestData(query.hideTestData);
   const initialView = resolveProductView(query.view);
   const initialSearch = resolveProductSearch(query.search);
+  const page = resolvePositiveInteger(query.page, 1, 10_000);
+  const limit = resolvePositiveInteger(query.limit, 50, 200);
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
 
@@ -69,6 +81,8 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
 
     const filteredCategories = filterTestData(categories, hideTestData);
     const filteredProducts = filterTestData(products, hideTestData);
+    // TODO: replace client-side pagination with API cursor pagination once getProducts supports pagination inputs.
+    const pagedProducts = filteredProducts.slice((page - 1) * limit, page * limit);
     const filteredStats = hideTestData
       ? {
           ...stats,
@@ -103,7 +117,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
         />
         <ProductsTab
           role={actorRole}
-          products={products}
+          products={pagedProducts}
           categories={categories}
           stats={filteredStats}
           hideTestData={hideTestData}

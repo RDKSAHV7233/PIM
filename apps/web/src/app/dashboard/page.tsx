@@ -4,6 +4,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { StatusChip } from "@/components/ui/status-chip";
+import { buttonVariants } from "@/components/ui/button";
 import {
   ApiHttpError,
   getBillingUsage,
@@ -13,6 +14,7 @@ import {
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { cn } from "@/lib/utils";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -56,7 +58,7 @@ function DashboardUnavailableState() {
             </Link>
             <Link
               href="/operations/imports"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className={cn(buttonVariants({ variant: "dark" }))}
             >
               Open imports
             </Link>
@@ -338,7 +340,7 @@ export default async function DashboardPage() {
               </Link>
               <Link
                 href="/quality/issues"
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                className={cn(buttonVariants({ variant: "dark" }))}
               >
                 Fix Issues
               </Link>
@@ -362,7 +364,7 @@ export default async function DashboardPage() {
             </div>
             <Link
               href="/catalog/products"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className={cn(buttonVariants({ variant: "dark" }))}
             >
               Open product workbench
             </Link>
@@ -764,4 +766,3 @@ export default async function DashboardPage() {
     throw error;
   }
 }
-

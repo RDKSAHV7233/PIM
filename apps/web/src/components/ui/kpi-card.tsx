@@ -9,6 +9,7 @@ interface KpiCardProps {
   tone?: "default" | "success" | "warning" | "danger" | "info";
   action?: ReactNode;
   href?: string;
+  isLoading?: boolean;
 }
 
 const toneStyles: Record<NonNullable<KpiCardProps["tone"]>, string> = {
@@ -19,22 +20,32 @@ const toneStyles: Record<NonNullable<KpiCardProps["tone"]>, string> = {
   info: "border-blue-200 bg-blue-50/80",
 };
 
-export function KpiCard({ label, value, helper, tone = "default", action, href }: KpiCardProps) {
+export function KpiCard({ label, value, helper, tone = "default", action, href, isLoading = false }: KpiCardProps) {
   return (
     <article className={cn("rounded-xl border bg-white p-4 shadow-sm", toneStyles[tone])}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      {href ? (
-        <Link
-          href={href}
-          className="mt-2 inline-flex text-2xl font-semibold text-slate-900 underline-offset-4 hover:text-slate-700 hover:underline"
-        >
-          {value}
-        </Link>
+      {isLoading ? (
+        <div className="animate-pulse space-y-2">
+          <div className="h-3 w-24 rounded bg-slate-200" />
+          <div className="h-8 w-16 rounded bg-slate-200" />
+          <div className="h-3 w-32 rounded bg-slate-200" />
+        </div>
       ) : (
-        <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+          {href ? (
+            <Link
+              href={href}
+              className="mt-2 inline-flex text-2xl font-semibold text-slate-900 underline-offset-4 hover:text-slate-700 hover:underline"
+            >
+              {value}
+            </Link>
+          ) : (
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+          )}
+          {helper ? <p className="mt-1 text-xs text-slate-600">{helper}</p> : null}
+          {action ? <div className="mt-3">{action}</div> : null}
+        </>
       )}
-      {helper ? <p className="mt-1 text-xs text-slate-600">{helper}</p> : null}
-      {action ? <div className="mt-3">{action}</div> : null}
     </article>
   );
 }

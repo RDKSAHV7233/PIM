@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import type { AppRole } from "@/lib/api";
+import { canViewAdminNavigationItem } from "@/lib/admin-navigation";
 
 const roleConfig: Record<AppRole, { label: string; bg: string; text: string; border: string }> = {
   admin: { label: "Admin", bg: "#f0fdf4", text: "#166534", border: "#bbf7d0" },
@@ -9,30 +12,58 @@ const roleConfig: Record<AppRole, { label: string; bg: string; text: string; bor
   viewer: { label: "Viewer", bg: "#fafafa", text: "#6b7280", border: "#e5e7eb" },
 };
 
-const roleOrder: AppRole[] = ["admin", "editor", "reviewer", "viewer"];
-
 interface RoleBadgeProps {
   role: AppRole;
 }
 
 export function RoleBadge({ role }: RoleBadgeProps) {
   const current = roleConfig[role];
-  const alternateRoles = roleOrder
-    .filter((entry) => entry !== role)
-    .map((entry) => roleConfig[entry].label)
-    .join(" / ");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  const description =
+    role === "admin"
+      ? "Full access including billing, audit, and API keys"
+      : role === "editor"
+        ? "Can create and edit products, manage mappings"
+        : "Read-only access to catalog and quality data";
+  const canManageRoles = canViewAdminNavigationItem(role, "editor_plus");
 
   return (
-    <div
-      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium"
-      style={{
-        backgroundColor: current.bg,
-        borderColor: current.border,
-        color: current.text,
-      }}
-      title={`Role from signed JWT claims. Access is server-enforced by role, permissions, and plan. Available roles: ${alternateRoles}`}
-    >
-      Role: {current.label}
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium"
+        style={{
+          backgroundColor: current.bg,
+          borderColor: current.border,
+          color: current.text,
+        }}
+      >
+        Role: {current.label}
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-lg">
+          <p className="font-semibold text-slate-900">{current.label}</p>
+          <p className="mt-1">{description}</p>
+          {canManageRoles ? (
+            <Link href="/admin/users" className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline">
+              Manage team roles →
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

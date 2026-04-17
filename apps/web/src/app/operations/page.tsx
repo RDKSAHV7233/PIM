@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import {
   ApiHttpError,
   getBulkImportJobs,
@@ -24,6 +25,20 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   return Array.isArray(value.items) ? value.items : [];
 }
 
+function resolveResponseTotal<T>(value: T[] | { items: T[] } | null | undefined): number {
+  if (!value || Array.isArray(value)) {
+    return value?.length ?? 0;
+  }
+  const raw = value as { total?: unknown; count?: unknown; items?: unknown[] };
+  if (typeof raw.total === "number" && Number.isFinite(raw.total)) {
+    return raw.total;
+  }
+  if (typeof raw.count === "number" && Number.isFinite(raw.count)) {
+    return raw.count;
+  }
+  return Array.isArray(raw.items) ? raw.items.length : 0;
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function OperationsPage() {
@@ -34,17 +49,23 @@ export default async function OperationsPage() {
   try {
     const [imports, submissionsResponse, deadLetterResponse] = await Promise.all([
       getBulkImportJobs({ role: actorRole, authHeader }),
-      getSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
-      getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
+      // Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
+      // TODO: replace with count endpoint when available.
+      getSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
+      // Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
+      // TODO: replace with count endpoint when available.
+      getDeadLetterSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
     ]);
 
     const submissions = toItems(submissionsResponse);
-    const deadLetterJobs = toItems(deadLetterResponse);
+    const submissionTotal = resolveResponseTotal(submissionsResponse);
+    const deadLetterTotal = resolveResponseTotal(deadLetterResponse);
     const importNeedsAttention = imports.filter((job) => job.status === "failed" || job.status === "dead_letter").length;
     const submissionNeedsAttention = submissions.filter((submission) => submission.status === "REJECTED" || submission.status === "ERROR").length;
 
     return (
       <div className="space-y-5">
+        <RefreshOnInterval intervalMs={30_000} />
         <PageHeader
           title="Operations"
           description="Throughput workspace for imports, bulk edits, jobs, and repairs."
@@ -65,16 +86,16 @@ export default async function OperationsPage() {
           />
           <KpiCard
             label="Submission Jobs"
-            value={submissions.length}
-            helper={`${submissionNeedsAttention} rejected/error`}
+            value={submissionTotal}
+            helper={`${submissionNeedsAttention} of ${submissionTotal} rejected/error`}
             tone={submissionNeedsAttention > 0 ? "danger" : "default"}
             href="/operations/jobs"
           />
           <KpiCard
             label="Dead Letter Queue"
-            value={deadLetterJobs.length}
+            value={deadLetterTotal}
             helper="Jobs pending manual recovery"
-            tone={deadLetterJobs.length > 0 ? "danger" : "success"}
+            tone={deadLetterTotal > 0 ? "danger" : "success"}
             href="/operations/repair"
           />
           <KpiCard
@@ -89,6 +110,7 @@ export default async function OperationsPage() {
             href="/operations/bulk-edit"
           />
         </section>
+        <p className="text-xs text-slate-500">Refreshes every 30s</p>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>

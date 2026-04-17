@@ -20,17 +20,13 @@ function toPercent(numerator: number, denominator: number): number {
 }
 
 function formatTrend(trend: string): string {
-  switch (trend) {
-    case "up":
-      return "↑ Improving";
-    case "down":
-      return "↓ Getting worse";
-    case "stable":
-    case "flat":
-      return "→ Stable";
+  if (trend === "up" || trend === "improving") {
+    return "↑ Improving";
   }
-  const normalized = trend.trim();
-  return normalized.length > 0 ? normalized : "—";
+  if (trend === "down" || trend === "worsening") {
+    return "↓ Getting worse";
+  }
+  return "→ Stable";
 }
 
 export default async function QualityPage() {
