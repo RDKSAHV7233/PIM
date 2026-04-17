@@ -2213,7 +2213,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "PENDING",
+          "commit": "28569ca",
           "tests_passed": [
             "npx tsc -p apps/web/tsconfig.json --noEmit",
             "npm run lint --workspace @pim1/web",
@@ -2230,7 +2230,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "PENDING",
+          "commit": "28569ca",
           "tests_passed": [
             "npx tsc -p apps/web/tsconfig.json --noEmit",
             "npm run lint --workspace @pim1/web",
@@ -2246,7 +2246,7 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "PENDING",
+          "commit": "28569ca",
           "tests_passed": [
             "npx tsc -p apps/web/tsconfig.json --noEmit",
             "npm run lint --workspace @pim1/web",
