@@ -336,7 +336,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           </Card>
         </section>
 
-        <Card>
+        <Card aria-live="polite" aria-atomic="true">
           <CardTitle>Import Jobs</CardTitle>
           {visibleJobs.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">
@@ -403,7 +403,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         </Card>
 
         {selectedBulkJobId ? (
-          <Card>
+          <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Row Repair Console ({selectedBulkJobId})</CardTitle>
             {selectedRows.filter((row) => row.status !== "success").length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">No rows require repair for this import job.</p>

@@ -771,11 +771,11 @@
           "owner": "codex",
           "commit": "6d3b6dc",
           "tests_passed": [
-                                                 "npm run test:staging:live-evidence",
-                                                 "node scripts/validate-live-staging-evidence.cjs --artifactDir .tmp/staging-run-23127921361",
-                                                 "node scripts/validate-deploy-staging-workflow.cjs",
-                                                 "node --check scripts/validate-live-staging-evidence.cjs",
-                                                 "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+            "npm run test:staging:live-evidence",
+            "node scripts/validate-live-staging-evidence.cjs --artifactDir .tmp/staging-run-23127921361",
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "node --check scripts/validate-live-staging-evidence.cjs",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "scope": [
             "scripts/validate-live-staging-evidence.cjs",
@@ -786,10 +786,10 @@
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
-                                           "A local validator can confirm a downloaded staging artifact bundle includes a live GitHub Actions gate artifact and a healthy controlled-rollout snapshot.",
-                                           "A runbook documents the exact workflow trigger, artifact download, and validator commands needed for the next live staging run.",
-                                           "Release-risk documentation points to the new validator and runbook while keeping RISK-P0-001 and RISK-P0-003 open until live evidence exists."
-                                       ],
+            "A local validator can confirm a downloaded staging artifact bundle includes a live GitHub Actions gate artifact and a healthy controlled-rollout snapshot.",
+            "A runbook documents the exact workflow trigger, artifact download, and validator commands needed for the next live staging run.",
+            "Release-risk documentation points to the new validator and runbook while keeping RISK-P0-001 and RISK-P0-003 open until live evidence exists."
+          ],
           "reopened_by": "codex",
           "reopened_reason": "The live Railway staging artifact bundle uses a numeric HTTP health.status (200) in the rollout snapshot, so the validator must accept the current snapshot shape instead of rejecting successful live evidence.",
           "regression_evidence": "Exact failing command: node scripts/validate-live-staging-evidence.cjs --artifactDir .tmp/staging-run-23127921361. Failing output snippet: Rollout snapshot health.status is not ok: 200. Likely files: scripts/validate-live-staging-evidence.cjs and scripts/validate-live-staging-evidence.test.cjs."
@@ -2196,6 +2196,65 @@
             "npm run build --workspace @pim1/api",
             "node apps/api/test/integration/flipkart-token-expiry-alerting.test.cjs"
           ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-23",
+      "name": "UI/UX Fix Sprint \u2014 P0+P1+P2",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [],
+      "stories": [
+        {
+          "storyId": "ST-UX-P0-001",
+          "title": "Fix catalog pagination, filteredProducts bug, loading states, archive confirmation, button system, skip link, and operations KPI inflation",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "28569ca",
+          "tests_passed": [
+            "npx tsc -p apps/web/tsconfig.json --noEmit",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-UX-P1-001",
+          "title": "Mobile sidebar drawer, keyboard shortcut hint, Input error prop, toast system, locale switcher mount, showInternal role fix",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "28569ca",
+          "tests_passed": [
+            "npx tsc -p apps/web/tsconfig.json --noEmit",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
+        },
+        {
+          "storyId": "ST-UX-P2-001",
+          "title": "KpiCard skeleton, operations refresh interval, sidebar IA restructure, role badge popover, quality trend label fix",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "28569ca",
+          "tests_passed": [
+            "npx tsc -p apps/web/tsconfig.json --noEmit",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web"
+          ],
+          "reopened_by": "",
+          "reopened_reason": "",
+          "regression_evidence": ""
         }
       ]
     }

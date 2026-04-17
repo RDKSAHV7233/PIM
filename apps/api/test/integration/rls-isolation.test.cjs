@@ -7,7 +7,7 @@ const { execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
-const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password";
+const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -57,6 +57,7 @@ function prepareEnv() {
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("PIM_AUTH_REDIS_DISABLED", "true");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
@@ -169,6 +170,8 @@ async function run() {
   const env = {
     ...process.env,
     PORT: String(port),
+    PIM_AUTH_PASSWORD: AUTH_PASSWORD,
+    PIM_AUTH_IP_ATTEMPT_LIMIT: "200",
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantA,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({

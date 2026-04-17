@@ -14,7 +14,7 @@ export function ProductDetailStatusAlerts({
   deleteError,
 }: ProductDetailStatusAlertsProps) {
   return (
-    <>
+    <div aria-live="polite" aria-atomic="true" className="space-y-3">
       {updateStatus === "updated" && (
         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
           Product updated successfully.
@@ -46,6 +46,6 @@ export function ProductDetailStatusAlerts({
           Product delete failed: {deleteError}
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

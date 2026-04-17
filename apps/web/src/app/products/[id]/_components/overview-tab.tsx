@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { deleteProductAction, purgeProductAction } from "@/app/actions";
+import { purgeProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/status-chip";
 import { formatDateTime, RoleHiddenInput } from "./product-detail-shared";
+import { ArchiveProductButton } from "./archive-product-button";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function OverviewTab({ data }: { data: ProductDetailPageData }) {
@@ -119,15 +120,7 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
               <p className="mt-1 text-xs text-slate-600">
                 Archived products are hidden from the catalog and can be restored by changing status.
               </p>
-              <form action={deleteProductAction} className="mt-3 flex flex-wrap items-center gap-2">
-                <RoleHiddenInput role={data.actorRole} />
-                <input type="hidden" name="productId" value={data.productId} />
-                <input type="hidden" name="confirmDelete" value="yes" />
-                <input type="hidden" name="returnTo" value="/catalog/products" />
-                <Button type="submit" className="bg-red-600 text-white hover:bg-red-700">
-                  Archive product
-                </Button>
-              </form>
+              <ArchiveProductButton productId={data.productId} actorRole={data.actorRole} />
             </div>
             {data.actorRole === "admin" ? (
               <div className="rounded-md border border-red-200 bg-red-50 p-3">

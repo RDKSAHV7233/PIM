@@ -138,29 +138,24 @@ function SidebarIcon({ name, className }: { name: SidebarIconName; className?: s
 
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
-    title: "Dashboard",
+    title: "Workspace",
     items: [
-      { label: "Overview", href: "/dashboard", icon: "home" },
-    ],
-  },
-  {
-    title: "Products",
-    items: [
-      { label: "Product Workbench", href: "/catalog/products", icon: "box" },
+      { label: "Dashboard", href: "/dashboard", icon: "home" },
     ],
   },
   {
     title: "Catalog",
     items: [
+      { label: "Products", href: "/catalog/products", icon: "box" },
       { label: "Categories", href: "/catalog/categories", icon: "folder" },
       { label: "Attributes", href: "/catalog/attributes", icon: "sliders" },
       { label: "Media", href: "/catalog/media", icon: "image" },
     ],
   },
   {
-    title: "Channels",
+    title: "Activate",
     items: [
-      { label: "Overview", href: "/channels", icon: "grid" },
+      { label: "Channels", href: "/channels", icon: "grid" },
       { label: "Connectors", href: "/channels/connectors", icon: "plug" },
       { label: "Mappings", href: "/channels/mappings", icon: "branch" },
       { label: "Submissions", href: "/channels/submissions", icon: "send" },
@@ -179,7 +174,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    title: "Operations",
+    title: "Operate",
     badgeKey: "operations",
     items: [
       { label: "Imports", href: "/operations/imports", icon: "upload" },
@@ -200,16 +195,17 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "admin" },
     ],
   },
-  {
-    title: "Labs / Internal",
-    items: [
-      { label: "Developer", href: "/internal/developer", icon: "code" },
-      { label: "AI Lab", href: "/ai", icon: "flask" },
-      { label: "DAM", href: "/media", icon: "database" },
-      { label: "ONDC", href: "/ondc", icon: "globe" },
-    ],
-  },
 ];
+
+const INTERNAL_SECTION: SidebarSection = {
+  title: "Internal",
+  items: [
+    { label: "Developer", href: "/internal/developer", icon: "code" },
+    { label: "AI Lab", href: "/ai", icon: "flask" },
+    { label: "DAM", href: "/media", icon: "database" },
+    { label: "ONDC", href: "/ondc", icon: "globe" },
+  ],
+};
 
 function isItemActive(pathname: string, item: SidebarItem): boolean {
   if (item.href === "/") {
@@ -226,9 +222,7 @@ interface AppSidebarProps {
 export function AppSidebar({ actorRole, showInternal = false }: AppSidebarProps) {
   const pathname = usePathname();
   const [badges, setBadges] = useState<SidebarBadgeSummary>({ quality: 0, operations: 0 });
-  const sections = (showInternal
-    ? SIDEBAR_SECTIONS
-    : SIDEBAR_SECTIONS.filter((section) => section.title !== "Labs / Internal"))
+  const sections = (showInternal ? [...SIDEBAR_SECTIONS, INTERNAL_SECTION] : SIDEBAR_SECTIONS)
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility)),
@@ -264,9 +258,6 @@ export function AppSidebar({ actorRole, showInternal = false }: AppSidebarProps)
 
   return (
     <aside className="sticky top-20 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        Workspace
-      </div>
       <div className="space-y-4">
         {sections.map((section) => (
           <section key={section.title}>

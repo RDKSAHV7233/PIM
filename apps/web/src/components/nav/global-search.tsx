@@ -26,6 +26,7 @@ function statusTone(status: string): "success" | "warning" | "info" | "danger" |
 export function GlobalSearch() {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CatalogSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +85,21 @@ export function GlobalSearch() {
     return () => window.removeEventListener("mousedown", onPointerDown);
   }, []);
 
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        inputRef.current?.focus();
+        if (query.trim()) {
+          setOpen(true);
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [query]);
+
   const showDropdown = useMemo(() => open && query.trim().length > 0, [open, query]);
   const noResults = !loading && query.trim().length > 0 && results.length === 0;
 
@@ -98,6 +114,7 @@ export function GlobalSearch() {
   return (
     <div ref={rootRef} className="relative hidden min-w-[320px] flex-1 md:block">
       <input
+        ref={inputRef}
         type="search"
         value={query}
         onFocus={() => {
@@ -142,6 +159,14 @@ export function GlobalSearch() {
         aria-label="Global product search"
         className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       />
+      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+        <kbd
+          title="Shortcut: ⌘K / Ctrl+K"
+          className="hidden items-center gap-0.5 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 sm:inline-flex"
+        >
+          ⌘K
+        </kbd>
+      </div>
       {showDropdown ? (
         <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
           {loading ? <p className="px-3 py-4 text-sm text-slate-500">Searching...</p> : null}
@@ -172,4 +197,3 @@ export function GlobalSearch() {
     </div>
   );
 }
-

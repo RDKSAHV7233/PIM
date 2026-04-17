@@ -178,7 +178,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
           />
         </section>
 
-        <Card>
+        <Card aria-live="polite" aria-atomic="true">
           <CardTitle>Today&apos;s Progress</CardTitle>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
@@ -262,7 +262,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
         </FilterBar>
 
         {inbox.items.length === 0 ? (
-          <Card>
+          <Card aria-live="polite" aria-atomic="true">
             <EmptyState
               icon="CHECK"
               title="No open issues found"
@@ -271,7 +271,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             />
           </Card>
         ) : (
-          <Card>
+          <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Open Issues</CardTitle>
             <form action={resolveIssueInboxWarningsAction} className="space-y-3">
               <RoleHiddenInput role={actorRole} />
