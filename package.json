@@ -151,6 +151,7 @@
     "test:staging:public-signup-check": "node scripts/staging-public-signup-check.test.cjs",
     "test:staging:live-evidence": "node scripts/validate-live-staging-evidence.test.cjs",
     "release:staging:public-signup-check": "node scripts/staging-public-signup-check.cjs",
+    "release:staging:signup-console-verify": "node scripts/staging-console-signup-verify.cjs",
     "release:validate-live-staging-evidence": "node scripts/validate-live-staging-evidence.cjs",
     "governance:enforce": "dotenv -o -e .env -- node scripts/enforce-payload-governance.cjs",
     "guard:unsafe-raw": "node scripts/check-unsafe-raw-comments.cjs",

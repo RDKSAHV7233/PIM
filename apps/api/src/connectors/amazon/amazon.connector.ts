@@ -131,7 +131,7 @@ const SUPPRESSION_ACTIONS = new Set([
 export class AmazonConnector implements ConnectorInterface {
   readonly slug = "amazon-in";
   readonly displayName = "Amazon India";
-  readonly implementationStatus = "partial" as const;
+  readonly implementationStatus = "full" as const;
   readonly capabilities: ConnectorCap[] = [
     "PUBLISH",
     "VALIDATE",
@@ -520,6 +520,7 @@ export class AmazonConnector implements ConnectorInterface {
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_credentials
@@ -553,6 +554,7 @@ export class AmazonConnector implements ConnectorInterface {
     credentialType: string,
   ): Promise<CredentialRow | null> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     const rows = await db.$queryRawUnsafe<CredentialRow[]>(
       `
       SELECT
@@ -602,6 +604,7 @@ export class AmazonConnector implements ConnectorInterface {
     const db = this.prismaDirect.getClient();
     const id = `${ctx.installationId}:${credentialType}`;
 
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       INSERT INTO connector_credentials (
@@ -619,9 +622,11 @@ export class AmazonConnector implements ConnectorInterface {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, 'ACTIVE', $7, NULL, NOW(), NOW()
       )
-      ON CONFLICT (installation_id, credential_type)
+      ON CONFLICT (id)
       DO UPDATE SET
         tenant_key = EXCLUDED.tenant_key,
+        installation_id = EXCLUDED.installation_id,
+        credential_type = EXCLUDED.credential_type,
         encrypted_value = EXCLUDED.encrypted_value,
         key_version = EXCLUDED.key_version,
         status = 'ACTIVE',
@@ -941,6 +946,7 @@ export class AmazonConnector implements ConnectorInterface {
 
   private async invalidateAccessToken(ctx: ConnectorContext): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_credentials

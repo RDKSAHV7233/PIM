@@ -435,7 +435,7 @@ export class WorkspaceUsersService {
     const configuredPassword = String(process.env.PIM_AUTH_PASSWORD ?? "").trim();
     const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
     const allowLocalDefault = appEnv === "development" || appEnv === "local" || appEnv === "test";
-    const sharedPassword = configuredPassword || (allowLocalDefault ? "tej-pim-demo-password" : "");
+    const sharedPassword = configuredPassword || (allowLocalDefault ? "vexa-pim-demo-password" : "");
     if (!sharedPassword) {
       return null;
     }

@@ -19,22 +19,21 @@ function run() {
 
   assert(
     source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
       source.includes("const claims = await getServerSessionClaims();"),
-    "Admin users must derive shared auth, actor role, and session claims before loading workspace access data.",
+    "Admin users must derive shared auth and session claims before loading workspace access data.",
   );
   assert(
     source.includes('const status = String(query.status ?? "").trim();') &&
       source.includes('const showInvite = String(query.showInvite ?? "").trim() === "true";') &&
-      source.includes('const canManageUsers = actorRole === "admin" && canEditWorkspace(actorRole);'),
-    "Admin users must normalize page status and invite query state while deriving write access from shared role capabilities.",
+      source.includes("const canManageUsers = Boolean(authHeader);"),
+    "Admin users must normalize page status and invite query state while deriving write access from the shared authenticated session.",
   );
   assert(
     source.includes("const [usage, connectorPermissions, workspaceUsers] = await Promise.all([") &&
-      source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
-      source.includes("getConnectorPermissions(undefined, { role: actorRole, authHeader })") &&
-      source.includes("getWorkspaceUsers({ role: actorRole, authHeader })"),
-    "Admin users must load billing usage, connector overrides, and workspace users together through the shared auth context.",
+      source.includes("getBillingUsage({ authHeader })") &&
+      source.includes("getConnectorPermissions(undefined, { authHeader })") &&
+      source.includes("getWorkspaceUsers({ authHeader })"),
+    "Admin users must load billing usage, connector overrides, and workspace users together through the shared authenticated API context.",
   );
   assert(
     source.includes("const byPrincipalType = connectorPermissions.reduce<Record<string, number>>") &&

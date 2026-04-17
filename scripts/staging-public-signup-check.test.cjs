@@ -56,7 +56,7 @@ async function startStubServer(mode) {
     if (mode === "enabled") {
       if (request.url === "/signup") {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        response.end("<html><body><h1>Create your TEJ PIM workspace</h1></body></html>");
+        response.end("<html><body><h1>Create your Vexa PIM workspace</h1></body></html>");
         return;
       }
       if (request.url?.startsWith("/api/v1/signup/workspace/availability")) {

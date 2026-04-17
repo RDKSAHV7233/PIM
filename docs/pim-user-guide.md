@@ -32,8 +32,8 @@ Connector surfaces implemented in this repo are:
    - Current state: live
    - Supports installation, credential validation, publish, and status sync
 2. Amazon India (`amazon-in`)
-   - Current state: planned
-   - Visible as an honest roadmap surface, not seller-ready
+   - Current state: live
+   - Supports seller installation, credential validation, publish, status sync, and webhook relay handling
 3. Meesho
    - Current state: manual or guided workflow
    - Not seller self-serve and not direct publish
@@ -258,7 +258,11 @@ Current connector setup requirements visible in the repo are:
    - `Client ID`
    - `Client Secret`
    - `Refresh Token`
-2. Amazon India is not seller-ready yet
+2. Amazon India live install requires:
+   - `Seller ID`
+   - `Client ID`
+   - `Client Secret`
+   - `Refresh Token`
 3. Meesho is still treated as a guided manual workflow, not self-serve live publishing
 
 ### Technical setup for local or self-hosted environments
@@ -980,6 +984,22 @@ Known error:
 Meaning:
 1. the saved credentials could not be validated
 
+#### Amazon install requires more credentials
+
+Known error:
+1. `AMAZON_CREDENTIALS_INCOMPLETE`
+
+Meaning:
+1. seller ID, client ID, client secret, and refresh token must be provided together
+
+#### Amazon credentials invalid
+
+Known error:
+1. `AMAZON_CREDENTIALS_INVALID`
+
+Meaning:
+1. the saved seller ID or Amazon LWA credentials could not be validated
+
 #### Action blocked by permission or plan
 
 Examples shown in UI:
@@ -1035,8 +1055,8 @@ What to do:
 
 These are current product limitations that are visible in the codebase today.
 
-1. Amazon India is not seller-ready.
-   - It is shown honestly as a planned connector, not a finished publish path.
+1. Older local runbooks may still call Amazon India planned.
+   - Replace them with the current repo truth: Amazon India ships a live install, publish, status sync, and webhook relay path.
 2. Meesho is still a guided manual workflow.
    - The repo does not provide a complete self-serve Meesho export or direct publish flow today.
 3. ONDC is internal or feature-flagged.
@@ -1064,12 +1084,12 @@ Yes. In this repo, TEJ PIM includes the product workbench, categories, attribute
 
 Based on the current repo state:
 1. Flipkart is the live connector path.
-2. Amazon India is planned, not seller-ready.
+2. Amazon India is also a live connector path with seller install, credential validation, publish, and status sync.
 3. Meesho is manual or guided, not a completed self-serve channel flow.
 
 ### Can I publish directly to Amazon India today?
 
-No. The connector is surfaced honestly, but it is not wired as a live seller publishing flow in the current codebase.
+Yes. Amazon India is wired as a live seller publishing flow in the current codebase when the installation has seller ID and valid Amazon LWA credentials.
 
 ### Can I use Meesho today?
 

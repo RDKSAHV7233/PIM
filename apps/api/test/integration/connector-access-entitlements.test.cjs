@@ -48,9 +48,9 @@ function prepareEnv() {
   if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
@@ -58,8 +58,8 @@ function prepareEnv() {
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
@@ -163,7 +163,7 @@ async function run() {
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Connector Access" },
     }),
-    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+    PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
     PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
   };
 
@@ -194,7 +194,7 @@ async function run() {
     const loginAdmin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: adminUser,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(loginAdmin, 201, "admin login");
@@ -204,7 +204,7 @@ async function run() {
     const loginEditor = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: editorUser,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(loginEditor, 201, "editor login");

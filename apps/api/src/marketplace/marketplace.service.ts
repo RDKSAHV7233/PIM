@@ -100,6 +100,7 @@ type MarketplaceReadinessSummary = {
 type SubmissionFilters = {
   productId?: string;
   connectorSlug?: string;
+  installationId?: string;
   status?: string;
   minAttempt?: number;
 };
@@ -419,27 +420,7 @@ export class MarketplaceService implements OnModuleInit {
     templateId?: string,
     channelOverride?: string,
   ) {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT
-        ci.id,
-        cd.slug AS "connectorSlug"
-      FROM connector_installations ci
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE ci.id = $1
-        AND ci.tenant_key = $2
-      LIMIT 1
-      `,
-      installationId,
-      tenantKey,
-    )) as Array<{ id: string; connectorSlug: string }>;
-
-    const installation = rows[0];
-    if (!installation) {
-      throw new NotFoundException("Connector installation not found.");
-    }
+    const installation = await this.resolveInstallationConnectorSummary(installationId);
 
     const channel = channelOverride
       ? this.parseChannel(channelOverride)
@@ -494,6 +475,7 @@ export class MarketplaceService implements OnModuleInit {
     });
     const job = await this.prisma.tenant().marketplaceExportJob.create({
       data: {
+        createdBy: actorId?.trim() ? actorId.trim() : null,
         productId,
         categoryId: product.categoryId,
         channel: simulation.channel as MarketplaceChannelDb,
@@ -510,14 +492,6 @@ export class MarketplaceService implements OnModuleInit {
       },
       include: { template: true },
     });
-    if (actorId?.trim()) {
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
-        `UPDATE "MarketplaceExportJob" SET created_by = $1 WHERE id = $2`,
-        actorId.trim(),
-        job.id,
-      );
-    }
     await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
       jobId: job.id,
       connectorSlug: simulation.channel,
@@ -626,6 +600,7 @@ export class MarketplaceService implements OnModuleInit {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const productId = filters?.productId ? String(filters.productId).trim() : "";
     const connectorSlug = filters?.connectorSlug ? String(filters.connectorSlug).trim().toLowerCase() : "";
+    const installationId = filters?.installationId ? String(filters.installationId).trim() : "";
     const status = filters?.status ? String(filters.status).trim().toUpperCase() : "";
     const minAttempt = Number.isFinite(filters?.minAttempt)
       ? Math.max(1, Math.floor(filters?.minAttempt ?? 1))
@@ -638,7 +613,10 @@ export class MarketplaceService implements OnModuleInit {
       params.push(productId);
       clauses.push(`cs.product_id = $${params.length}`);
     }
-    if (connectorSlug) {
+    if (installationId) {
+      params.push(installationId);
+      clauses.push(`cs.installation_id = $${params.length}`);
+    } else if (connectorSlug) {
       params.push(connectorSlug);
       clauses.push(`LOWER(cd.slug) = $${params.length}`);
     }
@@ -1879,6 +1857,44 @@ export class MarketplaceService implements OnModuleInit {
     throw new BadRequestException(`Unsupported connector slug '${slug}' for payload preview.`);
   }
 
+  private async resolveInstallationConnectorSummary(installationId: string): Promise<{
+    id: string;
+    connectorSlug: string;
+    connectorDisplayName: string;
+  }> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+      `
+      SELECT
+        ci.id,
+        cd.slug AS "connectorSlug",
+        cd.display_name AS "connectorDisplayName"
+      FROM connector_installations ci
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.id = $1
+        AND ci.tenant_key = $2
+      LIMIT 1
+      `,
+      installationId,
+      tenantKey,
+    )) as Array<{
+      id: string;
+      connectorSlug: string;
+      connectorDisplayName: string;
+    }>;
+
+    const installation = rows[0];
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+    return {
+      id: installation.id,
+      connectorSlug: installation.connectorSlug,
+      connectorDisplayName: installation.connectorDisplayName,
+    };
+  }
+
   private normalizeSubmissionRow(
     row: Record<string, unknown>,
     includePayload = false,
@@ -2216,12 +2232,12 @@ export class MarketplaceService implements OnModuleInit {
     // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ storagePath: string | null }>>(
       `
-      SELECT storage_path AS "storagePath"
-      FROM media_assets
-      WHERE tenant_key = $1
-        AND product_id = $2
-      ORDER BY created_at DESC
-      LIMIT 1
+        SELECT storage_path AS "storagePath"
+        FROM media_assets
+        WHERE tenant_key = $1
+          AND product_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
       `,
       tenantKey,
       productId,

@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
+const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,12 +15,14 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(CONNECTORS_PAGE, "utf8");
+  const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
   assert(
-    source.includes("definition.launchStage === \"live\" && definition.actions?.install.allowed"),
-    "Connectors page must only show self-serve install when the connector launch stage is live.",
+    setupSource.includes('filter((item) => item.definition.launchStage === "live")'),
+    "Connector setup page must only show self-serve install when the connector launch stage is live.",
   );
   assert(
-    source.includes("definition.launchNote") && source.includes("Seller self-serve install is intentionally hidden"),
+    source.includes("definition.launchNote") &&
+      source.includes("Review operationally limited and roadmap-only connectors before promising coverage."),
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
@@ -47,7 +50,7 @@ function run() {
       {
         status: "ok",
         validated: [
-          "connector_page_hides_non_live_install_forms",
+          "connector_setup_page_hides_non_live_install_forms",
           "connector_page_surfaces_launch_honesty_notes",
           "installed_connector_rows_show_launch_stage",
           "connector_page_surfaces_implementation_status_notes",

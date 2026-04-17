@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const body = await response.text();
   const contentType = response.headers.get("content-type") ?? "text/csv; charset=utf-8";
-  const disposition = response.headers.get("content-disposition") ?? 'attachment; filename="tej-pim-audit-events.csv"';
+  const disposition = response.headers.get("content-disposition") ?? 'attachment; filename="vexa-pim-audit-events.csv"';
 
   return new NextResponse(body, {
     status: response.status,

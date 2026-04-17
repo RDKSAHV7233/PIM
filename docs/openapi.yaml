@@ -593,6 +593,25 @@ paths:
       summary: KPI trends by tenant and connector
       tags:
         - Metrics
+  /api/v1/connector-webhooks/relay/{tenantKey}/installations/{installationId}:
+    post:
+      operationId: ConnectorWebhookRelayController_relayWebhook
+      parameters:
+        - name: tenantKey
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "202":
+          description: ""
+      tags:
+        - ConnectorWebhookRelay
   /api/v1/connectors/definitions:
     get:
       operationId: ConnectorInstallerController_listDefinitions
@@ -675,6 +694,34 @@ paths:
       responses:
         "201":
           description: ""
+      tags: *a9
+  /api/v1/connectors/{id}/oauth/callback:
+    post:
+      operationId: ConnectorInstallerController_oauthCallback
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OAuth callback handled and credentials persisted
+      summary: Complete OAuth callback for a connector installation
+      tags: *a9
+  /api/v1/connectors/{id}/product-type-schema:
+    get:
+      operationId: ConnectorInstallerController_productTypeSchema
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product type schema fetched
+      summary: Fetch connector product type schema for an installed account
       tags: *a9
   /api/v1/connectors/{id}/payload-preview:
     post:
@@ -1215,6 +1262,11 @@ paths:
           schema:
             type: string
         - name: connectorSlug
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: installationId
           required: true
           in: query
           schema:
@@ -2254,8 +2306,8 @@ paths:
           description: ""
       tags: *a21
 info:
-  title: TEJ PIM API
-  description: TEJ PIM API OpenAPI specification
+  title: Vexa PIM API
+  description: Vexa PIM API OpenAPI specification
   version: 1.0.0
   contact: {}
 tags: []

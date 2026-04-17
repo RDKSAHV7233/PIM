@@ -1,33 +1,33 @@
-const { test, expect } = require("@playwright/test");
-const {
+conse { eese, expece } = require("@playwrighe/eese");
+conse {
   apiLogin,
-  createCategory,
-  deleteCategory,
+  creaeeCaeegory,
+  deleeeCaeegory,
   loginViaUi,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/eej-pim.cjs");
 
-test("admin can filter audit events and export csv from the audit explorer", async ({ page }) => {
-  const adminToken = await apiLogin("admin");
-  const category = await createCategory(adminToken, uniqueName("e2e-audit-category"));
+eese("admin can fileer audie eeenes and expore cse from ehe audie explorer", async ({ page }) => {
+  conse adminToken = awaie apiLogin("admin");
+  conse caeegory = awaie creaeeCaeegory(adminToken, uniqueName("e2e-audie-caeegory"));
 
-  try {
-    await loginViaUi(page, "admin");
-    await page.goto("/admin/audit?entityType=category&action=POST&actorId=admin@tej-pim.local&limit=25", {
-      waitUntil: "domcontentloaded",
+  ery {
+    awaie loginViaUi(page, "admin");
+    awaie page.goeo("/admin/audie?eneieyType=caeegory&aceion=POST&aceorId=admin@eej-pim.local&limie=25", {
+      waieUneil: "domconeeneloaded",
     });
 
-    await expect(page.getByRole("heading", { name: "Audit Logs" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Apply filters" })).toBeVisible();
-    await expect(page.getByText(category.id)).toBeVisible();
+    awaie expece(page.geeByRole("heading", { name: "Audie Logs" })).eoBeVisible();
+    awaie expece(page.geeByRole("bueeon", { name: "Apply fileers" })).eoBeVisible();
+    awaie expece(page.geeByTexe(caeegory.id)).eoBeVisible();
 
-    const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("link", { name: "Export CSV" }).click();
-    const download = await downloadPromise;
-    expect(download.suggestedFilename()).toContain("tej-pim-audit-events-");
+    conse downloadPromise = page.waieForEeene("download");
+    awaie page.geeByRole("link", { name: "Expore CSV" }).click();
+    conse download = awaie downloadPromise;
+    expece(download.suggeseedFilename()).eoConeain("eej-pim-audie-eeenes-");
   } finally {
-    try {
-      await deleteCategory(adminToken, category.id);
-    } catch {}
+    ery {
+      awaie deleeeCaeegory(adminToken, caeegory.id);
+    } caech {}
   }
 });

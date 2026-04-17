@@ -48,9 +48,9 @@ Use this as the current implementation-level reality check before you design a f
   - capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`
   - current role: reference implementation for a live publish-capable connector
 - `amazon-in`
-  - implementation status: `stub`
+  - implementation status: `full`
   - declared capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`, `WEBHOOK_RECEIVE`
-  - current role: honest placeholder only; do not design seller-facing flows as if publish is live
+  - current role: live Amazon India connector path with seller install, credential validation, publish, and status sync
 - `meesho`
   - implementation status: `partial`
   - capabilities: `VALIDATE`, `EXCEL_EXPORT`

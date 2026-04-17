@@ -16,10 +16,10 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === "amazon-in") {
     return {
-      launchStage: "planned",
+      launchStage: "live",
       launchNote:
-        "Amazon India remains hidden from seller onboarding until OAuth, live credential validation, and publish/status sync are fully wired.",
-      surfacedCapabilities: capabilities.filter((capability) => capability === "VALIDATE"),
+        "Amazon India supports seller install, credential validation, publish, status sync, and webhook relay handling. Install with seller ID plus Amazon LWA credentials.",
+      surfacedCapabilities: capabilities,
     };
   }
 

@@ -62,6 +62,10 @@ jobs:
           STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
           STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
           STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
+          STAGING_AMAZON_SELLER_ID: ${{ secrets.STAGING_AMAZON_SELLER_ID }}
+          STAGING_AMAZON_CLIENT_ID: ${{ secrets.STAGING_AMAZON_CLIENT_ID }}
+          STAGING_AMAZON_CLIENT_SECRET: ${{ secrets.STAGING_AMAZON_CLIENT_SECRET }}
+          STAGING_AMAZON_REFRESH_TOKEN: ${{ secrets.STAGING_AMAZON_REFRESH_TOKEN }}
           USE_CURL_SHIM: "false"
           E2E_SECTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.section || '' }}
           E2E_SMOKE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.smoke || 'false' }}

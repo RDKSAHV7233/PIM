@@ -43,22 +43,22 @@ function prepareEnv() {
     setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
     setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("AUTH_MODE", "db");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
 }
 
 function sleep(ms) {
@@ -182,7 +182,7 @@ async function run() {
     AUTH_EMAIL_PROVIDER: "file",
     AUTH_EMAIL_OUTBOX_DIR: outboxDir,
     PIM_COMMERCIAL_CONTACT_EMAIL: "commercial@tej.example",
-    PIM_AUTH_PASSWORD: "tej-pim-demo-password",
+    PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
   };
 
   const stdoutBuffer = [];
@@ -222,7 +222,7 @@ async function run() {
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId: adminUser,
-      password: "tej-pim-demo-password",
+      password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });
     assertStatus(login, 201, "admin login");
@@ -442,6 +442,41 @@ async function run() {
       `expected customer lookup to preserve acknowledged request payload=${JSON.stringify(lookupAfterAcknowledge.payload)}`,
     );
 
+    const requestAuditTrail = await apiRequest(
+      baseUrl,
+      "GET",
+      `/audit/events?entityType=plan&resourceId=${encodeURIComponent(requestId)}&limit=25`,
+      adminToken,
+    );
+    assertStatus(requestAuditTrail, 200, "request audit explorer query");
+    const requestAuditActions = Array.isArray(requestAuditTrail.payload?.items)
+      ? requestAuditTrail.payload.items.map((row) => String(row?.action ?? ""))
+      : [];
+    assert(
+      requestAuditActions.includes("COMMERCIAL_UPGRADE_REQUEST_CREATED") &&
+        requestAuditActions.includes("COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED"),
+      `expected created and status-updated audit rows for request ${requestId}, got ${JSON.stringify(requestAuditTrail.payload)}`,
+    );
+
+    const requestAuditExport = await apiRequest(
+      baseUrl,
+      "GET",
+      `/audit/events/export?entityType=plan&resourceId=${encodeURIComponent(requestId)}&limit=25`,
+      adminToken,
+      undefined,
+      {
+        Accept: "text/csv",
+      },
+    );
+    assertStatus(requestAuditExport, 200, "request audit export");
+    const requestAuditCsv = String(requestAuditExport.payload ?? "");
+    assert(
+      requestAuditCsv.includes(requestId) &&
+        requestAuditCsv.includes("COMMERCIAL_UPGRADE_REQUEST_CREATED") &&
+        requestAuditCsv.includes("COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED"),
+      `expected request audit export rows payload=${requestAuditCsv}`,
+    );
+
     const thirdRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
       notes: "Third request should reuse the acknowledged request.",
       source: "admin_plan",
@@ -653,6 +688,7 @@ async function run() {
             "duplicate_open_upgrade_requests_are_reused",
             "acknowledged_requests_remain_visible_to_customer_admins",
             "internal_ops_can_update_upgrade_request_status",
+            "workspace_admin_can_view_request_audit_followup_after_status_change",
             "resolved_requests_clear_customer_pending_state",
             "internal_ops_can_list_upgrade_requests",
             "internal_ops_can_export_upgrade_requests_as_csv",

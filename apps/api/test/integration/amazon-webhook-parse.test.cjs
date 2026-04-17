@@ -35,7 +35,7 @@ function setDefaultEnv(name, value) {
 
 function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
 }
 

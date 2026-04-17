@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   deleteConnectorInstallationAction,
-  installConnectorAction,
   reconnectConnectorAction,
   uninstallConnectorAction,
 } from "@/app/actions";
@@ -90,6 +89,12 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   }
   if (value === "FLIPKART_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the client ID, client secret, and refresh token.`;
+  }
+  if (value === "AMAZON_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires seller ID, client ID, client secret, and refresh token together.`;
+  }
+  if (value === "AMAZON_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
   }
   return `${connectorLabel} install failed: ${value}`;
 }
@@ -381,6 +386,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     const attentionAccountsCount = filteredInstallations.filter((installation) =>
       isInstallationAttentionStatus(installation.status),
     ).length;
+    const attentionInstallations = filteredInstallations.filter((installation) =>
+      isInstallationAttentionStatus(installation.status),
+    );
     const portfolioContext = searchValue ? ` for "${searchValue}"` : "";
 
     return (
@@ -423,37 +431,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-slate-200 bg-white">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Portfolio Summary
-            </div>
-            <div className="mt-3 text-3xl font-semibold text-slate-900">{connectedAccountsCount}</div>
-            <p className="mt-2 text-sm text-slate-600">Connected accounts{portfolioContext}</p>
-          </Card>
-          <Card className="border-slate-200 bg-white">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Live marketplaces
-            </div>
-            <div className="mt-3 text-3xl font-semibold text-slate-900">{liveDefinitions.length}</div>
-            <p className="mt-2 text-sm text-slate-600">Marketplaces ready for seller-facing connector installs.</p>
-          </Card>
-          <Card className="border-slate-200 bg-white">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Needs setup
-            </div>
-            <div className="mt-3 text-3xl font-semibold text-slate-900">{needsSetupDefinitions.length}</div>
-            <p className="mt-2 text-sm text-slate-600">Live marketplaces still waiting for their first connected account.</p>
-          </Card>
-          <Card className="border-slate-200 bg-white">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Accounts needing attention
-            </div>
-            <div className="mt-3 text-3xl font-semibold text-slate-900">{attentionAccountsCount}</div>
-            <p className="mt-2 text-sm text-slate-600">Reconnect, disable, or clean up accounts that are not currently healthy.</p>
-          </Card>
-        </div>
-
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
           <Card className="border-slate-200 bg-white">
             <CardTitle>Search connectors</CardTitle>
@@ -486,41 +463,71 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
             </form>
           </Card>
 
-          <Card className="border-slate-200 bg-slate-950 text-white">
-            <h2 className="mb-3 text-lg font-semibold text-white">Workspace lanes</h2>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Live marketplaces</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{liveDefinitions.length}</p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Self-serve connector lanes that sellers can install and operate now.
+          <Card className="border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Action rail</CardTitle>
+                <p className="mt-2 text-sm text-slate-600">
+                  Start setup, resolve account health, or review rollout limits without scanning every marketplace card.
                 </p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Guided rollout</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{manualDefinitions.length}</p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Connectors that need a guided handoff or manual downstream workflow.
-                </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusChip label={`${connectedAccountsCount} connected`} tone="neutral" />
+                <StatusChip label={`${attentionAccountsCount} attention`} tone="warning" />
+                <StatusChip label={`${liveDefinitions.length} live`} tone="info" />
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Planned backlog</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{plannedDefinitions.length}</p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Future connector surface that is visible for planning but not seller-ready yet.
+            </div>
+            <div className="mt-4 grid gap-3">
+              <Link
+                href="/channels/connectors/setup"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Start setup</p>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <p className="text-2xl font-semibold text-slate-900">{needsSetupDefinitions.length}</p>
+                  <StatusChip label="setup lane" tone="info" />
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Open the dedicated setup workspace to install the first healthy account for each live marketplace.
                 </p>
-              </div>
+              </Link>
+              <a
+                href="#connected-accounts"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Accounts needing attention</p>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <p className="text-2xl font-semibold text-slate-900">{attentionInstallations.length}</p>
+                  <StatusChip label="operator follow-up" tone="warning" />
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Reconnect, disable, or clean up accounts that are not currently healthy.
+                </p>
+              </a>
+              <a
+                href="#connector-catalog"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Guided rollout</p>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <p className="text-2xl font-semibold text-slate-900">{manualDefinitions.length + plannedDefinitions.length}</p>
+                  <StatusChip label="portfolio review" tone="info" />
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Review operationally limited and roadmap-only connectors before promising coverage.
+                </p>
+              </a>
             </div>
           </Card>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
-          <Card className="border-slate-200 bg-white">
+          <Card id="connector-catalog" className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Live marketplaces</CardTitle>
+                <CardTitle>Marketplace catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Marketplaces ready for seller-facing installs, mapping, and day-to-day account operations{portfolioContext}.
+                  Review live connector lanes first, then open the dedicated setup workspace when you are ready to enter credentials and create accounts{portfolioContext}.
                 </p>
               </div>
               <StatusChip
@@ -606,6 +613,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
                       <div className="mt-4 flex flex-wrap gap-2">
                         <Link
+                          href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
+                        </Link>
+                        <Link
                           href={mappingHref}
                           className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                         >
@@ -620,110 +633,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           </Link>
                         ) : null}
                       </div>
-
-                      {definition.launchStage === "live" && definition.actions?.install.allowed ? (
-                        <form action={installConnectorAction} className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                          <input type="hidden" name="slug" value={definition.slug} />
-                          <div className="space-y-1">
-                            <label
-                              htmlFor={`install-alias-${definition.id}`}
-                              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                            >
-                              Account Alias
-                            </label>
-                            <Input
-                              id={`install-alias-${definition.id}`}
-                              name="accountAlias"
-                              defaultValue="primary"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label
-                              htmlFor={`install-ref-${definition.id}`}
-                              className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                            >
-                              External Account Ref
-                            </label>
-                            <Input
-                              id={`install-ref-${definition.id}`}
-                              name="externalAccountRef"
-                              placeholder="Optional"
-                            />
-                          </div>
-                          {definition.slug === "flipkart" ? (
-                            <>
-                              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                                Flipkart live install needs validated API credentials. These values are encrypted on save and never shown again.
-                              </div>
-                              <div className="space-y-1">
-                                <label
-                                  htmlFor={`install-client-id-${definition.id}`}
-                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                                >
-                                  Client ID
-                                </label>
-                                <Input
-                                  id={`install-client-id-${definition.id}`}
-                                  name="clientId"
-                                  autoComplete="off"
-                                  placeholder="fk-client-id"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label
-                                  htmlFor={`install-client-secret-${definition.id}`}
-                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                                >
-                                  Client Secret
-                                </label>
-                                <Input
-                                  id={`install-client-secret-${definition.id}`}
-                                  name="clientSecret"
-                                  type="password"
-                                  autoComplete="new-password"
-                                  placeholder="Enter Flipkart client secret"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label
-                                  htmlFor={`install-refresh-token-${definition.id}`}
-                                  className="text-xs font-semibold uppercase tracking-wide text-slate-600"
-                                >
-                                  Refresh Token
-                                </label>
-                                <Input
-                                  id={`install-refresh-token-${definition.id}`}
-                                  name="refreshToken"
-                                  type="password"
-                                  autoComplete="new-password"
-                                  placeholder="Enter Flipkart refresh token"
-                                />
-                              </div>
-                            </>
-                          ) : null}
-                          <PendingSubmitButton
-                            type="submit"
-                            idleLabel="Install connector"
-                            pendingLabel="Installing connector..."
-                          />
-                        </form>
-                      ) : (
-                        <p className="mt-4 text-xs text-slate-500">
-                          {definition.launchStage !== "live"
-                            ? "Seller self-serve install is intentionally hidden until this connector is operationally ready."
-                            : isPlanBlockedReason(definition.actions?.install.reason)
-                            ? (
-                              <>
-                                {formatActionBlockedReason(definition.actions?.install.reason)}{" "}
-                                <Link href="/admin/plan" className="underline">
-                                  Upgrade your plan
-                                </Link>{" "}
-                                to install more accounts.
-                              </>
-                            )
-                            : formatActionBlockedReason(definition.actions?.install.reason)}
-                        </p>
-                      )}
                     </section>
                   );
                 })}
@@ -731,48 +640,6 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
             )}
           </Card>
 
-          <Card className="border-slate-200 bg-white">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Needs setup</CardTitle>
-                <p className="text-sm text-slate-600">
-                  Live marketplaces with no connected account yet. This is the fastest path from connector discovery to mapping work.
-                </p>
-              </div>
-              <StatusChip label={`${needsSetupDefinitions.length} pending`} tone="warning" />
-            </div>
-
-            {needsSetupDefinitions.length === 0 ? (
-              <div className="mt-4">
-                <EmptyState
-                  icon="PLUG"
-                  title="No live connectors are waiting for first setup"
-                  description={
-                    searchValue
-                      ? "This filtered view already has an installed account for each live marketplace."
-                      : "Every live marketplace in the current portfolio already has at least one connected account."
-                  }
-                />
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {needsSetupDefinitions.map((item) => (
-                  <div key={item.definition.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">{item.definition.displayName}</h3>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {formatCapabilityList(item.definition.capabilities)}
-                        </p>
-                      </div>
-                      <StatusChip label={item.workspaceState.label} tone={item.workspaceState.tone} />
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">

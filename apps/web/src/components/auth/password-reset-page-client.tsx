@@ -102,17 +102,21 @@ export function PasswordResetPageClient({
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6">
-      <header className="space-y-1">
-        <BrandLogo variant="lockup" className="mb-3" />
-        <h1 className="text-2xl font-semibold text-slate-900">{authCopy.resetTitle}</h1>
-        <p className="text-sm text-slate-600">{isConfirmMode ? authCopy.resetTokenSubtitle : authCopy.resetSubtitle}</p>
+    <div className="relative mx-auto max-w-md overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_28px_70px_rgba(148,163,184,0.18)] backdrop-blur">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.18),_rgba(255,255,255,0)_60%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.12),_rgba(255,255,255,0)_52%)]" />
+      <div className="relative space-y-5">
+      <header className="space-y-4 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+        <BrandLogo variant="lockup" className="mb-0" />
+        <div className="space-y-2">
+          <h1 className="text-[2rem] font-semibold tracking-tight text-slate-950">{authCopy.resetTitle}</h1>
+          <p className="text-sm leading-6 text-slate-600">{isConfirmMode ? authCopy.resetTokenSubtitle : authCopy.resetSubtitle}</p>
+        </div>
       </header>
 
       <form className="space-y-4" onSubmit={onSubmit}>
         {!isConfirmMode ? (
-          <div className="space-y-1">
-            <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="space-y-1.5">
+            <label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               {authCopy.emailLabel}
             </label>
             <input
@@ -121,13 +125,13 @@ export function PasswordResetPageClient({
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
             />
           </div>
         ) : (
           <>
-            <div className="space-y-1">
-              <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 {authCopy.newPasswordLabel}
               </label>
               <input
@@ -137,11 +141,11 @@ export function PasswordResetPageClient({
                 minLength={8}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               />
             </div>
-            <div className="space-y-1">
-              <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <div className="space-y-1.5">
+              <label htmlFor="confirmPassword" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 {authCopy.confirmPasswordLabel}
               </label>
               <input
@@ -151,7 +155,7 @@ export function PasswordResetPageClient({
                 minLength={8}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               />
             </div>
           </>
@@ -160,7 +164,7 @@ export function PasswordResetPageClient({
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
         >
           {submitting
             ? isConfirmMode
@@ -171,13 +175,25 @@ export function PasswordResetPageClient({
               : authCopy.resetSubmit}
         </button>
 
-        {message && <p className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">{message}</p>}
-        {error && <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        {message && (
+          <p className="rounded-xl border border-green-300/80 bg-green-50 px-4 py-3 text-sm text-green-800 shadow-[0_10px_24px_rgba(34,197,94,0.08)]">
+            {message}
+          </p>
+        )}
+        {error && (
+          <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
+            {error}
+          </p>
+        )}
       </form>
 
-      <Link href={loginHref} className="inline-flex text-sm font-medium text-slate-700 underline">
+      <Link
+        href={loginHref}
+        className="inline-flex text-sm font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+      >
         {authCopy.backToLogin}
       </Link>
+      </div>
     </div>
   );
 }

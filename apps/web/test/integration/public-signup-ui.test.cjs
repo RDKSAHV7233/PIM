@@ -74,7 +74,7 @@ try {
     "Signup page must distinguish pending verification, verification email delivery failure, and a fully registered email conflict.",
   );
   assert(
-    authCopy.includes("We'll confirm your email and activate your TEJ PIM workspace.") &&
+    authCopy.includes("We'll confirm your email and activate your Vexa PIM workspace.") &&
       !authCopy.includes("Weâ€™ll confirm your email"),
     "Signup verify copy must use clean punctuation without mojibake.",
   );
