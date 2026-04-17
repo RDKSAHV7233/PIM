@@ -19,7 +19,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerSessionClaims } from "@/lib/server-session";
+import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -76,18 +76,19 @@ function formatDateTime(value: string | null) {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
-  const canManageUsers = Boolean(authHeader);
+  const canManageUsers = actorRole === "admin";
 
   try {
     const [usage, connectorPermissions, workspaceUsers] = await Promise.all([
-      getBillingUsage({ authHeader }),
-      getConnectorPermissions(undefined, { authHeader }),
-      getWorkspaceUsers({ authHeader }),
+      getBillingUsage({ role: actorRole, authHeader }),
+      getConnectorPermissions(undefined, { role: actorRole, authHeader }),
+      getWorkspaceUsers({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
