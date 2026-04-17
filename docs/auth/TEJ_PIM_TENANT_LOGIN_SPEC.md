@@ -1,4 +1,4 @@
-# TEJ PIM Tenant Login and Signup Spec
+# Vexa PIM Tenant Login and Signup Spec
 
 Status: Locked and implemented
 Implementation commit: `32538a9`

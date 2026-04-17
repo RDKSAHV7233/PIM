@@ -1,4 +1,4 @@
-# TEJ PIM Live Staging Evidence Runbook
+# Vexa PIM Live Staging Evidence Runbook
 
 Purpose: collect the external proof needed to close `RISK-P0-003` and advance `RISK-P0-001` without guessing at artifact contents after the fact.
 

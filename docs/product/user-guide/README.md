@@ -1,4 +1,4 @@
-# TEJ PIM User Guide Bundle
+# Vexa PIM User Guide Bundle
 
 This folder now includes procedural, action-oriented documentation.
 

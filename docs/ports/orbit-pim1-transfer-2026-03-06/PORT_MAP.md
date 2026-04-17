@@ -1,4 +1,4 @@
-# ORBIT -> TEJ PIM Transfer Bundle (2026-03-06)
+# ORBIT -> Vexa PIM Transfer Bundle (2026-03-06)
 
 This bundle preserves TEJ PIM-related work that was implemented in the ORBIT repo by mistake.
 It is stored in TEJ PIM as source material for controlled porting into Nest/Next modules.
@@ -9,7 +9,7 @@ It is stored in TEJ PIM as source material for controlled porting into Nest/Next
 - Destination repo: `C:\Users\Om Computers\PIM1`
 - Transfer date: `2026-03-06`
 
-## Files moved into TEJ PIM
+## Files moved into Vexa PIM
 
 - `src/auth/connector-mapping.ts`
 - `src/auth/pim1-taxonomy.ts`
@@ -19,7 +19,7 @@ It is stored in TEJ PIM as source material for controlled porting into Nest/Next
 - `admin-ui/src/pages/orbit-publish-readiness.tsx`
 - `db/01-schema.sql`
 
-## TEJ PIM alignment map
+## Vexa PIM alignment map
 
 These files are related to TEJ PIM capabilities, but not directly runnable in TEJ PIM because architecture differs.
 

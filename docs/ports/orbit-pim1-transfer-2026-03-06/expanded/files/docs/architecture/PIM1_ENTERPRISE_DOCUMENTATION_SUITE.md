@@ -1,4 +1,4 @@
-# TEJ PIM Enterprise Documentation Suite (Validated from Repository)
+# Vexa PIM Enterprise Documentation Suite (Validated from Repository)
 
 > Scope note (2026-03-06): This document is an enterprise architecture suite and includes broader TEJ PIM surface references.
 > For connector-runtime and connector API contract truth in this repository, use:

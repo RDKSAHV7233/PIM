@@ -1,4 +1,4 @@
-# TEJ PIM Connector Recipes
+# Vexa PIM Connector Recipes
 
 Status: Active workflow examples  
 Date: 2026-03-23  

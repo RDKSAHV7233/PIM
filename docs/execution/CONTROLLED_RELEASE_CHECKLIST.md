@@ -1,4 +1,4 @@
-# TEJ PIM Controlled Release Checklist
+# Vexa PIM Controlled Release Checklist
 
 - Source: `docs/product/PRD.md` (sections 12, 13, 15)
 - Execution source of truth: `docs/execution/INCREMENT_STATE.json`

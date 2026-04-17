@@ -1,4 +1,4 @@
-# TEJ PIM Connector Current State (2026-03-08)
+# Vexa PIM Connector Current State (2026-03-08)
 
 Status: compatibility pointer only  
 Scope: current TEJ PIM repository  

@@ -1,4 +1,4 @@
-# TEJ PIM Production Readiness Risk Register
+# Vexa PIM Production Readiness Risk Register
 
 Last updated: 2026-03-24 (latest checked-in daily evidence + green staging reruns reconciled)
 

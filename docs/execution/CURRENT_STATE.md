@@ -1,4 +1,4 @@
-# TEJ PIM Current State
+# Vexa PIM Current State
 
 - Date: 2026-03-24
 - Repo HEAD: `0be8f44`

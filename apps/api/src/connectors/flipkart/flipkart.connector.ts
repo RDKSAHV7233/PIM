@@ -70,6 +70,7 @@ type FlipkartPublishResponse = {
 
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const REFRESH_TOKEN_WARNING_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_OAUTH_BASE_URL = "https://api.flipkart.net";
 const DEFAULT_REQUEST_DELAY_MS = 100;
 const REQUIRED_FIELDS = [
@@ -93,6 +94,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   SELLER_NOT_AUTHORISED: "Your Flipkart seller account is not authorised for this category.",
   IMAGE_COUNT_INSUFFICIENT: "Flipkart requires more product images for this category.",
   TOKEN_EXPIRED: "Flipkart connection expired. Reconnect the account and try again.",
+  REFRESH_TOKEN_EXPIRED: "Your Flipkart connection has expired. Go to Connectors and reconnect your Flipkart account.",
 };
 
 @Injectable()
@@ -124,6 +126,27 @@ export class FlipkartConnector implements ConnectorInterface {
     try {
       await this.resolveAccessToken(ctx);
       await this.noteCredentialHealth(ctx, null);
+      const refreshStatus = await this.checkRefreshTokenHealth(ctx);
+      if (refreshStatus === "expired") {
+        const reason = "Flipkart refresh token has expired. Reconnect the account from the Connectors page.";
+        await this.noteCredentialHealth(ctx, reason);
+        this.logger.error("Flipkart refresh token expired", {
+          installationId: ctx.installationId,
+        });
+        return false;
+      }
+      if (refreshStatus === "expiring_soon") {
+        const refreshRow = await this.getCredentialRow(ctx, "refresh_token");
+        this.logger.warn("Flipkart refresh token expiring soon", {
+          installationId: ctx.installationId,
+          expiresAt: refreshRow?.expiresAt ?? null,
+          warningWindowDays: 7,
+        });
+        await this.noteCredentialWarning(
+          ctx,
+          "Flipkart refresh token expires within 7 days. Reconnect soon to avoid publish failures.",
+        );
+      }
       this.logger.info("Flipkart credentials validated", {
         installationId: ctx.installationId,
       });
@@ -416,10 +439,25 @@ export class FlipkartConnector implements ConnectorInterface {
     const clientId = await this.requireCredential(ctx, "client_id");
     const clientSecret = await this.requireCredential(ctx, "client_secret");
     const refreshToken = await this.requireCredential(ctx, "refresh_token");
-    const token = await this.exchangeToken(ctx, clientId, clientSecret, {
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    });
+    let token: FlipkartTokenResponse;
+    try {
+      token = await this.exchangeToken(ctx, clientId, clientSecret, {
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (
+        reason.includes("status 400") ||
+        reason.includes("status 401")
+      ) {
+        const refreshRow = await this.getCredentialRow(ctx, "refresh_token");
+        if (refreshRow?.expiresAt && refreshRow.expiresAt <= new Date()) {
+          throw new Error("REFRESH_TOKEN_EXPIRED");
+        }
+      }
+      throw error;
+    }
 
     await this.persistTokenSet(ctx, token);
     if (!token.access_token) {
@@ -510,6 +548,25 @@ export class FlipkartConnector implements ConnectorInterface {
     );
   }
 
+  private async noteCredentialWarning(ctx: ConnectorContext, warningReason: string): Promise<void> {
+    const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
+    await db.$executeRawUnsafe(
+      `
+      UPDATE connector_credentials
+      SET
+        failure_reason = $3,
+        updated_at = NOW()
+      WHERE tenant_key = $1
+        AND installation_id = $2
+        AND credential_type = 'refresh_token'
+      `,
+      ctx.tenantId,
+      ctx.installationId,
+      warningReason,
+    );
+  }
+
   private async requireCredential(ctx: ConnectorContext, credentialType: string): Promise<string> {
     const row = await this.getCredentialRow(ctx, credentialType);
     if (!row) {
@@ -547,6 +604,21 @@ export class FlipkartConnector implements ConnectorInterface {
       credentialType,
     );
     return rows[0] ?? null;
+  }
+
+  private async checkRefreshTokenHealth(ctx: ConnectorContext): Promise<"ok" | "expiring_soon" | "expired"> {
+    const row = await this.getCredentialRow(ctx, "refresh_token");
+    if (!row || !row.expiresAt) {
+      return "ok";
+    }
+    const now = new Date();
+    if (row.expiresAt <= now) {
+      return "expired";
+    }
+    if (row.expiresAt <= new Date(Date.now() + REFRESH_TOKEN_WARNING_MS)) {
+      return "expiring_soon";
+    }
+    return "ok";
   }
 
   private decryptCredential(row: CredentialRow): string {

@@ -1,4 +1,4 @@
-# TEJ PIM First Seller Onboarding Playbook
+# Vexa PIM First Seller Onboarding Playbook
 
 ## Purpose
 Provide a repeatable onboarding flow for the first pilot sellers (India-first, 500-5,000 SKUs, catalog teams of 2-10) with explicit success/fail gates.

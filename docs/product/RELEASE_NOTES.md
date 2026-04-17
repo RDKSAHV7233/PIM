@@ -1,4 +1,4 @@
-# TEJ PIM Release Notes
+# Vexa PIM Release Notes
 
 ---
 
