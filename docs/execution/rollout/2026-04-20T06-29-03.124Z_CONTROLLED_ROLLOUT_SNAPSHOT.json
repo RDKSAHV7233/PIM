@@ -1,0 +1,122 @@
+{
+  "capturedAt": "2026-04-20T06:29:03.124Z",
+  "environment": "staging",
+  "tenantId": "default",
+  "apiBase": "https://api-staging-490e.up.railway.app/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": false,
+    "status": null,
+    "body": null,
+    "error": "This operation was aborted"
+  },
+  "gates": {
+    "artifactsInWindow": 14,
+    "allEvidenceArtifactsInWindow": 14,
+    "consecutiveE10SignoffRuns": 2,
+    "recentArtifacts": [
+      {
+        "file": "2026-04-20T06-29-03.092Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-20T06:29:03.092Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24651851522",
+        "gitTag": "sha-075d5dd"
+      },
+      {
+        "file": "2026-04-19T06-10-20.125Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-19T06:10:20.125Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24622525803",
+        "gitTag": "sha-ee75e12"
+      },
+      {
+        "file": "2026-04-18T05-53-18.071Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-18T05:53:18.071Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24598276077",
+        "gitTag": "sha-24d55a1"
+      },
+      {
+        "file": "2026-04-17T06-15-09.812Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-17T06:15:09.812Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24550828123",
+        "gitTag": "sha-89b8fac"
+      },
+      {
+        "file": "2026-04-16T06-14-56.904Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-16T06:14:56.904Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24495205716",
+        "gitTag": "sha-554242c"
+      },
+      {
+        "file": "2026-04-15T06-13-42.295Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-15T06:13:42.295Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24439418923",
+        "gitTag": "sha-4f9bd64"
+      },
+      {
+        "file": "2026-04-14T06-13-05.206Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-14T06:13:05.206Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24383958775",
+        "gitTag": "sha-61b5e6b"
+      },
+      {
+        "file": "2026-04-13T06-28-01.110Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-13T06:28:01.110Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24329017011",
+        "gitTag": "sha-e4e1da1"
+      },
+      {
+        "file": "2026-04-12T06-04-57.929Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-12T06:04:57.929Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24300108866",
+        "gitTag": "sha-97aebdf"
+      },
+      {
+        "file": "2026-04-11T05-41-35.705Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-04-11T05:41:35.705Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/24275901138",
+        "gitTag": "sha-51ee093"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": true,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true,
+      "healthEndpointHealthy": false
+    },
+    "pending": [
+      "Health endpoint unavailable or non-200 for 'staging' rollout snapshot."
+    ]
+  },
+  "broadRollout": {
+    "criteria": {
+      "observationWindowDaysCovered": 14,
+      "observationWindowDaysRequired": 14,
+      "observationWindowComplete": true,
+      "sloTrendDaysCovered": 14,
+      "sloTrendDaysRequired": 14,
+      "sloTrendWindowComplete": true
+    },
+    "pending": []
+  }
+}
