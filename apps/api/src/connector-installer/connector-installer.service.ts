@@ -965,6 +965,7 @@ export class ConnectorInstallerService {
     externalAccountRef: string | null;
     metadata: Record<string, unknown>;
   }> {
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
       `
       SELECT

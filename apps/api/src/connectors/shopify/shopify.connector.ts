@@ -333,6 +333,7 @@ export class ShopifyConnector implements ConnectorInterface {
     },
   ): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_installations
@@ -357,6 +358,7 @@ export class ShopifyConnector implements ConnectorInterface {
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       UPDATE connector_credentials
@@ -390,6 +392,7 @@ export class ShopifyConnector implements ConnectorInterface {
     credentialType: string,
   ): Promise<CredentialRow | null> {
     const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter
     const rows = await db.$queryRawUnsafe<CredentialRow[]>(
       `
       SELECT
@@ -437,6 +440,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const id = `${ctx.installationId}:${credentialType}`;
     const metadata = options.metadata ? JSON.stringify(options.metadata) : null;
 
+    // RLS-BYPASS: manual tenant filter
     await db.$executeRawUnsafe(
       `
       INSERT INTO connector_credentials (
