@@ -15,12 +15,12 @@ import {
   ApiHttpError,
   type ConnectorDefinition,
   type ConnectorInstallation,
-  type MarketplaceChannel,
   getConnectorDefinitions,
   getInstalledConnectors,
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -38,20 +38,6 @@ interface ConnectorsPageProps {
 }
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
-
-function mapConnectorSlugToChannel(slugInput: string): MarketplaceChannel | null {
-  const slug = String(slugInput ?? "").trim().toLowerCase();
-  if (slug === "amazon-in") {
-    return "amazon";
-  }
-  if (slug === "flipkart") {
-    return "flipkart";
-  }
-  if (slug === "meesho") {
-    return "meesho";
-  }
-  return null;
-}
 
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -395,8 +381,8 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
       <div className="space-y-6">
         <PageHeader
           className="overflow-hidden border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,246,255,0.98),rgba(255,247,237,0.98))]"
-          title="Channel Connectors"
-          description="Run your marketplace portfolio like a connector workspace: see what is live, what needs setup, which accounts need attention, and where to jump next."
+          title="Catalog Connections"
+          description="Run your catalog channel portfolio like a connector workspace: see what is live, what needs setup, which accounts need attention, and where to jump next."
           breadcrumb={
             <>
               Dashboard / Channels / <span className="font-semibold text-slate-700">Connectors</span>
@@ -433,20 +419,20 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
           <Card className="border-slate-200 bg-white">
-            <CardTitle>Search connectors</CardTitle>
+            <CardTitle>Search connections</CardTitle>
             <form method="GET" action="/channels/connectors" className="flex flex-col gap-3 md:flex-row md:items-end">
               <div className="flex-1 space-y-2">
                 <label htmlFor="connector-search" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Search connectors
+                  Search connections
                 </label>
                 <Input
                   id="connector-search"
                   name="q"
                   defaultValue={searchValue}
-                  placeholder="Search marketplaces, aliases, capabilities, or launch notes"
+                  placeholder="Search channels, aliases, capabilities, or launch notes"
                 />
                 <p className="text-xs text-slate-500">
-                  Filter the workspace by marketplace, account alias, capability, or launch note.
+                  Filter the workspace by channel, account alias, capability, or launch note.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -468,7 +454,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Action rail</CardTitle>
                 <p className="mt-2 text-sm text-slate-600">
-                  Start setup, resolve account health, or review rollout limits without scanning every marketplace card.
+                  Start setup, resolve account health, or review rollout limits without scanning every channel card.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -488,7 +474,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   <StatusChip label="setup lane" tone="info" />
                 </div>
                 <p className="mt-2 text-sm text-slate-600">
-                  Open the dedicated setup workspace to install the first healthy account for each live marketplace.
+                  Open the dedicated setup workspace to install the first healthy account for each live catalog channel.
                 </p>
               </Link>
               <a
@@ -525,9 +511,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           <Card id="connector-catalog" className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Marketplace catalog</CardTitle>
+                <CardTitle>Catalog channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first, then open the dedicated setup workspace when you are ready to enter credentials and create accounts{portfolioContext}.
+                  Review live connector lanes first, then open the dedicated setup workspace when you are ready to enter credentials and create catalog accounts{portfolioContext}.
                 </p>
               </div>
               <StatusChip
@@ -540,7 +526,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div className="mt-4">
                 <EmptyState
                   icon="PLUG"
-                  title={searchValue ? "No live marketplaces match this search" : "No live marketplaces available"}
+                  title={searchValue ? "No live catalog channels match this search" : "No live catalog channels available"}
                   description={
                     searchValue
                       ? "Try a broader search term or clear the filter to see the full connector portfolio."
@@ -554,8 +540,8 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   const { definition, installedForDefinition, statusNote, workspaceState } = item;
                   const primaryInstallation = installedForDefinition[0] ?? null;
                   const mappedChannel = primaryInstallation
-                    ? mapConnectorSlugToChannel(primaryInstallation.slug)
-                    : mapConnectorSlugToChannel(definition.slug);
+                    ? mapConnectorSlugToMarketplaceChannel(primaryInstallation.slug)
+                    : mapConnectorSlugToMarketplaceChannel(definition.slug);
                   const mappingHref =
                     primaryInstallation && mappedChannel && firstProductId
                       ? `/connectors/${encodeURIComponent(primaryInstallation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
@@ -622,7 +608,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           href={mappingHref}
                           className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                         >
-                          Open mapping workspace
+                          Open catalog mapping
                         </Link>
                         {primaryInstallation ? (
                           <Link
@@ -772,7 +758,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           ) : (
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               {filteredInstallations.map((installation) => {
-                const mappedChannel = mapConnectorSlugToChannel(installation.slug);
+                const mappedChannel = mapConnectorSlugToMarketplaceChannel(installation.slug);
                 const statusNote = connectorStatusNote(
                   installation.slug,
                   installation.implementationStatus,

@@ -17,7 +17,7 @@ function run() {
 
   assert(
     source.includes("<PageHeader") &&
-      source.includes("Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only.") &&
+      source.includes("Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only.") &&
       source.includes('<Link href="/dashboard" className="underline">') &&
       source.includes('<Link href="/admin" className="underline">') &&
       source.includes('<span className="font-semibold text-slate-700">Connector Access</span>'),
@@ -48,22 +48,24 @@ function run() {
     "Admin connectors must surface grant, revoke, and validation failures through the page-level status banner contract.",
   );
   assert(
-    source.includes('role === "admin" ? (') &&
+      source.includes('role === "admin" ? (') &&
       source.includes("<ConnectorPermissionForm definitions={definitions} grantAction={grantConnectorPermissionAction} />") &&
       source.includes("form action={revokeConnectorPermissionAction}") &&
-      source.includes('<CardTitle>Connector Permission Management</CardTitle>') &&
-      source.includes("Admin role is required to grant or revoke connector permissions. You can still review the current access matrix below.") &&
+      source.includes('<CardTitle>Governance Visibility</CardTitle>') &&
+      source.includes("Admin role is required to create or revoke connector access policies. You can still review the current governance matrix below.") &&
       source.includes('<span className="text-xs text-slate-500">Read-only</span>'),
     "Admin connectors must keep grant and revoke actions admin-only while preserving an honest read-only fallback for non-admin roles.",
   );
   assert(
-    source.includes("Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only.") &&
-      source.includes("Create one permission row per role or user.") &&
-      source.includes('No connector permissions configured for this tenant.'),
+    source.includes("Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only.") &&
+      source.includes("Create one access policy row per role or user.") &&
+      source.includes('No connector access policies configured for this tenant.'),
     "Admin connectors must explain the connector action model and surface an honest empty state.",
   );
   assert(
-    source.includes('{permission.accountAlias === "*" ? "All aliases" : permission.accountAlias}') &&
+    source.includes("formatPolicySubject(permission)") &&
+      source.includes("formatPolicyScope(permission)") &&
+      source.includes("formatPolicyAction(permission)") &&
       source.includes("{permission.createdBy || \"-\"}") &&
       source.includes("new Date(permission.updatedAt).toLocaleString()"),
     "Admin connectors must surface wildcard alias coverage plus audit-friendly creator and update metadata.",

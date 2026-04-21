@@ -18,6 +18,23 @@ interface ConnectorSettingsPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
+function formatPolicySubject(permission: {
+  principalType: string;
+  principalId: string;
+}) {
+  return permission.principalType === "role"
+    ? `${permission.principalId} role`
+    : `User ${permission.principalId}`;
+}
+
+function formatPolicyScope(permission: { accountAlias: string }) {
+  return permission.accountAlias === "*" ? "All account aliases" : `Alias "${permission.accountAlias}"`;
+}
+
+function formatPolicyAction(permission: { action: string }) {
+  return permission.action === "uninstall" ? "Disable connector" : `${permission.action[0]?.toUpperCase() ?? ""}${permission.action.slice(1)}`;
+}
+
 function StatusBanner({ tone, message }: { tone: "success" | "error"; message: string }) {
   const classes =
     tone === "success"
@@ -42,7 +59,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
       <div className="space-y-5">
         <PageHeader
           title="Connector Access"
-          description="Manage connector action permissions for users and roles, or review the current access matrix if your role is read-only."
+          description="Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only."
           breadcrumb={
             <>
               <Link href="/dashboard" className="underline">
@@ -75,36 +92,35 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
 
         {role === "admin" ? (
           <Card>
-            <CardTitle>Grant Permission</CardTitle>
+            <CardTitle>Create Access Policy</CardTitle>
             <p className="mt-3 text-sm text-slate-600">
-              Create one permission row per role or user. Add multiple rows if the same connector action should apply to multiple roles or people.
+              Create one access policy row per role or user. Add another row when the same connector action should apply to more than one team or person.
             </p>
             <ConnectorPermissionForm definitions={definitions} grantAction={grantConnectorPermissionAction} />
           </Card>
         ) : (
           <Card>
-            <CardTitle>Connector Permission Management</CardTitle>
+            <CardTitle>Governance Visibility</CardTitle>
             <p className="mt-3 text-sm text-slate-600">
-              Admin role is required to grant or revoke connector permissions. You can still review the current access matrix below.
+              Admin role is required to create or revoke connector access policies. You can still review the current governance matrix below.
             </p>
           </Card>
         )}
 
         <Card>
-          <CardTitle>Current Permissions</CardTitle>
+          <CardTitle>Current Access Policies</CardTitle>
           {permissions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No connector permissions configured for this tenant.</p>
+            <p className="mt-3 text-sm text-slate-600">No connector access policies configured for this tenant.</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-sm">
                 <thead className="text-xs uppercase text-slate-500">
                   <tr>
                     <th className="py-2">Connector</th>
-                    <th className="py-2">Principal Type</th>
-                    <th className="py-2">Principal Id</th>
-                    <th className="py-2">Alias</th>
-                    <th className="py-2">Action</th>
-                    <th className="py-2">Created By</th>
+                    <th className="py-2">Who gets access</th>
+                    <th className="py-2">Which accounts</th>
+                    <th className="py-2">Allowed action</th>
+                    <th className="py-2">Changed by</th>
                     <th className="py-2">Updated</th>
                     <th className="py-2">Actions</th>
                   </tr>
@@ -113,10 +129,9 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
                   {permissions.map((permission) => (
                     <tr key={permission.id} className="border-t border-border">
                       <td className="py-2 font-medium text-slate-900">{permission.connectorSlug}</td>
-                      <td className="py-2">{permission.principalType}</td>
-                      <td className="py-2">{permission.principalId}</td>
-                      <td className="py-2">{permission.accountAlias === "*" ? "All aliases" : permission.accountAlias}</td>
-                      <td className="py-2">{permission.action}</td>
+                      <td className="py-2">{formatPolicySubject(permission)}</td>
+                      <td className="py-2">{formatPolicyScope(permission)}</td>
+                      <td className="py-2">{formatPolicyAction(permission)}</td>
                       <td className="py-2">{permission.createdBy || "-"}</td>
                       <td className="py-2 text-xs">{new Date(permission.updatedAt).toLocaleString()}</td>
                       <td className="py-2">

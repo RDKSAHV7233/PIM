@@ -27,55 +27,80 @@ function run() {
 
   assert(
     source.includes("const { installationId } = await params;") &&
+      source.includes("const query = await searchParams;") &&
       source.includes("const authHeader = await getServerAuthHeader();") &&
       source.includes("const actorRole = await getServerActorRole();"),
-    "Channel connector detail must derive the route param plus shared server auth/session context.",
+    "Channel connector detail must derive route params, tab state, and shared server auth/session context.",
   );
+
   assert(
     source.includes("const installations = await getInstalledConnectors({ role: actorRole, authHeader });") &&
       source.includes("const installation = installations.find((item) => item.id === installationId);") &&
       source.includes("if (!installation) {") &&
       source.includes("notFound();"),
-    "Channel connector detail must resolve the installation from the shared connectors list and 404 missing installations.",
+    "Channel connector detail must resolve the selected installation from the shared installation list and 404 missing records.",
   );
+
   assert(
     source.includes("const [permissions, submissionsRaw, products] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
       source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
-    "Channel connector detail must load permissions, submissions, and product lookup data together from the selected installation id.",
+    "Channel connector detail must fetch permissions, installation-scoped submissions, and product lookup data together.",
   );
+
   assert(
-    source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
-      source.includes("return Array.isArray(value.items) ? value.items : [];") &&
-      source.includes('item.status === "ERROR" || item.status === "REJECTED" || item.status === "SUPPRESSED"'),
-    "Channel connector detail must normalize submission payload shapes and derive failed submission counts from live statuses.",
+    source.includes('const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [') &&
+      source.includes('{ id: "overview", label: "Overview" }') &&
+      source.includes('{ id: "catalog", label: "Catalog" }') &&
+      source.includes('{ id: "issues", label: "Issues" }') &&
+      source.includes('{ id: "logs", label: "Logs" }') &&
+      source.includes('{ id: "access", label: "Access" }'),
+    "Channel connector detail must expose the PIM-oriented detail tabs instead of generic iPaaS modules.",
   );
+
+  assert(
+    source.includes("const latestSubmissionByProductId = new Map<") &&
+      source.includes("const catalogEntries = Array.from(latestSubmissionByProductId.entries())") &&
+      source.includes("Catalog Modules") &&
+      source.includes("Readiness Queue") &&
+      source.includes("Recovery Playbook") &&
+      source.includes("Issue Queue"),
+    "Channel connector detail must build catalog modules, readiness, and recovery views from submission history.",
+  );
+
   assert(
     source.includes('label="Account health"') &&
       source.includes('label="Submissions"') &&
       source.includes('label="Errors / Rejections"') &&
       source.includes('label="Access rules"'),
-    "Channel connector detail must surface account health, submission volume, failure load, and access-rule KPIs.",
+    "Channel connector detail must keep the account health, submission, failure, and access KPIs visible.",
   );
+
   assert(
     source.includes('href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}') &&
       source.includes('href="/admin/connectors"') &&
-      source.includes('No connector-specific permission overrides. Workspace defaults are currently in effect.') &&
-      source.includes('No submissions recorded for this account yet.') &&
+      source.includes("Open catalog mapping") &&
+      source.includes("issueLaneLabel") &&
+      source.includes("catalogReadinessLabel") &&
+      source.includes("No connector-specific permission overrides. Workspace defaults are currently in effect.") &&
+      source.includes("No submissions recorded for this account yet.") &&
       source.includes("summarizeSubmissionOutcome") &&
-      source.includes("productsById"),
-    "Channel connector detail must expose mapping/access-management deep links and human-readable submission context.",
+      source.includes("nextOperatorStep"),
+    "Channel connector detail must link into mapping/access workflows and keep operator-friendly outcome guidance.",
   );
+
   assert(
     source.includes("new Date(installation.installedAt).toLocaleString()") &&
       source.includes("installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString() : \"-\"") &&
       source.includes("new Date(submission.submittedAt).toLocaleString()"),
     "Channel connector detail must surface installation and submission timing data from backend timestamps.",
   );
+
   assert(
-    source.includes('redirect(buildLoginRedirect(`/channels/connectors/${encodeURIComponent(installationId)}`, error));'),
-    "Channel connector detail must redirect expired or forbidden sessions through the shared login helper with the detail return path.",
+    source.includes("const detailReturnPath = buildDetailHref(installationId, selectedTab);") &&
+      source.includes("redirect(buildLoginRedirect(detailReturnPath, error));"),
+    "Channel connector detail must preserve the selected tab when redirecting auth failures through the shared login helper.",
   );
 
   console.log(
@@ -86,11 +111,12 @@ function run() {
           "channel_connector_detail_route_uses_params_and_shared_server_auth_context",
           "channel_connector_detail_route_resolves_installation_and_404s_missing_records",
           "channel_connector_detail_route_fetches_permissions_and_submissions_in_parallel",
-          "channel_connector_detail_route_normalizes_submission_shape_and_failure_counts",
-          "channel_connector_detail_route_surfaces_installation_and_permission_kpis",
-          "channel_connector_detail_route_links_to_mapping_and_access_management",
+          "channel_connector_detail_route_exposes_pim_focused_detail_tabs",
+          "channel_connector_detail_route_builds_catalog_and_issue_views_from_submission_history",
+          "channel_connector_detail_route_preserves_installation_and_access_kpis",
+          "channel_connector_detail_route_links_to_mapping_and_access_workflows",
           "channel_connector_detail_route_surfaces_timestamp_fields",
-          "channel_connector_detail_route_redirects_auth_failures",
+          "channel_connector_detail_route_redirects_auth_failures_with_tab_context",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -21,7 +21,7 @@ function run() {
 
   assert(
     pageSource.includes("ConnectorPermissionForm") &&
-      pageSource.includes("Create one policy row per role or user") &&
+      pageSource.includes("Create one access policy row per role or user") &&
       pageSource.includes("permission-user-not-found"),
     "Connector Access page must explain the one-row-per-principal model and surface user-not-found grant errors.",
   );

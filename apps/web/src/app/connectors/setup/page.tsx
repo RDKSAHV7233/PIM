@@ -150,7 +150,7 @@ function summarizeDefinitionWorkspace(
     return {
       label: "Ready to install",
       tone: "info",
-      description: "This marketplace is ready for its first account connection and downstream mapping work.",
+      description: "This catalog channel is ready for its first account connection and downstream mapping work.",
     };
   }
   return {
@@ -295,8 +295,8 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Connector Setup"
-          description="Complete credential entry and alias setup in one focused workspace, then return to the connector portfolio once the account is installed."
+          title="Catalog Connection Setup"
+          description="Complete credential entry and alias setup in one focused workspace, then return to the connector portfolio once the catalog account is installed."
           breadcrumb={
             <>
               <Link href="/dashboard" className="hover:underline">
@@ -318,7 +318,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               href="/channels/connectors"
               className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Back to connector portfolio
+              Back to connection portfolio
             </Link>
           }
         />
@@ -346,7 +346,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                   id="connector-setup-search"
                   name="q"
                   defaultValue={searchValue}
-                  placeholder="Search marketplaces, aliases, capabilities, or rollout notes"
+                  placeholder="Search channels, aliases, capabilities, or rollout notes"
                 />
                 {selectedSlug ? <input type="hidden" name="slug" value={selectedSlug} /> : null}
               </div>
@@ -452,7 +452,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
 
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
                       <p className="text-xs text-slate-500">
-                        Install here, then return to the portfolio to open mappings, detail, or account operations.
+                        Install here, then return to the portfolio to open mappings, detail, or catalog account operations.
                       </p>
                       <PendingSubmitButton type="submit" idleLabel="Install connector" pendingLabel="Installing connector..." />
                     </div>
