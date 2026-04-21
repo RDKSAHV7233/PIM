@@ -725,8 +725,16 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       />
                     </div>
                     <p className="mt-2 text-sm text-slate-600">{item.workspaceState.description}</p>
+                    {item.definition.launchNote ? (
+                      <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                        {item.definition.launchNote}
+                      </p>
+                    ) : null}
                     <p className="mt-2 text-xs text-slate-500">
                       Capability surface: {formatCapabilityList(item.definition.capabilities)}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-slate-500">
+                      Seller setup unlocks after the connector reaches live launch stage.
                     </p>
                   </div>
                 ))}

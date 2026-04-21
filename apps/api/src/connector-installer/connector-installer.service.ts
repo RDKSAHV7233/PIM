@@ -13,6 +13,7 @@ import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ConnectorCap,
+  ConnectorPublicationTarget,
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
 import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
@@ -31,6 +32,7 @@ import { ConnectorCredentialEncryptionService } from "./credential-encryption.se
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
+import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
@@ -766,6 +768,125 @@ export class ConnectorInstallerService {
     }
 
     return connector.fetchProductTypeSchema(this.buildConnectorContext(installation), productType);
+  }
+
+  async listPublications(
+    installationId: string,
+    actor: ConnectorActor,
+  ): Promise<ConnectorPublicationTarget[]> {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.listPublications) {
+      throw new BadRequestException({
+        error: "CONNECTOR_PUBLICATIONS_UNSUPPORTED",
+        message: `${installation.slug} does not expose publication targets.`,
+      });
+    }
+
+    return connector.listPublications(this.buildConnectorContext(installation));
+  }
+
+  async updatePublicationTargets(
+    installationId: string,
+    dto: UpdatePublicationTargetsDto,
+    actor: ConnectorActor,
+  ): Promise<{
+    id: string;
+    publicationTargets: ConnectorPublicationTarget[];
+    updatedAt: string;
+  }> {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+
+    const connector = this.connectorRegistry.getConnector(installation.slug);
+    if (!connector.listPublications) {
+      throw new BadRequestException({
+        error: "CONNECTOR_PUBLICATIONS_UNSUPPORTED",
+        message: `${installation.slug} does not expose publication targets.`,
+      });
+    }
+
+    const requestedIds = Array.from(
+      new Set(
+        (Array.isArray(dto.publicationIds) ? dto.publicationIds : [])
+          .map((value) => String(value ?? "").trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+    if (requestedIds.length === 0) {
+      throw new BadRequestException({
+        error: "PUBLICATION_TARGET_REQUIRED",
+        message: "At least one publication target must be selected.",
+      });
+    }
+
+    const availableTargets = await connector.listPublications(this.buildConnectorContext(installation));
+    const availableById = new Map(
+      availableTargets.map((target) => [String(target.id ?? "").trim(), target]),
+    );
+    const selectedTargets = requestedIds.map((id) => availableById.get(id)).filter(Boolean) as ConnectorPublicationTarget[];
+    if (selectedTargets.length !== requestedIds.length) {
+      throw new BadRequestException({
+        error: "PUBLICATION_TARGET_INVALID",
+        message: "One or more selected publication targets are not available for this installation.",
+      });
+    }
+
+    const updatedAt = new Date();
+    await this.prisma.tenant(tenantKey).connectorInstallation.updateMany({
+      where: { id: installationId },
+      data: {
+        metadata: {
+          ...installation.metadata,
+          publicationTargetIds: requestedIds,
+          publicationTargets: selectedTargets.map((target) => ({
+            id: target.id,
+            name: target.name,
+            catalogId: target.catalogId ?? null,
+            catalogTitle: target.catalogTitle ?? null,
+            catalogType: target.catalogType ?? null,
+          })),
+          publicationTargetsUpdatedAt: updatedAt.toISOString(),
+        },
+        updatedAt,
+      },
+    });
+
+    await this.auditService.record({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "CONNECTOR_PUBLICATION_TARGETS_UPDATED",
+      resource: "CONNECTOR_INSTALLATION",
+      resourceId: installationId,
+      metadata: {
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+        publicationIds: requestedIds,
+      },
+    });
+
+    return {
+      id: installationId,
+      publicationTargets: selectedTargets.map((target) => ({
+        ...target,
+        selected: true,
+      })),
+      updatedAt: updatedAt.toISOString(),
+    };
   }
 
   private hasConnectorCredentialInput(dto: InstallConnectorDto): boolean {

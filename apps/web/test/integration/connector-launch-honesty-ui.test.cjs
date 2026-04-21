@@ -26,6 +26,11 @@ function run() {
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
+    source.includes("plannedDefinitions.map") &&
+      source.includes("Seller setup unlocks after the connector reaches live launch stage."),
+    "Planned connector cards must explain that seller setup stays locked until launch stage is live.",
+  );
+  assert(
     source.includes("function connectorStatusNote(") &&
       source.includes("Credential validation and publish are not yet available for this connector.") &&
       source.includes("Meesho uses Excel export only."),
