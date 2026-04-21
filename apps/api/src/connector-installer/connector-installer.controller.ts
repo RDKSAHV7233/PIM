@@ -9,6 +9,7 @@ import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dt
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListConnectorPermissionsDto } from "./dto/list-connector-permissions.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
+import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
 type AuthenticatedRequest = FastifyRequest & { pimUserId?: string; pimRole?: AppRole };
@@ -110,6 +111,35 @@ export class ConnectorInstallerController {
     return this.connectorInstallerService.fetchProductTypeSchema(
       installationId,
       normalizedProductType,
+      this.resolveActor(request),
+    );
+  }
+
+  @Get(":id/publications")
+  @ApiOperation({ summary: "List publication targets for an installed connector account" })
+  @ApiResponse({ status: 200, description: "Publication targets fetched" })
+  listPublications(
+    @Param("id") installationId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.listPublications(
+      installationId,
+      this.resolveActor(request),
+    );
+  }
+
+  @Post(":id/publication-targets")
+  @Roles(...APP_ROLES)
+  @ApiOperation({ summary: "Persist publication targets for an installed connector account" })
+  @ApiResponse({ status: 201, description: "Publication targets saved" })
+  updatePublicationTargets(
+    @Param("id") installationId: string,
+    @Body() dto: UpdatePublicationTargetsDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.updatePublicationTargets(
+      installationId,
+      dto,
       this.resolveActor(request),
     );
   }

@@ -87,6 +87,15 @@ export type ProductTypeSchema = {
   schemaVersion: string;
 };
 
+export type ConnectorPublicationTarget = {
+  id: string;
+  name: string;
+  catalogId?: string | null;
+  catalogTitle?: string | null;
+  catalogType?: string | null;
+  selected?: boolean;
+};
+
 export type ExportFile = {
   buffer: Buffer;
   filename: string;  // "meesho_upload_apparel_20260301.xlsx"
@@ -157,6 +166,14 @@ export interface ConnectorInterface {
     ctx: ConnectorContext,
     productType: string
   ): Promise<ProductTypeSchema>;
+
+  /**
+   * List publication targets available for an installed account.
+   * Used by channels that require explicit publication selection (for example Shopify).
+   */
+  listPublications?(
+    ctx: ConnectorContext
+  ): Promise<ConnectorPublicationTarget[]>;
 
   /**
    * Submit a product listing to the channel.

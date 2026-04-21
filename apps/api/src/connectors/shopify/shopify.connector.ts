@@ -13,6 +13,7 @@ import {
   ConnectorContext,
   ConnectorInterface,
   ConnectorIssue,
+  ConnectorPublicationTarget,
   ProductPayload,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
@@ -35,10 +36,36 @@ type ShopifyTokenResponse = {
   refresh_token_expires_in?: number;
 };
 
+type ShopifyGraphQlEnvelope<T> = {
+  data?: T;
+  errors?: Array<{
+    message?: string;
+  }>;
+};
+
+type ShopifyPublicationNode = {
+  id?: string;
+  name?: string;
+  catalog?: {
+    __typename?: string;
+    id?: string;
+    title?: string;
+    status?: string;
+  } | null;
+};
+
+type ShopifyPublicationQueryResponse = {
+  publications?: {
+    nodes?: ShopifyPublicationNode[];
+  } | null;
+};
+
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE = "urn:shopify:params:oauth:token-type:offline-access-token";
 const DEFAULT_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
 const DEFAULT_TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
+const DEFAULT_ADMIN_API_VERSION = "2026-04";
+const SHOPIFY_PUBLISH_TARGETS_METADATA_KEY = "publicationTargetIds";
 const REQUIRED_FIELDS = [
   { fieldPath: "sku", message: "Add a stable SKU before syncing to Shopify." },
   { fieldPath: "title", message: "Product title is required for Shopify sync." },
@@ -199,6 +226,68 @@ export class ShopifyConnector implements ConnectorInterface {
     };
   }
 
+  async listPublications(ctx: ConnectorContext): Promise<ConnectorPublicationTarget[]> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const metadata = await this.getInstallationMetadata(ctx);
+    const selectedIds = new Set(this.readPublicationTargetIds(metadata));
+    const response = await this.graphqlRequest<ShopifyPublicationQueryResponse>({
+      shopDomain,
+      accessToken,
+      query: `
+        query VexaShopifyPublications {
+          publications(first: 50) {
+            nodes {
+              id
+              name
+              catalog {
+                __typename
+                ... on AppCatalog {
+                  id
+                  title
+                  status
+                }
+                ... on MarketCatalog {
+                  id
+                  title
+                  status
+                }
+                ... on CompanyLocationCatalog {
+                  id
+                  title
+                  status
+                }
+              }
+            }
+          }
+        }
+      `,
+    });
+
+    const nodes = Array.isArray(response.publications?.nodes) ? response.publications.nodes : [];
+    const publications: ConnectorPublicationTarget[] = [];
+    for (const node of nodes) {
+      const id = String(node?.id ?? "").trim();
+      if (!id) {
+        continue;
+      }
+      const catalog = node?.catalog ?? null;
+      const name =
+        this.normalizeOptionalString(node?.name) ??
+        this.normalizeOptionalString(catalog?.title) ??
+        "Untitled publication";
+      publications.push({
+        id,
+        name,
+        catalogId: this.normalizeOptionalString(catalog?.id),
+        catalogTitle: this.normalizeOptionalString(catalog?.title),
+        catalogType: this.normalizeOptionalString(catalog?.__typename),
+        selected: selectedIds.has(id),
+      });
+    }
+    return publications;
+  }
+
   private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
     try {
       const provided = await ctx.getAccessToken();
@@ -355,6 +444,36 @@ export class ShopifyConnector implements ConnectorInterface {
     );
   }
 
+  private async getInstallationMetadata(ctx: ConnectorContext): Promise<Record<string, unknown>> {
+    const db = this.prismaDirect.getClient();
+    const rows = await db.$queryRawUnsafe<Array<{ metadata: unknown }>>(
+      `
+      SELECT metadata
+      FROM connector_installations
+      WHERE tenant_key = $1
+        AND id = $2
+      LIMIT 1
+      `,
+      ctx.tenantId,
+      ctx.installationId,
+    );
+    const raw = rows[0]?.metadata;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  }
+
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
     await db.$executeRawUnsafe(
@@ -485,6 +604,65 @@ export class ShopifyConnector implements ConnectorInterface {
     );
   }
 
+  private readPublicationTargetIds(metadata: Record<string, unknown>): string[] {
+    const raw = metadata[SHOPIFY_PUBLISH_TARGETS_METADATA_KEY];
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return Array.from(
+      new Set(
+        raw
+          .map((value) => String(value ?? "").trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+  }
+
+  private async graphqlRequest<T>(input: {
+    shopDomain: string;
+    accessToken: string;
+    query: string;
+    variables?: Record<string, unknown>;
+  }): Promise<T> {
+    const endpoint = `${this.resolveAdminApiBaseUrl(input.shopDomain)}/admin/api/${this.resolveAdminApiVersion()}/graphql.json`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": input.accessToken,
+      },
+      body: JSON.stringify({
+        query: input.query,
+        variables: input.variables ?? {},
+      }),
+    });
+
+    const text = await response.text();
+    let parsed: ShopifyGraphQlEnvelope<T> = {};
+    try {
+      parsed = text ? (JSON.parse(text) as ShopifyGraphQlEnvelope<T>) : {};
+    } catch {
+      parsed = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(`Shopify GraphQL request failed with status ${response.status}.`);
+    }
+    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+      const message = parsed.errors
+        .map((issue) => String(issue?.message ?? "").trim())
+        .filter((value) => value.length > 0)
+        .join(" | ");
+      throw new Error(message || "Shopify GraphQL request returned errors.");
+    }
+    if (!parsed.data) {
+      throw new Error("Shopify GraphQL response did not include data.");
+    }
+
+    return parsed.data;
+  }
+
   private requireClientId(): string {
     const value = String(process.env.PIM_SHOPIFY_CLIENT_ID ?? "").trim();
     if (!value) {
@@ -507,6 +685,19 @@ export class ShopifyConnector implements ConnectorInterface {
       return explicit;
     }
     return `https://${shopDomain}`;
+  }
+
+  private resolveAdminApiBaseUrl(shopDomain: string): string {
+    const explicit = String(process.env.PIM_SHOPIFY_ADMIN_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+    if (explicit.length > 0) {
+      return explicit;
+    }
+    return `https://${shopDomain}`;
+  }
+
+  private resolveAdminApiVersion(): string {
+    const explicit = String(process.env.PIM_SHOPIFY_ADMIN_API_VERSION ?? "").trim();
+    return explicit.length > 0 ? explicit : DEFAULT_ADMIN_API_VERSION;
   }
 
   private normalizeShopDomain(raw: string | undefined): string {
