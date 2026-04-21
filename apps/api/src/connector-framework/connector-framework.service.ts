@@ -67,9 +67,9 @@ export class ConnectorFrameworkService {
 
   private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
     try {
-      return this.registry.getConnector(slug).implementationStatus ?? "full";
+      return this.registry.getConnector(slug).implementationStatus ?? "stub";
     } catch {
-      return "full";
+      return "stub";
     }
   }
 

@@ -18,6 +18,7 @@ import {
 import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
+  ConnectorActionRule,
   ConnectorDefinitionRecord,
   ConnectorInstallationRecord,
   PaginatedResponse,
@@ -120,10 +121,25 @@ export class ConnectorInstallerService {
 
   private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
     try {
-      return this.connectorRegistry.getConnector(slug).implementationStatus ?? "full";
+      return this.connectorRegistry.getConnector(slug).implementationStatus ?? "stub";
     } catch {
-      return "full";
+      return "stub";
     }
+  }
+
+  private applyInstallLaunchStageRule(
+    slug: string,
+    capabilities: ConnectorCap[],
+    action: ConnectorActionRule,
+  ): ConnectorActionRule {
+    const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
+    if (launchPolicy.launchStage === "planned") {
+      return {
+        allowed: false,
+        reason: "CONNECTOR_LAUNCH_STAGE_PLANNED",
+      };
+    }
+    return action;
   }
 
   async listAvailableDefinitions(actor: ConnectorActor): Promise<ConnectorDefinitionRecord[]> {
@@ -154,7 +170,9 @@ export class ConnectorInstallerService {
       if (stubSlugs.has(slug.toLowerCase())) {
         continue;
       }
-      const launchPolicy = resolveConnectorLaunchPolicy(slug, parseCapabilities(row.capabilities));
+      const capabilities = parseCapabilities(row.capabilities);
+      const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
+      const actions = await this.connectorPermissionService.buildDefinitionActions(actor, slug);
       definitions.push({
         id: String(row.id),
         slug,
@@ -169,7 +187,10 @@ export class ConnectorInstallerService {
         isActive: Boolean(row.isActive),
         createdAt: String(row.createdAt),
         updatedAt: String(row.updatedAt),
-        actions: await this.connectorPermissionService.buildDefinitionActions(actor, slug),
+        actions: {
+          ...actions,
+          install: this.applyInstallLaunchStageRule(slug, capabilities, actions.install),
+        },
       });
     }
 
@@ -219,6 +240,17 @@ export class ConnectorInstallerService {
       const definition = definitionRows[0];
       if (!definition) {
         throw new NotFoundException(`Connector '${normalizedSlug}' is not available.`);
+      }
+
+      const definitionCapabilities = parseCapabilities(definition.capabilities);
+      const launchPolicy = resolveConnectorLaunchPolicy(normalizedSlug, definitionCapabilities);
+      if (launchPolicy.launchStage === "planned") {
+        throw new BadRequestException({
+          error: "CONNECTOR_LAUNCH_STAGE_PLANNED",
+          message:
+            launchPolicy.launchNote ??
+            `${normalizedSlug} is not yet available for installation in this workspace.`,
+        });
       }
 
       try {

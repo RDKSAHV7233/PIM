@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
 import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
+import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
 import { LoggingModule } from "../common/logging/logging.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { ConnectorWebhookIngestionService } from "./connector-webhook-ingestion.service";
@@ -17,6 +18,7 @@ import { ConnectorRegistry } from "./connector.registry";
     AmazonConnector,
     FlipkartConnector,
     MeeshoConnector,
+    ShopifyConnector,
     ConnectorRegistry,
     ConnectorFrameworkService,
     ConnectorWebhookIngestionService,

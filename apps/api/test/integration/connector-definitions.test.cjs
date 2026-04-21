@@ -204,12 +204,14 @@ async function run() {
     const amazon = bySlug.get("amazon-in");
     const meesho = bySlug.get("meesho");
     const flipkart = bySlug.get("flipkart");
+    const shopify = bySlug.get("shopify");
 
     assert(amazon, "amazon-in definition missing from definitions response");
     assert(meesho, "meesho definition missing from definitions response");
     assert(flipkart, "flipkart definition missing from definitions response");
+    assert(shopify, "shopify definition missing from definitions response");
 
-    for (const item of [amazon, meesho, flipkart]) {
+    for (const item of [amazon, meesho, flipkart, shopify]) {
       assert(
         Object.prototype.hasOwnProperty.call(item, "implementationStatus"),
         `definition ${String(item.slug)} missing implementationStatus`,
@@ -219,7 +221,14 @@ async function run() {
     assert(amazon.implementationStatus === "full", `amazon-in implementationStatus expected full, got ${amazon.implementationStatus}`);
     assert(meesho.implementationStatus === "partial", `meesho implementationStatus expected partial, got ${meesho.implementationStatus}`);
     assert(flipkart.implementationStatus === "full", `flipkart implementationStatus expected full, got ${flipkart.implementationStatus}`);
+    assert(shopify.implementationStatus === "partial", `shopify implementationStatus expected partial, got ${shopify.implementationStatus}`);
     assert(amazon.launchStage === "live", `amazon-in launchStage expected live, got ${amazon.launchStage}`);
+    assert(shopify.launchStage === "planned", `shopify launchStage expected planned, got ${shopify.launchStage}`);
+    assert(shopify.actions?.install?.allowed === false, `shopify install action should be blocked, got ${JSON.stringify(shopify.actions)}`);
+    assert(
+      shopify.actions?.install?.reason === "CONNECTOR_LAUNCH_STAGE_PLANNED",
+      `shopify install block reason expected CONNECTOR_LAUNCH_STAGE_PLANNED, got ${shopify.actions?.install?.reason}`,
+    );
 
     console.log(
       JSON.stringify(
@@ -229,6 +238,7 @@ async function run() {
             "amazon-in": amazon.implementationStatus,
             meesho: meesho.implementationStatus,
             flipkart: flipkart.implementationStatus,
+            shopify: shopify.implementationStatus,
           },
           checkedAt: new Date().toISOString(),
         },
