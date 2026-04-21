@@ -723,6 +723,40 @@ paths:
           description: Product type schema fetched
       summary: Fetch connector product type schema for an installed account
       tags: *a9
+  /api/v1/connectors/{id}/publications:
+    get:
+      operationId: ConnectorInstallerController_listPublications
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Publication targets fetched
+      summary: List publication targets for an installed connector account
+      tags: *a9
+  /api/v1/connectors/{id}/publication-targets:
+    post:
+      operationId: ConnectorInstallerController_updatePublicationTargets
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePublicationTargetsDto"
+      responses:
+        "201":
+          description: Publication targets saved
+      summary: Persist publication targets for an installed connector account
+      tags: *a9
   /api/v1/connectors/{id}/payload-preview:
     post:
       operationId: ConnectorInstallerController_payloadPreview
@@ -2642,6 +2676,9 @@ components:
       type: object
       properties: {}
     InstallConnectorDto:
+      type: object
+      properties: {}
+    UpdatePublicationTargetsDto:
       type: object
       properties: {}
     ConnectorPayloadPreviewDto:
