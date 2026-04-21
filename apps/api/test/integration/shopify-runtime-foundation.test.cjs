@@ -64,72 +64,101 @@ function assert(condition, message) {
 
 function createShopifyAuthStub() {
   const calls = [];
+  const graphqlCalls = [];
   let refreshCount = 0;
 
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
-      if (req.method !== "POST" || req.url !== "/admin/oauth/access_token") {
-        res.statusCode = 404;
-        res.end();
-        return;
-      }
-
       const chunks = [];
       for await (const chunk of req) {
         chunks.push(Buffer.from(chunk));
       }
       const body = Buffer.concat(chunks).toString("utf8");
-      const params = new URLSearchParams(body);
-      const grantType = params.get("grant_type") || "";
-      const record = {
-        grantType,
-        subjectToken: params.get("subject_token") || null,
-        subjectTokenType: params.get("subject_token_type") || null,
-        requestedTokenType: params.get("requested_token_type") || null,
-        expiring: params.get("expiring") || null,
-        refreshToken: params.get("refresh_token") || null,
-        clientId: params.get("client_id") || null,
-        clientSecret: params.get("client_secret") || null,
-      };
-      calls.push(record);
 
-      res.setHeader("Content-Type", "application/json");
-      if (grantType === "urn:ietf:params:oauth:grant-type:token-exchange") {
-        res.statusCode = 200;
-        res.end(
-          JSON.stringify({
-            access_token: "shopify-access-token-1",
-            expires_in: 3600,
-            refresh_token: "shopify-refresh-token-1",
-            refresh_token_expires_in: 7776000,
-            scope: "read_products,write_products,read_publications,write_publications",
-          }),
-        );
-        return;
-      }
+      if (req.method === "POST" && req.url === "/admin/oauth/access_token") {
+        const params = new URLSearchParams(body);
+        const grantType = params.get("grant_type") || "";
+        const record = {
+          grantType,
+          subjectToken: params.get("subject_token") || null,
+          subjectTokenType: params.get("subject_token_type") || null,
+          requestedTokenType: params.get("requested_token_type") || null,
+          expiring: params.get("expiring") || null,
+          refreshToken: params.get("refresh_token") || null,
+          clientId: params.get("client_id") || null,
+          clientSecret: params.get("client_secret") || null,
+        };
+        calls.push(record);
 
-      if (grantType === "refresh_token") {
-        refreshCount += 1;
-        if (params.get("refresh_token") !== "shopify-refresh-token-1") {
-          res.statusCode = 401;
-          res.end(JSON.stringify({ error: "invalid_refresh_token" }));
+        res.setHeader("Content-Type", "application/json");
+        if (grantType === "urn:ietf:params:oauth:grant-type:token-exchange") {
+          res.statusCode = 200;
+          res.end(
+            JSON.stringify({
+              access_token: "shopify-access-token-1",
+              expires_in: 3600,
+              refresh_token: "shopify-refresh-token-1",
+              refresh_token_expires_in: 7776000,
+              scope: "read_products,write_products,read_publications,write_publications",
+            }),
+          );
           return;
         }
-        res.statusCode = 200;
-        res.end(
-          JSON.stringify({
-            access_token: `shopify-access-token-refresh-${refreshCount}`,
-            expires_in: 3600,
-            refresh_token: `shopify-refresh-token-refresh-${refreshCount}`,
-            refresh_token_expires_in: 7776000,
-            scope: "read_products,write_products,read_publications,write_publications",
-          }),
-        );
+
+        if (grantType === "refresh_token") {
+          refreshCount += 1;
+          if (params.get("refresh_token") !== "shopify-refresh-token-1") {
+            res.statusCode = 401;
+            res.end(JSON.stringify({ error: "invalid_refresh_token" }));
+            return;
+          }
+          res.statusCode = 200;
+          res.end(
+            JSON.stringify({
+              access_token: `shopify-access-token-refresh-${refreshCount}`,
+              expires_in: 3600,
+              refresh_token: `shopify-refresh-token-refresh-${refreshCount}`,
+              refresh_token_expires_in: 7776000,
+              scope: "read_products,write_products,read_publications,write_publications",
+            }),
+          );
+          return;
+        }
+
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "unsupported_grant_type" }));
         return;
       }
 
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: "unsupported_grant_type" }));
+      if (req.method === "POST" && req.url === "/admin/api/2026-04/graphql.json") {
+        const parsed = body ? JSON.parse(body) : {};
+        const query = String(parsed.query || "");
+        graphqlCalls.push({
+          query,
+          variables: parsed.variables || {},
+        });
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        if (query.includes("shop {")) {
+          res.end(
+            JSON.stringify({
+              data: {
+                shop: {
+                  id: "gid://shopify/Shop/9001",
+                  name: "Demo Store",
+                  myshopifyDomain: "demo-store.myshopify.com",
+                },
+              },
+            }),
+          );
+          return;
+        }
+        res.end(JSON.stringify({ data: {} }));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
     });
 
     server.on("error", reject);
@@ -143,6 +172,7 @@ function createShopifyAuthStub() {
         server,
         baseUrl: `http://127.0.0.1:${address.port}`,
         calls,
+        graphqlCalls,
       });
     });
   });
@@ -163,6 +193,7 @@ async function run() {
   process.env.PIM_SHOPIFY_CLIENT_ID = "shopify-client-id";
   process.env.PIM_SHOPIFY_CLIENT_SECRET = "shopify-client-secret";
   process.env.PIM_SHOPIFY_TOKEN_BASE_URL = stub.baseUrl;
+  process.env.PIM_SHOPIFY_ADMIN_API_BASE_URL = stub.baseUrl;
 
   let prismaDirect;
   try {
@@ -234,6 +265,7 @@ async function run() {
     });
 
     assert(stub.calls.length === 1, `Expected one token exchange call, got ${stub.calls.length}`);
+    assert(stub.graphqlCalls.length === 1, `Expected one Shopify GraphQL identity call, got ${stub.graphqlCalls.length}`);
     assert(
       stub.calls[0].grantType === "urn:ietf:params:oauth:grant-type:token-exchange",
       `Expected token exchange grant, got ${stub.calls[0].grantType}`,
@@ -260,14 +292,16 @@ async function run() {
       tenantKey,
       installationId,
     );
-    assert(Array.isArray(credentialRows) && credentialRows.length >= 3, "Expected stored Shopify credentials.");
+    assert(Array.isArray(credentialRows) && credentialRows.length >= 5, "Expected stored Shopify credentials.");
 
     const accessRow = credentialRows.find((row) => row.credentialType === "access_token");
     const refreshRow = credentialRows.find((row) => row.credentialType === "refresh_token");
     const shopRow = credentialRows.find((row) => row.credentialType === "shop_domain");
+    const shopIdRow = credentialRows.find((row) => row.credentialType === "shop_id");
     assert(accessRow, "Expected access_token row.");
     assert(refreshRow, "Expected refresh_token row.");
     assert(shopRow, "Expected shop_domain row.");
+    assert(shopIdRow, "Expected shop_id row.");
 
     assert(
       encryption.decrypt(String(accessRow.encryptedValue), String(accessRow.keyVersion)) === "shopify-access-token-1",
@@ -280,6 +314,10 @@ async function run() {
     assert(
       encryption.decrypt(String(shopRow.encryptedValue), String(shopRow.keyVersion)) === shopDomain,
       "Expected Shopify shop domain to persist.",
+    );
+    assert(
+      encryption.decrypt(String(shopIdRow.encryptedValue), String(shopIdRow.keyVersion)) === "gid://shopify/Shop/9001",
+      "Expected Shopify shop id to persist.",
     );
     assert(
       String(accessRow.scope || "").includes("write_products"),
@@ -298,6 +336,8 @@ async function run() {
     );
     const metadata = installationRows[0]?.metadata || {};
     assert(metadata.shopDomain === shopDomain, `Expected shopDomain metadata, got ${JSON.stringify(metadata)}`);
+    assert(metadata.shopId === "gid://shopify/Shop/9001", `Expected shopId metadata, got ${JSON.stringify(metadata)}`);
+    assert(metadata.shopName === "Demo Store", `Expected shopName metadata, got ${JSON.stringify(metadata)}`);
     assert(metadata.tokenMode === "expiring_offline", `Expected expiring_offline token mode, got ${metadata.tokenMode}`);
     assert(metadata.authMode === "managed_install_token_exchange", `Expected managed auth mode, got ${metadata.authMode}`);
 
