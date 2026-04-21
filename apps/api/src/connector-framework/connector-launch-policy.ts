@@ -32,6 +32,15 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === "shopify") {
+    return {
+      launchStage: "planned",
+      launchNote:
+        "Shopify is approved for the Vexa roadmap, but seller install stays blocked until the managed-install, token-exchange, and publication flow slice ships.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   return {
     launchStage: "live",
     launchNote: null,
