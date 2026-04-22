@@ -52,7 +52,9 @@ function run() {
   assert(
     source.includes('const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [') &&
       source.includes('{ id: "overview", label: "Overview" }') &&
+      source.includes('{ id: "credentials", label: "Credentials" }') &&
       source.includes('{ id: "catalog", label: "Catalog" }') &&
+      source.includes('{ id: "mappings", label: "Mappings" }') &&
       source.includes('{ id: "issues", label: "Issues" }') &&
       source.includes('{ id: "logs", label: "Logs" }') &&
       source.includes('{ id: "access", label: "Access" }'),
@@ -62,11 +64,16 @@ function run() {
   assert(
     source.includes("const latestSubmissionByProductId = new Map<") &&
       source.includes("const catalogEntries = Array.from(latestSubmissionByProductId.entries())") &&
+      source.includes("const focusCatalogEntry = catalogEntries[0] ?? null;") &&
+      source.includes("Promise.allSettled([") &&
       source.includes("Catalog Modules") &&
+      source.includes("Focused Product Modules") &&
+      source.includes("Payload Preview Snapshot") &&
       source.includes("Readiness Queue") &&
+      source.includes("Mapping Scope") &&
       source.includes("Recovery Playbook") &&
       source.includes("Issue Queue"),
-    "Channel connector detail must build catalog modules, readiness, and recovery views from submission history.",
+    "Channel connector detail must build catalog modules, payload preview, mapping context, readiness, and recovery views from current Vexa data.",
   );
 
   assert(
@@ -78,11 +85,14 @@ function run() {
   );
 
   assert(
-    source.includes('href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}') &&
+      source.includes('href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}') &&
       source.includes('href="/admin/connectors"') &&
       source.includes("Open catalog mapping") &&
       source.includes("issueLaneLabel") &&
       source.includes("catalogReadinessLabel") &&
+      source.includes("Credential Safety") &&
+      source.includes("Publication Targets") &&
+      source.includes("Why Mappings Stay Shared") &&
       source.includes("No connector-specific permission overrides. Workspace defaults are currently in effect.") &&
       source.includes("No submissions recorded for this account yet.") &&
       source.includes("summarizeSubmissionOutcome") &&

@@ -6,12 +6,18 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
+  getCategoryAttributes,
   getConnectorPermissions,
+  getConnectorPayloadPreview,
   getInstalledConnectors,
   getProductList,
+  getProductIssues,
+  getProductVariants,
   getSubmissions,
+  getMediaAssets,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -22,11 +28,13 @@ interface ChannelConnectorDetailPageProps {
   searchParams: Promise<{ tab?: string }>;
 }
 
-type DetailTab = "overview" | "catalog" | "issues" | "logs" | "access";
+type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access";
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "overview", label: "Overview" },
+  { id: "credentials", label: "Credentials" },
   { id: "catalog", label: "Catalog" },
+  { id: "mappings", label: "Mappings" },
   { id: "issues", label: "Issues" },
   { id: "logs", label: "Logs" },
   { id: "access", label: "Access" },
@@ -159,7 +167,14 @@ function buildDetailHref(installationId: string, tab: DetailTab): string {
 
 function resolveTab(value: string): DetailTab {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "catalog" || normalized === "issues" || normalized === "logs" || normalized === "access") {
+  if (
+    normalized === "credentials" ||
+    normalized === "catalog" ||
+    normalized === "mappings" ||
+    normalized === "issues" ||
+    normalized === "logs" ||
+    normalized === "access"
+  ) {
     return normalized;
   }
   return "overview";
@@ -228,6 +243,45 @@ function issueLaneLabel(submission: {
     return "Catalog mapping";
   }
   return "Connector account";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readPublicationTargets(metadata: unknown): Array<{
+  id: string;
+  name: string;
+  selected?: boolean;
+  catalogTitle?: string | null;
+}> {
+  const raw = asRecord(metadata).publicationTargets;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        id: String(record.id ?? ""),
+        name: String(record.name ?? record.catalogTitle ?? "Publication target"),
+        selected: Boolean(record.selected),
+        catalogTitle: typeof record.catalogTitle === "string" ? record.catalogTitle : null,
+      };
+    })
+    .filter((item) => item.id.length > 0);
+}
+
+function readMetadataValue(metadata: unknown, key: string): string | null {
+  const value = asRecord(metadata)[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function renderSubmissionRows(
@@ -333,6 +387,57 @@ export default async function ChannelConnectorDetailPage({
     const readinessEntries = catalogEntries.filter(
       (entry) => (entry.product?.openValidationErrorCount ?? 0) > 0 || (entry.product?.openValidationWarningCount ?? 0) > 0,
     );
+    const focusCatalogEntry = catalogEntries[0] ?? null;
+    const focusProductId = focusCatalogEntry?.productId ?? null;
+    const focusProduct = focusCatalogEntry?.product ?? null;
+    const focusCategoryId = focusProduct?.categoryId ?? null;
+    const focusChannel = mapConnectorSlugToMarketplaceChannel(installation.slug);
+    const mappingHref =
+      focusChannel && focusProductId
+        ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(focusProductId)}&channel=${encodeURIComponent(focusChannel)}`
+        : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
+    const [
+      focusVariantsResult,
+      focusIssuesResult,
+      focusAttributesResult,
+      focusMediaResult,
+      focusPayloadPreviewResult,
+    ] = await Promise.allSettled([
+      focusProductId
+        ? getProductVariants(focusProductId, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      focusProductId
+        ? getProductIssues(focusProductId, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      focusCategoryId
+        ? getCategoryAttributes(focusCategoryId, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      focusProductId
+        ? getMediaAssets(focusProductId, undefined, { role: actorRole, authHeader })
+        : Promise.resolve([]),
+      focusProductId && focusChannel
+        ? getConnectorPayloadPreview(
+            installation.id,
+            { productId: focusProductId, channel: focusChannel },
+            { role: actorRole, authHeader },
+          )
+        : Promise.resolve(null),
+    ]);
+    const focusVariants = focusVariantsResult.status === "fulfilled" ? focusVariantsResult.value : [];
+    const focusIssues = focusIssuesResult.status === "fulfilled" ? focusIssuesResult.value : [];
+    const focusAttributes = focusAttributesResult.status === "fulfilled" ? focusAttributesResult.value : [];
+    const focusMedia = focusMediaResult.status === "fulfilled" ? focusMediaResult.value : [];
+    const focusPayloadPreview =
+      focusPayloadPreviewResult.status === "fulfilled" ? focusPayloadPreviewResult.value : null;
+    const publicationTargets = readPublicationTargets(installation.metadata);
+    const publicationTargetsUpdatedAt = readMetadataValue(
+      installation.metadata,
+      "publicationTargetsUpdatedAt",
+    );
+    const metadataSellerId = readMetadataValue(installation.metadata, "sellerId");
+    const metadataMarketplaceId = readMetadataValue(installation.metadata, "marketplaceId");
+    const metadataShopDomain = readMetadataValue(installation.metadata, "shopDomain");
+    const metadataShopName = readMetadataValue(installation.metadata, "shopName");
     return (
       <div className="space-y-5">
         <PageHeader
@@ -539,6 +644,99 @@ export default async function ChannelConnectorDetailPage({
           </div>
         ) : null}
 
+        {selectedTab === "credentials" ? (
+          <div className="space-y-4">
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardTitle>Account Connection</CardTitle>
+                <dl className="mt-2 grid grid-cols-[160px_1fr] gap-y-2 text-sm">
+                  <dt className="text-slate-500">Connector</dt>
+                  <dd>{installation.displayName}</dd>
+                  <dt className="text-slate-500">Account alias</dt>
+                  <dd>{installation.accountAlias}</dd>
+                  <dt className="text-slate-500">External ref</dt>
+                  <dd>{installation.externalAccountRef || "-"}</dd>
+                  <dt className="text-slate-500">Seller ID</dt>
+                  <dd>{metadataSellerId || "-"}</dd>
+                  <dt className="text-slate-500">Marketplace ID</dt>
+                  <dd>{metadataMarketplaceId || "-"}</dd>
+                  <dt className="text-slate-500">Shop domain</dt>
+                  <dd>{metadataShopDomain || "-"}</dd>
+                  <dt className="text-slate-500">Shop name</dt>
+                  <dd>{metadataShopName || "-"}</dd>
+                </dl>
+              </Card>
+
+              <Card>
+                <CardTitle>Credential Safety</CardTitle>
+                <div className="mt-2 space-y-3 text-sm text-slate-700">
+                  <p>
+                    Stored credentials are intentionally masked in Vexa. Use account health and reconnect actions to confirm whether this installation still has valid access.
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-slate-600">
+                    <li>Status: <span className="font-medium text-slate-800">{formatStatusSummary(installation.status)}</span></li>
+                    <li>Last sync: <span className="font-medium text-slate-800">{installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "Not recorded"}</span></li>
+                    <li>Installed by: <span className="font-medium text-slate-800">{installation.installedBy}</span></li>
+                  </ul>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Link
+                      href="/channels/connectors/setup"
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Open setup workspace
+                    </Link>
+                    <Link
+                      href={buildDetailHref(installation.id, "issues")}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Review account issues
+                    </Link>
+                  </div>
+                </div>
+              </Card>
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardTitle>Publication Targets</CardTitle>
+                {publicationTargets.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    This connector account does not currently expose saved publication targets in Vexa metadata.
+                  </p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {publicationTargets.map((target) => (
+                      <li key={target.id} className="rounded-md border border-slate-200 px-3 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-800">{target.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">{target.catalogTitle || target.id}</p>
+                          </div>
+                          <StatusChip label={target.selected ? "selected" : "available"} tone={target.selected ? "success" : "neutral"} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-3 text-xs text-slate-500">
+                  {publicationTargetsUpdatedAt
+                    ? `Publication targets last updated ${formatDateTime(publicationTargetsUpdatedAt)}.`
+                    : "No publication target update timestamp recorded yet."}
+                </p>
+              </Card>
+
+              <Card>
+                <CardTitle>Credential Operating Notes</CardTitle>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                  <li>Credentials are never echoed back into this page once they are stored.</li>
+                  <li>Use connector status, issue history, and reconnect flows to validate account access safely.</li>
+                  <li>Publication targets appear here only when the connector runtime persists them for this installation.</li>
+                </ul>
+              </Card>
+            </section>
+          </div>
+        ) : null}
+
         {selectedTab === "catalog" ? (
           <div className="space-y-4">
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -666,6 +864,161 @@ export default async function ChannelConnectorDetailPage({
                 </div>
               </Card>
             </section>
+
+            <section className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardTitle>Focused Product Modules</CardTitle>
+                {!focusCatalogEntry ? (
+                  <p className="mt-2 text-sm text-slate-600">No submitted product is available yet for module-level connector context.</p>
+                ) : (
+                  <div className="mt-2 space-y-3 text-sm">
+                    <div className="rounded-md border border-slate-200 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product</p>
+                      <p className="mt-1 font-medium text-slate-900">{focusProduct?.title || focusCatalogEntry.productId}</p>
+                      <p className="mt-1 text-xs text-slate-500">{focusCatalogEntry.productId}</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Variants</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{focusVariants.length}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Media assets</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{focusMedia.length}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category attributes</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{focusAttributes.length}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Open issues</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{focusIssues.length}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Link
+                        href={`/products/${encodeURIComponent(focusCatalogEntry.productId)}`}
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Open product
+                      </Link>
+                      <Link
+                        href={`/catalog/media?productId=${encodeURIComponent(focusCatalogEntry.productId)}`}
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Open media
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              <Card>
+                <CardTitle>Payload Preview Snapshot</CardTitle>
+                {!focusPayloadPreview ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    No payload preview is available for this account and focused product yet.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-3 text-sm text-slate-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusChip label={focusPayloadPreview.exportReady ? "export ready" : "blocked"} tone={focusPayloadPreview.exportReady ? "success" : "danger"} />
+                      <StatusChip label={focusPayloadPreview.mappingSource} tone="info" />
+                      <StatusChip label={focusPayloadPreview.validationSource} tone="neutral" />
+                    </div>
+                    <p>
+                      Preview channel: <span className="font-medium text-slate-900">{focusPayloadPreview.channel}</span>
+                    </p>
+                    <p>
+                      Missing fields: <span className="font-medium text-slate-900">{focusPayloadPreview.missingFields.length}</span>
+                    </p>
+                    <p>
+                      Channel issues: <span className="font-medium text-slate-900">{focusPayloadPreview.channelIssues.length}</span>
+                    </p>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapped payload keys</p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {Object.keys(focusPayloadPreview.mappedPayload ?? {}).slice(0, 8).join(", ") || "No mapped fields returned"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </section>
+          </div>
+        ) : null}
+
+        {selectedTab === "mappings" ? (
+          <div className="space-y-4">
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardTitle>Mapping Scope</CardTitle>
+                {!focusCatalogEntry ? (
+                  <p className="mt-2 text-sm text-slate-600">No submitted product is available yet to anchor a mapping scope for this account.</p>
+                ) : (
+                  <div className="mt-2 space-y-3 text-sm text-slate-700">
+                    <p>
+                      Channel scope: <span className="font-medium text-slate-900">{focusChannel || "Unavailable"}</span>
+                    </p>
+                    <p>
+                      Focus product: <span className="font-medium text-slate-900">{focusProduct?.title || focusCatalogEntry.productId}</span>
+                    </p>
+                    <p>
+                      Category: <span className="font-medium text-slate-900">{focusProduct?.categoryName || focusProduct?.categoryId || "Unavailable"}</span>
+                    </p>
+                    <p>
+                      Attribute surface: <span className="font-medium text-slate-900">{focusAttributes.length}</span> known attributes
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Link
+                        href={mappingHref}
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Open mapping workspace
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              <Card>
+                <CardTitle>Mapping Readiness</CardTitle>
+                {!focusPayloadPreview ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Payload preview is not available yet for this installation. Use the mapping workspace to validate and publish when the connector supports preview generation.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-3 text-sm text-slate-700">
+                    <p>
+                      Export readiness: <span className="font-medium text-slate-900">{focusPayloadPreview.exportReady ? "Ready" : "Blocked"}</span>
+                    </p>
+                    <p>
+                      Missing fields: <span className="font-medium text-slate-900">{focusPayloadPreview.missingFields.length}</span>
+                    </p>
+                    <p>
+                      Channel issues: <span className="font-medium text-slate-900">{focusPayloadPreview.channelIssues.length}</span>
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      The mapping workbench remains the canonical edit surface. This tab exists to keep the account cockpit aligned with mapping state, not to replace the shared mapping editor.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </section>
+
+            <Card>
+              <CardTitle>Why Mappings Stay Shared</CardTitle>
+              <div className="mt-2 space-y-3 text-sm text-slate-700">
+                <p>
+                  Vexa keeps category and channel mapping in one shared workbench so operators do not end up with two competing mapping systems.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-600">
+                  <li>Use this account cockpit to confirm the affected channel, product, and readiness state.</li>
+                  <li>Use the mapping workspace to edit templates, validate drafts, and publish mapping versions.</li>
+                  <li>Return here to review whether the updated mapping clears account-specific issues.</li>
+                </ul>
+              </div>
+            </Card>
           </div>
         ) : null}
 
