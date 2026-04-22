@@ -416,6 +416,34 @@ function summarizePublicationTargets(
   return `${targets[0]?.name || targets[0]?.id || "Publication target"} +${targets.length - 1} more`;
 }
 
+function summarizeSelectedPublicationTargets(
+  targets: Array<{
+    id: string;
+    name: string;
+    selected?: boolean;
+  }>,
+): { count: number; label: string } {
+  const selectedTargets = targets.filter((target) => target.selected !== false);
+  const activeTargets = selectedTargets.length > 0 ? selectedTargets : targets;
+  if (activeTargets.length === 0) {
+    return { count: 0, label: "No publication targets selected" };
+  }
+  if (activeTargets.length === 1) {
+    return {
+      count: 1,
+      label: activeTargets[0]?.name || activeTargets[0]?.id || "Publication target selected",
+    };
+  }
+  return {
+    count: activeTargets.length,
+    label: `${activeTargets[0]?.name || activeTargets[0]?.id || "Publication target"} +${activeTargets.length - 1} more`,
+  };
+}
+
+function shopifyReadinessTone(complete: boolean): "success" | "warning" {
+  return complete ? "success" : "warning";
+}
+
 function renderSubmissionRows(
   submissions: Array<{
     id: string;
@@ -595,6 +623,9 @@ export default async function ChannelConnectorDetailPage({
     const metadataMarketplaceId = readMetadataValue(installation.metadata, "marketplaceId");
     const metadataShopDomain = readMetadataValue(installation.metadata, "shopDomain");
     const metadataShopName = readMetadataValue(installation.metadata, "shopName");
+    const metadataShopId = readMetadataValue(installation.metadata, "shopId");
+    const metadataTokenMode = readMetadataValue(installation.metadata, "tokenMode");
+    const metadataAuthMode = readMetadataValue(installation.metadata, "authMode");
     const attributeSummary =
       focusAttributes.length === 0
         ? "No category attributes returned yet"
@@ -614,6 +645,52 @@ export default async function ChannelConnectorDetailPage({
       ...target,
       selected: target.selected ?? selectedPublicationTargetIds.has(String(target.id ?? "").trim()),
     }));
+    const selectedPublicationTargetSummary = summarizeSelectedPublicationTargets(
+      availableShopifyTargets.length > 0 ? availableShopifyTargets : publicationTargets,
+    );
+    const shopifyReadinessSteps =
+      installation.slug === "shopify"
+        ? [
+            {
+              label: "Managed install token exchanged",
+              complete: Boolean(metadataTokenMode || metadataAuthMode),
+              detail:
+                metadataTokenMode || metadataAuthMode
+                  ? `${metadataAuthMode || "managed install"} / ${metadataTokenMode || "token mode recorded"}`
+                  : "Reconnect Shopify with managed install to exchange and store tokens.",
+            },
+            {
+              label: "Store identity recorded",
+              complete: Boolean(metadataShopDomain && metadataShopId),
+              detail:
+                metadataShopDomain && metadataShopId
+                  ? `${metadataShopName || metadataShopDomain} · ${metadataShopId}`
+                  : "Shop domain and Shopify shop ID will appear after the store handshake completes.",
+            },
+            {
+              label: "Publication targets selected",
+              complete: selectedPublicationTargetSummary.count > 0,
+              detail:
+                selectedPublicationTargetSummary.count > 0
+                  ? selectedPublicationTargetSummary.label
+                  : "Select at least one Shopify publication target before pilot publish.",
+            },
+            {
+              label: "Pilot publish ready",
+              complete:
+                Boolean(metadataTokenMode || metadataAuthMode) &&
+                Boolean(metadataShopDomain && metadataShopId) &&
+                selectedPublicationTargetSummary.count > 0,
+              detail:
+                Boolean(metadataTokenMode || metadataAuthMode) &&
+                Boolean(metadataShopDomain && metadataShopId) &&
+                selectedPublicationTargetSummary.count > 0
+                  ? "This account has the minimum Shopify connection context required for pilot publishing."
+                  : "Finish the steps above before treating this Shopify account as publish-ready.",
+            },
+          ]
+        : [];
+    const completedShopifyReadinessSteps = shopifyReadinessSteps.filter((step) => step.complete).length;
     return (
       <div className="space-y-5">
         <PageHeader
@@ -877,6 +954,47 @@ export default async function ChannelConnectorDetailPage({
                 </div>
               </Card>
             </section>
+
+            {installation.slug === "shopify" ? (
+              <Card>
+                <CardTitle>Shopify Readiness</CardTitle>
+                <div className="mt-2 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip
+                      label={`${completedShopifyReadinessSteps}/${shopifyReadinessSteps.length} steps complete`}
+                      tone={completedShopifyReadinessSteps === shopifyReadinessSteps.length ? "success" : "warning"}
+                    />
+                    <StatusChip
+                      label={
+                        completedShopifyReadinessSteps === shopifyReadinessSteps.length
+                          ? "pilot publish ready"
+                          : "setup still required"
+                      }
+                      tone={completedShopifyReadinessSteps === shopifyReadinessSteps.length ? "success" : "info"}
+                    />
+                  </div>
+                  <ul className="space-y-2 text-sm">
+                    {shopifyReadinessSteps.map((step) => (
+                      <li key={step.label} className="rounded-md border border-slate-200 px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-800">{step.label}</p>
+                            <p className="mt-1 text-xs text-slate-500">{step.detail}</p>
+                          </div>
+                          <StatusChip
+                            label={step.complete ? "done" : "needs action"}
+                            tone={shopifyReadinessTone(step.complete)}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-slate-500">
+                    This panel is operational guidance only. Shopify remains a planned connector until launch stage changes from the roadmap policy.
+                  </p>
+                </div>
+              </Card>
+            ) : null}
 
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
