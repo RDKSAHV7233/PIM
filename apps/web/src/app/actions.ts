@@ -972,6 +972,44 @@ export async function reconnectConnectorAction(formData: FormData) {
   redirect("/channels/connectors?status=reconnected");
 }
 
+export async function updateConnectorPublicationTargetsAction(formData: FormData) {
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const returnTo = String(formData.get("returnTo") ?? "").trim()
+    || `/channels/connectors/${encodeURIComponent(installationId)}`;
+  const publicationIds = formData
+    .getAll("publicationId")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  if (!installationId) {
+    throw new Error("Connector installation id is required.");
+  }
+
+  try {
+    await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/publication-targets`, {
+      publicationIds,
+    });
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    let status = "publication-targets-error";
+    if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+      const payload = error.body as Record<string, unknown>;
+      const code = String(payload.error ?? "").trim();
+      if (code === "PUBLICATION_TARGET_REQUIRED") {
+        status = "publication-targets-required";
+      } else if (code === "PUBLICATION_TARGET_INVALID") {
+        status = "publication-targets-invalid";
+      } else if (code === "CONNECTOR_PUBLICATIONS_UNSUPPORTED") {
+        status = "publication-targets-unsupported";
+      }
+    }
+    redirect(appendQueryParams(returnTo, { status }));
+  }
+
+  revalidatePath("/channels/connectors");
+  revalidatePath(returnTo);
+  redirect(appendQueryParams(returnTo, { status: "publication-targets-saved" }));
+}
+
 export async function uninstallConnectorAction(formData: FormData) {
   const installationId = String(formData.get("installationId") ?? "").trim();
   if (!installationId) {
