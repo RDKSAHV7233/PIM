@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { updateConnectorPublicationTargetsAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -7,6 +8,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getCategoryAttributes,
+  getConnectorPublications,
   getConnectorPermissions,
   getConnectorPayloadPreview,
   getInstalledConnectors,
@@ -15,6 +17,7 @@ import {
   getProductVariants,
   getSubmissions,
   getMediaAssets,
+  type ConnectorPublicationTarget,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
@@ -25,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access";
@@ -252,6 +255,54 @@ function formatDateTime(value: string | null | undefined): string {
   return new Date(value).toLocaleString();
 }
 
+function connectorDetailStatusMessage(status: string | undefined): {
+  tone: "success" | "warning" | "danger";
+  message: string;
+} | null {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (normalized === "publication-targets-saved") {
+    return {
+      tone: "success",
+      message: "Shopify publication targets saved. Future publishes will use the selected targets.",
+    };
+  }
+  if (normalized === "publication-targets-required") {
+    return {
+      tone: "warning",
+      message: "Select at least one Shopify publication target before saving.",
+    };
+  }
+  if (normalized === "publication-targets-invalid") {
+    return {
+      tone: "danger",
+      message: "One or more selected Shopify publication targets were invalid. Refresh the page and try again.",
+    };
+  }
+  if (normalized === "publication-targets-unsupported") {
+    return {
+      tone: "warning",
+      message: "This connector account does not currently expose publication targets.",
+    };
+  }
+  if (normalized === "publication-targets-error") {
+    return {
+      tone: "danger",
+      message: "Unable to save Shopify publication targets right now. Try again after checking connector health.",
+    };
+  }
+  return null;
+}
+
+function toneClassForBanner(tone: "success" | "warning" | "danger"): string {
+  if (tone === "success") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+  return "border-red-200 bg-red-50 text-red-800";
+}
+
 function catalogReadinessTone(product: {
   openValidationErrorCount?: number;
   openValidationWarningCount?: number;
@@ -415,6 +466,7 @@ export default async function ChannelConnectorDetailPage({
   const actorRole = await getServerActorRole();
   const selectedTab = resolveTab(String(query.tab ?? ""));
   const detailReturnPath = buildDetailHref(installationId, selectedTab);
+  const statusMessage = connectorDetailStatusMessage(query.status);
 
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });
@@ -423,10 +475,33 @@ export default async function ChannelConnectorDetailPage({
       notFound();
     }
 
-    const [permissions, submissionsRaw, products] = await Promise.all([
+    const shopifyPublicationStatePromise =
+      selectedTab === "credentials" && installation.slug === "shopify"
+        ? getConnectorPublications(installation.id, { role: actorRole, authHeader })
+            .then((targets) => ({ targets, error: null as string | null }))
+            .catch((error: unknown) => {
+              if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+                throw error;
+              }
+              if (error instanceof ApiHttpError && error.body && typeof error.body === "object") {
+                const payload = error.body as Record<string, unknown>;
+                return {
+                  targets: [] as ConnectorPublicationTarget[],
+                  error: String(payload.message ?? payload.error ?? "Unable to load Shopify publication targets."),
+                };
+              }
+              return {
+                targets: [] as ConnectorPublicationTarget[],
+                error: error instanceof Error ? error.message : "Unable to load Shopify publication targets.",
+              };
+            })
+        : Promise.resolve({ targets: [] as ConnectorPublicationTarget[], error: null as string | null });
+
+    const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([
       getConnectorPermissions(installation.slug, { role: actorRole, authHeader }),
       getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
+      shopifyPublicationStatePromise,
     ]);
     const submissions = toItems(submissionsRaw);
     const productsById = new Map(products.map((product) => [product.id, product]));
@@ -532,6 +607,13 @@ export default async function ChannelConnectorDetailPage({
       focusMedia.length === 0
         ? "No media linked to the focused product"
         : `${focusMedia.length} asset${focusMedia.length === 1 ? "" : "s"} available`;
+    const selectedPublicationTargetIds = new Set(
+      publicationTargets.map((target) => target.id).filter(Boolean),
+    );
+    const availableShopifyTargets = shopifyPublicationState.targets.map((target) => ({
+      ...target,
+      selected: target.selected ?? selectedPublicationTargetIds.has(String(target.id ?? "").trim()),
+    }));
     return (
       <div className="space-y-5">
         <PageHeader
@@ -565,6 +647,12 @@ export default async function ChannelConnectorDetailPage({
             </>
           }
         />
+
+        {statusMessage ? (
+          <div className={`rounded-lg border px-4 py-3 text-sm ${toneClassForBanner(statusMessage.tone)}`}>
+            {statusMessage.message}
+          </div>
+        ) : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
@@ -793,7 +881,74 @@ export default async function ChannelConnectorDetailPage({
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Publication Targets</CardTitle>
-                {publicationTargets.length === 0 ? (
+                {installation.slug === "shopify" ? (
+                  shopifyPublicationState.error ? (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      {shopifyPublicationState.error}
+                    </div>
+                  ) : availableShopifyTargets.length === 0 ? (
+                    publicationTargets.length === 0 ? (
+                      <p className="mt-2 text-sm text-slate-600">
+                        Shopify publication targets are not available yet for this account. Reconnect after managed install to refresh them.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2 text-sm">
+                        {publicationTargets.map((target) => (
+                          <li key={target.id} className="rounded-md border border-slate-200 px-3 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-slate-800">{target.name}</p>
+                                <p className="mt-1 text-xs text-slate-500">{target.catalogTitle || target.id}</p>
+                              </div>
+                              <StatusChip label={target.selected ? "selected" : "available"} tone={target.selected ? "success" : "neutral"} />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  ) : (
+                    <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
+                      <input type="hidden" name="installationId" value={installation.id} />
+                      <input type="hidden" name="tenantKey" value={installation.tenantKey} />
+                      <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "credentials")} />
+                      <div className="space-y-2 text-sm">
+                        {availableShopifyTargets.map((target) => (
+                          <label
+                            key={target.id}
+                            className="flex items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              name="publicationId"
+                              value={target.id}
+                              defaultChecked={Boolean(target.selected)}
+                              disabled={actorRole === "viewer"}
+                              className="mt-1 h-4 w-4 rounded border-slate-300"
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium text-slate-800">{target.name}</span>
+                              <span className="block text-xs text-slate-500">
+                                {target.catalogTitle ?? target.catalogType ?? target.catalogId ?? target.id}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={actorRole === "viewer"}
+                          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          Save publication targets
+                        </button>
+                        {actorRole === "viewer" ? (
+                          <span className="text-xs text-slate-500">Viewer access can review targets but cannot change them.</span>
+                        ) : null}
+                      </div>
+                    </form>
+                  )
+                ) : publicationTargets.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">
                     This connector account does not currently expose saved publication targets in Vexa metadata.
                   </p>

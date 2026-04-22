@@ -1,4 +1,11 @@
-import type { ApiRequestOptions, ConnectorDefinition, ConnectorInstallation, ConnectorPermission, PaginatedResponse } from "./core";
+import type {
+  ApiRequestOptions,
+  ConnectorDefinition,
+  ConnectorInstallation,
+  ConnectorPermission,
+  ConnectorPublicationTarget,
+  PaginatedResponse,
+} from "./core";
 import { deleteJson, fetchJson, postJson } from "./core";
 
 export async function getInstalledConnectors(options?: ApiRequestOptions) {
@@ -15,6 +22,17 @@ export async function getInstalledConnectors(options?: ApiRequestOptions) {
 
 export async function getConnectorDefinitions(options?: ApiRequestOptions) {
   return fetchJson<ConnectorDefinition[]>("/connectors/definitions", undefined, options);
+}
+
+export async function getConnectorPublications(
+  installationId: string,
+  options?: ApiRequestOptions,
+) {
+  return fetchJson<ConnectorPublicationTarget[]>(
+    `/connectors/${encodeURIComponent(installationId)}/publications`,
+    undefined,
+    options,
+  );
 }
 
 export async function getConnectorPermissions(
