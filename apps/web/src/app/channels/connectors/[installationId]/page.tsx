@@ -444,6 +444,18 @@ function shopifyReadinessTone(complete: boolean): "success" | "warning" {
   return complete ? "success" : "warning";
 }
 
+function shopifyManagedInstallStepTone(
+  state: "complete" | "in_progress" | "pending",
+): "success" | "info" | "warning" {
+  if (state === "complete") {
+    return "success";
+  }
+  if (state === "in_progress") {
+    return "info";
+  }
+  return "warning";
+}
+
 function renderSubmissionRows(
   submissions: Array<{
     id: string;
@@ -691,6 +703,48 @@ export default async function ChannelConnectorDetailPage({
           ]
         : [];
     const completedShopifyReadinessSteps = shopifyReadinessSteps.filter((step) => step.complete).length;
+    const shopifyManagedInstallSteps =
+      installation.slug === "shopify"
+        ? [
+            {
+              label: "Start pilot install handoff",
+              state:
+                metadataAuthMode || metadataTokenMode || metadataShopDomain
+                  ? ("complete" as const)
+                  : ("pending" as const),
+              detail:
+                metadataAuthMode || metadataTokenMode || metadataShopDomain
+                  ? "A Shopify handoff has already started for this account."
+                  : "Use the pilot install path with Vexa ops. Shopify remains planned and is not available in self-serve setup yet.",
+            },
+            {
+              label: "Complete managed install and token exchange",
+              state:
+                metadataTokenMode || metadataAuthMode
+                  ? ("complete" as const)
+                  : metadataShopDomain
+                    ? ("in_progress" as const)
+                    : ("pending" as const),
+              detail:
+                metadataTokenMode || metadataAuthMode
+                  ? `${metadataAuthMode || "managed install"} / ${metadataTokenMode || "token mode recorded"}`
+                  : "Finish the Shopify admin handoff so Vexa can exchange and persist the offline access token.",
+            },
+            {
+              label: "Confirm shop identity and publish controls",
+              state:
+                metadataShopDomain && metadataShopId && selectedPublicationTargetSummary.count > 0
+                  ? ("complete" as const)
+                  : metadataShopDomain || metadataShopId || selectedPublicationTargetSummary.count > 0
+                    ? ("in_progress" as const)
+                    : ("pending" as const),
+              detail:
+                metadataShopDomain && metadataShopId && selectedPublicationTargetSummary.count > 0
+                  ? `${metadataShopName || metadataShopDomain} is connected and ${selectedPublicationTargetSummary.label.toLowerCase()} configured.`
+                  : "Return here after the handoff to verify shop identity and choose the publication targets Vexa should publish to.",
+            },
+          ]
+        : [];
     return (
       <div className="space-y-5">
         <PageHeader
@@ -991,6 +1045,56 @@ export default async function ChannelConnectorDetailPage({
                   </ul>
                   <p className="text-xs text-slate-500">
                     This panel is operational guidance only. Shopify remains a planned connector until launch stage changes from the roadmap policy.
+                  </p>
+                </div>
+              </Card>
+            ) : null}
+
+            {installation.slug === "shopify" ? (
+              <Card>
+                <CardTitle>Managed Install Handoff</CardTitle>
+                <div className="mt-2 space-y-3">
+                  <p className="text-sm text-slate-700">
+                    Shopify still uses a coordinated pilot handoff. Operators should treat this page as the source of truth for where the managed install stands.
+                  </p>
+                  <ul className="space-y-2 text-sm">
+                    {shopifyManagedInstallSteps.map((step) => (
+                      <li key={step.label} className="rounded-md border border-slate-200 px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-800">{step.label}</p>
+                            <p className="mt-1 text-xs text-slate-500">{step.detail}</p>
+                          </div>
+                          <StatusChip
+                            label={
+                              step.state === "complete"
+                                ? "done"
+                                : step.state === "in_progress"
+                                  ? "in progress"
+                                  : "pending"
+                            }
+                            tone={shopifyManagedInstallStepTone(step.state)}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Link
+                      href="/channels/connectors"
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Open connector portfolio
+                    </Link>
+                    <Link
+                      href={buildDetailHref(installation.id, "credentials")}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Refresh credential state
+                    </Link>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Seller self-serve stays locked until launch stage moves beyond planned. This handoff keeps pilots honest without implying general availability.
                   </p>
                 </div>
               </Card>

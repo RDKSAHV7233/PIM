@@ -101,6 +101,17 @@ function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
   return "live";
 }
 
+function plannedConnectorHandoffSteps(slug: string): string[] {
+  if (slug === "shopify") {
+    return [
+      "Request Shopify pilot activation with Vexa ops instead of using self-serve setup.",
+      "Complete the managed install in Shopify admin so Vexa can exchange and persist the offline access token.",
+      "Return to connector detail to verify store identity, publication targets, and pilot publish readiness.",
+    ];
+  }
+  return ["Seller setup unlocks after this connector moves from planned to live launch stage."];
+}
+
 function connectorStatusNote(
   slug: string,
   implementationStatus: string | undefined,
@@ -284,6 +295,15 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
       selectedSlug.length > 0
         ? liveDefinitions.find((item) => item.definition.slug === selectedSlug) ?? null
         : null;
+    const plannedShopifyDefinition =
+      definitions.find((definition) => definition.slug === "shopify" && definition.launchStage === "planned") ?? null;
+    const plannedShopifyInstallations = plannedShopifyDefinition
+      ? installations.filter((installation) => installation.connectorId === plannedShopifyDefinition.id)
+      : [];
+    const plannedShopifyPrimaryInstallation = plannedShopifyInstallations[0] ?? null;
+    const plannedShopifyHandoffSteps = plannedShopifyDefinition
+      ? plannedConnectorHandoffSteps(plannedShopifyDefinition.slug)
+      : [];
 
     const returnToBase = selectedSlug || searchValue
       ? `/channels/connectors/setup?${new URLSearchParams(
@@ -389,6 +409,42 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                 </p>
               </div>
             </div>
+            {plannedShopifyDefinition ? (
+              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                      Shopify managed-install pilot
+                    </p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      Shopify is intentionally excluded from self-serve setup while it remains a planned connector. Use the pilot handoff instead.
+                    </p>
+                  </div>
+                  <StatusChip label={connectorLaunchLabel(plannedShopifyDefinition.launchStage)} tone={connectorLaunchTone(plannedShopifyDefinition.launchStage)} />
+                </div>
+                <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-sky-900">
+                  {plannedShopifyHandoffSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href="/channels/connectors"
+                    className="inline-flex items-center rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Open connector portfolio
+                  </Link>
+                  {plannedShopifyPrimaryInstallation ? (
+                    <Link
+                      href={`/channels/connectors/${encodeURIComponent(plannedShopifyPrimaryInstallation.id)}?tab=credentials`}
+                      className="inline-flex items-center rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Open Shopify account detail
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </Card>
         </div>
 
