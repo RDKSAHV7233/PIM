@@ -197,6 +197,81 @@ function formatDateTime(value: string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readMetadataValue(metadata: unknown, key: string): string | null {
+  const value = asRecord(metadata)[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readPublicationTargets(metadata: unknown): Array<{
+  id: string;
+  name: string;
+  selected?: boolean;
+}> {
+  const raw = asRecord(metadata).publicationTargets;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        id: String(record.id ?? ""),
+        name: String(record.name ?? record.catalogTitle ?? "Publication target"),
+        selected: Boolean(record.selected),
+      };
+    })
+    .filter((item) => item.id.length > 0);
+}
+
+function summarizePublicationTargets(
+  targets: Array<{
+    id: string;
+    name: string;
+    selected?: boolean;
+  }>,
+): string {
+  const selectedTargets = targets.filter((target) => target.selected !== false);
+  const activeTargets = selectedTargets.length > 0 ? selectedTargets : targets;
+  if (activeTargets.length === 0) {
+    return "No publication targets selected";
+  }
+  if (activeTargets.length === 1) {
+    return activeTargets[0]?.name || activeTargets[0]?.id || "Publication target";
+  }
+  return `${activeTargets[0]?.name || activeTargets[0]?.id || "Publication target"} +${activeTargets.length - 1} more`;
+}
+
+function resolveShopifyPortfolioContext(installation: ConnectorInstallation): {
+  shopName: string | null;
+  shopDomain: string | null;
+  shopId: string | null;
+  publicationTargetSummary: string;
+  publicationTargetCount: number;
+} | null {
+  if (installation.slug !== "shopify") {
+    return null;
+  }
+  const publicationTargets = readPublicationTargets(installation.metadata);
+  return {
+    shopName: readMetadataValue(installation.metadata, "shopName"),
+    shopDomain: readMetadataValue(installation.metadata, "shopDomain"),
+    shopId: readMetadataValue(installation.metadata, "shopId"),
+    publicationTargetSummary: summarizePublicationTargets(publicationTargets),
+    publicationTargetCount: publicationTargets.filter((target) => target.selected !== false).length || publicationTargets.length,
+  };
+}
+
 function connectorMatchesQuery(
   query: string,
   definition: ConnectorDefinition,
@@ -771,6 +846,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   mappedChannel && firstProductId
                     ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(firstProductId)}&channel=${encodeURIComponent(mappedChannel)}`
                     : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
+                const shopifyContext = resolveShopifyPortfolioContext(installation);
 
                 return (
                   <section
@@ -822,6 +898,54 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         </p>
                       </div>
                     </div>
+
+                    {shopifyContext ? (
+                      <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                              Shopify connection context
+                            </p>
+                            <p className="mt-1 text-sm text-slate-700">
+                              {shopifyContext.shopName || shopifyContext.shopDomain || "Shop context not recorded yet"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {shopifyContext.shopDomain
+                                ? `Store domain: ${shopifyContext.shopDomain}`
+                                : "Shop domain will appear after the managed install completes."}
+                            </p>
+                          </div>
+                          <StatusChip
+                            label={
+                              shopifyContext.publicationTargetCount > 0
+                                ? `${shopifyContext.publicationTargetCount} publication target${shopifyContext.publicationTargetCount === 1 ? "" : "s"}`
+                                : "targets not set"
+                            }
+                            tone={shopifyContext.publicationTargetCount > 0 ? "info" : "warning"}
+                          />
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-xl border border-blue-100 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Store identity</p>
+                            <p className="mt-2 text-sm text-slate-700">
+                              {shopifyContext.shopName || shopifyContext.shopDomain || "Waiting for Shopify shop identity"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {shopifyContext.shopId || "Shop ID will be recorded after the managed install handshake."}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-blue-100 bg-white/80 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publication targets</p>
+                            <p className="mt-2 text-sm text-slate-700">{shopifyContext.publicationTargetSummary}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {shopifyContext.publicationTargetCount > 0
+                                ? "Selected targets will be used during Shopify publish."
+                                : "Open connector details to select the publication targets Vexa should publish to."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Link
