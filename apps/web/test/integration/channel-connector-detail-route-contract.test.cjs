@@ -66,6 +66,7 @@ function run() {
       source.includes("const catalogEntries = Array.from(latestSubmissionByProductId.entries())") &&
       source.includes("const focusCatalogEntry = catalogEntries[0] ?? null;") &&
       source.includes("Promise.allSettled([") &&
+      source.includes("Catalog Module Framework") &&
       source.includes("Catalog Modules") &&
       source.includes("Focused Product Modules") &&
       source.includes("Payload Preview Snapshot") &&
@@ -92,6 +93,8 @@ function run() {
       source.includes("catalogReadinessLabel") &&
       source.includes("Credential Safety") &&
       source.includes("Publication Targets") &&
+      source.includes("Category and taxonomy") &&
+      source.includes("publicationTargetSummary") &&
       source.includes("Why Mappings Stay Shared") &&
       source.includes("No connector-specific permission overrides. Workspace defaults are currently in effect.") &&
       source.includes("No submissions recorded for this account yet.") &&

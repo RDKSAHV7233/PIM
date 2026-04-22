@@ -45,7 +45,8 @@ function run() {
   );
   assert(
     pageSource.includes("Action rail") &&
-      pageSource.includes("Catalog channel catalog") &&
+      pageSource.includes('title="Connections"') &&
+      pageSource.includes("Channel catalog") &&
       pageSource.includes("Connected accounts") &&
       pageSource.includes("Search connections"),
     "Connectors page must render the operator-facing workspace anchors for the marketplace hub.",
@@ -54,7 +55,9 @@ function run() {
     pageSource.includes('href="/channels/connectors/setup"') &&
       pageSource.includes('href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}') &&
       pageSource.includes('id="connector-catalog"') &&
-      setupSource.includes("Back to connection portfolio"),
+      setupSource.includes("Back to connection portfolio") &&
+      setupSource.includes("Setup flow") &&
+      setupSource.includes("Focused setup lane"),
     "Connectors hub must route install work into the dedicated setup page instead of embedding credential forms inline.",
   );
   assert(

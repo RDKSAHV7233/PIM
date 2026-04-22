@@ -22,6 +22,7 @@ function run() {
   assert(
     pageSource.includes("ConnectorPermissionForm") &&
       pageSource.includes("Create one access policy row per role or user") &&
+      pageSource.includes("Review who gets access, which aliases are covered") &&
       pageSource.includes("permission-user-not-found"),
     "Connector Access page must explain the one-row-per-principal model and surface user-not-found grant errors.",
   );
@@ -29,8 +30,8 @@ function run() {
     formSource.includes('const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"]') &&
       formSource.includes("Policy sentence") &&
       formSource.includes("Leave blank to apply this policy to all aliases") &&
-      formSource.includes("Use role rules for broad access. Use user-specific rules only when someone needs an exception.") &&
-      formSource.includes("Grant access to one specific user in this workspace."),
+      formSource.includes("Use role rules for broad access, and reserve user-specific rules for named exceptions") &&
+      formSource.includes("Grant access to one specific user in this workspace so the exception stays explicit and auditable."),
     "Connector Access form must provide explicit role options, wildcard alias guidance, and user-scoped helper copy.",
   );
   assert(

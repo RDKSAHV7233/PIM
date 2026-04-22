@@ -17,7 +17,7 @@ function run() {
 
   assert(
     source.includes("<PageHeader") &&
-      source.includes("Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only.") &&
+      source.includes("Manage connector governance with clear policy language, alias scope visibility, and an audit-friendly view of who can install, reconnect, or disable catalog channels.") &&
       source.includes('<Link href="/dashboard" className="underline">') &&
       source.includes('<Link href="/admin" className="underline">') &&
       source.includes('<span className="font-semibold text-slate-700">Connector Access</span>'),
@@ -57,7 +57,9 @@ function run() {
     "Admin connectors must keep grant and revoke actions admin-only while preserving an honest read-only fallback for non-admin roles.",
   );
   assert(
-    source.includes("Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only.") &&
+    source.includes('<CardTitle>Create Governance Policy</CardTitle>') &&
+      source.includes('<CardTitle>Policy coverage</CardTitle>') &&
+      source.includes('<CardTitle>Alias-specific rules</CardTitle>') &&
       source.includes("Create one access policy row per role or user.") &&
       source.includes('No connector access policies configured for this tenant.'),
     "Admin connectors must explain the connector action model and surface an honest empty state.",

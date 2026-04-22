@@ -381,7 +381,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
       <div className="space-y-6">
         <PageHeader
           className="overflow-hidden border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,246,255,0.98),rgba(255,247,237,0.98))]"
-          title="Catalog Connections"
+          title="Connections"
           description="Run your catalog channel portfolio like a connector workspace: see what is live, what needs setup, which accounts need attention, and where to jump next."
           breadcrumb={
             <>
@@ -511,7 +511,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           <Card id="connector-catalog" className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Catalog channel catalog</CardTitle>
+                <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
                   Review live connector lanes first, then open the dedicated setup workspace when you are ready to enter credentials and create catalog accounts{portfolioContext}.
                 </p>
@@ -926,3 +926,4 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     throw error;
   }
 }
+

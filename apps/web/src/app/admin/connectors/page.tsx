@@ -54,12 +54,15 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
       getConnectorDefinitions({ role, authHeader }),
       getConnectorPermissions(undefined, { role, authHeader }),
     ]);
+    const rolePolicies = permissions.filter((permission) => permission.principalType === "role").length;
+    const userPolicies = permissions.length - rolePolicies;
+    const aliasScopedPolicies = permissions.filter((permission) => permission.accountAlias !== "*").length;
 
     return (
       <div className="space-y-5">
-        <PageHeader
+          <PageHeader
           title="Connector Access"
-          description="Create clear access policies for connector installs, reconnects, and disables, or review the current governance matrix if your role is read-only."
+          description="Manage connector governance with clear policy language, alias scope visibility, and an audit-friendly view of who can install, reconnect, or disable catalog channels."
           breadcrumb={
             <>
               <Link href="/dashboard" className="underline">
@@ -90,9 +93,31 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
           <StatusBanner tone="error" message="Connector permission request was invalid. Review the form and try again." />
         ) : null}
 
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardTitle>Policy coverage</CardTitle>
+            <p className="mt-3 text-3xl font-semibold text-slate-900">{permissions.length}</p>
+            <p className="mt-2 text-sm text-slate-600">Active connector policies across all catalog channels.</p>
+          </Card>
+          <Card>
+            <CardTitle>Who gets access</CardTitle>
+            <p className="mt-3 text-3xl font-semibold text-slate-900">{rolePolicies}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Role policies, plus <span className="font-medium text-slate-900">{userPolicies}</span> user-specific exceptions.
+            </p>
+          </Card>
+          <Card>
+            <CardTitle>Alias-specific rules</CardTitle>
+            <p className="mt-3 text-3xl font-semibold text-slate-900">{aliasScopedPolicies}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Policies narrowed to one account alias instead of all accounts for the connector.
+            </p>
+          </Card>
+        </div>
+
         {role === "admin" ? (
           <Card>
-            <CardTitle>Create Access Policy</CardTitle>
+            <CardTitle>Create Governance Policy</CardTitle>
             <p className="mt-3 text-sm text-slate-600">
               Create one access policy row per role or user. Add another row when the same connector action should apply to more than one team or person.
             </p>
@@ -109,6 +134,9 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
 
         <Card>
           <CardTitle>Current Access Policies</CardTitle>
+          <p className="mt-3 text-sm text-slate-600">
+            Review who gets access, which aliases are covered, and who last changed each policy so connector governance stays auditable.
+          </p>
           {permissions.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No connector access policies configured for this tenant.</p>
           ) : (

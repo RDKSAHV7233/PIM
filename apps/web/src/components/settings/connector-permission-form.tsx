@@ -42,13 +42,13 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Policy sentence</p>
         <p className="mt-2 text-sm text-slate-700">{policyPreview}</p>
         <p className="mt-2 text-xs text-slate-500">
-          Use role rules for broad access. Use user-specific rules only when someone needs an exception.
+          Use role rules for broad access, and reserve user-specific rules for named exceptions that need extra accountability.
         </p>
       </div>
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
       <div className="space-y-1">
         <label htmlFor="connector-slug" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Connector
+          Channel connector
         </label>
         <select
           id="connector-slug"
@@ -117,7 +117,7 @@ export function ConnectorPermissionForm({ definitions, grantAction }: ConnectorP
               value={principalId}
               onChange={(event) => setPrincipalId(event.currentTarget.value)}
             />
-            <p className="text-xs text-slate-500">Grant access to one specific user in this workspace.</p>
+            <p className="text-xs text-slate-500">Grant access to one specific user in this workspace so the exception stays explicit and auditable.</p>
           </>
         )}
       </div>

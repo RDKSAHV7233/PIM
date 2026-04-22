@@ -280,6 +280,10 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
       .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => left.definition.displayName.localeCompare(right.definition.displayName));
+    const selectedDefinitionModel =
+      selectedSlug.length > 0
+        ? liveDefinitions.find((item) => item.definition.slug === selectedSlug) ?? null
+        : null;
 
     const returnToBase = selectedSlug || searchValue
       ? `/channels/connectors/setup?${new URLSearchParams(
@@ -364,14 +368,46 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
             </form>
           </Card>
           <Card className="border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))]">
-            <CardTitle>Setup guardrails</CardTitle>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              <li>Use one alias per real selling account. Avoid duplicates unless the workflow truly needs them.</li>
-              <li>Secrets are encrypted on save and never shown again.</li>
-              <li>Finish install here, then return to mappings or account detail from the portfolio.</li>
-            </ul>
+            <CardTitle>Setup flow</CardTitle>
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1. Choose channel</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Filter to the exact connector lane you want to install so the rest of the page stays focused.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">2. Add credentials</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Enter the account alias and connector credentials once. Secrets are encrypted on save and never shown again.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">3. Install and continue</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Finish install here, then return to mappings or account detail for catalog readiness and publication work.
+                </p>
+              </div>
+            </div>
           </Card>
         </div>
+
+        {selectedDefinitionModel ? (
+          <Card className="border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,246,255,0.95),rgba(248,250,252,0.98))]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Focused setup lane</CardTitle>
+                <p className="mt-2 text-sm text-slate-600">
+                  You are working on <span className="font-medium text-slate-900">{selectedDefinitionModel.definition.displayName}</span>. Clear the slug filter any time to return to the full setup workspace.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusChip label={selectedDefinitionModel.workspaceState.label} tone={selectedDefinitionModel.workspaceState.tone} />
+                <StatusChip label={connectorLaunchLabel(selectedDefinitionModel.definition.launchStage)} tone={connectorLaunchTone(selectedDefinitionModel.definition.launchStage)} />
+              </div>
+            </div>
+          </Card>
+        ) : null}
 
         {liveDefinitions.length === 0 ? (
           <EmptyState

@@ -29,6 +29,15 @@ interface ChannelConnectorDetailPageProps {
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access";
+type CatalogModuleId =
+  | "products"
+  | "variants"
+  | "attributes"
+  | "categories"
+  | "media"
+  | "publication"
+  | "payload"
+  | "readiness";
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -38,6 +47,62 @@ const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "issues", label: "Issues" },
   { id: "logs", label: "Logs" },
   { id: "access", label: "Access" },
+];
+
+const CATALOG_MODULES: Array<{
+  id: CatalogModuleId;
+  label: string;
+  description: string;
+  anchor: string;
+}> = [
+  {
+    id: "products",
+    label: "Products",
+    description: "Submitted product coverage and latest account outcome.",
+    anchor: "catalog-products",
+  },
+  {
+    id: "variants",
+    label: "Variants",
+    description: "Variant footprint represented on this connector account.",
+    anchor: "catalog-variants",
+  },
+  {
+    id: "attributes",
+    label: "Attributes",
+    description: "Category attribute surface and missing-field pressure.",
+    anchor: "catalog-attributes",
+  },
+  {
+    id: "categories",
+    label: "Categories",
+    description: "Taxonomy context shaping mapping quality.",
+    anchor: "catalog-categories",
+  },
+  {
+    id: "media",
+    label: "Media",
+    description: "Media coverage tied to the focused product.",
+    anchor: "catalog-media",
+  },
+  {
+    id: "publication",
+    label: "Publication Targets",
+    description: "Targets persisted for this installation and publication guidance.",
+    anchor: "catalog-publication",
+  },
+  {
+    id: "payload",
+    label: "Payload Preview",
+    description: "Mapped payload readiness before export or publish.",
+    anchor: "catalog-payload",
+  },
+  {
+    id: "readiness",
+    label: "Readiness & Issues",
+    description: "Blocking issues, warnings, and the next operator queue.",
+    anchor: "catalog-readiness",
+  },
 ];
 
 function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
@@ -284,6 +349,22 @@ function readMetadataValue(metadata: unknown, key: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function summarizePublicationTargets(
+  targets: Array<{
+    id: string;
+    name: string;
+    selected?: boolean;
+  }>,
+): string {
+  if (targets.length === 0) {
+    return "No publication targets stored";
+  }
+  if (targets.length === 1) {
+    return targets[0]?.name || targets[0]?.id || "Publication target";
+  }
+  return `${targets[0]?.name || targets[0]?.id || "Publication target"} +${targets.length - 1} more`;
+}
+
 function renderSubmissionRows(
   submissions: Array<{
     id: string;
@@ -434,10 +515,23 @@ export default async function ChannelConnectorDetailPage({
       installation.metadata,
       "publicationTargetsUpdatedAt",
     );
+    const publicationTargetSummary = summarizePublicationTargets(publicationTargets);
     const metadataSellerId = readMetadataValue(installation.metadata, "sellerId");
     const metadataMarketplaceId = readMetadataValue(installation.metadata, "marketplaceId");
     const metadataShopDomain = readMetadataValue(installation.metadata, "shopDomain");
     const metadataShopName = readMetadataValue(installation.metadata, "shopName");
+    const attributeSummary =
+      focusAttributes.length === 0
+        ? "No category attributes returned yet"
+        : `${focusAttributes.length} attribute${focusAttributes.length === 1 ? "" : "s"} available`;
+    const variantSummary =
+      focusVariants.length === 0
+        ? "No linked variants returned yet"
+        : `${focusVariants.length} variant${focusVariants.length === 1 ? "" : "s"} returned`;
+    const mediaSummary =
+      focusMedia.length === 0
+        ? "No media linked to the focused product"
+        : `${focusMedia.length} asset${focusMedia.length === 1 ? "" : "s"} available`;
     return (
       <div className="space-y-5">
         <PageHeader
@@ -757,6 +851,25 @@ export default async function ChannelConnectorDetailPage({
             </section>
 
             <Card>
+              <CardTitle>Catalog Module Framework</CardTitle>
+              <p className="mt-2 text-sm text-slate-600">
+                Move through the account cockpit the same way Vexa operators work: products first, then variants, attributes, categories, media, publication targets, payload preview, and readiness.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {CATALOG_MODULES.map((module) => (
+                  <a
+                    key={module.id}
+                    href={`#${module.anchor}`}
+                    className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{module.label}</p>
+                    <p className="mt-2 text-sm text-slate-600">{module.description}</p>
+                  </a>
+                ))}
+              </div>
+            </Card>
+
+            <Card id="catalog-products">
               <CardTitle>Catalog Modules</CardTitle>
               <p className="mt-2 text-sm text-slate-600">
                 This account view stays PIM-focused: product coverage, variant footprint, category context, and readiness signals for publication.
@@ -813,7 +926,7 @@ export default async function ChannelConnectorDetailPage({
             </Card>
 
             <section className="grid gap-4 xl:grid-cols-2">
-              <Card>
+              <Card id="catalog-readiness">
                 <CardTitle>Readiness Queue</CardTitle>
                 {readinessEntries.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">No product-level readiness blockers are visible for this connector account.</p>
@@ -838,9 +951,18 @@ export default async function ChannelConnectorDetailPage({
                 )}
               </Card>
 
-              <Card>
+              <Card id="catalog-publication">
                 <CardTitle>Publication Guidance</CardTitle>
                 <div className="mt-2 space-y-3 text-sm text-slate-700">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publication Targets</p>
+                    <p className="mt-1 text-sm text-slate-700">{publicationTargetSummary}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {publicationTargetsUpdatedAt
+                        ? `Last updated ${formatDateTime(publicationTargetsUpdatedAt)}`
+                        : "No publication-target timestamp recorded yet"}
+                    </p>
+                  </div>
                   <p>Use this account view to answer three questions before you publish again:</p>
                   <ul className="list-disc space-y-1 pl-5 text-slate-600">
                     <li>Is the product catalog complete enough for this channel account?</li>
@@ -866,7 +988,7 @@ export default async function ChannelConnectorDetailPage({
             </section>
 
             <section className="grid gap-4 xl:grid-cols-2">
-              <Card>
+              <Card id="catalog-variants">
                 <CardTitle>Focused Product Modules</CardTitle>
                 {!focusCatalogEntry ? (
                   <p className="mt-2 text-sm text-slate-600">No submitted product is available yet for module-level connector context.</p>
@@ -881,19 +1003,32 @@ export default async function ChannelConnectorDetailPage({
                       <div className="rounded-md border border-slate-200 px-3 py-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Variants</p>
                         <p className="mt-1 text-lg font-semibold text-slate-900">{focusVariants.length}</p>
+                        <p className="mt-1 text-xs text-slate-500">{variantSummary}</p>
                       </div>
-                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                      <div id="catalog-media" className="rounded-md border border-slate-200 px-3 py-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Media assets</p>
                         <p className="mt-1 text-lg font-semibold text-slate-900">{focusMedia.length}</p>
+                        <p className="mt-1 text-xs text-slate-500">{mediaSummary}</p>
                       </div>
-                      <div className="rounded-md border border-slate-200 px-3 py-2">
+                      <div id="catalog-attributes" className="rounded-md border border-slate-200 px-3 py-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category attributes</p>
                         <p className="mt-1 text-lg font-semibold text-slate-900">{focusAttributes.length}</p>
+                        <p className="mt-1 text-xs text-slate-500">{attributeSummary}</p>
                       </div>
                       <div className="rounded-md border border-slate-200 px-3 py-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Open issues</p>
                         <p className="mt-1 text-lg font-semibold text-slate-900">{focusIssues.length}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {focusIssues.length === 0 ? "No issue payloads for the focused product" : "Use the issue queue below for recovery guidance"}
+                        </p>
                       </div>
+                    </div>
+                    <div id="catalog-categories" className="rounded-md border border-slate-200 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category and taxonomy</p>
+                      <p className="mt-1 text-sm font-medium text-slate-900">
+                        {focusProduct?.categoryName || focusProduct?.categoryId || "Uncategorized"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">{focusProduct?.categoryPath || "No category path recorded yet"}</p>
                     </div>
                     <div className="flex flex-wrap gap-2 pt-1">
                       <Link
@@ -913,7 +1048,7 @@ export default async function ChannelConnectorDetailPage({
                 )}
               </Card>
 
-              <Card>
+              <Card id="catalog-payload">
                 <CardTitle>Payload Preview Snapshot</CardTitle>
                 {!focusPayloadPreview ? (
                   <p className="mt-2 text-sm text-slate-600">
