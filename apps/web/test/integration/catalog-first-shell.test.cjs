@@ -18,9 +18,11 @@ function run() {
   const dashboardSource = fs.readFileSync(DASHBOARD_PAGE, "utf8");
 
   assert(
-    sidebarSource.includes('title: "Products"') &&
-      sidebarSource.indexOf('title: "Products"') < sidebarSource.indexOf('title: "Catalog"'),
-    "Sidebar must promote Products ahead of Catalog in the primary work hierarchy.",
+    sidebarSource.includes('title: "Workspace"') &&
+      sidebarSource.includes('title: "Catalog"') &&
+      sidebarSource.includes('title: "Connections"') &&
+      sidebarSource.indexOf('title: "Catalog"') < sidebarSource.indexOf('title: "Connections"'),
+    "Sidebar must keep catalog work ahead of connection operations in the primary hierarchy.",
   );
   assert(
     sidebarSource.includes('title: "Settings"') && !sidebarSource.includes('title: "Admin"'),
@@ -36,8 +38,8 @@ function run() {
     "Settings navigation must keep integration governance tools visible alongside core admin controls.",
   );
   assert(
-    sidebarSource.indexOf('title: "Quality"') < sidebarSource.indexOf('title: "Operations"'),
-    "Sidebar must place Quality before Operations in the merchandiser workflow.",
+    sidebarSource.indexOf('title: "Quality"') < sidebarSource.indexOf('title: "Operate"'),
+    "Sidebar must place Quality before Operate in the merchandiser workflow.",
   );
   assert(
     sidebarSource.includes('badgeKey: "quality"') &&

@@ -340,7 +340,7 @@ only when the connector contract requires them as publish-critical product field
 - tenant-safe rollout and feature gating
 
 ### PO validation
-- advanced connector behavior still feels like part of Vexa’s catalog workflow
+- advanced connector behavior still feels like part of Vexa's catalog workflow
 
 ### CTO validation
 - connector-specific additions do not fork the base workspace architecture

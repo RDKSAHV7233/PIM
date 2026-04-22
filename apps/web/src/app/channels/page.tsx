@@ -46,16 +46,16 @@ export default async function ChannelsOverviewPage() {
     return (
       <div className="space-y-5">
         <PageHeader
-          title="Channels"
-          description="Marketplace operations cockpit for connector setup, mappings, submissions, and health."
+          title="Connections"
+          description="Catalog channel operations cockpit for connection health, mappings, issues, and governance."
           breadcrumb={
             <>
-              Dashboard / <span className="font-semibold text-slate-700">Channels</span>
+              Dashboard / <span className="font-semibold text-slate-700">Connections</span>
             </>
           }
         />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Installed Connectors" value={connectors.length} helper={`${activeConnectors} active`} />
+          <KpiCard label="Installed Connections" value={connectors.length} helper={`${activeConnectors} active`} />
           <KpiCard
             label="Submission Jobs"
             value={submissions.length}
@@ -86,14 +86,14 @@ export default async function ChannelsOverviewPage() {
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card className="space-y-3">
-            <CardTitle>Connectors</CardTitle>
+            <CardTitle>Connections</CardTitle>
             <p className="text-sm text-slate-600">
               {canEditChannelSetup
                 ? "Install, reconnect, and review account-level connector status."
                 : "Review connector status and coordinate install or reconnect requests with a workspace editor or admin."}
             </p>
             <Link href="/channels/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              {canEditChannelSetup ? "Open connectors" : "Review connectors"}
+              {canEditChannelSetup ? "Open connections" : "Review connections"}
             </Link>
           </Card>
           <Card className="space-y-3">
@@ -108,28 +108,28 @@ export default async function ChannelsOverviewPage() {
             </Link>
           </Card>
           <Card className="space-y-3">
-            <CardTitle>Submissions</CardTitle>
+            <CardTitle>Issues</CardTitle>
             <p className="text-sm text-slate-600">Track listing outcomes and drill into connector-level failures.</p>
+            <Link href="/channels/health" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              Open issues and health
+            </Link>
+          </Card>
+          <Card className="space-y-3">
+            <CardTitle>Submission Log</CardTitle>
+            <p className="text-sm text-slate-600">Review submission history, queue pressure, and connector delivery context.</p>
             <Link href="/channels/submissions" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               Open submissions
             </Link>
           </Card>
           <Card className="space-y-3">
-            <CardTitle>Health</CardTitle>
-            <p className="text-sm text-slate-600">View sync health, blocking trends, and queue status per channel.</p>
-            <Link href="/channels/health" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Open channel health
-            </Link>
-          </Card>
-          <Card className="space-y-3">
-            <CardTitle>Connector Access</CardTitle>
+            <CardTitle>Governance</CardTitle>
             <p className="text-sm text-slate-600">
               {canManageConnectorAccess
-                ? "Govern connector permissions and plan-based access controls."
-                : "Workspace admins manage connector permissions and plan-based access. Review the current access rules and request changes when needed."}
+                ? "Govern connector permissions, alias scope, and plan-based access controls."
+                : "Workspace admins manage connector permissions and plan-based access. Review the current governance rules and request changes when needed."}
             </p>
             <Link href="/admin/connectors" className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              {canManageConnectorAccess ? "Manage access" : "Review access rules"}
+              {canManageConnectorAccess ? "Open governance" : "Review governance rules"}
             </Link>
           </Card>
         </section>

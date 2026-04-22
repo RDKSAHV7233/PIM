@@ -1466,7 +1466,7 @@ export default async function ChannelConnectorDetailPage({
                   <p>Work through recovery in this order so we do not waste retries on unresolved catalog problems.</p>
                   <ol className="list-decimal space-y-1 pl-5 text-slate-600">
                     <li>Fix product mapping or required catalog fields when the issue lane is catalog mapping.</li>
-                    <li>Check this account’s credentials and status when items point to connector account review.</li>
+                    <li>Check this account's credentials and status when items point to connector account review.</li>
                     <li>Use logs to confirm whether the queue is still processing before retrying pending items.</li>
                   </ol>
                   <div className="flex flex-wrap gap-2 pt-1">

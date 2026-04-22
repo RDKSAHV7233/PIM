@@ -59,7 +59,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
 
     await loginViaUi(page, "admin");
     await page.goto("/channels", { waitUntil: "domcontentloaded" });
-    await page.getByRole("link", { name: "Open connectors" }).click();
+    await page.getByRole("link", { name: "Open connections" }).click();
     await page.waitForURL(/\/channels\/connectors$/);
 
     await page.getByLabel("Search connectors").fill(accountAlias);
@@ -72,9 +72,9 @@ test("admin can drill from connector portfolio into connector detail and linked 
     await installationSection.getByRole("link", { name: "Details" }).click();
 
     await page.waitForURL(new RegExp(`/channels/connectors/${installation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
-    await expect(page.getByRole("heading", { name: "Flipkart Connector" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: `Flipkart / ${accountAlias}` })).toBeVisible();
     await expect(page.getByText(`Account alias: ${accountAlias}`)).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Submission History" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Catalog Module Framework" })).toBeVisible();
 
     const submissionRow = page.locator("tbody tr", { hasText: product.id }).first();
     await expect(submissionRow).toBeVisible();

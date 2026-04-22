@@ -153,13 +153,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    title: "Activate",
+    title: "Connections",
     items: [
-      { label: "Channels", href: "/channels", icon: "grid" },
-      { label: "Connectors", href: "/channels/connectors", icon: "plug" },
+      { label: "Overview", href: "/channels", icon: "grid" },
+      { label: "Connections", href: "/channels/connectors", icon: "plug" },
       { label: "Mappings", href: "/channels/mappings", icon: "branch" },
-      { label: "Submissions", href: "/channels/submissions", icon: "send" },
-      { label: "Health", href: "/channels/health", icon: "pulse" },
+      { label: "Issues", href: "/channels/health", icon: "pulse" },
+      { label: "Submission Log", href: "/channels/submissions", icon: "send" },
+      { label: "Governance", href: "/admin/connectors", icon: "shield", visibility: "editor_plus" },
     ],
   },
   {
@@ -188,7 +189,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { label: "Plan & Usage", href: "/admin/plan", icon: "gauge", visibility: "editor_plus" },
       { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "editor_plus" },
-      { label: "Connector Access", href: "/admin/connectors", icon: "shield", visibility: "editor_plus" },
       { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "admin" },
       { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "admin" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
