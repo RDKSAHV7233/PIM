@@ -50,8 +50,12 @@ The on-call engineer should verify these items each morning:
    - API: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - Web: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - Web: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
-8. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
-9. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
+8. Confirm the API and web services share the same JWT signing secret:
+   - API: `JWT_SECRET` or `PIM_JWT_SECRET`
+   - Web: `JWT_SECRET` or `PIM_JWT_SECRET`
+   - If they drift, login can succeed while server-rendered pages degrade to viewer/read-only mode.
+9. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
+10. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
 
 ## 4. Alert setup (to be configured)
 
@@ -100,6 +104,7 @@ If you only need non-commercial staging to boot and do not need real delivery, s
   - `curl https://api-staging-4faf.up.railway.app/api/v1/health`
 - Post-deploy verification:
   - `node scripts/staging-postdeploy-check.cjs`
+  - Verifies both API auth/trust boundaries and admin-only SSR rendering on the deployed web app
 - Public signup smoke:
   - `node scripts/staging-public-signup-check.cjs`
 - Deep staging E2E:

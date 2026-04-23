@@ -112,6 +112,7 @@ function main() {
 
   const postDeployStep = requireStep(steps, "Staging post-deploy verification (auth + trust boundary)");
   requireEnvVar(postDeployStep, "STAGING_BASE_URL", "Post-deploy verification");
+  requireEnvVar(postDeployStep, "STAGING_WEB_URL", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_WORKSPACE", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_USER", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_PASSWORD", "Post-deploy verification");

@@ -66,6 +66,8 @@ Escalation: [FILL: CTO contact]
 
 1. Verify `JWT_SECRET` has not changed unexpectedly.
    - Changing it invalidates every active session token.
+   - In staging and production, the API service and web service must use the same `JWT_SECRET` or `PIM_JWT_SECRET`.
+   - If the API can mint an admin token but the web app re-verifies it with a different secret, server-rendered pages silently fall back to viewer/read-only mode.
 2. Verify `AUTH_MODE=db` in Railway env.
    - Staging and production should not run in local auth mode.
 3. Check API logs for the failure shape.
@@ -128,6 +130,9 @@ Escalation: [FILL: CTO contact]
    - `scripts/staging-postdeploy-check.cjs`
    - `scripts/staging-public-signup-check.cjs`
    - gate artifact upload in `docs/execution/gates/`
+   - admin web rendering is correct:
+     - `/channels` shows `Open governance` for the smoke admin
+     - `/admin/connectors` shows `Create Governance Policy`
 
 ## 8. Post-incident report template
 

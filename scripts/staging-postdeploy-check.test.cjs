@@ -13,8 +13,18 @@ async function main() {
   let logoutAuthorized = false;
   let revokedUsageAuthorized = false;
   let tokenRevoked = false;
+  let webLoginBody = null;
+  let webCookieIssued = false;
+  let webChannelsAuthorized = false;
+  let webGovernanceAuthorized = false;
 
-  const server = http.createServer((req, res) => {
+  const validCookie = "pim_access_token=web-session-token";
+
+  function hasValidCookie(req) {
+    return String(req.headers.cookie ?? "").includes(validCookie);
+  }
+
+  const apiServer = http.createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
 
     if (req.method === "GET" && url.pathname === "/api/v1/health") {
@@ -89,15 +99,59 @@ async function main() {
     res.end(JSON.stringify({ error: "NOT_FOUND", path: url.pathname }));
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const webServer = http.createServer((req, res) => {
+    const url = new URL(req.url, "http://127.0.0.1");
+
+    if (req.method === "POST" && url.pathname === "/api/auth/login") {
+      let raw = "";
+      req.on("data", (chunk) => {
+        raw += chunk;
+      });
+      req.on("end", () => {
+        webLoginBody = JSON.parse(raw || "{}");
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `${validCookie}; Path=/; HttpOnly`,
+        });
+        res.end(JSON.stringify({ userId: "admin@vexa-pim.local", tenantId: "default", role: "admin" }));
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/channels") {
+      webChannelsAuthorized = hasValidCookie(req);
+      if (webChannelsAuthorized) {
+        webCookieIssued = true;
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<html><body><h1>Connections</h1><a>Open governance</a></body></html>");
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/admin/connectors") {
+      webGovernanceAuthorized = hasValidCookie(req);
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<html><body><h1>Connector Access</h1><h2>Create Governance Policy</h2></body></html>");
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "NOT_FOUND", path: url.pathname }));
+  });
+
+  await new Promise((resolve) => apiServer.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => webServer.listen(0, "127.0.0.1", resolve));
+  const apiAddress = apiServer.address();
+  const webAddress = webServer.address();
+  const baseUrl = `http://127.0.0.1:${apiAddress.port}`;
+  const webBaseUrl = `http://127.0.0.1:${webAddress.port}`;
 
   const child = spawn(process.execPath, [path.join(__dirname, "staging-postdeploy-check.cjs")], {
     cwd: path.join(__dirname, ".."),
     env: {
       ...process.env,
       STAGING_BASE_URL: baseUrl,
+      STAGING_WEB_URL: webBaseUrl,
       STAGING_SMOKE_WORKSPACE: "default",
       STAGING_SMOKE_USER: "admin@vexa-pim.local",
       STAGING_SMOKE_PASSWORD: "vexa-pim-demo-password",
@@ -116,7 +170,8 @@ async function main() {
   });
 
   const exitCode = await new Promise((resolve) => child.on("close", resolve));
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => apiServer.close(resolve));
+  await new Promise((resolve) => webServer.close(resolve));
 
   assert.equal(exitCode, 0, `staging smoke script failed: ${stderr || stdout}`);
   assert.deepEqual(
@@ -129,10 +184,22 @@ async function main() {
     },
     "smoke login payload must include workspaceSlug",
   );
+  assert.deepEqual(
+    webLoginBody,
+    {
+      workspaceSlug: "default",
+      userId: "admin@vexa-pim.local",
+      password: "vexa-pim-demo-password",
+    },
+    "web smoke login payload must include workspaceSlug and credentials",
+  );
   assert.equal(usageAuthorized, true, "billing usage must reuse bearer token from login");
   assert.equal(connectorsAuthorized, true, "connectors installed must reuse bearer token from login");
   assert.equal(logoutAuthorized, true, "logout must reuse bearer token from login");
   assert.equal(revokedUsageAuthorized, true, "revoked token check must reuse the logged-out bearer token");
+  assert.equal(webCookieIssued, true, "web smoke login must issue a session cookie");
+  assert.equal(webChannelsAuthorized, true, "web channels render must reuse the session cookie");
+  assert.equal(webGovernanceAuthorized, true, "web governance render must reuse the session cookie");
 
   console.log(
     JSON.stringify(
@@ -142,6 +209,7 @@ async function main() {
           "staging_smoke_login_includes_workspace_slug",
           "staging_smoke_reuses_bearer_token_for_authenticated_checks",
           "staging_smoke_proves_logout_revokes_token",
+          "staging_smoke_proves_web_role_render_for_admin_session",
         ],
         checkedAt: new Date().toISOString(),
       },

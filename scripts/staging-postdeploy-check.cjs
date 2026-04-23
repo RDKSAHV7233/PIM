@@ -13,7 +13,13 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function requestJson(baseUrl, path, options = {}) {
+function normalizeHeaders(headers = {}) {
+  return Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [key, value]),
+  );
+}
+
+async function request(baseUrl, path, options = {}) {
   const retries = Number(options.retries ?? 0);
   let lastError = null;
 
@@ -36,7 +42,18 @@ async function requestJson(baseUrl, path, options = {}) {
         await wait(1_000 * (attempt + 1));
         continue;
       }
-      return { status: response.status, payload };
+      return {
+        status: response.status,
+        payload,
+        text,
+        headers: normalizeHeaders(Object.fromEntries(response.headers.entries())),
+        setCookie:
+          typeof response.headers.getSetCookie === "function"
+            ? response.headers.getSetCookie()
+            : response.headers.get("set-cookie")
+              ? [response.headers.get("set-cookie")]
+              : [],
+      };
     } catch (error) {
       lastError = error;
       if (attempt >= retries) {
@@ -49,6 +66,10 @@ async function requestJson(baseUrl, path, options = {}) {
   throw lastError ?? new Error("request failed");
 }
 
+async function requestJson(baseUrl, path, options = {}) {
+  return request(baseUrl, path, options);
+}
+
 function assertStatus(result, expected, context) {
   if (result.status !== expected) {
     throw new Error(
@@ -57,8 +78,18 @@ function assertStatus(result, expected, context) {
   }
 }
 
+function extractCookieHeader(setCookieHeaders) {
+  const cookies = setCookieHeaders
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .map((value) => value.split(";")[0])
+    .filter(Boolean);
+  return cookies.join("; ");
+}
+
 async function run() {
   const baseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
+  const webBaseUrl = requireEnv("STAGING_WEB_URL").replace(/\/+$/, "");
   const workspaceSlug = requireEnv("STAGING_SMOKE_WORKSPACE").toLowerCase();
   const smokeUser = requireEnv("STAGING_SMOKE_USER");
   const smokePassword = requireEnv("STAGING_SMOKE_PASSWORD");
@@ -151,6 +182,54 @@ async function run() {
     throw new Error(`revoked token payload invalid: ${JSON.stringify(revokedUsage.payload)}`);
   }
 
+  const webLogin = await request(webBaseUrl, "/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: {
+      workspaceSlug,
+      userId: smokeUser,
+      password: smokePassword,
+    },
+    retries: 2,
+  });
+  assertStatus(webLogin, 200, "web login");
+  if (String(webLogin.payload?.role ?? "") !== "admin") {
+    throw new Error(`web login role mismatch: expected=admin got=${JSON.stringify(webLogin.payload)}`);
+  }
+
+  const cookieHeader = extractCookieHeader(webLogin.setCookie);
+  if (!cookieHeader || !cookieHeader.includes("pim_access_token=")) {
+    throw new Error(`web login missing pim_access_token cookie: cookies=${JSON.stringify(webLogin.setCookie)}`);
+  }
+
+  const webChannels = await request(webBaseUrl, "/channels", {
+    headers: {
+      cookie: cookieHeader,
+    },
+    retries: 2,
+  });
+  assertStatus(webChannels, 200, "web channels render");
+  if (!String(webChannels.text).includes("Open governance")) {
+    throw new Error("web channels render missing admin CTA: expected 'Open governance'");
+  }
+  if (String(webChannels.text).includes("Review governance rules")) {
+    throw new Error("web channels render regressed to read-only governance CTA");
+  }
+
+  const webGovernance = await request(webBaseUrl, "/admin/connectors", {
+    headers: {
+      cookie: cookieHeader,
+    },
+    retries: 2,
+  });
+  assertStatus(webGovernance, 200, "web governance render");
+  if (!String(webGovernance.text).includes("Create Governance Policy")) {
+    throw new Error("web governance render missing admin policy form heading");
+  }
+  if (String(webGovernance.text).includes("Governance Visibility")) {
+    throw new Error("web governance render regressed to read-only governance visibility state");
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -167,6 +246,9 @@ async function run() {
           "connectors_installed_authenticated",
           "logout_revokes_smoke_token",
           "revoked_token_returns_401",
+          "web_login_sets_admin_session_cookie",
+          "web_channels_renders_admin_governance_cta",
+          "web_governance_renders_admin_policy_form",
         ],
         checkedAt: new Date().toISOString(),
       },
