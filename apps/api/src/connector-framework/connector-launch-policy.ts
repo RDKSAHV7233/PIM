@@ -34,9 +34,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === "shopify") {
     return {
-      launchStage: "planned",
+      launchStage: "manual",
       launchNote:
-        "Shopify is approved for the Vexa roadmap, but seller install stays blocked until the managed-install, token-exchange, and publication flow slice ships.",
+        "Shopify is available as a guided Vexa connector. Create the account in Vexa first, then complete the managed-install token exchange before pilot publishing.",
       surfacedCapabilities: capabilities,
     };
   }

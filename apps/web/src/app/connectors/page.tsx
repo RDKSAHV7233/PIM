@@ -198,7 +198,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function isCatalogPilotConnector(definition: ConnectorDefinition): boolean {
-  return definition.slug === "shopify" && definition.launchStage === "planned";
+  return definition.slug === "shopify" && (definition.launchStage === "planned" || definition.launchStage === "manual");
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -429,7 +429,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
     const catalogPilotDefinitions = definitionModels.filter((item) => isCatalogPilotConnector(item.definition));
     const channelCatalogDefinitions = [...liveDefinitions, ...catalogPilotDefinitions];
-    const manualDefinitions = definitionModels.filter((item) => item.definition.launchStage === "manual");
+    const manualDefinitions = definitionModels.filter(
+      (item) => item.definition.launchStage === "manual" && !isCatalogPilotConnector(item.definition),
+    );
     const plannedDefinitions = definitionModels.filter(
       (item) => item.definition.launchStage === "planned" && !isCatalogPilotConnector(item.definition),
     );
@@ -557,7 +559,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   <StatusChip label="setup lane" tone="info" />
                 </div>
                 <p className="mt-2 text-sm text-slate-600">
-                  Open the dedicated setup workspace to install the first healthy account for each live catalog channel.
+                  Open the dedicated setup workspace to install the first healthy account for each live catalog channel and guided Shopify rollout lane.
                 </p>
               </Link>
               <a
@@ -596,7 +598,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first, plus pilot catalog lanes that are intentionally visible here for rollout awareness before they become seller self-serve{portfolioContext}.
+                  Review live connector lanes first, plus guided Shopify rollout inside the same catalog workspace so operators can install and manage it like the other Vexa connectors{portfolioContext}.
                 </p>
               </div>
               <StatusChip
@@ -649,14 +651,14 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           tone={connectorLaunchTone(definition.launchStage)}
                         />
                         {isCatalogPilotConnector(definition) ? (
-                          <StatusChip label="pilot lane" tone="info" />
+                          <StatusChip label="guided setup" tone="info" />
                         ) : null}
                       </div>
                     </div>
 
                       <p className="mt-3 text-sm text-slate-600">
                         {isCatalogPilotConnector(definition)
-                          ? "Visible in the channel catalog for pilot planning, but still blocked from seller self-serve install."
+                          ? "Visible in the channel catalog as a guided Shopify connector. Install starts in Vexa, then continues through the managed-install handshake before publishing."
                           : workspaceState.description}
                       </p>
 
@@ -694,21 +696,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       ) : null}
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {isCatalogPilotConnector(definition) ? (
-                          <Link
-                            href="/channels/connectors/setup"
-                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            Open pilot handoff
-                          </Link>
-                        ) : (
-                          <Link
-                            href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
-                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
-                          </Link>
-                        )}
+                        <Link
+                          href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
+                        </Link>
                         <Link
                           href={mappingHref}
                           className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

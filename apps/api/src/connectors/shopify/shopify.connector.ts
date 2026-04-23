@@ -570,7 +570,8 @@ export class ShopifyConnector implements ConnectorInterface {
         return provided.trim();
       }
     } catch {
-      // Current framework doesn't inject connector-managed tokens for planned connectors.
+      // Current framework doesn't inject connector-managed tokens before the guided
+      // managed-install handshake persists the Shopify token set.
     }
 
     const existing = await this.getCredentialRow(ctx, "access_token");
@@ -750,7 +751,9 @@ export class ShopifyConnector implements ConnectorInterface {
           'shopName', $5::text,
           'tokenMode', $6::text,
           'authMode', $7::text,
-          'scope', $8::text
+          'scope', $8::text,
+          'connectionStage', 'connected',
+          'managedInstallPending', false
         ),
         updated_at = NOW()
       WHERE tenant_key = $1 AND id = $2

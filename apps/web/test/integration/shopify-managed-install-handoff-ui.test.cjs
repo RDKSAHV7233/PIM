@@ -28,24 +28,23 @@ function run() {
   const detailSource = fs.readFileSync(DETAIL_PAGE, "utf8");
 
   assert(
-    setupSource.includes("plannedShopifyDefinition") &&
-      setupSource.includes("Shopify managed-install pilot") &&
-      setupSource.includes("excluded from self-serve setup") &&
-      setupSource.includes("Request Shopify pilot activation with Vexa ops") &&
-      setupSource.includes("Open Shopify account detail"),
-    "Setup page must provide a dedicated Shopify managed-install pilot handoff instead of exposing self-serve install.",
+    setupSource.includes("Shopify guided setup creates the Vexa connector account first.") &&
+      setupSource.includes('name="shopDomain"') &&
+      setupSource.includes("Create guided connector") &&
+      setupSource.includes("managed install continues"),
+    "Setup page must expose Shopify as a guided setup lane that captures store context before the managed install continues.",
   );
 
   assert(
     detailSource.includes("CardTitle>Managed Install Handoff<") &&
-      detailSource.includes("Start pilot install handoff") &&
+      detailSource.includes("Start guided install handoff") &&
       detailSource.includes("Complete managed install and token exchange") &&
       detailSource.includes("Confirm shop identity and publish controls"),
     "Shopify connector detail page must show a managed-install handoff ladder for operators.",
   );
 
   assert(
-    detailSource.includes("Seller self-serve stays locked until launch stage moves beyond planned.") &&
+    detailSource.includes("Seller self-serve still stays locked.") &&
       detailSource.includes("Refresh credential state"),
     "Shopify handoff copy must stay honest about launch stage and give operators a concrete refresh action.",
   );

@@ -17,8 +17,12 @@ function run() {
   const source = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
   assert(
-    setupSource.includes('filter((item) => item.definition.launchStage === "live")'),
-    "Connector setup page must only show self-serve install when the connector launch stage is live.",
+    setupSource.includes("isGuidedSetupConnector") &&
+      setupSource.includes('definition.slug === "shopify" && definition.launchStage === "manual"') &&
+      setupSource.includes("Shopify guided setup creates the Vexa connector account first.") &&
+      setupSource.includes('name="shopDomain"') &&
+      setupSource.includes("Create guided connector"),
+    "Connector setup page must surface Shopify as a guided Vexa setup lane with a store-domain install contract.",
   );
   assert(
     source.includes("definition.launchNote") &&
@@ -27,10 +31,10 @@ function run() {
   );
   assert(
     source.includes("function isCatalogPilotConnector(") &&
-      source.includes("Open pilot handoff") &&
-      source.includes("Visible in the channel catalog for pilot planning") &&
-      source.includes("Seller setup unlocks after the connector reaches live launch stage."),
-    "Shopify pilot connectors must be surfaced in the channel catalog without claiming seller self-serve install is available.",
+      source.includes("guided setup") &&
+      source.includes("Visible in the channel catalog as a guided Shopify connector.") &&
+      source.includes("install and manage it like the other Vexa connectors"),
+    "Shopify guided connectors must stay in the channel catalog and use the normal Vexa setup lane.",
   );
   assert(
     source.includes("function connectorStatusNote(") &&

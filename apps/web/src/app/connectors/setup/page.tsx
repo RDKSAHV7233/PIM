@@ -53,7 +53,9 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
         ? "Amazon India"
         : connectorSlug === "meesho"
           ? "Meesho"
-          : "connector";
+          : connectorSlug === "shopify"
+            ? "Shopify"
+            : "connector";
 
   if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
     return `${connectorLabel} install requires client ID, client secret, and refresh token together.`;
@@ -66,6 +68,12 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   }
   if (value === "AMAZON_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
+  }
+  if (value === "SHOPIFY_SHOP_DOMAIN_REQUIRED") {
+    return "Shopify guided setup requires the store domain before the connector account can be created.";
+  }
+  if (value === "SHOPIFY_SHOP_DOMAIN_INVALID") {
+    return "Shopify store domain must be a valid *.myshopify.com hostname.";
   }
   return `${connectorLabel} install failed: ${value}`;
 }
@@ -101,15 +109,8 @@ function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
   return "live";
 }
 
-function plannedConnectorHandoffSteps(slug: string): string[] {
-  if (slug === "shopify") {
-    return [
-      "Request Shopify pilot activation with Vexa ops instead of using self-serve setup.",
-      "Complete the managed install in Shopify admin so Vexa can exchange and persist the offline access token.",
-      "Return to connector detail to verify store identity, publication targets, and pilot publish readiness.",
-    ];
-  }
-  return ["Seller setup unlocks after this connector moves from planned to live launch stage."];
+function isGuidedSetupConnector(definition: ConnectorDefinition): boolean {
+  return definition.slug === "shopify" && definition.launchStage === "manual";
 }
 
 function connectorStatusNote(
@@ -253,6 +254,27 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     );
   }
 
+  if (slug === "shopify") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          Shopify guided setup creates the Vexa connector account first. Add the store domain here, then finish the managed install and token exchange from the connector detail workflow.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Store Domain
+          </label>
+          <Input
+            id={`install-shop-domain-${definitionId}`}
+            name="shopDomain"
+            autoComplete="off"
+            placeholder="vishaltest112.myshopify.com"
+          />
+        </div>
+      </>
+    );
+  }
+
   return null;
 }
 
@@ -275,7 +297,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
 
-    const liveDefinitions = definitions
+    const setupDefinitions = definitions
       .map((definition) => {
         const installedForDefinition = installations.filter(
           (installation) => installation.connectorId === definition.id,
@@ -287,23 +309,14 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage === "live")
+      .filter((item) => item.definition.launchStage === "live" || isGuidedSetupConnector(item.definition))
       .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => left.definition.displayName.localeCompare(right.definition.displayName));
     const selectedDefinitionModel =
       selectedSlug.length > 0
-        ? liveDefinitions.find((item) => item.definition.slug === selectedSlug) ?? null
+        ? setupDefinitions.find((item) => item.definition.slug === selectedSlug) ?? null
         : null;
-    const plannedShopifyDefinition =
-      definitions.find((definition) => definition.slug === "shopify" && definition.launchStage === "planned") ?? null;
-    const plannedShopifyInstallations = plannedShopifyDefinition
-      ? installations.filter((installation) => installation.connectorId === plannedShopifyDefinition.id)
-      : [];
-    const plannedShopifyPrimaryInstallation = plannedShopifyInstallations[0] ?? null;
-    const plannedShopifyHandoffSteps = plannedShopifyDefinition
-      ? plannedConnectorHandoffSteps(plannedShopifyDefinition.slug)
-      : [];
 
     const returnToBase = selectedSlug || searchValue
       ? `/channels/connectors/setup?${new URLSearchParams(
@@ -399,52 +412,16 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">2. Add credentials</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Enter the account alias and connector credentials once. Secrets are encrypted on save and never shown again.
+                  Enter the account alias and connector credentials once. For Shopify, this step captures the store domain and guided-install context before the managed install continues.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">3. Install and continue</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Finish install here, then return to mappings or account detail for catalog readiness and publication work.
+                  Finish install here, then return to mappings or account detail for catalog readiness, managed install, and publication work.
                 </p>
               </div>
             </div>
-            {plannedShopifyDefinition ? (
-              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                      Shopify managed-install pilot
-                    </p>
-                    <p className="mt-2 text-sm text-slate-700">
-                      Shopify is intentionally excluded from self-serve setup while it remains a planned connector. Use the pilot handoff instead.
-                    </p>
-                  </div>
-                  <StatusChip label={connectorLaunchLabel(plannedShopifyDefinition.launchStage)} tone={connectorLaunchTone(plannedShopifyDefinition.launchStage)} />
-                </div>
-                <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-sky-900">
-                  {plannedShopifyHandoffSteps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link
-                    href="/channels/connectors"
-                    className="inline-flex items-center rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Open connector portfolio
-                  </Link>
-                  {plannedShopifyPrimaryInstallation ? (
-                    <Link
-                      href={`/channels/connectors/${encodeURIComponent(plannedShopifyPrimaryInstallation.id)}?tab=credentials`}
-                      className="inline-flex items-center rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      Open Shopify account detail
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
           </Card>
         </div>
 
@@ -465,19 +442,19 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
           </Card>
         ) : null}
 
-        {liveDefinitions.length === 0 ? (
+        {setupDefinitions.length === 0 ? (
           <EmptyState
             icon="PLUG"
-            title={searchValue || selectedSlug ? "No live setup lanes match this filter" : "No live setup lanes available"}
+            title={searchValue || selectedSlug ? "No setup lanes match this filter" : "No setup lanes available"}
             description={
               searchValue || selectedSlug
                 ? "Try a broader search term or clear the slug filter to inspect the full setup workspace."
-                : "Live connector definitions have not been seeded for this workspace."
+                : "Connector definitions have not been seeded for this workspace."
             }
           />
         ) : (
           <div className="grid gap-4 xl:grid-cols-2">
-            {liveDefinitions.map((item) => {
+            {setupDefinitions.map((item) => {
               const { definition, installedForDefinition, statusNote, workspaceState } = item;
               const existingAliases = installedForDefinition.map((installation) => installation.accountAlias).join(", ");
 
@@ -544,9 +521,15 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
 
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
                       <p className="text-xs text-slate-500">
-                        Install here, then return to the portfolio to open mappings, detail, or catalog account operations.
+                        {definition.slug === "shopify"
+                          ? "Create the Shopify account here, then continue in connector detail to complete the managed install, token exchange, and publication target setup."
+                          : "Install here, then return to the portfolio to open mappings, detail, or catalog account operations."}
                       </p>
-                      <PendingSubmitButton type="submit" idleLabel="Install connector" pendingLabel="Installing connector..." />
+                      <PendingSubmitButton
+                        type="submit"
+                        idleLabel={definition.slug === "shopify" ? "Create guided connector" : "Install connector"}
+                        pendingLabel={definition.slug === "shopify" ? "Creating guided connector..." : "Installing connector..."}
+                      />
                     </div>
                   </form>
                 </section>
