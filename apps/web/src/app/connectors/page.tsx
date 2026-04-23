@@ -197,6 +197,10 @@ function formatDateTime(value: string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
+function isCatalogPilotConnector(definition: ConnectorDefinition): boolean {
+  return definition.slug === "shopify" && definition.launchStage === "planned";
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -423,8 +427,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         return left.definition.displayName.localeCompare(right.definition.displayName);
       });
     const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
+    const catalogPilotDefinitions = definitionModels.filter((item) => isCatalogPilotConnector(item.definition));
+    const channelCatalogDefinitions = [...liveDefinitions, ...catalogPilotDefinitions];
     const manualDefinitions = definitionModels.filter((item) => item.definition.launchStage === "manual");
-    const plannedDefinitions = definitionModels.filter((item) => item.definition.launchStage === "planned");
+    const plannedDefinitions = definitionModels.filter(
+      (item) => item.definition.launchStage === "planned" && !isCatalogPilotConnector(item.definition),
+    );
     const needsSetupDefinitions = definitionModels.filter(
       (item) => item.workspaceState.label === "Needs setup",
     );
@@ -588,30 +596,30 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first, then open the dedicated setup workspace when you are ready to enter credentials and create catalog accounts{portfolioContext}.
+                  Review live connector lanes first, plus pilot catalog lanes that are intentionally visible here for rollout awareness before they become seller self-serve{portfolioContext}.
                 </p>
               </div>
               <StatusChip
-                label={`${liveDefinitions.filter((item) => item.installedForDefinition.length > 0).length} with active footprint`}
+                label={`${channelCatalogDefinitions.filter((item) => item.installedForDefinition.length > 0).length} with active footprint`}
                 tone="info"
               />
             </div>
 
-            {liveDefinitions.length === 0 ? (
+            {channelCatalogDefinitions.length === 0 ? (
               <div className="mt-4">
                 <EmptyState
                   icon="PLUG"
-                  title={searchValue ? "No live catalog channels match this search" : "No live catalog channels available"}
+                  title={searchValue ? "No catalog channels match this search" : "No catalog channels available"}
                   description={
                     searchValue
                       ? "Try a broader search term or clear the filter to see the full connector portfolio."
-                      : "Live connector definitions have not been seeded for this environment."
+                      : "Catalog connector definitions have not been seeded for this environment."
                   }
                 />
               </div>
             ) : (
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {liveDefinitions.map((item) => {
+                {channelCatalogDefinitions.map((item) => {
                   const { definition, installedForDefinition, statusNote, workspaceState } = item;
                   const primaryInstallation = installedForDefinition[0] ?? null;
                   const mappedChannel = primaryInstallation
@@ -634,16 +642,23 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           <h3 className="text-base font-semibold text-slate-900">{definition.displayName}</h3>
                           <p className="mt-1 font-mono text-xs text-slate-500">{definition.slug}</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
-                          <StatusChip
-                            label={connectorLaunchLabel(definition.launchStage)}
-                            tone={connectorLaunchTone(definition.launchStage)}
-                          />
-                        </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
+                        <StatusChip
+                          label={connectorLaunchLabel(definition.launchStage)}
+                          tone={connectorLaunchTone(definition.launchStage)}
+                        />
+                        {isCatalogPilotConnector(definition) ? (
+                          <StatusChip label="pilot lane" tone="info" />
+                        ) : null}
                       </div>
+                    </div>
 
-                      <p className="mt-3 text-sm text-slate-600">{workspaceState.description}</p>
+                      <p className="mt-3 text-sm text-slate-600">
+                        {isCatalogPilotConnector(definition)
+                          ? "Visible in the channel catalog for pilot planning, but still blocked from seller self-serve install."
+                          : workspaceState.description}
+                      </p>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -662,7 +677,13 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </div>
 
                       {definition.launchNote ? (
-                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <p
+                          className={`mt-3 rounded-xl px-3 py-2 text-sm ${
+                            isCatalogPilotConnector(definition)
+                              ? "border border-sky-200 bg-sky-50 text-sky-800"
+                              : "border border-amber-200 bg-amber-50 text-amber-900"
+                          }`}
+                        >
                           {definition.launchNote}
                         </p>
                       ) : null}
@@ -673,12 +694,21 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       ) : null}
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
-                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
-                        </Link>
+                        {isCatalogPilotConnector(definition) ? (
+                          <Link
+                            href="/channels/connectors/setup"
+                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Open pilot handoff
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
+                            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
+                          </Link>
+                        )}
                         <Link
                           href={mappingHref}
                           className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
