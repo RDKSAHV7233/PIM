@@ -26,9 +26,11 @@ function run() {
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
-    source.includes("plannedDefinitions.map") &&
+    source.includes("function isCatalogPilotConnector(") &&
+      source.includes("Open pilot handoff") &&
+      source.includes("Visible in the channel catalog for pilot planning") &&
       source.includes("Seller setup unlocks after the connector reaches live launch stage."),
-    "Planned connector cards must explain that seller setup stays locked until launch stage is live.",
+    "Shopify pilot connectors must be surfaced in the channel catalog without claiming seller self-serve install is available.",
   );
   assert(
     source.includes("function connectorStatusNote(") &&
