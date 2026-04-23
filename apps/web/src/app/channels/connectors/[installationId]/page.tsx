@@ -685,7 +685,7 @@ export default async function ChannelConnectorDetailPage({
               detail:
                 selectedPublicationTargetSummary.count > 0
                   ? selectedPublicationTargetSummary.label
-                  : "Select at least one Shopify publication target before pilot publish.",
+                  : "Select at least one Shopify publication target before guided Shopify publish.",
             },
             {
               label: "Pilot publish ready",
@@ -697,7 +697,7 @@ export default async function ChannelConnectorDetailPage({
                 Boolean(metadataTokenMode || metadataAuthMode) &&
                 Boolean(metadataShopDomain && metadataShopId) &&
                 selectedPublicationTargetSummary.count > 0
-                  ? "This account has the minimum Shopify connection context required for pilot publishing."
+                  ? "This account has the minimum Shopify connection context required for guided Shopify publishing."
                   : "Finish the steps above before treating this Shopify account as publish-ready.",
             },
           ]
@@ -707,7 +707,7 @@ export default async function ChannelConnectorDetailPage({
       installation.slug === "shopify"
         ? [
             {
-              label: "Start pilot install handoff",
+              label: "Start guided install handoff",
               state:
                 metadataAuthMode || metadataTokenMode || metadataShopDomain
                   ? ("complete" as const)
@@ -715,7 +715,7 @@ export default async function ChannelConnectorDetailPage({
               detail:
                 metadataAuthMode || metadataTokenMode || metadataShopDomain
                   ? "A Shopify handoff has already started for this account."
-                  : "Use the pilot install path with Vexa ops. Shopify remains planned and is not available in self-serve setup yet.",
+                  : "Use the guided install path in Vexa, then complete the managed-install handshake from Shopify admin before publishing.",
             },
             {
               label: "Complete managed install and token exchange",
@@ -1021,7 +1021,7 @@ export default async function ChannelConnectorDetailPage({
                     <StatusChip
                       label={
                         completedShopifyReadinessSteps === shopifyReadinessSteps.length
-                          ? "pilot publish ready"
+                          ? "guided publish ready"
                           : "setup still required"
                       }
                       tone={completedShopifyReadinessSteps === shopifyReadinessSteps.length ? "success" : "info"}
@@ -1044,7 +1044,7 @@ export default async function ChannelConnectorDetailPage({
                     ))}
                   </ul>
                   <p className="text-xs text-slate-500">
-                    This panel is operational guidance only. Shopify remains a planned connector until launch stage changes from the roadmap policy.
+                    This panel is operational guidance only. Shopify is in guided rollout and still requires the managed-install handshake before it should be treated as a healthy publish channel.
                   </p>
                 </div>
               </Card>
@@ -1055,7 +1055,7 @@ export default async function ChannelConnectorDetailPage({
                 <CardTitle>Managed Install Handoff</CardTitle>
                 <div className="mt-2 space-y-3">
                   <p className="text-sm text-slate-700">
-                    Shopify still uses a coordinated pilot handoff. Operators should treat this page as the source of truth for where the managed install stands.
+                    Shopify still uses a coordinated guided handoff. Operators should treat this page as the source of truth for where the managed install stands.
                   </p>
                   <ul className="space-y-2 text-sm">
                     {shopifyManagedInstallSteps.map((step) => (
@@ -1094,7 +1094,7 @@ export default async function ChannelConnectorDetailPage({
                     </Link>
                   </div>
                   <p className="text-xs text-slate-500">
-                    Seller self-serve stays locked until launch stage moves beyond planned. This handoff keeps pilots honest without implying general availability.
+                    Seller self-serve still stays locked. This guided handoff keeps Shopify aligned with the Vexa connector workflow without implying general availability yet.
                   </p>
                 </div>
               </Card>

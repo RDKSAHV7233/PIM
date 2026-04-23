@@ -223,12 +223,8 @@ async function run() {
     assert(flipkart.implementationStatus === "full", `flipkart implementationStatus expected full, got ${flipkart.implementationStatus}`);
     assert(shopify.implementationStatus === "partial", `shopify implementationStatus expected partial, got ${shopify.implementationStatus}`);
     assert(amazon.launchStage === "live", `amazon-in launchStage expected live, got ${amazon.launchStage}`);
-    assert(shopify.launchStage === "planned", `shopify launchStage expected planned, got ${shopify.launchStage}`);
-    assert(shopify.actions?.install?.allowed === false, `shopify install action should be blocked, got ${JSON.stringify(shopify.actions)}`);
-    assert(
-      shopify.actions?.install?.reason === "CONNECTOR_LAUNCH_STAGE_PLANNED",
-      `shopify install block reason expected CONNECTOR_LAUNCH_STAGE_PLANNED, got ${shopify.actions?.install?.reason}`,
-    );
+    assert(shopify.launchStage === "manual", `shopify launchStage expected manual, got ${shopify.launchStage}`);
+    assert(shopify.actions?.install?.allowed === true, `shopify install action should be allowed, got ${JSON.stringify(shopify.actions)}`);
 
     console.log(
       JSON.stringify(

@@ -13,6 +13,11 @@ export class InstallConnectorDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  shopDomain?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(200)
   clientId?: string;
 

@@ -918,6 +918,7 @@ export async function installConnectorAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const accountAlias = String(formData.get("accountAlias") ?? "").trim();
   const externalAccountRef = String(formData.get("externalAccountRef") ?? "").trim();
+  const shopDomain = String(formData.get("shopDomain") ?? "").trim();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const clientSecret = String(formData.get("clientSecret") ?? "").trim();
   const refreshToken = String(formData.get("refreshToken") ?? "").trim();
@@ -930,6 +931,7 @@ export async function installConnectorAction(formData: FormData) {
     await postJsonForAction(formData, `/connectors/${encodeURIComponent(slug)}/install`, {
       accountAlias: accountAlias || undefined,
       externalAccountRef: externalAccountRef || undefined,
+      shopDomain: shopDomain || undefined,
       clientId: clientId || undefined,
       clientSecret: clientSecret || undefined,
       refreshToken: refreshToken || undefined,

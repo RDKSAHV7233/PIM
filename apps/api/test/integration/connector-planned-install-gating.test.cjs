@@ -161,9 +161,9 @@ async function run() {
 
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
-  const tenantId = `connector-planned-${Date.now()}`;
-  const workspaceSlug = `planned-${Date.now()}`.slice(0, 24);
-  const userId = `planned-admin-${Date.now()}`;
+  const tenantId = `connector-shopify-guided-${Date.now()}`;
+  const workspaceSlug = `shopify-guided-${Date.now()}`.slice(0, 24);
+  const userId = `shopify-guided-admin-${Date.now()}`;
   const commercialToken = `commercial-ops-${Date.now()}`;
   const env = {
     ...process.env,
@@ -173,7 +173,7 @@ async function run() {
       [userId]: { tenantId, role: "admin", workspaceSlug },
     }),
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
-      [workspaceSlug]: { tenantId, displayName: "Connector Planned Install" },
+      [workspaceSlug]: { tenantId, displayName: "Connector Shopify Guided Install" },
     }),
     PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
     PIM_COMMERCIAL_OPS_TOKEN: commercialToken,
@@ -215,18 +215,28 @@ async function run() {
     const enterprisePlan = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
     assertStatus(enterprisePlan, 201, "set enterprise plan tier");
 
+    const installMissingDomain = await apiRequest(baseUrl, "POST", "/connectors/shopify/install", token, {
+      accountAlias: "missing-domain",
+    });
+    assertStatus(installMissingDomain, 400, "require Shopify shop domain");
+    assert(
+      String(installMissingDomain.payload?.error ?? "") === "SHOPIFY_SHOP_DOMAIN_REQUIRED",
+      `expected SHOPIFY_SHOP_DOMAIN_REQUIRED, got ${JSON.stringify(installMissingDomain.payload)}`,
+    );
+
     const install = await apiRequest(baseUrl, "POST", "/connectors/shopify/install", token, {
       accountAlias: "primary",
+      shopDomain: "vishaltest112.myshopify.com",
     });
-    assertStatus(install, 400, "block planned connector install");
+    assertStatus(install, 201, "guided Shopify install");
     assert(
-      String(install.payload?.error ?? "") === "CONNECTOR_LAUNCH_STAGE_PLANNED",
-      `expected CONNECTOR_LAUNCH_STAGE_PLANNED, got ${JSON.stringify(install.payload)}`,
+      String(install.payload?.status ?? "") === "PAUSED",
+      `expected guided Shopify install to create PAUSED account, got ${JSON.stringify(install.payload)}`,
     );
 
     const rows = await prisma.$queryRawUnsafe(
       `
-      SELECT ci.id
+      SELECT ci.id, ci.status, ci.external_account_ref AS "externalAccountRef", ci.metadata
       FROM connector_installations ci
       JOIN connector_definitions cd ON cd.id = ci.connector_id
       WHERE ci.tenant_key = $1
@@ -234,16 +244,45 @@ async function run() {
       `,
       tenantId,
     );
-    assert(Array.isArray(rows) && rows.length === 0, "planned connector install must not create connector_installations rows");
+    assert(Array.isArray(rows) && rows.length === 1, "guided Shopify install should create one connector_installations row");
+    assert(String(rows[0].status) === "PAUSED", `expected PAUSED install row, got ${JSON.stringify(rows[0])}`);
+    assert(
+      String(rows[0].externalAccountRef ?? "") === "vishaltest112.myshopify.com",
+      `expected externalAccountRef to default to shop domain, got ${JSON.stringify(rows[0])}`,
+    );
+    assert(
+      rows[0].metadata?.shopDomain === "vishaltest112.myshopify.com",
+      `expected Shopify metadata to record shopDomain, got ${JSON.stringify(rows[0].metadata)}`,
+    );
+    assert(
+      rows[0].metadata?.connectionStage === "awaiting_managed_install",
+      `expected Shopify metadata to record awaiting managed install stage, got ${JSON.stringify(rows[0].metadata)}`,
+    );
+
+    const credentialRows = await prisma.$queryRawUnsafe(
+      `
+      SELECT credential_type AS "credentialType"
+      FROM connector_credentials
+      WHERE tenant_key = $1
+        AND installation_id = $2
+      `,
+      tenantId,
+      String(rows[0].id),
+    );
+    assert(
+      Array.isArray(credentialRows) && credentialRows.some((row) => row.credentialType === "shop_domain"),
+      "guided Shopify install should persist encrypted shop_domain credential",
+    );
 
     console.log(
       JSON.stringify(
         {
           status: "ok",
           validated: [
-            "shopify_is_visible_as_planned",
-            "shopify_install_is_api_blocked_until_launch",
-            "shopify_install_creates_no_installation_rows_when_blocked",
+            "shopify_manual_launch_stage_is_installable",
+            "shopify_guided_install_requires_shop_domain",
+            "shopify_guided_install_creates_paused_installation",
+            "shopify_guided_install_persists_shop_context",
           ],
           checkedAt: new Date().toISOString(),
         },
@@ -255,7 +294,7 @@ async function run() {
     const details = error instanceof Error ? error.message : String(error);
     const stdout = stdoutBuffer.join("").slice(-4000);
     const stderr = stderrBuffer.join("").slice(-4000);
-    console.error("Planned connector install gating integration test failed:");
+    console.error("Shopify guided install integration test failed:");
     console.error(details);
     if (stdout) {
       console.error("--- API stdout tail ---");

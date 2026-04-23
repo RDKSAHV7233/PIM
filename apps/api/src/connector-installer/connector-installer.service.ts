@@ -203,7 +203,12 @@ export class ConnectorInstallerService {
     const tenantKey = this.getTenantKey();
     const normalizedSlug = slug.trim().toLowerCase();
     const accountAlias = (dto.accountAlias ?? "primary").trim() || "primary";
-    const externalAccountRef = dto.externalAccountRef?.trim() || null;
+    const requestedShopDomain =
+      normalizedSlug === "shopify" ? this.normalizeShopifyShopDomain(dto.shopDomain) : null;
+    const externalAccountRef =
+      normalizedSlug === "shopify"
+        ? requestedShopDomain ?? dto.externalAccountRef?.trim() ?? null
+        : dto.externalAccountRef?.trim() || null;
     const installationId = randomUUID();
 
     await this.auditService.record({
@@ -211,12 +216,13 @@ export class ConnectorInstallerService {
       actorRole: actor.actorRole,
       action: "CONNECTOR_INSTALL_ATTEMPT",
       resource: "CONNECTOR_INSTALLATION",
-      metadata: {
-        connectorSlug: normalizedSlug,
-        accountAlias,
-        credentialsCaptured: this.hasConnectorCredentialInput(dto),
-      },
-    });
+        metadata: {
+          connectorSlug: normalizedSlug,
+          accountAlias,
+          credentialsCaptured: this.hasConnectorCredentialInput(dto),
+          shopDomain: requestedShopDomain,
+        },
+      });
 
     try {
       await this.connectorPermissionService.assertActionAllowed(actor, {
@@ -268,13 +274,14 @@ export class ConnectorInstallerService {
             status,
             metadata,
             installed_by
-          ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', '{}'::jsonb, $6)
+          ) VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7)
           `,
           installationId,
           tenantKey,
           String(definition.id),
           accountAlias,
           externalAccountRef,
+          normalizedSlug === "shopify" ? "PAUSED" : "ACTIVE",
           actor.actorId,
         );
       } catch (error: unknown) {
@@ -307,6 +314,17 @@ export class ConnectorInstallerService {
             installationId,
             externalAccountRef,
             dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
+      } else if (normalizedSlug === "shopify") {
+        try {
+          await this.captureShopifyInstallContext({
+            tenantKey,
+            installationId,
+            shopDomain: requestedShopDomain,
           });
         } catch (error) {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
@@ -742,6 +760,13 @@ export class ConnectorInstallerService {
     }
 
     await connector.handleOAuthCallback(this.buildConnectorContext(installation), params);
+    await this.prisma.tenant(tenantKey).connectorInstallation.updateMany({
+      where: { id: installationId },
+      data: {
+        status: "ACTIVE",
+        updatedAt: new Date(),
+      },
+    });
     return { id: installationId, status: "CONNECTED" };
   }
 
@@ -891,10 +916,26 @@ export class ConnectorInstallerService {
 
   private hasConnectorCredentialInput(dto: InstallConnectorDto): boolean {
     return Boolean(
+      String(dto.shopDomain ?? "").trim() ||
       String(dto.clientId ?? "").trim() ||
         String(dto.clientSecret ?? "").trim() ||
         String(dto.refreshToken ?? "").trim(),
     );
+  }
+
+  private normalizeShopifyShopDomain(value: string | undefined): string | null {
+    const trimmed = String(value ?? "").trim().toLowerCase();
+    if (!trimmed) {
+      return null;
+    }
+    const normalized = trimmed.includes(".") ? trimmed : `${trimmed}.myshopify.com`;
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(normalized)) {
+      throw new BadRequestException({
+        error: "SHOPIFY_SHOP_DOMAIN_INVALID",
+        message: "Shopify shop domain must be a valid *.myshopify.com hostname.",
+      });
+    }
+    return normalized;
   }
 
   private async captureAndValidateFlipkartCredentials(input: {
@@ -1018,6 +1059,43 @@ export class ConnectorInstallerService {
         message: "Amazon credentials could not be validated. Check the client ID, client secret, and refresh token.",
       });
     }
+  }
+
+  private async captureShopifyInstallContext(input: {
+    tenantKey: string;
+    installationId: string;
+    shopDomain: string | null;
+  }): Promise<void> {
+    if (!input.shopDomain) {
+      throw new BadRequestException({
+        error: "SHOPIFY_SHOP_DOMAIN_REQUIRED",
+        message: "Shopify guided setup requires a store domain before the connector account can be created.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "shop_domain",
+      plainValue: input.shopDomain,
+      metadata: {
+        source: "install_form",
+        authMode: "guided_managed_install",
+      },
+    });
+
+    await this.prisma.tenant(input.tenantKey).connectorInstallation.updateMany({
+      where: { id: input.installationId },
+      data: {
+        metadata: {
+          shopDomain: input.shopDomain,
+          authMode: "guided_managed_install",
+          connectionStage: "awaiting_managed_install",
+          managedInstallPending: true,
+        },
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async cleanupInstallationArtifacts(tenantKey: string, installationId: string): Promise<void> {
