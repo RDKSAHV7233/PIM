@@ -85,6 +85,22 @@ const DISTRIBUTION_BUCKETS = [
   "90-100",
 ] as const;
 
+const DASHBOARD_SNAPSHOT_SELECT = {
+  capturedAt: true,
+  totalSkus: true,
+  completeSkus: true,
+  incompleteSkus: true,
+  publishReadyByConnector: true,
+  blockedByConnector: true,
+  rejectionRiskHigh: true,
+  openIssuesBlocking: true,
+  openIssuesWarning: true,
+} satisfies Prisma.DashboardSnapshotSelect;
+
+type DashboardSnapshotRow = Prisma.DashboardSnapshotGetPayload<{
+  select: typeof DASHBOARD_SNAPSHOT_SELECT;
+}>;
+
 function isProductionAppEnv(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development")
     .trim()
@@ -335,56 +351,98 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   private async computeReadiness(tenantKey: string): Promise<ReadinessResponse> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{
-        slug: string;
-        displayName: string;
-        installationCount: number;
-        ready: number;
-        blocked: number;
-        pending: number;
-      }>
-    >(
-      `
-      SELECT
-        cd.slug AS slug,
-        cd.display_name AS "displayName",
-        COUNT(DISTINCT ci.id)::int AS "installationCount",
-        COUNT(*) FILTER (WHERE UPPER(cs.status) = 'SUCCESS')::int AS ready,
-        COUNT(*) FILTER (WHERE UPPER(cs.status) = 'PENDING')::int AS pending,
-        COUNT(*) FILTER (WHERE UPPER(cs.status) IN ('REJECTED', 'SUPPRESSED', 'ERROR'))::int AS blocked
-      FROM connector_definitions cd
-      LEFT JOIN connector_installations ci
-        ON ci.connector_id = cd.id
-       AND ci.tenant_key = $1
-       AND ci.status <> 'DISABLED'
-      LEFT JOIN connector_submissions cs
-        ON cs.installation_id = ci.id
-      WHERE cd.is_active = TRUE
-      GROUP BY cd.slug, cd.display_name
-      ORDER BY cd.display_name ASC
-      `,
-      tenantKey,
-    );
+    const [definitions, installations] = await Promise.all([
+      this.prisma.tenant(tenantKey).connectorDefinition.findMany({
+        where: { isActive: true },
+        orderBy: [{ displayName: "asc" }],
+        select: {
+          id: true,
+          slug: true,
+          displayName: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).connectorInstallation.findMany({
+        where: {
+          status: { not: "DISABLED" },
+        },
+        select: {
+          id: true,
+          connectorId: true,
+        },
+      }),
+    ]);
 
-    const results: ReadinessConnector[] = rows.map((row) => {
-      if (row.installationCount === 0) {
+    const installationIds = installations.map((installation) => installation.id);
+    const submissions = installationIds.length === 0
+      ? []
+      : await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
+          where: {
+            installationId: { in: installationIds },
+          },
+          select: {
+            installationId: true,
+            status: true,
+          },
+        });
+
+    const installationsByConnector = new Map<string, string[]>();
+    for (const installation of installations) {
+      const rows = installationsByConnector.get(installation.connectorId) ?? [];
+      rows.push(installation.id);
+      installationsByConnector.set(installation.connectorId, rows);
+    }
+
+    const submissionCountsByInstallation = new Map<string, { ready: number; blocked: number; pending: number }>();
+    for (const submission of submissions) {
+      const status = String(submission.status ?? "").trim().toUpperCase();
+      const counts = submissionCountsByInstallation.get(submission.installationId) ?? {
+        ready: 0,
+        blocked: 0,
+        pending: 0,
+      };
+      if (status === "SUCCESS") {
+        counts.ready += 1;
+      } else if (status === "PENDING") {
+        counts.pending += 1;
+      } else if (status === "REJECTED" || status === "SUPPRESSED" || status === "ERROR") {
+        counts.blocked += 1;
+      }
+      submissionCountsByInstallation.set(submission.installationId, counts);
+    }
+
+    const results: ReadinessConnector[] = definitions.map((definition) => {
+      const connectorInstallationIds = installationsByConnector.get(definition.id) ?? [];
+      if (connectorInstallationIds.length === 0) {
         return {
-          slug: row.slug,
-          displayName: row.displayName,
+          slug: definition.slug,
+          displayName: definition.displayName,
           ready: 0,
           blocked: 0,
           pending: 0,
           notConnected: true,
         };
       }
+
+      const connectorCounts = connectorInstallationIds.reduce(
+        (totals, installationId) => {
+          const counts = submissionCountsByInstallation.get(installationId);
+          if (!counts) {
+            return totals;
+          }
+          totals.ready += counts.ready;
+          totals.blocked += counts.blocked;
+          totals.pending += counts.pending;
+          return totals;
+        },
+        { ready: 0, blocked: 0, pending: 0 },
+      );
+
       return {
-        slug: row.slug,
-        displayName: row.displayName,
-        ready: Number(row.ready),
-        blocked: Number(row.blocked),
-        pending: Number(row.pending),
+        slug: definition.slug,
+        displayName: definition.displayName,
+        ready: connectorCounts.ready,
+        blocked: connectorCounts.blocked,
+        pending: connectorCounts.pending,
       };
     });
 
@@ -397,226 +455,180 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   private async computeCatalogHealth(tenantKey: string): Promise<CatalogHealthResponse> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{
-        averageCompleteness: number | string;
-        belowThreshold: number;
-        completeSkus: number;
-        incompleteSkus: number;
-        missingMainImage: number;
-        missingRequiredAttrs: number;
-        bucket0_10: number;
-        bucket10_20: number;
-        bucket20_30: number;
-        bucket30_40: number;
-        bucket40_50: number;
-        bucket50_60: number;
-        bucket60_70: number;
-        bucket70_80: number;
-        bucket80_90: number;
-        bucket90_100: number;
-      }>
-    >(
-      `
-      WITH required_by_category AS (
-        SELECT
-          ad."categoryId" AS category_id,
-          COUNT(*) FILTER (WHERE ad.required = TRUE AND ad."appliesTo" = 'product')::int AS required_count,
-          COALESCE(
-            ARRAY_AGG(ad.key) FILTER (WHERE ad.required = TRUE AND ad."appliesTo" = 'product'),
-            ARRAY[]::text[]
-          ) AS required_keys
-        FROM "AttributeDefinition" ad
-        WHERE ad."tenantKey" = $1
-        GROUP BY ad."categoryId"
-      ),
-      product_base AS (
-        SELECT
-          p.id,
-          p.attributes::jsonb AS attrs,
-          (
-            CASE WHEN COALESCE(BTRIM(p.title), '') <> '' THEN 1 ELSE 0 END +
-            CASE WHEN COALESCE(BTRIM(p.brand), '') <> '' THEN 1 ELSE 0 END +
-            CASE WHEN COALESCE(BTRIM(p.description), '') <> '' THEN 1 ELSE 0 END +
-            CASE WHEN COALESCE(BTRIM(p."hsnCode"), '') <> '' THEN 1 ELSE 0 END +
-            CASE WHEN p."gstRate" IS NOT NULL THEN 1 ELSE 0 END
-          )::int AS core_filled,
-          COALESCE(r.required_count, 0)::int AS required_count,
-          COALESCE(r.required_keys, ARRAY[]::text[]) AS required_keys
-        FROM "Product" p
-        LEFT JOIN required_by_category r ON r.category_id = p."categoryId"
-        WHERE p."tenantKey" = $1
-          AND p."deletedAt" IS NULL
-      ),
-      scored AS (
-        SELECT
-          pb.id,
-          pb.required_count,
-          (
-            SELECT COUNT(*)
-            FROM UNNEST(pb.required_keys) AS key_name
-            WHERE COALESCE(NULLIF(BTRIM(pb.attrs ->> key_name), ''), NULL) IS NOT NULL
-          )::int AS filled_required_attrs,
-          (
-            CASE
-              WHEN (5 + pb.required_count) = 0 THEN 100
-              ELSE ROUND(((pb.core_filled + (
-                SELECT COUNT(*)
-                FROM UNNEST(pb.required_keys) AS key_name
-                WHERE COALESCE(NULLIF(BTRIM(pb.attrs ->> key_name), ''), NULL) IS NOT NULL
-              ))::numeric * 100) / (5 + pb.required_count))
-            END
-          )::int AS score
-        FROM product_base pb
-      ),
-      media_products AS (
-        SELECT DISTINCT product_id
-        FROM media_assets
-        WHERE tenant_key = $1
-          AND product_id IS NOT NULL
-      )
-      SELECT
-        COALESCE(ROUND(AVG(sc.score)::numeric, 2), 0) AS "averageCompleteness",
-        COUNT(*) FILTER (WHERE sc.score < 50)::int AS "belowThreshold",
-        COUNT(*) FILTER (WHERE sc.score >= 100)::int AS "completeSkus",
-        COUNT(*) FILTER (WHERE sc.score < 100)::int AS "incompleteSkus",
-        COUNT(*) FILTER (WHERE mp.product_id IS NULL)::int AS "missingMainImage",
-        COUNT(*) FILTER (WHERE sc.required_count > sc.filled_required_attrs)::int AS "missingRequiredAttrs",
-        COUNT(*) FILTER (WHERE sc.score >= 0  AND sc.score < 10)::int AS "bucket0_10",
-        COUNT(*) FILTER (WHERE sc.score >= 10 AND sc.score < 20)::int AS "bucket10_20",
-        COUNT(*) FILTER (WHERE sc.score >= 20 AND sc.score < 30)::int AS "bucket20_30",
-        COUNT(*) FILTER (WHERE sc.score >= 30 AND sc.score < 40)::int AS "bucket30_40",
-        COUNT(*) FILTER (WHERE sc.score >= 40 AND sc.score < 50)::int AS "bucket40_50",
-        COUNT(*) FILTER (WHERE sc.score >= 50 AND sc.score < 60)::int AS "bucket50_60",
-        COUNT(*) FILTER (WHERE sc.score >= 60 AND sc.score < 70)::int AS "bucket60_70",
-        COUNT(*) FILTER (WHERE sc.score >= 70 AND sc.score < 80)::int AS "bucket70_80",
-        COUNT(*) FILTER (WHERE sc.score >= 80 AND sc.score < 90)::int AS "bucket80_90",
-        COUNT(*) FILTER (WHERE sc.score >= 90)::int AS "bucket90_100"
-      FROM scored sc
-      LEFT JOIN media_products mp ON mp.product_id = sc.id
-      `,
-      tenantKey,
+    const [requiredAttributes, products, mediaProducts] = await Promise.all([
+      this.prisma.tenant(tenantKey).attributeDefinition.findMany({
+        where: {
+          required: true,
+          appliesTo: "product",
+        },
+        select: {
+          categoryId: true,
+          key: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).product.findMany({
+        where: {
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          title: true,
+          brand: true,
+          description: true,
+          hsnCode: true,
+          gstRate: true,
+          attributes: true,
+          categoryId: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).mediaAsset.findMany({
+        where: {
+          productId: { not: null },
+        },
+        distinct: ["productId"],
+        select: {
+          productId: true,
+        },
+      }),
+    ]);
+
+    const requiredKeysByCategory = new Map<string, string[]>();
+    for (const attribute of requiredAttributes) {
+      const keys = requiredKeysByCategory.get(attribute.categoryId) ?? [];
+      keys.push(attribute.key);
+      requiredKeysByCategory.set(attribute.categoryId, keys);
+    }
+
+    const mediaProductIds = new Set(
+      mediaProducts
+        .map((row) => row.productId)
+        .filter((productId): productId is string => typeof productId === "string" && productId.length > 0),
     );
 
-    const row = rows[0];
-    const distributionCounts = [
-      row?.bucket0_10 ?? 0,
-      row?.bucket10_20 ?? 0,
-      row?.bucket20_30 ?? 0,
-      row?.bucket30_40 ?? 0,
-      row?.bucket40_50 ?? 0,
-      row?.bucket50_60 ?? 0,
-      row?.bucket60_70 ?? 0,
-      row?.bucket70_80 ?? 0,
-      row?.bucket80_90 ?? 0,
-      row?.bucket90_100 ?? 0,
-    ];
+    const distributionCounts = new Map<string, number>(
+      DISTRIBUTION_BUCKETS.map((bucket) => [bucket, 0]),
+    );
+    let scoreTotal = 0;
+    let belowThreshold = 0;
+    let completeSkus = 0;
+    let incompleteSkus = 0;
+    let missingMainImage = 0;
+    let missingRequiredAttrs = 0;
+
+    for (const product of products) {
+      const attributes = this.asJsonRecord(product.attributes);
+      const requiredKeys = requiredKeysByCategory.get(product.categoryId) ?? [];
+      const coreFilled = [
+        product.title,
+        product.brand,
+        product.description,
+        product.hsnCode,
+      ].filter((value) => this.hasFilledValue(value)).length + (product.gstRate !== null ? 1 : 0);
+      const filledRequiredAttrs = requiredKeys.filter((key) => this.hasFilledValue(attributes[key])).length;
+      const score = this.computeCompletenessScore(coreFilled, requiredKeys.length, filledRequiredAttrs);
+      const bucket = this.resolveCompletenessBucket(score);
+
+      scoreTotal += score;
+      distributionCounts.set(bucket, (distributionCounts.get(bucket) ?? 0) + 1);
+      if (score < 50) {
+        belowThreshold += 1;
+      }
+      if (score >= 100) {
+        completeSkus += 1;
+      } else {
+        incompleteSkus += 1;
+      }
+      if (!mediaProductIds.has(product.id)) {
+        missingMainImage += 1;
+      }
+      if (requiredKeys.length > filledRequiredAttrs) {
+        missingRequiredAttrs += 1;
+      }
+    }
+
+    const averageCompleteness = products.length === 0
+      ? 0
+      : Number((scoreTotal / products.length).toFixed(2));
 
     return {
-      averageCompleteness: Number(row?.averageCompleteness ?? 0),
-      belowThreshold: Number(row?.belowThreshold ?? 0),
-      completeSkus: Number(row?.completeSkus ?? 0),
-      incompleteSkus: Number(row?.incompleteSkus ?? 0),
-      missingMainImage: Number(row?.missingMainImage ?? 0),
-      missingRequiredAttrs: Number(row?.missingRequiredAttrs ?? 0),
-      distribution: DISTRIBUTION_BUCKETS.map((bucket, index) => ({
+      averageCompleteness,
+      belowThreshold,
+      completeSkus,
+      incompleteSkus,
+      missingMainImage,
+      missingRequiredAttrs,
+      distribution: DISTRIBUTION_BUCKETS.map((bucket) => ({
         bucket,
-        count: Number(distributionCounts[index] ?? 0),
+        count: distributionCounts.get(bucket) ?? 0,
       })),
       asOf: new Date().toISOString(),
     };
   }
 
   private async computeOperationsSummary(tenantKey: string): Promise<DashboardOperationsSummaryResponse> {
-    const connectorParams: unknown[] = [tenantKey];
     const stubSlugs = resolveStubConnectorSlugs();
-    let hiddenStubWhere = "";
-
-    if (stubSlugs.length > 0) {
-      const placeholders = stubSlugs.map((slug) => {
-        connectorParams.push(slug);
-        return `$${connectorParams.length}`;
-      });
-      hiddenStubWhere = ` AND LOWER(cd.slug) NOT IN (${placeholders.join(", ")})`;
-    }
-
-    const [connectorRows, submissionRows, deadLetterRows, importRows] = await Promise.all([
-      // RLS-BYPASS: manual tenant filter
-      this.prisma.tenant(tenantKey).$queryRawUnsafe<
-        Array<{ activeConnectors: number; installedConnectors: number }>
-      >(
-        `
-        SELECT
-          COUNT(*) FILTER (WHERE ci.status = 'ACTIVE')::int AS "activeConnectors",
-          COUNT(*)::int AS "installedConnectors"
-        FROM connector_installations ci
-        JOIN connector_definitions cd ON cd.id = ci.connector_id
-        WHERE ci.tenant_key = $1
-        ${hiddenStubWhere}
-        `,
-        ...connectorParams,
-      ),
-      // RLS-BYPASS: manual tenant filter
-      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedSubmissionJobs: number }>>(
-        `
-        SELECT COUNT(*)::int AS "failedSubmissionJobs"
-        FROM (
-          SELECT cs.status
-          FROM connector_submissions cs
-          WHERE cs.tenant_key = $1
-          ORDER BY cs.submitted_at DESC, cs.id DESC
-          LIMIT 50
-        ) recent
-        WHERE UPPER(COALESCE(recent.status, '')) IN ('REJECTED', 'ERROR')
-        `,
-        tenantKey,
-      ),
-      // RLS-BYPASS: manual tenant filter
-      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ deadLetterJobs: number }>>(
-        `
-        SELECT COUNT(*)::int AS "deadLetterJobs"
-        FROM (
-          SELECT mej.id
-          FROM "MarketplaceExportJob" mej
-          WHERE mej."tenantKey" = $1
-            AND mej.status = 'dead_letter'
-          ORDER BY mej."updatedAt" DESC, mej.id DESC
-          LIMIT 50
-        ) recent
-        `,
-        tenantKey,
-      ),
-      // RLS-BYPASS: manual tenant filter
-      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ failedImportJobs: number }>>(
-        `
-        SELECT COUNT(*)::int AS "failedImportJobs"
-        FROM (
-          SELECT bij.status
-          FROM "BulkImportJob" bij
-          WHERE bij."tenantKey" = $1
-          ORDER BY bij."updatedAt" DESC, bij.id DESC
-          LIMIT 50
-        ) recent
-        WHERE recent.status IN ('failed', 'dead_letter')
-        `,
-        tenantKey,
-      ),
+    const [definitions, installations, submissions, deadLetterJobs, importJobs] = await Promise.all([
+      this.prisma.tenant(tenantKey).connectorDefinition.findMany({
+        select: {
+          id: true,
+          slug: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).connectorInstallation.findMany({
+        select: {
+          connectorId: true,
+          status: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).connectorSubmission.findMany({
+        orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: {
+          status: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).marketplaceExportJob.findMany({
+        where: {
+          status: "dead_letter",
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: {
+          id: true,
+        },
+      }),
+      this.prisma.tenant(tenantKey).bulkImportJob.findMany({
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: {
+          status: true,
+        },
+      }),
     ]);
 
-    const activeConnectors = Number(connectorRows[0]?.activeConnectors ?? 0);
-    const installedConnectors = Number(connectorRows[0]?.installedConnectors ?? 0);
-    const failedSubmissionJobs = Number(submissionRows[0]?.failedSubmissionJobs ?? 0);
-    const deadLetterJobs = Number(deadLetterRows[0]?.deadLetterJobs ?? 0);
-    const failedImportJobs = Number(importRows[0]?.failedImportJobs ?? 0);
+    const hiddenStubSlugs = new Set(stubSlugs.map((slug) => slug.toLowerCase()));
+    const connectorSlugById = new Map(definitions.map((definition) => [definition.id, definition.slug]));
+    const visibleInstallations = installations.filter((installation) => {
+      const slug = connectorSlugById.get(installation.connectorId) ?? "";
+      return !hiddenStubSlugs.has(slug.toLowerCase());
+    });
+
+    const activeConnectors = visibleInstallations.filter((installation) => installation.status === "ACTIVE").length;
+    const installedConnectors = visibleInstallations.length;
+    const failedSubmissionJobs = submissions.filter((submission) => {
+      const status = String(submission.status ?? "").trim().toUpperCase();
+      return status === "REJECTED" || status === "ERROR";
+    }).length;
+    const deadLetterJobsCount = deadLetterJobs.length;
+    const failedImportJobs = importJobs.filter((job) => job.status === "failed" || job.status === "dead_letter").length;
 
     return {
       activeConnectors,
       installedConnectors,
       failedImportJobs,
       failedSubmissionJobs,
-      deadLetterJobs,
-      jobsNeedingRetry: failedSubmissionJobs + deadLetterJobs,
+      deadLetterJobs: deadLetterJobsCount,
+      jobsNeedingRetry: failedSubmissionJobs + deadLetterJobsCount,
       asOf: new Date().toISOString(),
     };
   }
@@ -634,7 +646,7 @@ export class DashboardService implements OnModuleDestroy {
       }),
     ]);
     const latestSnapshotAgeMs = latestSnapshot
-      ? Date.now() - new Date(latestSnapshot.captured_at).getTime()
+      ? Date.now() - new Date(latestSnapshot.capturedAt).getTime()
       : Number.POSITIVE_INFINITY;
     const shouldRefresh = latestSnapshotAgeMs >= SNAPSHOT_REFRESH_MS;
 
@@ -648,53 +660,17 @@ export class DashboardService implements OnModuleDestroy {
       }
     }
 
-    // RLS-BYPASS: manual tenant filter
-    const trendRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{
-        captured_at: Date;
-        total_skus: number;
-        complete_skus: number;
-        incomplete_skus: number;
-        publish_ready_by_connector: Prisma.JsonValue;
-        blocked_by_connector: Prisma.JsonValue;
-        rejection_risk_high: number;
-        open_issues_blocking: number;
-        open_issues_warning: number;
-      }>
-    >(
-      `
-      SELECT
-        captured_at,
-        total_skus,
-        complete_skus,
-        incomplete_skus,
-        publish_ready_by_connector,
-        blocked_by_connector,
-        rejection_risk_high,
-        open_issues_blocking,
-        open_issues_warning
-      FROM dashboard_snapshots
-      WHERE tenant_key = $1
-        AND captured_at >= (NOW() - ($2 || ' days')::interval)
-      ORDER BY captured_at ASC
-      `,
-      tenantKey,
-      SNAPSHOT_TREND_DAYS,
-    );
+    const trendRows = await this.prisma.tenant(tenantKey).dashboardSnapshot.findMany({
+      where: {
+        capturedAt: {
+          gte: new Date(Date.now() - SNAPSHOT_TREND_DAYS * 24 * 60 * 60 * 1000),
+        },
+      },
+      orderBy: [{ capturedAt: "asc" }],
+      select: DASHBOARD_SNAPSHOT_SELECT,
+    });
 
-    const trend = trendRows.map((row) =>
-      this.mapSnapshotRow({
-        captured_at: row.captured_at,
-        total_skus: row.total_skus,
-        complete_skus: row.complete_skus,
-        incomplete_skus: row.incomplete_skus,
-        publish_ready_by_connector: row.publish_ready_by_connector,
-        blocked_by_connector: row.blocked_by_connector,
-        rejection_risk_high: row.rejection_risk_high,
-        open_issues_blocking: row.open_issues_blocking,
-        open_issues_warning: row.open_issues_warning,
-      }),
-    );
+    const trend = trendRows.map((row) => this.mapSnapshotRow(row));
 
     if (trend.length === 0) {
       trend.push(snapshot);
@@ -754,21 +730,22 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   private async captureSnapshot(tenantKey: string): Promise<DashboardHealthSnapshot> {
-    const [readiness, catalogHealth, totalSkus, issueCounts] = await Promise.all([
+    const [readiness, catalogHealth, totalSkus, openIssuesBlocking, openIssuesWarning] = await Promise.all([
       this.computeReadiness(tenantKey),
       this.computeCatalogHealth(tenantKey),
       this.prisma.tenant(tenantKey).product.count(),
-      // RLS-BYPASS: manual tenant filter
-      this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ blocking: number; warning: number }>>(
-        `
-        SELECT
-          COUNT(*) FILTER (WHERE severity = 'error' AND status = 'open')::int AS blocking,
-          COUNT(*) FILTER (WHERE severity = 'warning' AND status = 'open')::int AS warning
-        FROM "ValidationIssue"
-        WHERE "tenantKey" = $1
-        `,
-        tenantKey,
-      ),
+      this.prisma.tenant(tenantKey).validationIssue.count({
+        where: {
+          severity: "error",
+          status: "open",
+        },
+      }),
+      this.prisma.tenant(tenantKey).validationIssue.count({
+        where: {
+          severity: "warning",
+          status: "open",
+        },
+      }),
     ]);
 
     const publishReadyByConnector: Record<string, number> = {};
@@ -778,7 +755,6 @@ export class DashboardService implements OnModuleDestroy {
       blockedByConnector[connector.slug] = connector.blocked;
     }
 
-    const issueSummary = issueCounts[0] ?? { blocking: 0, warning: 0 };
     const snapshot: DashboardHealthSnapshot = {
       capturedAt: new Date().toISOString(),
       totalSkus,
@@ -787,113 +763,107 @@ export class DashboardService implements OnModuleDestroy {
       publishReadyByConnector,
       blockedByConnector,
       rejectionRiskHigh: 0,
-      openIssuesBlocking: issueSummary.blocking,
-      openIssuesWarning: issueSummary.warning,
+      openIssuesBlocking,
+      openIssuesWarning,
     };
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-      `
-      INSERT INTO dashboard_snapshots (
-        id,
-        tenant_key,
-        captured_at,
-        total_skus,
-        complete_skus,
-        incomplete_skus,
-        publish_ready_by_connector,
-        blocked_by_connector,
-        rejection_risk_high,
-        open_issues_blocking,
-        open_issues_warning
-      ) VALUES (
-        $1,
-        $2,
-        $3::timestamptz,
-        $4,
-        $5,
-        $6,
-        $7::jsonb,
-        $8::jsonb,
-        $9,
-        $10,
-        $11
-      )
-      `,
-      randomUUID(),
-      tenantKey,
-      snapshot.capturedAt,
-      snapshot.totalSkus,
-      snapshot.completeSkus,
-      snapshot.incompleteSkus,
-      JSON.stringify(snapshot.publishReadyByConnector),
-      JSON.stringify(snapshot.blockedByConnector),
-      snapshot.rejectionRiskHigh,
-      snapshot.openIssuesBlocking,
-      snapshot.openIssuesWarning,
-    );
+    await this.prisma.tenant(tenantKey).dashboardSnapshot.create({
+      data: {
+        id: randomUUID(),
+        capturedAt: new Date(snapshot.capturedAt),
+        totalSkus: snapshot.totalSkus,
+        completeSkus: snapshot.completeSkus,
+        incompleteSkus: snapshot.incompleteSkus,
+        publishReadyByConnector: snapshot.publishReadyByConnector,
+        blockedByConnector: snapshot.blockedByConnector,
+        rejectionRiskHigh: snapshot.rejectionRiskHigh,
+        openIssuesBlocking: snapshot.openIssuesBlocking,
+        openIssuesWarning: snapshot.openIssuesWarning,
+      },
+    });
 
     return snapshot;
   }
 
   private async getLatestSnapshotRow(tenantKey: string) {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{
-        captured_at: Date;
-        total_skus: number;
-        complete_skus: number;
-        incomplete_skus: number;
-        publish_ready_by_connector: Prisma.JsonValue;
-        blocked_by_connector: Prisma.JsonValue;
-        rejection_risk_high: number;
-        open_issues_blocking: number;
-        open_issues_warning: number;
-      }>
-    >(
-      `
-      SELECT
-        captured_at,
-        total_skus,
-        complete_skus,
-        incomplete_skus,
-        publish_ready_by_connector,
-        blocked_by_connector,
-        rejection_risk_high,
-        open_issues_blocking,
-        open_issues_warning
-      FROM dashboard_snapshots
-      WHERE tenant_key = $1
-      ORDER BY captured_at DESC
-      LIMIT 1
-      `,
-      tenantKey,
-    );
-    return rows[0] ?? null;
+    return this.prisma.tenant(tenantKey).dashboardSnapshot.findFirst({
+      orderBy: [{ capturedAt: "desc" }],
+      select: DASHBOARD_SNAPSHOT_SELECT,
+    });
   }
 
-  private mapSnapshotRow(row: {
-    captured_at: Date;
-    total_skus: number;
-    complete_skus: number;
-    incomplete_skus: number;
-    publish_ready_by_connector: Prisma.JsonValue;
-    blocked_by_connector: Prisma.JsonValue;
-    rejection_risk_high: number;
-    open_issues_blocking: number;
-    open_issues_warning: number;
-  }): DashboardHealthSnapshot {
+  private mapSnapshotRow(row: DashboardSnapshotRow): DashboardHealthSnapshot {
     return {
-      capturedAt: row.captured_at.toISOString(),
-      totalSkus: row.total_skus,
-      completeSkus: row.complete_skus,
-      incompleteSkus: row.incomplete_skus,
-      publishReadyByConnector: this.asNumberRecord(row.publish_ready_by_connector),
-      blockedByConnector: this.asNumberRecord(row.blocked_by_connector),
-      rejectionRiskHigh: row.rejection_risk_high,
-      openIssuesBlocking: row.open_issues_blocking,
-      openIssuesWarning: row.open_issues_warning,
+      capturedAt: row.capturedAt.toISOString(),
+      totalSkus: row.totalSkus,
+      completeSkus: row.completeSkus,
+      incompleteSkus: row.incompleteSkus,
+      publishReadyByConnector: this.asNumberRecord(row.publishReadyByConnector),
+      blockedByConnector: this.asNumberRecord(row.blockedByConnector),
+      rejectionRiskHigh: row.rejectionRiskHigh,
+      openIssuesBlocking: row.openIssuesBlocking,
+      openIssuesWarning: row.openIssuesWarning,
     };
+  }
+
+  private asJsonRecord(value: Prisma.JsonValue): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private hasFilledValue(value: unknown): boolean {
+    if (value === null || value === undefined) {
+      return false;
+    }
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+    return true;
+  }
+
+  private computeCompletenessScore(
+    coreFilled: number,
+    requiredCount: number,
+    filledRequiredAttrs: number,
+  ): number {
+    const denominator = 5 + requiredCount;
+    if (denominator === 0) {
+      return 100;
+    }
+    return Math.round(((coreFilled + filledRequiredAttrs) * 100) / denominator);
+  }
+
+  private resolveCompletenessBucket(score: number): string {
+    if (score < 10) {
+      return "0-10";
+    }
+    if (score < 20) {
+      return "10-20";
+    }
+    if (score < 30) {
+      return "20-30";
+    }
+    if (score < 40) {
+      return "30-40";
+    }
+    if (score < 50) {
+      return "40-50";
+    }
+    if (score < 60) {
+      return "50-60";
+    }
+    if (score < 70) {
+      return "60-70";
+    }
+    if (score < 80) {
+      return "70-80";
+    }
+    if (score < 90) {
+      return "80-90";
+    }
+    return "90-100";
   }
 
   private asNumberRecord(value: Prisma.JsonValue): Record<string, number> {

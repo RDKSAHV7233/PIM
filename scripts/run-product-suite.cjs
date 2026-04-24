@@ -56,6 +56,7 @@ const SUITES = {
     { label: "API: worker failure visibility", command: "npm", args: ["run", "test:integration:marketplace-worker-failure-visibility"] },
   ],
   governance: [
+    { label: "UI/UX: admin entry route contract", command: "node", args: ["apps/web/test/integration/admin-entry-route-contract.test.cjs"] },
     { label: "UI/UX: connector access admin form", command: "node", args: ["apps/web/test/integration/connector-access-admin-form.test.cjs"] },
     { label: "UI/UX: admin privacy route contract", command: "node", args: ["apps/web/test/integration/admin-privacy-ui.test.cjs"] },
     { label: "UI/UX: admin users route contract", command: "node", args: ["apps/web/test/integration/admin-users-route-contract.test.cjs"] },
@@ -98,6 +99,7 @@ const SUITES = {
     { label: "E2E: admin plan signup export browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-signup-export"] },
     { label: "E2E: pending feedback browser journey", command: "npm", args: ["run", "test:e2e:pending-feedback"] },
     { label: "E2E: admin connector access audit follow-up browser journey", command: "npm", args: ["run", "test:e2e:admin-connectors-audit-followup"] },
+    { label: "E2E: connector access permission effect browser journey", command: "npm", args: ["run", "test:e2e:connector-access-effect"] },
     { label: "E2E: admin API key lifecycle browser journey", command: "npm", args: ["run", "test:e2e:admin-api-keys"] },
     { label: "E2E: admin plan upgrade-request browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-upgrade-request"] },
     { label: "E2E: internal commercial ops browser journey", command: "npm", args: ["run", "test:e2e:internal-commercial-ops"] },

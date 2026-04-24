@@ -44,16 +44,16 @@ export function resolveCommercialContactTarget(
     }
     return {
       href: target.toString(),
-      label: "Contact TEJ directly",
+      label: "Contact Vexa directly",
       helperText: "Use this if you need immediate commercial help outside the tracked request flow.",
     };
   }
 
   const configuredEmail = getCommercialContactEmail();
   if (configuredEmail) {
-    const subject = `TEJ PIM upgrade request: ${tenantKey || "workspace"}`;
+    const subject = `Vexa PIM upgrade request: ${tenantKey || "workspace"}`;
     const bodyLines = [
-      "Please review this TEJ PIM plan request.",
+      "Please review this Vexa PIM plan request.",
       "",
       `Tenant key: ${tenantKey || "unknown"}`,
       `Current plan: ${planTier || "unknown"}`,
@@ -62,7 +62,7 @@ export function resolveCommercialContactTarget(
     ];
     return {
       href: `mailto:${encodeURIComponent(configuredEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`,
-      label: "Contact TEJ directly",
+      label: "Contact Vexa directly",
       helperText: "Use this if you need immediate commercial help outside the tracked request flow.",
     };
   }

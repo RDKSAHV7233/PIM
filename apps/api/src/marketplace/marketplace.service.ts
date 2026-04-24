@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import {
   ExportJobStatus,
-  MarketplaceChannel as MarketplaceChannelDb,
   Prisma,
   RuleSeverity,
   ValidationIssueStatus,
@@ -31,11 +30,15 @@ import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
-import { MARKETPLACE_CHANNELS } from "./dto/simulate-marketplace.dto";
 import { UpdateMappingTemplateDto } from "./dto/update-mapping-template.dto";
 import { buildAmazonFallbackIssues, runAmazonAuthoritativeValidation } from "../connectors/amazon/amazon-validation";
-
-type MarketplaceChannel = (typeof MARKETPLACE_CHANNELS)[number];
+import {
+  MARKETPLACE_CHANNELS,
+  mapConnectorSlugToMarketplaceChannel,
+  mapMarketplaceChannelToConnectorSlug,
+  parseMarketplaceChannel,
+  type MarketplaceChannel,
+} from "./marketplace-channels";
 
 type MappingPack = {
   channel: MarketplaceChannel;
@@ -70,14 +73,11 @@ function resolveStubConnectorSlugs(): Set<string> {
 function resolveStubMarketplaceChannels(): Set<MarketplaceChannel> {
   const stubSlugs = resolveStubConnectorSlugs();
   const channels = new Set<MarketplaceChannel>();
-  if (stubSlugs.has("amazon") || stubSlugs.has("amazon-in")) {
-    channels.add("amazon");
-  }
-  if (stubSlugs.has("flipkart")) {
-    channels.add("flipkart");
-  }
-  if (stubSlugs.has("meesho")) {
-    channels.add("meesho");
+  for (const slug of stubSlugs) {
+    const channel = mapConnectorSlugToMarketplaceChannel(slug);
+    if (channel) {
+      channels.add(channel);
+    }
   }
   return channels;
 }
@@ -261,7 +261,7 @@ export class MarketplaceService implements OnModuleInit {
     return this.prisma.tenant().channelMappingTemplate.findMany({
       where: {
         categoryId,
-        channel: channel ? (channel as MarketplaceChannelDb) : undefined,
+        channel,
       },
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
     });
@@ -275,7 +275,7 @@ export class MarketplaceService implements OnModuleInit {
 
     if (dto.isDefault) {
       await this.prisma.tenant().channelMappingTemplate.updateMany({
-        where: { categoryId, channel: channel as MarketplaceChannelDb },
+        where: { categoryId, channel },
         data: { isDefault: false },
       });
     }
@@ -285,7 +285,7 @@ export class MarketplaceService implements OnModuleInit {
         data: {
           categoryId,
           name: dto.name.trim(),
-          channel: channel as MarketplaceChannelDb,
+          channel,
           requiredFields: requiredFields as unknown as Prisma.JsonArray,
           fieldMap: fieldMap as unknown as Prisma.JsonObject,
           isDefault: dto.isDefault ?? false,
@@ -318,7 +318,7 @@ export class MarketplaceService implements OnModuleInit {
 
     const updatedName = dto.name ? dto.name.trim() : existing.name;
     const updatedChannel = dto.channel
-      ? (this.parseChannel(dto.channel) as MarketplaceChannelDb)
+      ? this.parseChannel(dto.channel)
       : existing.channel;
     const updatedRequiredFields = dto.requiredFields
       ? this.normalizeRequiredFields(dto.requiredFields)
@@ -448,7 +448,7 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const channel = this.parseChannel(dto.channel);
-    const connectorSlug = this.mapChannelToConnectorSlug(channel as MarketplaceChannelDb);
+    const connectorSlug = this.mapChannelToConnectorSlug(channel);
     try {
       const tenantKey = this.connectorFramework.getCurrentTenantKey();
       const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug);
@@ -478,7 +478,7 @@ export class MarketplaceService implements OnModuleInit {
         createdBy: actorId?.trim() ? actorId.trim() : null,
         productId,
         categoryId: product.categoryId,
-        channel: simulation.channel as MarketplaceChannelDb,
+        channel: simulation.channel,
         templateId: simulation.templateId ?? null,
         status: ExportJobStatus.queued,
         retryCount: 0,
@@ -1576,7 +1576,7 @@ export class MarketplaceService implements OnModuleInit {
       if (!template) {
         throw new NotFoundException("Mapping template not found");
       }
-      if (template.channel !== (channel as MarketplaceChannelDb)) {
+      if (template.channel !== channel) {
         throw new BadRequestException("Template channel mismatch.");
       }
       if (categoryId && template.categoryId !== categoryId) {
@@ -1597,7 +1597,7 @@ export class MarketplaceService implements OnModuleInit {
       const defaultTemplate = await this.prisma.tenant().channelMappingTemplate.findFirst({
         where: {
           categoryId,
-          channel: channel as MarketplaceChannelDb,
+          channel,
           isDefault: true,
         },
         orderBy: [{ updatedAt: "desc" }],
@@ -1672,15 +1672,7 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   private parseChannel(channelInput: string): MarketplaceChannel {
-    const normalized = String(channelInput ?? "")
-      .trim()
-      .toLowerCase();
-    if ((MARKETPLACE_CHANNELS as readonly string[]).includes(normalized)) {
-      return normalized as MarketplaceChannel;
-    }
-    throw new BadRequestException(
-      `Unsupported channel. Allowed values: ${MARKETPLACE_CHANNELS.join(", ")}`,
-    );
+    return parseMarketplaceChannel(channelInput);
   }
 
   private async requireTemplate(templateId: string) {
@@ -1695,7 +1687,7 @@ export class MarketplaceService implements OnModuleInit {
 
   private async generateCloneTemplateName(
     categoryId: string,
-    channel: MarketplaceChannelDb,
+    channel: MarketplaceChannel,
     baseName: string,
   ): Promise<string> {
     const normalizedBase = `${baseName.trim()} Copy`.trim();
@@ -1836,24 +1828,16 @@ export class MarketplaceService implements OnModuleInit {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 
-  private mapChannelToConnectorSlug(channel: MarketplaceChannelDb): string {
-    if (channel === "amazon") {
-      return "amazon-in";
-    }
-    return channel;
+  private mapChannelToConnectorSlug(channel: string): string {
+    return mapMarketplaceChannelToConnectorSlug(channel);
   }
 
   private mapConnectorSlugToChannel(slugInput: string): MarketplaceChannel {
+    const channel = mapConnectorSlugToMarketplaceChannel(slugInput);
+    if (channel) {
+      return channel;
+    }
     const slug = String(slugInput ?? "").trim().toLowerCase();
-    if (slug === "amazon-in") {
-      return "amazon";
-    }
-    if (slug === "flipkart") {
-      return "flipkart";
-    }
-    if (slug === "meesho") {
-      return "meesho";
-    }
     throw new BadRequestException(`Unsupported connector slug '${slug}' for payload preview.`);
   }
 
@@ -2003,7 +1987,7 @@ export class MarketplaceService implements OnModuleInit {
     job: {
       id: string;
       productId: string;
-      channel: MarketplaceChannelDb;
+      channel: string;
     },
     simulation: {
       exportReady: boolean;
@@ -2275,7 +2259,7 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   private async emitExportThroughputMetric(
-    channel: MarketplaceChannelDb,
+    channel: string,
     startedAtMs: number,
     jobStatus: ExportJobStatus,
   ): Promise<void> {

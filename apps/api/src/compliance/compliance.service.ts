@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, RuleSeverity, RuleType, ValidationIssueStatus } from "@prisma/client";
+import { Prisma, RecordStatus, RuleSeverity, RuleType, ValidationIssueStatus } from "@prisma/client";
 import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
@@ -18,25 +18,50 @@ type IssueDraft = {
   fieldPath?: string;
 };
 
-type IssueInboxRow = {
-  id: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  productStatus: string;
-  categoryId: string;
-  categoryName: string;
-  fieldPath: string | null;
-  severity: RuleSeverity;
-  message: string;
-  createdAt: Date;
-};
-
 type IssueInboxCursor = {
   severityRank: 0 | 1;
   createdAt: string;
   id: string;
 };
+
+const INDIA_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const ISSUE_INBOX_ORDER_BY = [
+  { severity: "asc" },
+  { createdAt: "asc" },
+  { id: "asc" },
+] satisfies Prisma.ValidationIssueOrderByWithRelationInput[];
+
+const ISSUE_INBOX_SELECT = {
+  id: true,
+  productId: true,
+  fieldPath: true,
+  severity: true,
+  message: true,
+  createdAt: true,
+  product: {
+    select: {
+      title: true,
+      status: true,
+      categoryId: true,
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      variants: {
+        select: {
+          skuCode: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 1,
+      },
+    },
+  },
+} satisfies Prisma.ValidationIssueSelect;
+
+type IssueInboxRecord = Prisma.ValidationIssueGetPayload<{ select: typeof ISSUE_INBOX_SELECT }>;
 
 @Injectable()
 export class ComplianceService {
@@ -108,149 +133,74 @@ export class ComplianceService {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const limit = resolveCursorLimit(query.limit);
     const cursor = this.decodeIssueInboxCursor(query.cursor);
+    const installationProductIds = query.installationId
+      ? await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
+          where: { installationId: query.installationId },
+          select: { productId: true },
+          distinct: ["productId"],
+        })
+      : [];
 
-    const whereClauses: string[] = [
-      `vi."tenantKey" = $1`,
-      `vi.status = 'open'`,
+    const filters: Prisma.ValidationIssueWhereInput[] = [
+      { status: ValidationIssueStatus.open },
     ];
-    const params: Array<string | number | Date> = [tenantKey];
 
     if (query.severity === "BLOCKING") {
-      params.push("error");
-      whereClauses.push(`vi.severity = $${params.length}::"RuleSeverity"`);
+      filters.push({ severity: RuleSeverity.error });
     } else if (query.severity === "WARNING") {
-      params.push("warning");
-      whereClauses.push(`vi.severity = $${params.length}::"RuleSeverity"`);
+      filters.push({ severity: RuleSeverity.warning });
     }
 
-    if (query.categoryId) {
-      params.push(query.categoryId);
-      whereClauses.push(`p."categoryId" = $${params.length}`);
-    }
-
-    if (query.productStatus) {
-      params.push(query.productStatus);
-      whereClauses.push(`p.status::text = $${params.length}`);
+    if (query.categoryId || query.productStatus) {
+      const productWhere: Prisma.ProductWhereInput = {};
+      if (query.categoryId) {
+        productWhere.categoryId = query.categoryId;
+      }
+      if (query.productStatus) {
+        productWhere.status = query.productStatus as RecordStatus;
+      }
+      filters.push({ product: productWhere });
     }
 
     if (query.installationId) {
-      params.push(query.installationId);
-      whereClauses.push(`
-        EXISTS (
-          SELECT 1
-          FROM connector_submissions cs
-          WHERE cs.tenant_key = $1
-            AND cs.product_id = vi."productId"
-            AND cs.installation_id = $${params.length}
-        )
-      `);
+      const productIds = installationProductIds.map((row) => row.productId);
+      if (productIds.length === 0) {
+        const summary = await this.buildIssueInboxSummary(tenantKey);
+        return {
+          items: [],
+          nextCursor: null,
+          limit,
+          resolvedToday: summary.resolvedToday,
+          resolvedYesterday: summary.resolvedYesterday,
+          trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
+        };
+      }
+      filters.push({ productId: { in: productIds } });
     }
 
-    if (cursor) {
-      params.push(cursor.severityRank);
-      const rankParam = params.length;
-      params.push(cursor.createdAt);
-      const createdAtParam = params.length;
-      params.push(cursor.id);
-      const idParam = params.length;
-      whereClauses.push(`
-        (
-          (CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END > $${rankParam})
-          OR (
-            CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END = $${rankParam}
-            AND (
-              vi."createdAt" > $${createdAtParam}::timestamptz
-              OR (vi."createdAt" = $${createdAtParam}::timestamptz AND vi.id > $${idParam})
-            )
-          )
-        )
-      `);
+    const cursorWhere = this.buildIssueInboxCursorWhere(cursor);
+    if (cursorWhere) {
+      filters.push(cursorWhere);
     }
 
-    params.push(limit + 1);
-    const limitParam = params.length;
-
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<IssueInboxRow[]>(
-      `
-      SELECT
-        vi.id AS id,
-        vi."productId" AS "productId",
-        p.title AS "productName",
-        COALESCE(v."skuCode", '-') AS sku,
-        p.status::text AS "productStatus",
-        p."categoryId" AS "categoryId",
-        c.name AS "categoryName",
-        vi."fieldPath" AS "fieldPath",
-        vi.severity AS severity,
-        vi.message AS message,
-        vi."createdAt" AS "createdAt"
-      FROM "ValidationIssue" vi
-      JOIN "Product" p ON p.id = vi."productId"
-      LEFT JOIN "Category" c ON c.id = p."categoryId"
-      LEFT JOIN LATERAL (
-        SELECT vv."skuCode"
-        FROM "Variant" vv
-        WHERE vv."productId" = p.id
-        ORDER BY vv."createdAt" ASC, vv.id ASC
-        LIMIT 1
-      ) v ON TRUE
-      WHERE ${whereClauses.join(" AND ")}
-      ORDER BY
-        CASE WHEN vi.severity = 'error' THEN 0 ELSE 1 END ASC,
-        vi."createdAt" ASC,
-        vi.id ASC
-      LIMIT $${limitParam}
-      `,
-      ...params,
-    );
+    const where = filters.length === 1 ? filters[0] : { AND: filters };
+    const rows = await this.prisma.tenant(tenantKey).validationIssue.findMany({
+      where,
+      orderBy: ISSUE_INBOX_ORDER_BY,
+      take: limit + 1,
+      select: ISSUE_INBOX_SELECT,
+    });
 
     const hasNext = rows.length > limit;
     const pageRows = hasNext ? rows.slice(0, limit) : rows;
     const last = pageRows[pageRows.length - 1];
-
-    // RLS-BYPASS: manual tenant filter
-    const summaryRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ resolvedToday: number; resolvedYesterday: number }>
-    >(
-      `
-      SELECT
-        COUNT(*) FILTER (
-          WHERE (vi."updatedAt" AT TIME ZONE 'Asia/Kolkata')::date =
-            (NOW() AT TIME ZONE 'Asia/Kolkata')::date
-        )::int AS "resolvedToday",
-        COUNT(*) FILTER (
-          WHERE (vi."updatedAt" AT TIME ZONE 'Asia/Kolkata')::date =
-            ((NOW() AT TIME ZONE 'Asia/Kolkata')::date - 1)
-        )::int AS "resolvedYesterday"
-      FROM "ValidationIssue" vi
-      WHERE vi."tenantKey" = $1
-        AND vi.status = 'resolved'
-        AND vi.severity = 'warning'
-      `,
-      tenantKey,
-    );
-
-    const summary = summaryRows[0] ?? { resolvedToday: 0, resolvedYesterday: 0 };
+    const summary = await this.buildIssueInboxSummary(tenantKey);
 
     return {
-      items: pageRows.map((row) => ({
-        issueId: row.id,
-        productId: row.productId,
-        productName: row.productName,
-        sku: row.sku,
-        productStatus: row.productStatus,
-        categoryId: row.categoryId,
-        categoryName: row.categoryName,
-        fieldPath: row.fieldPath,
-        severity: row.severity === "error" ? "BLOCKING" : "WARNING",
-        sellerMessage: row.message,
-        suggestedFix: this.buildSuggestedFix(row.fieldPath),
-        detectedAt: row.createdAt.toISOString(),
-      })),
+      items: pageRows.map((row) => this.normalizeIssueInboxRow(row)),
       nextCursor: hasNext && last
         ? this.encodeIssueInboxCursor({
-            severityRank: last.severity === "error" ? 0 : 1,
+          severityRank: last.severity === "error" ? 0 : 1,
             createdAt: last.createdAt.toISOString(),
             id: last.id,
           })
@@ -258,12 +208,7 @@ export class ComplianceService {
       limit,
       resolvedToday: summary.resolvedToday,
       resolvedYesterday: summary.resolvedYesterday,
-      trend:
-        summary.resolvedToday > summary.resolvedYesterday
-          ? "up"
-          : summary.resolvedToday < summary.resolvedYesterday
-            ? "down"
-            : "flat",
+      trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
     };
   }
 
@@ -642,6 +587,124 @@ export class ComplianceService {
     } catch {
       return null;
     }
+  }
+
+  private normalizeIssueInboxRow(row: IssueInboxRecord) {
+    return {
+      issueId: row.id,
+      productId: row.productId,
+      productName: row.product.title,
+      sku: row.product.variants[0]?.skuCode ?? "-",
+      productStatus: row.product.status,
+      categoryId: row.product.categoryId,
+      categoryName: row.product.category?.name ?? "Uncategorized",
+      fieldPath: row.fieldPath,
+      severity: row.severity === "error" ? "BLOCKING" : "WARNING",
+      sellerMessage: row.message,
+      suggestedFix: this.buildSuggestedFix(row.fieldPath),
+      detectedAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private buildIssueInboxCursorWhere(cursor: IssueInboxCursor | null): Prisma.ValidationIssueWhereInput | undefined {
+    if (!cursor) {
+      return undefined;
+    }
+
+    const createdAt = new Date(cursor.createdAt);
+    const sameSeverityAfterCursor: Prisma.ValidationIssueWhereInput = {
+      OR: [
+        { createdAt: { gt: createdAt } },
+        {
+          AND: [
+            { createdAt },
+            { id: { gt: cursor.id } },
+          ],
+        },
+      ],
+    };
+
+    if (cursor.severityRank === 0) {
+      return {
+        OR: [
+          { severity: RuleSeverity.warning },
+          {
+            AND: [
+              { severity: RuleSeverity.error },
+              sameSeverityAfterCursor,
+            ],
+          },
+        ],
+      };
+    }
+
+    return {
+      AND: [
+        { severity: RuleSeverity.warning },
+        sameSeverityAfterCursor,
+      ],
+    };
+  }
+
+  private async buildIssueInboxSummary(tenantKey: string) {
+    const today = this.getIndiaDayBounds(0);
+    const yesterday = this.getIndiaDayBounds(-1);
+    const baseWhere: Prisma.ValidationIssueWhereInput = {
+      status: ValidationIssueStatus.resolved,
+      severity: RuleSeverity.warning,
+    };
+
+    const [resolvedToday, resolvedYesterday] = await Promise.all([
+      this.prisma.tenant(tenantKey).validationIssue.count({
+        where: {
+          AND: [
+            baseWhere,
+            {
+              updatedAt: {
+                gte: today.start,
+                lt: today.end,
+              },
+            },
+          ],
+        },
+      }),
+      this.prisma.tenant(tenantKey).validationIssue.count({
+        where: {
+          AND: [
+            baseWhere,
+            {
+              updatedAt: {
+                gte: yesterday.start,
+                lt: yesterday.end,
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    return { resolvedToday, resolvedYesterday };
+  }
+
+  private getIndiaDayBounds(dayOffset: number) {
+    const indiaNow = new Date(Date.now() + INDIA_OFFSET_MS);
+    const startUtcMs =
+      Date.UTC(indiaNow.getUTCFullYear(), indiaNow.getUTCMonth(), indiaNow.getUTCDate() + dayOffset) - INDIA_OFFSET_MS;
+
+    return {
+      start: new Date(startUtcMs),
+      end: new Date(startUtcMs + DAY_MS),
+    };
+  }
+
+  private resolveTrend(resolvedToday: number, resolvedYesterday: number) {
+    if (resolvedToday > resolvedYesterday) {
+      return "up";
+    }
+    if (resolvedToday < resolvedYesterday) {
+      return "down";
+    }
+    return "flat";
   }
 
   private encodeIssueInboxCursor(cursor: IssueInboxCursor): string {

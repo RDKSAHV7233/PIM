@@ -2,6 +2,7 @@
 import { Prisma } from "@prisma/client";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PLAN_LIMITS } from "./plan-limits.seed";
 import { PlanResource } from "./require-plan-limit.decorator";
@@ -123,6 +124,14 @@ interface CommercialOverviewRow {
   cancelledTenants: number;
   activeAccessTenants: number;
   suspendedTenants: number;
+}
+
+interface CommercialWorkspaceCandidate {
+  tenantKey: string;
+  workspaceSlug: string;
+  displayName: string;
+  workspaceIsActive: boolean;
+  updatedAt: Date;
 }
 
 interface BytesRow {
@@ -255,7 +264,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   private rollupTimeout: NodeJS.Timeout | null = null;
   private rollupInterval: NodeJS.Timeout | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.seedPlanLimits();
@@ -583,95 +595,62 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const normalizedLimit = Number.isFinite(input?.limit) ? Math.trunc(Number(input?.limit)) : 50;
     const limit = Math.max(1, Math.min(normalizedLimit || 50, 250));
     const exactQuery = query.toLowerCase();
-    const fuzzyQuery = `%${query}%`;
     const hasQuery = query.length >= 2;
+    const matchingAdminTenantKeys = hasQuery
+      ? await this.findCommercialAdminMatchTenantKeys(query)
+      : new Set<string>();
 
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<CommercialTenantSearchRow[]>(
-      `
-      SELECT
-        wd."tenantKey" AS "tenantKey",
-        wd."workspaceSlug" AS "workspaceSlug",
-        wd."displayName" AS "displayName",
-        wd."isActive" AS "workspaceIsActive",
-        COALESCE(profile."planTier", usage."planTier", 'STARTER') AS "planTier",
-        COALESCE(
-          profile."billingStatus",
-          CASE
-            WHEN COALESCE(profile."planTier", usage."planTier", 'STARTER') = 'STARTER' THEN 'trial'
-            ELSE 'active_paid'
-          END
-        ) AS "billingStatus",
-        COALESCE(profile."accessStatus", 'active') AS "accessStatus",
-        profile."trialEndsAt" AS "trialEndsAt",
-        profile."paidThroughAt" AS "paidThroughAt",
-        profile."graceEndsAt" AS "graceEndsAt",
-        profile."cancelledAt" AS "cancelledAt",
-        profile."suspendedAt" AS "suspendedAt",
-        profile."suspensionReason" AS "suspensionReason",
-        profile."billingContactEmail" AS "billingContactEmail",
-        COALESCE(
-          (
-            SELECT json_agg(admin_rows."userId" ORDER BY admin_rows."userId")
-            FROM (
-              SELECT ai."userId"
-              FROM "AuthIdentity" ai
-              WHERE ai."tenantKey" = wd."tenantKey"
-                AND LOWER(ai.role) = 'admin'
-                AND ai."isActive" = TRUE
-                ORDER BY ai."userId" ASC
-                LIMIT 5
-            ) admin_rows
-          ),
-          '[]'::json
-        ) AS "adminEmails"
-      FROM "WorkspaceDirectory" wd
-      LEFT JOIN "TenantPlanProfile" profile
-        ON profile."tenantKey" = wd."tenantKey"
-      LEFT JOIN LATERAL (
-        SELECT pu."planTier" AS "planTier"
-        FROM "PlanUsage" pu
-        WHERE pu."tenantKey" = wd."tenantKey"
-        ORDER BY pu."month" DESC, pu."updatedAt" DESC
-        LIMIT 1
-      ) usage ON TRUE
-      WHERE
-        ($4::boolean = FALSE)
-        OR LOWER(wd."tenantKey") = $1
-        OR LOWER(wd."workspaceSlug") = $1
-        OR LOWER(wd."displayName") = $1
-        OR wd."tenantKey" ILIKE $2
-        OR wd."workspaceSlug" ILIKE $2
-        OR wd."displayName" ILIKE $2
-        OR EXISTS (
-          SELECT 1
-          FROM "AuthIdentity" ai_match
-          WHERE ai_match."tenantKey" = wd."tenantKey"
-            AND LOWER(ai_match.role) = 'admin'
-            AND ai_match."userId" ILIKE $2
-        )
-      ORDER BY
-        CASE
-          WHEN $4::boolean = FALSE THEN 0
-          WHEN LOWER(wd."tenantKey") = $1 THEN 0
-          WHEN LOWER(wd."workspaceSlug") = $1 THEN 1
-          WHEN LOWER(wd."displayName") = $1 THEN 2
-          WHEN wd."tenantKey" ILIKE $2 THEN 3
-          WHEN wd."workspaceSlug" ILIKE $2 THEN 4
-          WHEN wd."displayName" ILIKE $2 THEN 5
-          ELSE 6
-        END,
-        wd."updatedAt" DESC,
-        wd."tenantKey" ASC
-      LIMIT $3
-      `,
-      exactQuery,
-      fuzzyQuery,
-      limit,
-      hasQuery,
+    const workspaceCandidates = await this.prismaDirect.getClient().workspaceDirectory.findMany({
+      where: hasQuery
+        ? {
+            OR: [
+              { tenantKey: { equals: query, mode: "insensitive" } },
+              { workspaceSlug: { equals: query, mode: "insensitive" } },
+              { displayName: { equals: query, mode: "insensitive" } },
+              { tenantKey: { contains: query, mode: "insensitive" } },
+              { workspaceSlug: { contains: query, mode: "insensitive" } },
+              { displayName: { contains: query, mode: "insensitive" } },
+              ...(matchingAdminTenantKeys.size > 0
+                ? [{ tenantKey: { in: Array.from(matchingAdminTenantKeys) } }]
+                : []),
+            ],
+          }
+        : undefined,
+      select: {
+        tenantKey: true,
+        workspaceSlug: true,
+        displayName: true,
+        isActive: true,
+        updatedAt: true,
+      },
+    });
+
+    const rows = await this.buildCommercialTenantRows(
+      workspaceCandidates.map((workspace) => ({
+        tenantKey: workspace.tenantKey,
+        workspaceSlug: workspace.workspaceSlug,
+        displayName: workspace.displayName,
+        workspaceIsActive: workspace.isActive,
+        updatedAt: workspace.updatedAt,
+      })),
     );
 
-    return rows.map((row) => this.mapCommercialTenantSearchRow(row));
+    return rows
+      .sort((left, right) => {
+        const rankDiff =
+          this.rankCommercialTenantMatch(left, exactQuery, query, hasQuery, matchingAdminTenantKeys) -
+          this.rankCommercialTenantMatch(right, exactQuery, query, hasQuery, matchingAdminTenantKeys);
+        if (rankDiff !== 0) {
+          return rankDiff;
+        }
+        const updatedAtDiff = Date.parse(right.updatedAt.toISOString()) - Date.parse(left.updatedAt.toISOString());
+        if (updatedAtDiff !== 0) {
+          return updatedAtDiff;
+        }
+        return left.tenantKey.localeCompare(right.tenantKey);
+      })
+      .slice(0, limit)
+      .map((row) => this.mapCommercialTenantSearchRow(row));
   }
 
   async exportCommercialTenantsCsvInternal(input?: ListCommercialTenantsInternalInput): Promise<string> {
@@ -723,63 +702,73 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getCommercialTenantOverview(): Promise<CommercialTenantOverview> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRaw<CommercialOverviewRow[]>(Prisma.sql`
-      WITH latest_usage AS (
-        SELECT DISTINCT ON (pu."tenantKey")
-          pu."tenantKey" AS "tenantKey",
-          pu."planTier" AS "planTier"
-        FROM "PlanUsage" pu
-        ORDER BY pu."tenantKey", pu."month" DESC, pu."updatedAt" DESC
-      ),
-      normalized AS (
-        SELECT
-          wd."tenantKey" AS "tenantKey",
-          wd."isActive" AS "workspaceIsActive",
-          COALESCE(profile."planTier", latest_usage."planTier", 'STARTER') AS "planTier",
-          COALESCE(
-            profile."billingStatus",
-            CASE
-              WHEN COALESCE(profile."planTier", latest_usage."planTier", 'STARTER') = 'STARTER' THEN 'trial'
-              ELSE 'active_paid'
-            END
-          ) AS "billingStatus",
-          COALESCE(profile."accessStatus", 'active') AS "accessStatus"
-        FROM "WorkspaceDirectory" wd
-        LEFT JOIN "TenantPlanProfile" profile
-          ON profile."tenantKey" = wd."tenantKey"
-        LEFT JOIN latest_usage
-          ON latest_usage."tenantKey" = wd."tenantKey"
-      )
-      SELECT
-        COUNT(*)::int AS "totalTenants",
-        COUNT(*) FILTER (WHERE normalized."workspaceIsActive" = TRUE)::int AS "activeWorkspaces",
-        COUNT(*) FILTER (WHERE normalized."workspaceIsActive" = FALSE)::int AS "inactiveWorkspaces",
-        COUNT(*) FILTER (WHERE normalized."planTier" = 'STARTER')::int AS "starterTenants",
-        COUNT(*) FILTER (WHERE normalized."planTier" = 'GROWTH')::int AS "growthTenants",
-        COUNT(*) FILTER (WHERE normalized."planTier" = 'ENTERPRISE')::int AS "enterpriseTenants",
-        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'trial')::int AS "trialTenants",
-        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'active_paid')::int AS "paidTenants",
-        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'past_due')::int AS "pastDueTenants",
-        COUNT(*) FILTER (WHERE normalized."billingStatus" = 'cancelled')::int AS "cancelledTenants",
-        COUNT(*) FILTER (WHERE normalized."accessStatus" = 'active')::int AS "activeAccessTenants",
-        COUNT(*) FILTER (WHERE normalized."accessStatus" = 'suspended')::int AS "suspendedTenants"
-      FROM normalized
-    `);
-    const row = rows[0] ?? {
-      totalTenants: 0,
-      activeWorkspaces: 0,
-      inactiveWorkspaces: 0,
-      starterTenants: 0,
-      growthTenants: 0,
-      enterpriseTenants: 0,
-      trialTenants: 0,
-      paidTenants: 0,
-      pastDueTenants: 0,
-      cancelledTenants: 0,
-      activeAccessTenants: 0,
-      suspendedTenants: 0,
-    };
+    const workspaces = await this.prismaDirect.getClient().workspaceDirectory.findMany({
+      select: {
+        tenantKey: true,
+        workspaceSlug: true,
+        displayName: true,
+        isActive: true,
+        updatedAt: true,
+      },
+    });
+    const rows = await this.buildCommercialTenantRows(
+      workspaces.map((workspace) => ({
+        tenantKey: workspace.tenantKey,
+        workspaceSlug: workspace.workspaceSlug,
+        displayName: workspace.displayName,
+        workspaceIsActive: workspace.isActive,
+        updatedAt: workspace.updatedAt,
+      })),
+    );
+    const row = rows.reduce<CommercialOverviewRow>(
+      (acc, item) => {
+        acc.totalTenants += 1;
+        if (item.workspaceIsActive) {
+          acc.activeWorkspaces += 1;
+        } else {
+          acc.inactiveWorkspaces += 1;
+        }
+        const planTier = this.normalizePlanTier(item.planTier ?? "STARTER");
+        if (planTier === "STARTER") {
+          acc.starterTenants += 1;
+        } else if (planTier === "GROWTH") {
+          acc.growthTenants += 1;
+        } else {
+          acc.enterpriseTenants += 1;
+        }
+        const billingStatus = this.normalizeBillingStatus(item.billingStatus, planTier);
+        if (billingStatus === "trial") {
+          acc.trialTenants += 1;
+        } else if (billingStatus === "active_paid") {
+          acc.paidTenants += 1;
+        } else if (billingStatus === "past_due") {
+          acc.pastDueTenants += 1;
+        } else {
+          acc.cancelledTenants += 1;
+        }
+        const accessStatus = this.normalizeAccessStatus(item.accessStatus);
+        if (accessStatus === "suspended") {
+          acc.suspendedTenants += 1;
+        } else {
+          acc.activeAccessTenants += 1;
+        }
+        return acc;
+      },
+      {
+        totalTenants: 0,
+        activeWorkspaces: 0,
+        inactiveWorkspaces: 0,
+        starterTenants: 0,
+        growthTenants: 0,
+        enterpriseTenants: 0,
+        trialTenants: 0,
+        paidTenants: 0,
+        pastDueTenants: 0,
+        cancelledTenants: 0,
+        activeAccessTenants: 0,
+        suspendedTenants: 0,
+      },
+    );
     return {
       totalTenants: Number(row.totalTenants ?? 0),
       activeWorkspaces: Number(row.activeWorkspaces ?? 0),
@@ -1168,6 +1157,174 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   private normalizeOptionalEmail(value: string | null | undefined): string | null {
     const normalized = String(value ?? "").trim().toLowerCase();
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private async findCommercialAdminMatchTenantKeys(query: string): Promise<Set<string>> {
+    const matches = await this.prismaDirect.getClient().authIdentity.findMany({
+      where: {
+        role: {
+          equals: "admin",
+          mode: "insensitive",
+        },
+        isActive: true,
+        userId: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
+      select: {
+        tenantKey: true,
+      },
+    });
+    return new Set(matches.map((match) => normalizeTenantKey(match.tenantKey)));
+  }
+
+  private rankCommercialTenantMatch(
+    row: CommercialTenantSearchRow & { updatedAt: Date },
+    exactQuery: string,
+    query: string,
+    hasQuery: boolean,
+    matchingAdminTenantKeys: Set<string>,
+  ): number {
+    if (!hasQuery) {
+      return 0;
+    }
+    const tenantKey = String(row.tenantKey ?? "").trim().toLowerCase();
+    const workspaceSlug = String(row.workspaceSlug ?? "").trim().toLowerCase();
+    const displayName = String(row.displayName ?? "").trim().toLowerCase();
+    const fuzzyQuery = query.toLowerCase();
+    if (tenantKey === exactQuery) {
+      return 0;
+    }
+    if (workspaceSlug === exactQuery) {
+      return 1;
+    }
+    if (displayName === exactQuery) {
+      return 2;
+    }
+    if (tenantKey.includes(fuzzyQuery)) {
+      return 3;
+    }
+    if (workspaceSlug.includes(fuzzyQuery)) {
+      return 4;
+    }
+    if (displayName.includes(fuzzyQuery)) {
+      return 5;
+    }
+    if (matchingAdminTenantKeys.has(normalizeTenantKey(row.tenantKey))) {
+      return 6;
+    }
+    return 7;
+  }
+
+  private async buildCommercialTenantRows(
+    workspaces: CommercialWorkspaceCandidate[],
+  ): Promise<Array<CommercialTenantSearchRow & { updatedAt: Date }>> {
+    const tenantKeys = this.uniqueNormalizedTenantKeys(workspaces.map((workspace) => workspace.tenantKey));
+    if (tenantKeys.length === 0) {
+      return [];
+    }
+
+    const db = this.prismaDirect.getClient();
+
+    const [profiles, latestUsageRows, adminIdentities] = await Promise.all([
+      db.tenantPlanProfile.findMany({
+        where: {
+          tenantKey: { in: tenantKeys },
+        },
+        select: {
+          tenantKey: true,
+          planTier: true,
+          billingStatus: true,
+          accessStatus: true,
+          trialEndsAt: true,
+          paidThroughAt: true,
+          graceEndsAt: true,
+          cancelledAt: true,
+          suspendedAt: true,
+          suspensionReason: true,
+          billingContactEmail: true,
+        },
+      }),
+      db.planUsage.findMany({
+        where: {
+          tenantKey: { in: tenantKeys },
+        },
+        select: {
+          tenantKey: true,
+          planTier: true,
+          month: true,
+          updatedAt: true,
+        },
+        orderBy: [{ tenantKey: "asc" }, { month: "desc" }, { updatedAt: "desc" }],
+      }),
+      db.authIdentity.findMany({
+        where: {
+          tenantKey: { in: tenantKeys },
+          role: {
+            equals: "admin",
+            mode: "insensitive",
+          },
+          isActive: true,
+        },
+        select: {
+          tenantKey: true,
+          userId: true,
+        },
+        orderBy: [{ tenantKey: "asc" }, { userId: "asc" }],
+      }),
+    ]);
+
+    const profileMap = new Map(profiles.map((profile) => [normalizeTenantKey(profile.tenantKey), profile]));
+    const latestUsageMap = new Map<string, string>();
+    for (const usage of latestUsageRows) {
+      const tenantKey = normalizeTenantKey(usage.tenantKey);
+      if (!latestUsageMap.has(tenantKey)) {
+        latestUsageMap.set(tenantKey, usage.planTier);
+      }
+    }
+    const adminMap = new Map<string, string[]>();
+    for (const identity of adminIdentities) {
+      const tenantKey = normalizeTenantKey(identity.tenantKey);
+      const current = adminMap.get(tenantKey) ?? [];
+      if (current.length < 5) {
+        current.push(String(identity.userId ?? "").trim().toLowerCase());
+        adminMap.set(tenantKey, current);
+      }
+    }
+
+    return workspaces.map((workspace) => {
+      const tenantKey = normalizeTenantKey(workspace.tenantKey);
+      const profile = profileMap.get(tenantKey);
+      return {
+        tenantKey,
+        workspaceSlug: workspace.workspaceSlug,
+        displayName: workspace.displayName,
+        workspaceIsActive: workspace.workspaceIsActive,
+        planTier: profile?.planTier ?? latestUsageMap.get(tenantKey) ?? "STARTER",
+        billingStatus: profile?.billingStatus ?? null,
+        accessStatus: profile?.accessStatus ?? null,
+        trialEndsAt: profile?.trialEndsAt ?? null,
+        paidThroughAt: profile?.paidThroughAt ?? null,
+        graceEndsAt: profile?.graceEndsAt ?? null,
+        cancelledAt: profile?.cancelledAt ?? null,
+        suspendedAt: profile?.suspendedAt ?? null,
+        suspensionReason: profile?.suspensionReason ?? null,
+        billingContactEmail: profile?.billingContactEmail ?? null,
+        adminEmails: adminMap.get(tenantKey) ?? [],
+        updatedAt: workspace.updatedAt,
+      };
+    });
+  }
+
+  private uniqueNormalizedTenantKeys(values: string[]): string[] {
+    return Array.from(
+      new Set(
+        values
+          .map((value) => normalizeTenantKey(value))
+          .filter((value) => value.length > 0),
+      ),
+    );
   }
 
   private mapCommercialTenantSearchRow(row: CommercialTenantSearchRow): CommercialTenantSearchResult {

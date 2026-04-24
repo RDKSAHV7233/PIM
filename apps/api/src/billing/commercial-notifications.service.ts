@@ -107,7 +107,7 @@ export class CommercialNotificationsService {
       textLines.push(`Notes: ${input.request.notes}`);
     }
     textLines.push("");
-    textLines.push("Review this request in the TEJ commercial workflow.");
+    textLines.push("Review this request in the Vexa commercial workflow.");
 
     const html = [
       `<p>${this.escapeHtml(`${input.request.requestedBy} requested a commercial plan review.`)}</p>`,
@@ -125,7 +125,7 @@ export class CommercialNotificationsService {
         ? `<tr><td><strong>Notes</strong></td><td>${this.escapeHtml(input.request.notes)}</td></tr>`
         : "",
       "</table>",
-      "<p>Review this request in the TEJ commercial workflow.</p>",
+      "<p>Review this request in the Vexa commercial workflow.</p>",
     ].join("");
 
     await this.authEmailService.send({
@@ -180,7 +180,7 @@ export class CommercialNotificationsService {
     const subject = this.buildUpgradeRequestStatusSubject(input.request.status, displayName);
     const statusLabel = this.presentUpgradeRequestStatus(input.request.status);
     const textLines = [
-      `Your TEJ PIM upgrade request is now ${statusLabel}.`,
+      `Your Vexa PIM upgrade request is now ${statusLabel}.`,
       "",
       `Workspace: ${displayName}`,
       `Workspace slug: ${workspaceSlug}`,
@@ -222,7 +222,7 @@ export class CommercialNotificationsService {
           to: recipient,
           subject,
           text: textLines.join("\n"),
-          html: `<p>${this.escapeHtml(`Your TEJ PIM upgrade request is now ${statusLabel}.`)}</p><table>${tableRows}</table><p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
+          html: `<p>${this.escapeHtml(`Your Vexa PIM upgrade request is now ${statusLabel}.`)}</p><table>${tableRows}</table><p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
           category: "commercial_status_notice",
           metadata: {
             event: "commercial_upgrade_request_status_updated",
@@ -376,13 +376,13 @@ export class CommercialNotificationsService {
   private resolveCommercialContactLine(): string {
     const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim();
     if (contactUrl) {
-      return `If you need help, contact TEJ commercial ops at ${contactUrl}.`;
+      return `If you need help, contact Vexa commercial ops at ${contactUrl}.`;
     }
     const contactEmail = String(process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim();
     if (contactEmail) {
-      return `If you need help, contact TEJ commercial ops at ${contactEmail}.`;
+      return `If you need help, contact Vexa commercial ops at ${contactEmail}.`;
     }
-    return "If you need help, contact TEJ commercial ops.";
+    return "If you need help, contact Vexa commercial ops.";
   }
 
   private buildUpgradeRequestStatusSubject(status: string, displayName: string): string {

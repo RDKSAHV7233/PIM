@@ -1,5 +1,5 @@
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsOptional, IsString, MaxLength } from "class-validator";
-import { MARKETPLACE_CHANNELS } from "./simulate-marketplace.dto";
+import { MARKETPLACE_CHANNELS } from "../marketplace-channels";
 
 export class BatchMarketplaceReadinessDto {
   @IsArray()

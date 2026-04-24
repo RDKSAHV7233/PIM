@@ -1,6 +1,11 @@
+import { Prisma } from "@prisma/client";
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import {
+  isMarketplaceChannel,
+  mapMarketplaceChannelToConnectorSlug,
+} from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 
 export interface MetricEventInput {
@@ -43,6 +48,52 @@ export interface KpiTrendsResponse {
 
 const MAX_TREND_DAYS = 90;
 const DEFAULT_TREND_DAYS = 30;
+const METRIC_EVENT_KEYS = [
+  "readiness.accuracy_percent",
+  "throughput.export_jobs_per_second",
+  "submission.rejected",
+  "submission.total",
+  "reliability.duplicate_prevented",
+  "reliability.attempt_total",
+  "mapping.completion_percent",
+  "signup.request_total",
+  "signup.verification_total",
+  "signup.hours_to_verify",
+] as const;
+const EXPORT_JOB_TREND_STATUSES = ["completed", "retrying", "failed", "dead_letter"] as const;
+
+type MetricEventRow = {
+  observedAt: Date;
+  connectorSlug: string | null;
+  metricKey: string;
+  metricValue: number;
+};
+
+type ExportJobTrendRow = {
+  updatedAt: Date;
+  channel: string;
+  status: string;
+  retryCount: number;
+};
+
+type InstallationTrendRow = {
+  connectorId: string;
+  installedAt: Date;
+};
+
+type ConnectorDefinitionRow = {
+  id: string;
+  slug: string;
+};
+
+type IssueOpenedRow = {
+  createdAt: Date;
+};
+
+type IssueResolvedRow = {
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class MetricsService {
@@ -60,300 +111,111 @@ export class MetricsService {
       return;
     }
 
-    const tags = input.tags ?? {};
+    const tags = (input.tags ?? {}) as Prisma.InputJsonValue;
     const observedAt = input.observedAt ?? new Date();
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-      `
-      INSERT INTO kpi_metric_events (
-        id,
-        tenant_key,
-        connector_slug,
-        metric_key,
-        metric_value,
+    await this.prisma.tenant(tenantKey).kpiMetricEvent.create({
+      data: {
+        id: randomUUID(),
+        tenantKey,
+        connectorSlug,
+        metricKey,
+        metricValue: Number(input.metricValue),
         unit,
         tags,
-        observed_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7::jsonb, $8
-      )
-      `,
-      randomUUID(),
-      tenantKey,
-      connectorSlug,
-      metricKey,
-      Number(input.metricValue),
-      unit,
-      JSON.stringify(tags),
-      observedAt,
-    );
+        observedAt,
+      },
+    });
   }
 
   async getKpiTrends(tenantKeyInput: string, daysInput?: number): Promise<KpiTrendsResponse> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
     const rangeDays = this.resolveTrendDays(daysInput);
     const fromDate = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
+    const tenantClient = this.prisma.tenant(tenantKey);
+    const [metricEvents, exportJobs, installations, openedIssues, resolvedIssues] = await Promise.all([
+      tenantClient.kpiMetricEvent.findMany({
+        where: {
+          observedAt: { gte: fromDate },
+          metricKey: { in: [...METRIC_EVENT_KEYS] },
+        },
+        select: {
+          observedAt: true,
+          connectorSlug: true,
+          metricKey: true,
+          metricValue: true,
+        },
+      }),
+      tenantClient.marketplaceExportJob.findMany({
+        where: {
+          updatedAt: { gte: fromDate },
+          status: { in: [...EXPORT_JOB_TREND_STATUSES] },
+        },
+        select: {
+          updatedAt: true,
+          channel: true,
+          status: true,
+          retryCount: true,
+        },
+      }),
+      tenantClient.connectorInstallation.findMany({
+        select: {
+          connectorId: true,
+          installedAt: true,
+        },
+      }),
+      tenantClient.validationIssue.findMany({
+        where: {
+          severity: "error",
+          createdAt: { gte: fromDate },
+        },
+        select: {
+          createdAt: true,
+        },
+      }),
+      tenantClient.validationIssue.findMany({
+        where: {
+          severity: "error",
+          status: "resolved",
+          updatedAt: { gte: fromDate },
+        },
+        select: {
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
 
-    // RLS-BYPASS: manual tenant filter
-    const readinessRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ date: string; value: number }>>(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        ROUND(AVG(metric_value)::numeric, 2)::float8 AS value
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key = 'readiness.accuracy_percent'
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at)
-      ORDER BY DATE(observed_at) ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
+    const connectorDefinitionIds = Array.from(new Set(installations.map((row) => row.connectorId).filter(Boolean)));
+    const connectorDefinitions = connectorDefinitionIds.length
+      ? await tenantClient.connectorDefinition.findMany({
+          where: {
+            id: {
+              in: connectorDefinitionIds,
+            },
+          },
+          select: {
+            id: true,
+            slug: true,
+          },
+        })
+      : [];
 
-    // RLS-BYPASS: manual tenant filter
-    const throughputRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; value: number }>
-    >(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        COALESCE(connector_slug, 'unknown') AS "connectorSlug",
-        ROUND(AVG(metric_value)::numeric, 4)::float8 AS value
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key = 'throughput.export_jobs_per_second'
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at), COALESCE(connector_slug, 'unknown')
-      ORDER BY DATE(observed_at) ASC, COALESCE(connector_slug, 'unknown') ASC
-      `,
-      tenantKey,
-      fromDate,
+    const readinessRows = this.buildAverageMetricTrend(metricEvents, "readiness.accuracy_percent", 2);
+    const throughputRows = this.buildAverageConnectorMetricTrend(metricEvents, "throughput.export_jobs_per_second", 4);
+    const rejectionRows = this.buildConnectorRateTrend(metricEvents, "submission.rejected", "submission.total");
+    const reliabilityRows = this.buildConnectorRateTrend(
+      metricEvents,
+      "reliability.duplicate_prevented",
+      "reliability.attempt_total",
     );
-
-    // RLS-BYPASS: manual tenant filter
-    const rejectionRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; rejected: number; total: number }>
-    >(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        COALESCE(connector_slug, 'unknown') AS "connectorSlug",
-        SUM(CASE WHEN metric_key = 'submission.rejected' THEN metric_value ELSE 0 END)::float8 AS rejected,
-        SUM(CASE WHEN metric_key = 'submission.total' THEN metric_value ELSE 0 END)::float8 AS total
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key IN ('submission.rejected', 'submission.total')
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at), COALESCE(connector_slug, 'unknown')
-      ORDER BY DATE(observed_at) ASC, COALESCE(connector_slug, 'unknown') ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const reliabilityRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; duplicatePrevented: number; attempts: number }>
-    >(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        COALESCE(connector_slug, 'unknown') AS "connectorSlug",
-        SUM(CASE WHEN metric_key = 'reliability.duplicate_prevented' THEN metric_value ELSE 0 END)::float8 AS "duplicatePrevented",
-        SUM(CASE WHEN metric_key = 'reliability.attempt_total' THEN metric_value ELSE 0 END)::float8 AS attempts
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key IN ('reliability.duplicate_prevented', 'reliability.attempt_total')
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at), COALESCE(connector_slug, 'unknown')
-      ORDER BY DATE(observed_at) ASC, COALESCE(connector_slug, 'unknown') ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const mappingCompletionRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; value: number }>
-    >(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        COALESCE(connector_slug, 'unknown') AS "connectorSlug",
-        ROUND(AVG(metric_value)::numeric, 2)::float8 AS value
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key = 'mapping.completion_percent'
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at), COALESCE(connector_slug, 'unknown')
-      ORDER BY DATE(observed_at) ASC, COALESCE(connector_slug, 'unknown') ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const firstPublishRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; successful: number; total: number }>
-    >(
-      `
-      SELECT
-        DATE("updatedAt")::text AS date,
-        CASE channel::text
-          WHEN 'amazon' THEN 'amazon-in'
-          ELSE channel::text
-        END AS "connectorSlug",
-        SUM(CASE WHEN status = 'completed' AND "retryCount" = 0 THEN 1 ELSE 0 END)::float8 AS successful,
-        SUM(CASE WHEN status IN ('completed', 'retrying', 'failed', 'dead_letter') THEN 1 ELSE 0 END)::float8 AS total
-      FROM "MarketplaceExportJob"
-      WHERE "tenantKey" = $1
-        AND "updatedAt" >= $2
-      GROUP BY DATE("updatedAt"), CASE channel::text
-        WHEN 'amazon' THEN 'amazon-in'
-        ELSE channel::text
-      END
-      ORDER BY DATE("updatedAt") ASC, CASE channel::text
-        WHEN 'amazon' THEN 'amazon-in'
-        ELSE channel::text
-      END ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const setupTimeRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; connectorSlug: string; value: number }>
-    >(
-      `
-      SELECT
-        DATE(inst.first_completed_at)::text AS date,
-        inst.connector_slug AS "connectorSlug",
-        ROUND(AVG(inst.hours_to_first_publish)::numeric, 2)::float8 AS value
-      FROM (
-        SELECT
-          cd.slug AS connector_slug,
-          first_job.first_completed_at,
-          EXTRACT(EPOCH FROM (first_job.first_completed_at - (ci.installed_at AT TIME ZONE 'UTC'))) / 3600.0 AS hours_to_first_publish
-        FROM connector_installations ci
-        JOIN connector_definitions cd ON cd.id = ci.connector_id
-        JOIN LATERAL (
-          SELECT MIN(mej."updatedAt") AS first_completed_at
-          FROM "MarketplaceExportJob" mej
-          WHERE mej."tenantKey" = ci.tenant_key
-            AND (
-              CASE mej.channel::text
-                WHEN 'amazon' THEN 'amazon-in'
-                ELSE mej.channel::text
-              END
-            ) = cd.slug
-            AND mej.status = 'completed'
-            AND mej."updatedAt" >= (ci.installed_at AT TIME ZONE 'UTC')
-        ) first_job ON first_job.first_completed_at IS NOT NULL
-        WHERE ci.tenant_key = $1
-          AND first_job.first_completed_at >= $2
-      ) inst
-      GROUP BY DATE(inst.first_completed_at), inst.connector_slug
-      ORDER BY DATE(inst.first_completed_at) ASC, inst.connector_slug ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const signupRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; requested: number; verified: number }>
-    >(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        SUM(CASE WHEN metric_key = 'signup.request_total' THEN metric_value ELSE 0 END)::float8 AS requested,
-        SUM(CASE WHEN metric_key = 'signup.verification_total' THEN metric_value ELSE 0 END)::float8 AS verified
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key IN ('signup.request_total', 'signup.verification_total')
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at)
-      ORDER BY DATE(observed_at) ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const signupTimeToVerifyRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ date: string; value: number }>>(
-      `
-      SELECT
-        DATE(observed_at)::text AS date,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY metric_value)::float8 AS value
-      FROM kpi_metric_events
-      WHERE tenant_key = $1
-        AND metric_key = 'signup.hours_to_verify'
-        AND observed_at >= $2
-      GROUP BY DATE(observed_at)
-      ORDER BY DATE(observed_at) ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const blockerResolutionRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; resolved: number; opened: number }>
-    >(
-      `
-      WITH opened AS (
-        SELECT DATE("createdAt")::text AS date, COUNT(*)::float8 AS opened
-        FROM "ValidationIssue"
-        WHERE "tenantKey" = $1
-          AND severity = 'error'
-          AND "createdAt" >= $2
-        GROUP BY DATE("createdAt")
-      ),
-      resolved AS (
-        SELECT DATE("updatedAt")::text AS date, COUNT(*)::float8 AS resolved
-        FROM "ValidationIssue"
-        WHERE "tenantKey" = $1
-          AND severity = 'error'
-          AND status = 'resolved'
-          AND "updatedAt" >= $2
-        GROUP BY DATE("updatedAt")
-      )
-      SELECT
-        COALESCE(opened.date, resolved.date) AS date,
-        COALESCE(resolved.resolved, 0)::float8 AS resolved,
-        COALESCE(opened.opened, 0)::float8 AS opened
-      FROM opened
-      FULL OUTER JOIN resolved ON resolved.date = opened.date
-      ORDER BY COALESCE(opened.date, resolved.date) ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
-
-    // RLS-BYPASS: manual tenant filter
-    const blockerResolutionTimeRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<
-      Array<{ date: string; value: number }>
-    >(
-      `
-      SELECT
-        DATE("updatedAt")::text AS date,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM ("updatedAt" - "createdAt")) / 3600.0
-        )::float8 AS value
-      FROM "ValidationIssue"
-      WHERE "tenantKey" = $1
-        AND severity = 'error'
-        AND status = 'resolved'
-        AND "updatedAt" >= $2
-      GROUP BY DATE("updatedAt")
-      ORDER BY DATE("updatedAt") ASC
-      `,
-      tenantKey,
-      fromDate,
-    );
+    const mappingCompletionRows = this.buildAverageConnectorMetricTrend(metricEvents, "mapping.completion_percent", 2);
+    const firstPublishRows = this.buildFirstPublishSuccessRate(exportJobs);
+    const setupTimeRows = this.buildSetupTimeToFirstPublish(installations, connectorDefinitions, exportJobs, fromDate);
+    const signupRows = this.buildSignupRows(metricEvents);
+    const signupTimeToVerifyRows = this.buildMedianMetricTrend(metricEvents, "signup.hours_to_verify", 2);
+    const blockerResolutionRows = this.buildBlockerResolutionRate(openedIssues, resolvedIssues);
+    const blockerResolutionTimeRows = this.buildMedianBlockerResolutionHours(resolvedIssues);
 
     return {
       tenantId: tenantKey,
@@ -368,32 +230,14 @@ export class MetricsService {
         connectorSlug: row.connectorSlug,
         value: this.roundMetric(row.value, 4),
       })),
-      rejectionRate: rejectionRows
-        .filter((row) => row.total > 0)
-        .map((row) => ({
-          date: row.date,
-          connectorSlug: row.connectorSlug,
-          value: this.roundMetric((row.rejected / row.total) * 100, 2),
-        })),
-      reliabilityDuplicatePreventionRate: reliabilityRows
-        .filter((row) => row.attempts > 0)
-        .map((row) => ({
-          date: row.date,
-          connectorSlug: row.connectorSlug,
-          value: this.roundMetric((row.duplicatePrevented / row.attempts) * 100, 2),
-        })),
+      rejectionRate: rejectionRows,
+      reliabilityDuplicatePreventionRate: reliabilityRows,
       mappingCompletionRate: mappingCompletionRows.map((row) => ({
         date: row.date,
         connectorSlug: row.connectorSlug,
         value: this.roundMetric(row.value, 2),
       })),
-      firstPublishSuccessRate: firstPublishRows
-        .filter((row) => row.total > 0)
-        .map((row) => ({
-          date: row.date,
-          connectorSlug: row.connectorSlug,
-          value: this.roundMetric((row.successful / row.total) * 100, 2),
-        })),
+      firstPublishSuccessRate: firstPublishRows,
       setupTimeToFirstPublishHours: setupTimeRows.map((row) => ({
         date: row.date,
         connectorSlug: row.connectorSlug,
@@ -412,18 +256,301 @@ export class MetricsService {
         date: row.date,
         value: this.roundMetric(row.value, 2),
       })),
-      blockerResolutionRate: blockerResolutionRows.map((row) => {
-        const denominator = row.resolved + row.opened;
-        return {
-          date: row.date,
-          value: this.roundMetric(denominator > 0 ? (row.resolved / denominator) * 100 : 0, 2),
-        };
-      }),
+      blockerResolutionRate: blockerResolutionRows,
       medianBlockerResolutionHours: blockerResolutionTimeRows.map((row) => ({
         date: row.date,
         value: this.roundMetric(row.value, 2),
       })),
     };
+  }
+
+  private buildAverageMetricTrend(events: MetricEventRow[], metricKey: string, digits: number): TrendPoint[] {
+    const totals = new Map<string, { total: number; count: number }>();
+
+    for (const event of events) {
+      if (event.metricKey !== metricKey) {
+        continue;
+      }
+      const date = this.toDateKey(event.observedAt);
+      const current = totals.get(date) ?? { total: 0, count: 0 };
+      current.total += Number(event.metricValue ?? 0);
+      current.count += 1;
+      totals.set(date, current);
+    }
+
+    return Array.from(totals.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, value]) => ({
+        date,
+        value: this.roundMetric(value.count > 0 ? value.total / value.count : 0, digits),
+      }));
+  }
+
+  private buildAverageConnectorMetricTrend(
+    events: MetricEventRow[],
+    metricKey: string,
+    digits: number,
+  ): ConnectorTrendPoint[] {
+    const totals = new Map<string, { date: string; connectorSlug: string; total: number; count: number }>();
+
+    for (const event of events) {
+      if (event.metricKey !== metricKey) {
+        continue;
+      }
+      const date = this.toDateKey(event.observedAt);
+      const connectorSlug = this.normalizeConnectorSlug(event.connectorSlug);
+      const key = `${date}::${connectorSlug}`;
+      const current = totals.get(key) ?? { date, connectorSlug, total: 0, count: 0 };
+      current.total += Number(event.metricValue ?? 0);
+      current.count += 1;
+      totals.set(key, current);
+    }
+
+    return Array.from(totals.values())
+      .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
+      .map((row) => ({
+        date: row.date,
+        connectorSlug: row.connectorSlug,
+        value: this.roundMetric(row.count > 0 ? row.total / row.count : 0, digits),
+      }));
+  }
+
+  private buildConnectorRateTrend(
+    events: MetricEventRow[],
+    numeratorKey: string,
+    denominatorKey: string,
+  ): ConnectorTrendPoint[] {
+    const aggregates = new Map<string, { date: string; connectorSlug: string; numerator: number; denominator: number }>();
+
+    for (const event of events) {
+      if (event.metricKey !== numeratorKey && event.metricKey !== denominatorKey) {
+        continue;
+      }
+      const date = this.toDateKey(event.observedAt);
+      const connectorSlug = this.normalizeConnectorSlug(event.connectorSlug);
+      const key = `${date}::${connectorSlug}`;
+      const current = aggregates.get(key) ?? { date, connectorSlug, numerator: 0, denominator: 0 };
+      if (event.metricKey === numeratorKey) {
+        current.numerator += Number(event.metricValue ?? 0);
+      }
+      if (event.metricKey === denominatorKey) {
+        current.denominator += Number(event.metricValue ?? 0);
+      }
+      aggregates.set(key, current);
+    }
+
+    return Array.from(aggregates.values())
+      .filter((row) => row.denominator > 0)
+      .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
+      .map((row) => ({
+        date: row.date,
+        connectorSlug: row.connectorSlug,
+        value: this.roundMetric((row.numerator / row.denominator) * 100, 2),
+      }));
+  }
+
+  private buildFirstPublishSuccessRate(exportJobs: ExportJobTrendRow[]): ConnectorTrendPoint[] {
+    const aggregates = new Map<string, { date: string; connectorSlug: string; successful: number; total: number }>();
+
+    for (const job of exportJobs) {
+      const date = this.toDateKey(job.updatedAt);
+      const connectorSlug = this.normalizeChannelSlug(job.channel);
+      const key = `${date}::${connectorSlug}`;
+      const current = aggregates.get(key) ?? { date, connectorSlug, successful: 0, total: 0 };
+      current.total += 1;
+      if (job.status === "completed" && Number(job.retryCount ?? 0) === 0) {
+        current.successful += 1;
+      }
+      aggregates.set(key, current);
+    }
+
+    return Array.from(aggregates.values())
+      .filter((row) => row.total > 0)
+      .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
+      .map((row) => ({
+        date: row.date,
+        connectorSlug: row.connectorSlug,
+        value: this.roundMetric((row.successful / row.total) * 100, 2),
+      }));
+  }
+
+  private buildSetupTimeToFirstPublish(
+    installations: InstallationTrendRow[],
+    connectorDefinitions: ConnectorDefinitionRow[],
+    exportJobs: ExportJobTrendRow[],
+    fromDate: Date,
+  ): ConnectorTrendPoint[] {
+    const slugByConnectorId = new Map(connectorDefinitions.map((row) => [row.id, row.slug]));
+    const completedByConnector = new Map<string, Date[]>();
+
+    for (const job of exportJobs) {
+      if (job.status !== "completed") {
+        continue;
+      }
+      const connectorSlug = this.normalizeChannelSlug(job.channel);
+      const rows = completedByConnector.get(connectorSlug) ?? [];
+      rows.push(job.updatedAt);
+      completedByConnector.set(connectorSlug, rows);
+    }
+
+    for (const rows of completedByConnector.values()) {
+      rows.sort((left, right) => left.getTime() - right.getTime());
+    }
+
+    const aggregates = new Map<string, { date: string; connectorSlug: string; totalHours: number; count: number }>();
+
+    for (const installation of installations) {
+      const connectorSlug = slugByConnectorId.get(installation.connectorId);
+      if (!connectorSlug) {
+        continue;
+      }
+      const completedRows = completedByConnector.get(connectorSlug);
+      if (!completedRows?.length) {
+        continue;
+      }
+      const firstCompletedAt = completedRows.find((value) => value.getTime() >= installation.installedAt.getTime());
+      if (!firstCompletedAt || firstCompletedAt.getTime() < fromDate.getTime()) {
+        continue;
+      }
+
+      const date = this.toDateKey(firstCompletedAt);
+      const key = `${date}::${connectorSlug}`;
+      const current = aggregates.get(key) ?? { date, connectorSlug, totalHours: 0, count: 0 };
+      current.totalHours += (firstCompletedAt.getTime() - installation.installedAt.getTime()) / (60 * 60 * 1000);
+      current.count += 1;
+      aggregates.set(key, current);
+    }
+
+    return Array.from(aggregates.values())
+      .sort((left, right) => left.date.localeCompare(right.date) || left.connectorSlug.localeCompare(right.connectorSlug))
+      .map((row) => ({
+        date: row.date,
+        connectorSlug: row.connectorSlug,
+        value: this.roundMetric(row.count > 0 ? row.totalHours / row.count : 0, 2),
+      }));
+  }
+
+  private buildSignupRows(events: MetricEventRow[]): Array<{ date: string; requested: number; verified: number }> {
+    const signupRows = new Map<string, { requested: number; verified: number }>();
+
+    for (const event of events) {
+      if (event.metricKey !== "signup.request_total" && event.metricKey !== "signup.verification_total") {
+        continue;
+      }
+      const date = this.toDateKey(event.observedAt);
+      const current = signupRows.get(date) ?? { requested: 0, verified: 0 };
+      if (event.metricKey === "signup.request_total") {
+        current.requested += Number(event.metricValue ?? 0);
+      }
+      if (event.metricKey === "signup.verification_total") {
+        current.verified += Number(event.metricValue ?? 0);
+      }
+      signupRows.set(date, current);
+    }
+
+    return Array.from(signupRows.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, value]) => ({
+        date,
+        requested: value.requested,
+        verified: value.verified,
+      }));
+  }
+
+  private buildMedianMetricTrend(events: MetricEventRow[], metricKey: string, digits: number): TrendPoint[] {
+    const valuesByDate = new Map<string, number[]>();
+
+    for (const event of events) {
+      if (event.metricKey !== metricKey) {
+        continue;
+      }
+      const date = this.toDateKey(event.observedAt);
+      const values = valuesByDate.get(date) ?? [];
+      values.push(Number(event.metricValue ?? 0));
+      valuesByDate.set(date, values);
+    }
+
+    return Array.from(valuesByDate.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, values]) => ({
+        date,
+        value: this.roundMetric(this.calculateMedian(values), digits),
+      }));
+  }
+
+  private buildBlockerResolutionRate(openedIssues: IssueOpenedRow[], resolvedIssues: IssueResolvedRow[]): TrendPoint[] {
+    const rowsByDate = new Map<string, { opened: number; resolved: number }>();
+
+    for (const issue of openedIssues) {
+      const date = this.toDateKey(issue.createdAt);
+      const current = rowsByDate.get(date) ?? { opened: 0, resolved: 0 };
+      current.opened += 1;
+      rowsByDate.set(date, current);
+    }
+
+    for (const issue of resolvedIssues) {
+      const date = this.toDateKey(issue.updatedAt);
+      const current = rowsByDate.get(date) ?? { opened: 0, resolved: 0 };
+      current.resolved += 1;
+      rowsByDate.set(date, current);
+    }
+
+    return Array.from(rowsByDate.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, value]) => {
+        const denominator = value.opened + value.resolved;
+        return {
+          date,
+          value: this.roundMetric(denominator > 0 ? (value.resolved / denominator) * 100 : 0, 2),
+        };
+      });
+  }
+
+  private buildMedianBlockerResolutionHours(resolvedIssues: IssueResolvedRow[]): TrendPoint[] {
+    const valuesByDate = new Map<string, number[]>();
+
+    for (const issue of resolvedIssues) {
+      const date = this.toDateKey(issue.updatedAt);
+      const values = valuesByDate.get(date) ?? [];
+      values.push((issue.updatedAt.getTime() - issue.createdAt.getTime()) / (60 * 60 * 1000));
+      valuesByDate.set(date, values);
+    }
+
+    return Array.from(valuesByDate.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, values]) => ({
+        date,
+        value: this.roundMetric(this.calculateMedian(values), 2),
+      }));
+  }
+
+  private calculateMedian(values: number[]): number {
+    if (values.length === 0) {
+      return 0;
+    }
+    const sorted = [...values].sort((left, right) => left - right);
+    const middle = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+      return (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+    return sorted[middle];
+  }
+
+  private normalizeChannelSlug(channel: string | null | undefined): string {
+    const normalized = String(channel ?? "").trim().toLowerCase();
+    if (isMarketplaceChannel(normalized)) {
+      return mapMarketplaceChannelToConnectorSlug(normalized);
+    }
+    return normalized || "unknown";
+  }
+
+  private normalizeConnectorSlug(connectorSlug: string | null | undefined): string {
+    const normalized = String(connectorSlug ?? "").trim().toLowerCase();
+    return normalized || "unknown";
+  }
+
+  private toDateKey(value: Date): string {
+    return value.toISOString().slice(0, 10);
   }
 
   private resolveTrendDays(input?: number): number {

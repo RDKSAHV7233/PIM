@@ -41,6 +41,24 @@ type CreateNotificationInput = NotificationRecipient & {
 
 const REVIEWER_VISIBLE_TYPES: readonly NotificationEventType[] = ["approval_decision"];
 
+const NOTIFICATION_SELECT = {
+  id: true,
+  eventType: true,
+  title: true,
+  message: true,
+  actionUrl: true,
+  actionLabel: true,
+  metadata: true,
+  readAt: true,
+  createdAt: true,
+} satisfies Prisma.UserNotificationSelect;
+
+const NOTIFICATION_ORDER_BY: Prisma.UserNotificationOrderByWithRelationInput[] = [
+  { readAt: { sort: "asc", nulls: "first" } },
+  { createdAt: "desc" },
+  { id: "desc" },
+];
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -50,69 +68,22 @@ export class NotificationsService {
 
   async listForUser(userId: string, role: AppRole, pagination?: CursorPaginationQuery) {
     const unreadCount = await this.countUnread(userId, role);
-    const eventFilter = role === "reviewer" ? REVIEWER_VISIBLE_TYPES : null;
+    const baseWhere = this.buildNotificationWhere(userId, role);
 
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
+      const tokenId = typeof token?.id === "string" ? token.id.trim() : "";
       const cursor = this.parseNotificationCursor(token?.sort);
-      if (pagination?.cursor && (!token || !cursor)) {
+      if (pagination?.cursor && (!token || !tokenId || !cursor)) {
         throw new BadRequestException("Invalid cursor.");
       }
-
-      const params: Array<string | number | Date | string[]> = [userId];
-      const clauses = ["user_id = $1"];
-
-      if (eventFilter) {
-        params.push(eventFilter.slice() as unknown as string[]);
-        clauses.push(`event_type = ANY($${params.length})`);
-      }
-
-      if (token && cursor) {
-        params.push(cursor.readRank);
-        const rankParam = params.length;
-        params.push(cursor.createdAt);
-        const createdAtParam = params.length;
-        params.push(token.id);
-        const idParam = params.length;
-        clauses.push(
-          `(
-            CASE WHEN read_at IS NULL THEN 0 ELSE 1 END > $${rankParam}
-            OR (
-              CASE WHEN read_at IS NULL THEN 0 ELSE 1 END = $${rankParam}
-              AND (
-                created_at < $${createdAtParam}
-                OR (created_at = $${createdAtParam} AND id < $${idParam})
-              )
-            )
-          )`,
-        );
-      }
-
-      params.push(limit + 1);
-      const limitParam = params.length;
-      const whereSql = `WHERE ${clauses.join(" AND ")}`;
-      // RLS-BYPASS: manual tenant filter
-      const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        SELECT
-          id,
-          event_type AS "eventType",
-          title,
-          message,
-          action_url AS "actionUrl",
-          action_label AS "actionLabel",
-          metadata,
-          read_at AS "readAt",
-          created_at AS "createdAt",
-          CASE WHEN read_at IS NULL THEN 0 ELSE 1 END AS "readRank"
-        FROM user_notifications
-        ${whereSql}
-        ORDER BY "readRank" ASC, created_at DESC, id DESC
-        LIMIT $${limitParam}
-        `,
-        ...params,
-      );
+      const rows = await this.prisma.tenant().userNotification.findMany({
+        where: this.buildNotificationPageWhere(baseWhere, tokenId, cursor),
+        orderBy: NOTIFICATION_ORDER_BY,
+        take: limit + 1,
+        select: NOTIFICATION_SELECT,
+      });
 
       const hasNext = rows.length > limit;
       const pageRows = hasNext ? rows.slice(0, limit) : rows;
@@ -128,34 +99,12 @@ export class NotificationsService {
       };
     }
 
-    const params: Array<string | number | string[]> = [userId];
-    const clauses = ["user_id = $1"];
-    if (eventFilter) {
-      params.push(eventFilter.slice() as unknown as string[]);
-      clauses.push(`event_type = ANY($${params.length})`);
-    }
-    params.push(20);
-    const limitParam = params.length;
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        id,
-        event_type AS "eventType",
-        title,
-        message,
-        action_url AS "actionUrl",
-        action_label AS "actionLabel",
-        metadata,
-        read_at AS "readAt",
-        created_at AS "createdAt"
-      FROM user_notifications
-      WHERE ${clauses.join(" AND ")}
-      ORDER BY CASE WHEN read_at IS NULL THEN 0 ELSE 1 END ASC, created_at DESC, id DESC
-      LIMIT $${limitParam}
-      `,
-      ...params,
-    );
+    const rows = await this.prisma.tenant().userNotification.findMany({
+      where: baseWhere,
+      orderBy: NOTIFICATION_ORDER_BY,
+      take: 20,
+      select: NOTIFICATION_SELECT,
+    });
 
     return {
       items: rows.map((row) => this.normalizeRow(row)),
@@ -166,46 +115,32 @@ export class NotificationsService {
   }
 
   async markRead(notificationId: string, userId: string) {
-    // RLS-BYPASS: manual tenant filter
-    const updated = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      UPDATE user_notifications
-      SET read_at = COALESCE(read_at, NOW())
-      WHERE id = $1
-        AND user_id = $2
-      RETURNING id
-      `,
-      notificationId,
-      userId,
-    );
-    if (updated.length === 0) {
+    const updated = await this.prisma.tenant().userNotification.updateMany({
+      where: {
+        id: notificationId,
+        userId,
+      },
+      data: {
+        readAt: new Date(),
+      },
+    });
+    if (updated.count === 0) {
       throw new NotFoundException("Notification not found");
     }
     return { id: notificationId, read: true as const };
   }
 
   async markAllRead(userId: string, role: AppRole) {
-    const eventFilter = role === "reviewer" ? REVIEWER_VISIBLE_TYPES : null;
-    const params: Array<string | string[]> = [userId];
-    const clauses = ["user_id = $1", "read_at IS NULL"];
-    if (eventFilter) {
-      params.push(eventFilter.slice() as unknown as string[]);
-      clauses.push(`event_type = ANY($${params.length})`);
-    }
-    // RLS-BYPASS: manual tenant filter
-    const countRows = await this.prisma.tenant().$queryRawUnsafe<Array<{ count: bigint | number }>>(
-      `
-      WITH updated AS (
-        UPDATE user_notifications
-        SET read_at = NOW()
-        WHERE ${clauses.join(" AND ")}
-        RETURNING id
-      )
-      SELECT COUNT(*)::bigint AS count FROM updated
-      `,
-      ...params,
-    );
-    return { updated: Number(countRows[0]?.count ?? 0) };
+    const updated = await this.prisma.tenant().userNotification.updateMany({
+      where: {
+        ...this.buildNotificationWhere(userId, role),
+        readAt: null,
+      },
+      data: {
+        readAt: new Date(),
+      },
+    });
+    return { updated: updated.count };
   }
 
   async emitImportStatus(jobId: string, status: "completed" | "failed" | "dead_letter") {
@@ -264,25 +199,22 @@ export class NotificationsService {
   }
 
   async emitPublishStatus(jobId: string, status: "completed" | "failed" | "dead_letter") {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        j.id,
-        j."tenantKey" AS "tenantKey",
-        j.created_by AS "createdBy",
-        j.channel,
-        j."failureReason" AS "failureReason",
-        j."productId" AS "productId",
-        p.title AS "productTitle"
-      FROM "MarketplaceExportJob" j
-      JOIN "Product" p ON p.id = j."productId"
-      WHERE j.id = $1
-      LIMIT 1
-      `,
-      jobId,
-    );
-    const job = rows[0];
+    const job = await this.prisma.tenant().marketplaceExportJob.findUnique({
+      where: { id: jobId },
+      select: {
+        id: true,
+        tenantKey: true,
+        createdBy: true,
+        channel: true,
+        failureReason: true,
+        productId: true,
+        product: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
     if (!job) {
       return;
     }
@@ -295,7 +227,7 @@ export class NotificationsService {
     }
 
     const productId = String(job.productId ?? "").trim();
-    const productTitle = String(job.productTitle ?? "Product").trim();
+    const productTitle = String(job.product?.title ?? "Product").trim();
     const channel = String(job.channel ?? "").trim();
     const baseInput = {
       tenantKey: String(job.tenantKey ?? "default").trim() || "default",
@@ -398,70 +330,144 @@ export class NotificationsService {
   }
 
   private async countUnread(userId: string, role: AppRole) {
-    const params: Array<string | string[]> = [userId];
-    const clauses = ["user_id = $1", "read_at IS NULL"];
-    if (role === "reviewer") {
-      params.push(REVIEWER_VISIBLE_TYPES.slice() as unknown as string[]);
-      clauses.push(`event_type = ANY($${params.length})`);
-    }
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ count: bigint | number }>>(
-      `
-      SELECT COUNT(*)::bigint AS count
-      FROM user_notifications
-      WHERE ${clauses.join(" AND ")}
-      `,
-      ...params,
-    );
-    return Number(rows[0]?.count ?? 0);
+    return this.prisma.tenant().userNotification.count({
+      where: {
+        ...this.buildNotificationWhere(userId, role),
+        readAt: null,
+      },
+    });
   }
 
   private async findWriteActor(resource: string, resourceId: string) {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ actorId: string | null }>>(
-      `
-      SELECT actor_id AS "actorId"
-      FROM audit_logs
-      WHERE action = 'POST'
-        AND resource = $1
-        AND resource_id = $2
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      resource,
-      resourceId,
-    );
-    return rows[0]?.actorId ? String(rows[0].actorId).trim() : null;
+    const row = await this.prisma.tenant().auditLog.findFirst({
+      where: {
+        action: "POST",
+        resource,
+        resourceId,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        actorId: true,
+      },
+    });
+    return row?.actorId ? String(row.actorId).trim() : null;
   }
 
   private async findLatestSubmittedForReviewActor(productId: string) {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ actorId: string | null }>>(
-      `
-      SELECT actor_id AS "actorId"
-      FROM audit_logs
-      WHERE action = 'STATUS_TRANSITION'
-        AND resource_id = $1
-        AND COALESCE(metadata->>'toStatus', '') = 'in_review'
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      productId,
-    );
-    return rows[0]?.actorId ? String(rows[0].actorId).trim() : null;
+    const row = await this.prisma.tenant().auditLog.findFirst({
+      where: {
+        action: "STATUS_TRANSITION",
+        resourceId: productId,
+        metadata: {
+          path: ["toStatus"],
+          equals: "in_review",
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        actorId: true,
+      },
+    });
+    return row?.actorId ? String(row.actorId).trim() : null;
   }
 
-  private normalizeRow(row: Record<string, unknown>): NotificationListRow {
+  private normalizeRow(row: {
+    id: string;
+    eventType: string;
+    title: string;
+    message: string;
+    actionUrl: string | null;
+    actionLabel: string | null;
+    metadata: Prisma.JsonValue;
+    readAt: Date | null;
+    createdAt: Date;
+  }): NotificationListRow {
     return {
-      id: String(row.id ?? ""),
-      eventType: String(row.eventType ?? "") as NotificationEventType,
-      title: String(row.title ?? ""),
-      message: String(row.message ?? ""),
-      actionUrl: row.actionUrl ? String(row.actionUrl) : null,
-      actionLabel: row.actionLabel ? String(row.actionLabel) : null,
-      metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : null,
-      readAt: row.readAt instanceof Date ? row.readAt : row.readAt ? String(row.readAt) : null,
-      createdAt: row.createdAt instanceof Date ? row.createdAt : String(row.createdAt ?? ""),
+      id: row.id,
+      eventType: row.eventType as NotificationEventType,
+      title: row.title,
+      message: row.message,
+      actionUrl: row.actionUrl,
+      actionLabel: row.actionLabel,
+      metadata: row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : null,
+      readAt: row.readAt,
+      createdAt: row.createdAt,
+    };
+  }
+
+  private buildNotificationWhere(userId: string, role: AppRole): Prisma.UserNotificationWhereInput {
+    if (role === "reviewer") {
+      return {
+        userId,
+        eventType: {
+          in: [...REVIEWER_VISIBLE_TYPES],
+        },
+      };
+    }
+    return { userId };
+  }
+
+  private buildNotificationPageWhere(
+    baseWhere: Prisma.UserNotificationWhereInput,
+    tokenId: string,
+    cursor: { readRank: number; createdAt: Date } | null,
+  ): Prisma.UserNotificationWhereInput {
+    if (!cursor || !tokenId) {
+      return baseWhere;
+    }
+    return {
+      AND: [
+        baseWhere,
+        this.buildNotificationCursorWhere(tokenId, cursor),
+      ],
+    };
+  }
+
+  private buildNotificationCursorWhere(
+    tokenId: string,
+    cursor: { readRank: number; createdAt: Date },
+  ): Prisma.UserNotificationWhereInput {
+    if (cursor.readRank <= 0) {
+      return {
+        OR: [
+          {
+            readAt: null,
+            ...this.buildNotificationOlderThanWhere(tokenId, cursor.createdAt),
+          },
+          {
+            readAt: {
+              not: null,
+            },
+          },
+        ],
+      };
+    }
+
+    return {
+      readAt: {
+        not: null,
+      },
+      ...this.buildNotificationOlderThanWhere(tokenId, cursor.createdAt),
+    };
+  }
+
+  private buildNotificationOlderThanWhere(tokenId: string, createdAt: Date): Prisma.UserNotificationWhereInput {
+    return {
+      OR: [
+        {
+          createdAt: {
+            lt: createdAt,
+          },
+        },
+        {
+          createdAt,
+          id: {
+            lt: tokenId,
+          },
+        },
+      ],
     };
   }
 

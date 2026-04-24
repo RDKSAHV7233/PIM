@@ -14,11 +14,12 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 
-type Channel = "amazon" | "flipkart" | "meesho";
+type Channel = MarketplaceChannel;
 
 type EntityLink = {
   productId: string | null;
@@ -793,11 +794,7 @@ export class MediaService {
   }
 
   private parseChannel(value: string): Channel {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "amazon" || normalized === "flipkart" || normalized === "meesho") {
-      return normalized;
-    }
-    throw new BadRequestException("Unsupported channel. Use amazon, flipkart, or meesho.");
+    return parseMarketplaceChannel(value);
   }
 }
 

@@ -1,0 +1,10 @@
+services:
+  pim1db:
+    image: pim1db
+    build:
+      context: packages/db
+      dockerfile: ./Dockerfile
+    environment:
+      NODE_ENV: production
+    ports:
+      - 3000:3000

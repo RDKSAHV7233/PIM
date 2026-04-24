@@ -6,6 +6,7 @@ import {
   type ProductReadinessBatchResponse,
   READINESS_CHANNELS,
 } from "@/lib/channel-readiness";
+import { isMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerActorRole } from "@/lib/server-session";
 import { resolveBearerToken } from "../../../_auth";
 
@@ -17,7 +18,7 @@ function parseChannels(value: unknown): MarketplaceChannel[] {
   const allowedChannels = new Set<MarketplaceChannel>(READINESS_CHANNELS);
   const channels = value.filter(
     (item): item is MarketplaceChannel =>
-      typeof item === "string" && allowedChannels.has(item as MarketplaceChannel),
+      isMarketplaceChannel(item) && allowedChannels.has(item),
   );
 
   return channels.length > 0 ? channels : [...READINESS_CHANNELS];

@@ -191,7 +191,7 @@ function resolveActionAlert(statusInput: string | undefined) {
     return {
       tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
       title: "Request acknowledged",
-      body: "The commercial request is now in TEJ's active review queue.",
+      body: "The commercial request is now in Vexa's active review queue.",
     };
   }
   if (status === "resolved") {
@@ -425,7 +425,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
         <CardTitle>Commercial ops request queue</CardTitle>
         <div className="space-y-4 text-sm text-slate-700">
           <p>
-            Search workspaces, review commercial upgrade requests, and move them through the TEJ ops workflow without leaving the internal surface.
+            Search workspaces, review commercial upgrade requests, and move them through the Vexa ops workflow without leaving the internal surface.
           </p>
           {overview ? (
             <div className="space-y-3">

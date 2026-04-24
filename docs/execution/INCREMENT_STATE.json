@@ -1109,8 +1109,8 @@
         {
           "storyId": "ST-CON-METRICS-001",
           "title": "Expose connector KPI trends for mapping completion, first publish success, setup time, and blocker resolution",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "5539682",
           "tests_passed": [
@@ -1120,9 +1120,9 @@
             "node apps/api/test/integration/connector-mapping-precedence.test.cjs",
             "npm run test:integration:connector-mapping-lifecycle"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "Tenant-safety hardening found that the locked KPI trends story still depends on manual raw SQL against tenant KPI and issue data, which breaks the current release-blocking isolation standard.",
+          "regression_evidence": "Exact failing command: rg -n \"RLS-BYPASS|queryRawUnsafe|executeRawUnsafe\" apps/api/src/metrics/metrics.service.ts. Failing output snippet: matches in emit(), getKpiTrends() readiness/throughput/rejection/reliability/mapping/signup/blocker queries. Likely file responsible: apps/api/src/metrics/metrics.service.ts."
         },
         {
           "storyId": "ST-CON-ROLLBACK-001",
@@ -1363,10 +1363,13 @@
         {
           "storyId": "ST-FK-RUNTIME-003",
           "title": "Implement Flipkart credential runtime foundation",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "4486eab",
+          "reopened_by": "codex",
+          "reopened_reason": "Tenant-safety hardening found remaining credential-path raw SQL in the live Flipkart connector runtime.",
+          "regression_evidence": "Exact failing command: rg -n \"RLS-BYPASS|queryRawUnsafe|executeRawUnsafe\" apps/api/src/connectors/flipkart/flipkart.connector.ts. Failing output snippet: 495: // RLS-BYPASS: manual tenant filter, 530: const rows = await db.$queryRawUnsafe<CredentialRow[]>(, 723: await db.$executeRawUnsafe(. Likely file path responsible: apps/api/src/connectors/flipkart/flipkart.connector.ts.",
           "tests_passed": [
             "npm run build --workspace @pim1/api",
             "node apps/api/test/integration/flipkart-runtime-foundation.test.cjs",
@@ -1391,10 +1394,13 @@
         {
           "storyId": "ST-FK-PUBLISH-004",
           "title": "Route queued Flipkart jobs through the real connector publish path",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "1a03ec3",
+          "reopened_by": "codex",
+          "reopened_reason": "Tenant-safety hardening found remaining credential-path raw SQL in the shared live Flipkart connector runtime used by publish initiation.",
+          "regression_evidence": "Exact failing command: rg -n \"RLS-BYPASS|queryRawUnsafe|executeRawUnsafe\" apps/api/src/connectors/flipkart/flipkart.connector.ts. Failing output snippet: 495: // RLS-BYPASS: manual tenant filter, 530: const rows = await db.$queryRawUnsafe<CredentialRow[]>(, 723: await db.$executeRawUnsafe(. Likely file path responsible: apps/api/src/connectors/flipkart/flipkart.connector.ts.",
           "tests_passed": [
             "npm run build --workspace @pim1/api",
             "node apps/api/test/integration/flipkart-publish-job.test.cjs",
@@ -1418,10 +1424,13 @@
         {
           "storyId": "ST-FK-STATUS-005",
           "title": "Add manual Flipkart submission status sync on top of the live publish path",
-          "status": "completed",
-          "locked": true,
+          "status": "in_progress",
+          "locked": false,
           "owner": "codex",
           "commit": "ccf5ff7",
+          "reopened_by": "codex",
+          "reopened_reason": "Tenant-safety hardening found remaining credential-path raw SQL in the shared live Flipkart connector runtime used by status sync.",
+          "regression_evidence": "Exact failing command: rg -n \"RLS-BYPASS|queryRawUnsafe|executeRawUnsafe\" apps/api/src/connectors/flipkart/flipkart.connector.ts. Failing output snippet: 495: // RLS-BYPASS: manual tenant filter, 530: const rows = await db.$queryRawUnsafe<CredentialRow[]>(, 723: await db.$executeRawUnsafe(. Likely file path responsible: apps/api/src/connectors/flipkart/flipkart.connector.ts.",
           "tests_passed": [
             "npm run build --workspace @pim1/api",
             "node apps/api/test/integration/flipkart-publish-job.test.cjs",

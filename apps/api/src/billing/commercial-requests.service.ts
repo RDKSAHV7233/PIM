@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 const COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged", "resolved", "cancelled"] as const;
@@ -114,7 +114,10 @@ interface CommercialRequestRow {
 
 @Injectable()
 export class CommercialRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
+  ) {}
 
   async getOpenUpgradeRequestForTenant(tenantKeyInput: string): Promise<CommercialRequestSummary | null> {
     const tenantKey = normalizeTenantKey(tenantKeyInput);
@@ -173,48 +176,53 @@ export class CommercialRequestsService {
     const tenantKey = input?.tenantKey ? normalizeTenantKey(input.tenantKey) : undefined;
     const status = input?.status ? this.normalizeStatus(input.status) : undefined;
     const sla = input?.sla ? this.normalizeSla(input.sla) : undefined;
-
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRaw<CommercialRequestListRow[]>(Prisma.sql`
-      SELECT
-        req."id" AS "id",
-        req."tenantKey" AS "tenantKey",
-        wd."workspaceSlug" AS "workspaceSlug",
-        wd."displayName" AS "displayName",
-        req."requestType" AS "requestType",
-        req."status" AS "status",
-        req."requested_by" AS "requestedBy",
-        req."requester_role" AS "requesterRole",
-        req."current_plan_tier" AS "currentPlanTier",
-        req."current_billing_status" AS "currentBillingStatus",
-        req."current_access_status" AS "currentAccessStatus",
-        req."notes" AS "notes",
-        req."source" AS "source",
-        req."resolved_at" AS "resolvedAt",
-        req."resolved_by" AS "resolvedBy",
-        req."created_at" AS "createdAt",
-        req."updated_at" AS "updatedAt"
-      FROM "tenant_commercial_requests" req
-      LEFT JOIN "WorkspaceDirectory" wd
-        ON wd."tenantKey" = req."tenantKey"
-      WHERE req."requestType" = 'upgrade'
-        ${tenantKey ? Prisma.sql`AND req."tenantKey" = ${tenantKey}` : Prisma.empty}
-        ${status ? Prisma.sql`AND req."status" = ${status}` : Prisma.empty}
-        ${
-          sla === "attention"
-            ? Prisma.sql`
-                AND (
-                  (req."status" = 'open' AND req."created_at" < NOW() - INTERVAL '1 day')
-                  OR (req."status" = 'acknowledged' AND req."created_at" < NOW() - INTERVAL '3 days')
-                )
-              `
-            : Prisma.empty
-        }
-      ORDER BY req."created_at" DESC, req."id" DESC
-      LIMIT ${limit}
-    `);
-
-    return rows.map((row) => this.mapListRow(row));
+    const db = this.prismaDirect.getClient();
+    const rows = await db.tenantCommercialRequest.findMany({
+      where: {
+        requestType: "upgrade",
+        ...(tenantKey ? { tenantKey } : {}),
+        ...(status ? { status } : {}),
+        ...(sla === "attention"
+          ? {
+              OR: [
+                {
+                  status: "open",
+                  createdAt: {
+                    lt: this.getAttentionOpenCutoff(),
+                  },
+                },
+                {
+                  status: "acknowledged",
+                  createdAt: {
+                    lt: this.getAttentionAcknowledgedCutoff(),
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        tenantKey: true,
+        requestType: true,
+        status: true,
+        requestedBy: true,
+        requesterRole: true,
+        currentPlanTier: true,
+        currentBillingStatus: true,
+        currentAccessStatus: true,
+        notes: true,
+        source: true,
+        resolvedAt: true,
+        resolvedBy: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    const workspaceMap = await this.getWorkspaceDirectoryMap(rows.map((row) => row.tenantKey));
+    return rows.map((row) => this.mapListRecord(row, workspaceMap));
   }
 
   async updateUpgradeRequestStatusInternal(
@@ -252,60 +260,126 @@ export class CommercialRequestsService {
   }
 
   async getUpgradeRequestOverviewInternal(): Promise<UpgradeRequestOverview> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRaw<UpgradeRequestOverviewRow[]>(Prisma.sql`
-      SELECT
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade')::int AS "totalRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'open')::int AS "openRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'acknowledged')::int AS "acknowledgedRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'resolved')::int AS "resolvedRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."status" = 'cancelled')::int AS "cancelledRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."created_at" >= NOW() - INTERVAL '7 days')::int AS "recentRequests",
-        COUNT(*) FILTER (WHERE req."requestType" = 'upgrade' AND req."resolved_at" >= NOW() - INTERVAL '7 days')::int AS "recentResolvedRequests",
-        COUNT(*) FILTER (
-          WHERE req."requestType" = 'upgrade'
-            AND req."status" = 'open'
-            AND req."created_at" < NOW() - INTERVAL '1 day'
-        )::int AS "staleOpenRequests",
-        COUNT(*) FILTER (
-          WHERE req."requestType" = 'upgrade'
-            AND req."status" = 'acknowledged'
-            AND req."created_at" < NOW() - INTERVAL '3 days'
-        )::int AS "staleAcknowledgedRequests",
-        MIN(req."created_at") FILTER (
-          WHERE req."requestType" = 'upgrade'
-            AND req."status" IN ('open', 'acknowledged')
-        ) AS "oldestActiveRequestCreatedAt"
-      FROM "tenant_commercial_requests" req
-    `);
-    const row = rows[0] ?? {
-      totalRequests: 0,
-      openRequests: 0,
-      acknowledgedRequests: 0,
-      resolvedRequests: 0,
-      cancelledRequests: 0,
-      recentRequests: 0,
-      recentResolvedRequests: 0,
-      staleOpenRequests: 0,
-      staleAcknowledgedRequests: 0,
-      oldestActiveRequestCreatedAt: null,
-    };
-    const openRequests = Number(row.openRequests ?? 0);
-    const acknowledgedRequests = Number(row.acknowledgedRequests ?? 0);
-    const staleOpenRequests = Number(row.staleOpenRequests ?? 0);
-    const staleAcknowledgedRequests = Number(row.staleAcknowledgedRequests ?? 0);
-    return {
-      totalRequests: Number(row.totalRequests ?? 0),
-      activeRequests: openRequests + acknowledgedRequests,
+    const db = this.prismaDirect.getClient();
+    const recentCutoff = this.getRecentWindowCutoff();
+    const openAttentionCutoff = this.getAttentionOpenCutoff();
+    const acknowledgedAttentionCutoff = this.getAttentionAcknowledgedCutoff();
+    const [
+      totalRequests,
       openRequests,
       acknowledgedRequests,
+      resolvedRequests,
+      cancelledRequests,
+      recentRequests,
+      recentResolvedRequests,
+      staleOpenRequests,
+      staleAcknowledgedRequests,
+      oldestActiveRequest,
+    ] = await Promise.all([
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "open",
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "acknowledged",
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "resolved",
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "cancelled",
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          createdAt: {
+            gte: recentCutoff,
+          },
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          resolvedAt: {
+            gte: recentCutoff,
+          },
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "open",
+          createdAt: {
+            lt: openAttentionCutoff,
+          },
+        },
+      }),
+      db.tenantCommercialRequest.count({
+        where: {
+          requestType: "upgrade",
+          status: "acknowledged",
+          createdAt: {
+            lt: acknowledgedAttentionCutoff,
+          },
+        },
+      }),
+      db.tenantCommercialRequest.findFirst({
+        where: {
+          requestType: "upgrade",
+          status: {
+            in: [...ACTIVE_COMMERCIAL_REQUEST_STATUSES],
+          },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: {
+          createdAt: true,
+        },
+      }),
+    ]);
+    const row: UpgradeRequestOverviewRow = {
+      totalRequests,
+      openRequests,
+      acknowledgedRequests,
+      resolvedRequests,
+      cancelledRequests,
+      recentRequests,
+      recentResolvedRequests,
+      staleOpenRequests,
+      staleAcknowledgedRequests,
+      oldestActiveRequestCreatedAt: oldestActiveRequest?.createdAt ?? null,
+    };
+    const normalizedOpenRequests = Number(row.openRequests ?? 0);
+    const normalizedAcknowledgedRequests = Number(row.acknowledgedRequests ?? 0);
+    const normalizedStaleOpenRequests = Number(row.staleOpenRequests ?? 0);
+    const normalizedStaleAcknowledgedRequests = Number(row.staleAcknowledgedRequests ?? 0);
+    return {
+      totalRequests: Number(row.totalRequests ?? 0),
+      activeRequests: normalizedOpenRequests + normalizedAcknowledgedRequests,
+      openRequests: normalizedOpenRequests,
+      acknowledgedRequests: normalizedAcknowledgedRequests,
       resolvedRequests: Number(row.resolvedRequests ?? 0),
       cancelledRequests: Number(row.cancelledRequests ?? 0),
       recentRequests: Number(row.recentRequests ?? 0),
       recentResolvedRequests: Number(row.recentResolvedRequests ?? 0),
-      staleOpenRequests,
-      staleAcknowledgedRequests,
-      attentionRequiredRequests: staleOpenRequests + staleAcknowledgedRequests,
+      staleOpenRequests: normalizedStaleOpenRequests,
+      staleAcknowledgedRequests: normalizedStaleAcknowledgedRequests,
+      attentionRequiredRequests: normalizedStaleOpenRequests + normalizedStaleAcknowledgedRequests,
       oldestActiveRequestCreatedAt: this.toIsoString(row.oldestActiveRequestCreatedAt),
     };
   }
@@ -458,29 +532,89 @@ export class CommercialRequestsService {
   }
 
   private async findRequestByIdInternal(requestId: string): Promise<CommercialRequestRow | null> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRaw<CommercialRequestRow[]>(Prisma.sql`
-      SELECT
-        req."id" AS "id",
-        req."tenantKey" AS "tenantKey",
-        req."requestType" AS "requestType",
-        req."status" AS "status",
-        req."requested_by" AS "requestedBy",
-        req."requester_role" AS "requesterRole",
-        req."current_plan_tier" AS "currentPlanTier",
-        req."current_billing_status" AS "currentBillingStatus",
-        req."current_access_status" AS "currentAccessStatus",
-        req."notes" AS "notes",
-        req."source" AS "source",
-        req."resolved_at" AS "resolvedAt",
-        req."resolved_by" AS "resolvedBy",
-        req."created_at" AS "createdAt",
-        req."updated_at" AS "updatedAt"
-      FROM "tenant_commercial_requests" req
-      WHERE req."id" = ${requestId}
-      LIMIT 1
-    `);
-    return rows[0] ?? null;
+    return this.prismaDirect.getClient().tenantCommercialRequest.findFirst({
+      where: {
+        id: requestId,
+      },
+      select: {
+        id: true,
+        tenantKey: true,
+        requestType: true,
+        status: true,
+        requestedBy: true,
+        requesterRole: true,
+        currentPlanTier: true,
+        currentBillingStatus: true,
+        currentAccessStatus: true,
+        notes: true,
+        source: true,
+        resolvedAt: true,
+        resolvedBy: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  private getRecentWindowCutoff(): Date {
+    return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  }
+
+  private getAttentionOpenCutoff(): Date {
+    return new Date(Date.now() - 24 * 60 * 60 * 1000);
+  }
+
+  private getAttentionAcknowledgedCutoff(): Date {
+    return new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  }
+
+  private async getWorkspaceDirectoryMap(
+    tenantKeys: string[],
+  ): Promise<Map<string, { workspaceSlug: string | null; displayName: string | null }>> {
+    const normalizedTenantKeys = Array.from(
+      new Set(
+        tenantKeys
+          .map((tenantKey) => normalizeTenantKey(tenantKey))
+          .filter((tenantKey) => tenantKey.length > 0),
+      ),
+    );
+    if (normalizedTenantKeys.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.prismaDirect.getClient().workspaceDirectory.findMany({
+      where: {
+        tenantKey: {
+          in: normalizedTenantKeys,
+        },
+      },
+      select: {
+        tenantKey: true,
+        workspaceSlug: true,
+        displayName: true,
+      },
+    });
+    return new Map(
+      rows.map((row) => [
+        normalizeTenantKey(row.tenantKey),
+        {
+          workspaceSlug: row.workspaceSlug ?? null,
+          displayName: row.displayName ?? null,
+        },
+      ]),
+    );
+  }
+
+  private mapListRecord(
+    row: CommercialRequestRow,
+    workspaceMap: Map<string, { workspaceSlug: string | null; displayName: string | null }>,
+  ): CommercialRequestSummary {
+    const workspace = workspaceMap.get(normalizeTenantKey(row.tenantKey));
+    return this.mapListRow({
+      ...row,
+      workspaceSlug: workspace?.workspaceSlug ?? null,
+      displayName: workspace?.displayName ?? null,
+    });
   }
 
   private csvCell(value: string): string {

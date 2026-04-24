@@ -11,13 +11,6 @@ import {
   type ReadinessStatus,
 } from "@/lib/channel-readiness";
 
-function toChannel(value: MarketplaceChannel): "amazon" | "flipkart" | "meesho" {
-  if (value === "flipkart" || value === "meesho") {
-    return value;
-  }
-  return "amazon";
-}
-
 interface ProductChannelReadinessCellProps {
   readiness?: Partial<Record<MarketplaceChannel, ChannelReadinessResult>>;
   onResolvedStatus?: (status: ReadinessStatus) => void;
@@ -46,7 +39,7 @@ export function ProductChannelReadinessCell({
         return (
           <ChannelReadinessBadge
             key={channel}
-            channel={toChannel(channel)}
+            channel={channel}
             status={current.status}
             errorCount={current.errorCount}
             warningCount={current.warningCount}

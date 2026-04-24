@@ -1,7 +1,6 @@
 import { IsIn } from "class-validator";
 import { IsOptional, IsString } from "class-validator";
-
-export const MARKETPLACE_CHANNELS = ["amazon", "flipkart", "meesho"] as const;
+import { MARKETPLACE_CHANNELS } from "../marketplace-channels";
 
 export class SimulateMarketplaceDto {
   @IsIn(MARKETPLACE_CHANNELS)

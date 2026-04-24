@@ -1,3 +1,5 @@
+import type { MarketplaceChannel } from "./marketplace-channels";
+
 export const colors = {
   ink: "#0f172a",
   inkMid: "#334155",
@@ -56,7 +58,7 @@ export const severityConfig: Record<
   },
 };
 
-export type Channel = "amazon" | "flipkart" | "meesho";
+export type Channel = MarketplaceChannel;
 
 export const channelConfig: Record<
   Channel,

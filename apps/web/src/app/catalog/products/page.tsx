@@ -3,6 +3,7 @@ import { ProductsTab } from "@/components/product/products-tab";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getCategoryTree, getInstalledConnectors, getProducts, getStats } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -50,17 +51,6 @@ function resolvePositiveInteger(value: string | undefined, fallback: number, max
   return Math.min(max, parsed);
 }
 
-function mapConnectorSlugToChannel(slugInput: string): "amazon" | "flipkart" | "meesho" | null {
-  const slug = String(slugInput ?? "").trim().toLowerCase();
-  if (slug === "amazon-in") {
-    return "amazon";
-  }
-  if (slug === "flipkart" || slug === "meesho") {
-    return slug;
-  }
-  return null;
-}
-
 export default async function CatalogProductsPage({ searchParams }: CatalogProductsPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -94,10 +84,10 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
     const installedConnectorCount = installedConnectors.length;
     const firstProduct = filteredProducts[0];
     const firstActiveConnector = installedConnectors.find(
-      (item) => item.status === "ACTIVE" && mapConnectorSlugToChannel(item.slug),
+      (item) => item.status === "ACTIVE" && mapConnectorSlugToMarketplaceChannel(item.slug),
     );
     const firstActiveChannel = firstActiveConnector
-      ? mapConnectorSlugToChannel(firstActiveConnector.slug)
+      ? mapConnectorSlugToMarketplaceChannel(firstActiveConnector.slug)
       : null;
     const mappingManagerHref =
       firstProduct && firstActiveChannel

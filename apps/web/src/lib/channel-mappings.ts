@@ -7,6 +7,11 @@ import type {
   MarketplaceChannel,
   MarketplaceChannelMapping,
 } from "@/lib/api";
+import {
+  DEFAULT_MARKETPLACE_CHANNEL,
+  mapMarketplaceChannelToConnectorSlug,
+  normalizeMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 
 export type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 export type ConnectorTaxonomyOption = Pick<ConnectorTaxonomyItem, "id" | "path" | "requiredAttributes">;
@@ -15,16 +20,15 @@ export function normalizeChannel(
   value: string | undefined,
   channels: Array<{ channel: MarketplaceChannel }>,
 ): MarketplaceChannel {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  const matched = channels.find((entry) => entry.channel === normalized);
-  return matched?.channel ?? channels[0]?.channel ?? "amazon";
+  return normalizeMarketplaceChannel(
+    value,
+    channels.map((entry) => entry.channel),
+    channels[0]?.channel ?? DEFAULT_MARKETPLACE_CHANNEL,
+  );
 }
 
 export function mapChannelToConnectorSlug(channel: MarketplaceChannel): string {
-  if (channel === "amazon") {
-    return "amazon-in";
-  }
-  return channel;
+  return mapMarketplaceChannelToConnectorSlug(channel);
 }
 
 export function definitionForConnector(

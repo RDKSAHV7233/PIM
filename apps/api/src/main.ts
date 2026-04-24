@@ -36,8 +36,8 @@ async function bootstrap() {
   app.use(correlationMiddleware);
   if (env.APP_ENV !== "production") {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle("TEJ PIM API")
-      .setDescription("TEJ PIM REST API")
+      .setTitle("Vexa PIM API")
+      .setDescription("Vexa PIM REST API")
       .setVersion("1.0.0")
       .addBearerAuth()
       .build();

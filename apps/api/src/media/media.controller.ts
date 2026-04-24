@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/co
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DEFAULT_MARKETPLACE_CHANNEL } from "../marketplace/marketplace-channels";
 import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
@@ -32,7 +33,7 @@ export class MediaController {
   }
 
   @Get("assets/:id/validation")
-  validateAsset(@Param("id") id: string, @Query("channel") channel = "amazon") {
+  validateAsset(@Param("id") id: string, @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL) {
     return this.mediaService.validateAsset(id, channel);
   }
 

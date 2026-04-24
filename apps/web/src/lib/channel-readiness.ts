@@ -1,8 +1,12 @@
 import type { MarketplaceChannel, MarketplaceSimulation } from "@/lib/api";
+import {
+  mapConnectorSlugToMarketplaceChannel,
+  MARKETPLACE_CHANNELS,
+} from "@/lib/marketplace-channels";
 
 export type ReadinessStatus = "ready" | "warnings" | "errors" | "loading" | "unknown";
 
-const BASE_READINESS_CHANNELS: MarketplaceChannel[] = ["amazon", "flipkart", "meesho"];
+const BASE_READINESS_CHANNELS: MarketplaceChannel[] = [...MARKETPLACE_CHANNELS];
 
 function resolveStubReadinessChannels(): Set<MarketplaceChannel> {
   const values = String(process.env.NEXT_PUBLIC_CONNECTOR_STUB_SLUGS ?? "")
@@ -11,10 +15,9 @@ function resolveStubReadinessChannels(): Set<MarketplaceChannel> {
     .filter((value) => value.length > 0);
   const channels = new Set<MarketplaceChannel>();
   for (const value of values) {
-    if (value === "amazon" || value === "amazon-in") {
-      channels.add("amazon");
-    } else if (value === "flipkart" || value === "meesho") {
-      channels.add(value);
+    const channel = mapConnectorSlugToMarketplaceChannel(value);
+    if (channel) {
+      channels.add(channel);
     }
   }
   return channels;

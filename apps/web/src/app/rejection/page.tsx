@@ -17,6 +17,11 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { READINESS_CHANNELS } from "@/lib/channel-readiness";
+import {
+  DEFAULT_MARKETPLACE_CHANNEL,
+  formatMarketplaceChannelLabel,
+  normalizeMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -24,17 +29,11 @@ import { filterTestData } from "@/lib/test-data-filter";
 export const dynamic = "force-dynamic";
 
 function normalizeChannel(value: MarketplaceChannel | undefined): MarketplaceChannel {
-  if (value && READINESS_CHANNELS.includes(value)) {
-    return value;
-  }
-  return READINESS_CHANNELS[0] ?? "amazon";
-}
-
-function formatChannelLabel(channel: MarketplaceChannel): string {
-  if (channel === "meesho") {
-    return "Meesho";
-  }
-  return channel === "amazon" ? "Amazon" : "Flipkart";
+  return normalizeMarketplaceChannel(
+    value,
+    READINESS_CHANNELS,
+    READINESS_CHANNELS[0] ?? DEFAULT_MARKETPLACE_CHANNEL,
+  );
 }
 
 interface RejectionPageProps {
@@ -175,7 +174,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
             <Select id="rejection-channel" name="channel" defaultValue={channel}>
               {READINESS_CHANNELS.map((availableChannel) => (
                 <option key={availableChannel} value={availableChannel}>
-                  {formatChannelLabel(availableChannel)}
+                  {formatMarketplaceChannelLabel(availableChannel)}
                 </option>
               ))}
             </Select>

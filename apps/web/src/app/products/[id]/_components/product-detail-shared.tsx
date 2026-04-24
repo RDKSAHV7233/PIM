@@ -1,6 +1,13 @@
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
 import { READINESS_CHANNELS } from "@/lib/channel-readiness";
+import {
+  DEFAULT_MARKETPLACE_CHANNEL,
+  mapMarketplaceChannelToConnectorSlug,
+  normalizeMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 import type { DetailTab } from "./product-detail-types";
+
+export { mapMarketplaceChannelToConnectorSlug };
 
 export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "overview", label: "Overview" },
@@ -20,10 +27,11 @@ export function normalizeDetailTab(value: string | undefined): DetailTab {
 }
 
 export function normalizeChannel(value: string | undefined): MarketplaceChannel {
-  if (value && READINESS_CHANNELS.includes(value as MarketplaceChannel)) {
-    return value as MarketplaceChannel;
-  }
-  return READINESS_CHANNELS[0] ?? "amazon";
+  return normalizeMarketplaceChannel(
+    value,
+    READINESS_CHANNELS,
+    READINESS_CHANNELS[0] ?? DEFAULT_MARKETPLACE_CHANNEL,
+  );
 }
 
 export function normalizeTemplateId(value: string | undefined): string | undefined {
@@ -46,13 +54,6 @@ export function lifecycleStatusTone(status: string): "neutral" | "success" | "wa
     return "info";
   }
   return "neutral";
-}
-
-export function mapMarketplaceChannelToConnectorSlug(channel: MarketplaceChannel): string {
-  if (channel === "amazon") {
-    return "amazon-in";
-  }
-  return channel;
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {

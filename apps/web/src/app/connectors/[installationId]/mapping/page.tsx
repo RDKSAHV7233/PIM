@@ -6,6 +6,11 @@ import {
   type MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import {
+  DEFAULT_MARKETPLACE_CHANNEL,
+  mapConnectorSlugToMarketplaceChannel,
+  normalizeMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -21,25 +26,8 @@ interface MappingManagerRedirectPageProps {
   searchParams: Promise<SearchParams>;
 }
 
-function mapConnectorSlugToChannel(slugInput: string): MarketplaceChannel | null {
-  const slug = String(slugInput ?? "").trim().toLowerCase();
-  if (slug === "amazon-in") {
-    return "amazon";
-  }
-  if (slug === "flipkart") {
-    return "flipkart";
-  }
-  if (slug === "meesho") {
-    return "meesho";
-  }
-  return null;
-}
-
 function normalizeChannel(channel: string | undefined, fallback: MarketplaceChannel | null): MarketplaceChannel {
-  if (channel === "amazon" || channel === "flipkart" || channel === "meesho") {
-    return channel;
-  }
-  return fallback ?? "amazon";
+  return normalizeMarketplaceChannel(channel, undefined, fallback ?? DEFAULT_MARKETPLACE_CHANNEL);
 }
 
 export default async function MappingManagerRedirectPage({
@@ -61,7 +49,10 @@ export default async function MappingManagerRedirectPage({
     const productId = String(query.productId ?? "").trim();
     const product = productId ? await getProduct(productId, { role: actorRole, authHeader }) : null;
     const target = new URLSearchParams();
-    target.set("channel", normalizeChannel(query.channel, mapConnectorSlugToChannel(installation.slug)));
+    target.set(
+      "channel",
+      normalizeChannel(query.channel, mapConnectorSlugToMarketplaceChannel(installation.slug)),
+    );
     if (productId) {
       target.set("productId", productId);
     }

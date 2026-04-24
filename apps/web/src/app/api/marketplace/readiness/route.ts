@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketplaceSimulation, MarketplaceChannel } from "@/lib/api";
 import { READINESS_CHANNELS, summarizeSimulation } from "@/lib/channel-readiness";
+import { isMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerActorRole } from "@/lib/server-session";
 import { resolveBearerToken } from "../../_auth";
 
 function parseChannel(value: string | null): MarketplaceChannel | null {
-  if (typeof value !== "string") {
+  if (!isMarketplaceChannel(value)) {
     return null;
   }
-  return READINESS_CHANNELS.includes(value as MarketplaceChannel) ? (value as MarketplaceChannel) : null;
+  return READINESS_CHANNELS.includes(value) ? value : null;
 }
 
 export async function GET(request: NextRequest) {

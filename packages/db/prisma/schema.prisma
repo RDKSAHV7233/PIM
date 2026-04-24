@@ -45,12 +45,6 @@ enum ValidationIssueStatus {
   resolved
 }
 
-enum MarketplaceChannel {
-  amazon
-  flipkart
-  meesho
-}
-
 enum ExportJobStatus {
   queued
   processing
@@ -301,7 +295,7 @@ model ChannelMappingTemplate {
   parentTemplateId String?
   categoryId     String
   category       Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  channel        MarketplaceChannel
+  channel        String               @db.VarChar(64)
   requiredFields Json
   fieldMap       Json
   isDefault      Boolean              @default(false)
@@ -324,7 +318,7 @@ model MarketplaceExportJob {
   product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
   categoryId   String
   category     Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  channel      MarketplaceChannel
+  channel      String                 @db.VarChar(64)
   templateId   String?
   template     ChannelMappingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status       ExportJobStatus        @default(queued)

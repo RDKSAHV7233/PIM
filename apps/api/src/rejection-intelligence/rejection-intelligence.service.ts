@@ -1,8 +1,9 @@
-﻿import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { RuleSeverity, ValidationIssueStatus } from "@prisma/client";
+import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 
-type Channel = "amazon" | "flipkart" | "meesho";
+type Channel = MarketplaceChannel;
 
 @Injectable()
 export class RejectionIntelligenceService {
@@ -22,16 +23,20 @@ export class RejectionIntelligenceService {
       throw new NotFoundException("Product not found");
     }
 
-    // RLS-BYPASS: manual tenant filter
-    const mediaRows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
-      SELECT id, width, height, mime_type AS "mimeType"
-      FROM media_assets
-      WHERE product_id = $1
-      ORDER BY created_at DESC
-      `,
-      productId,
-    )) as Array<{ id: string; width: number | null; height: number | null; mimeType: string }>;
+    const mediaRows = await this.prisma.tenant().mediaAsset.findMany({
+      where: {
+        productId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        width: true,
+        height: true,
+        mimeType: true,
+      },
+    });
 
     const complianceErrors = product.validationIssues.filter(
       (issue) => issue.severity === RuleSeverity.error,
@@ -116,10 +121,6 @@ export class RejectionIntelligenceService {
   }
 
   private parseChannel(value: string): Channel {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "amazon" || normalized === "flipkart" || normalized === "meesho") {
-      return normalized;
-    }
-    throw new BadRequestException("Unsupported channel. Use amazon, flipkart, or meesho.");
+    return parseMarketplaceChannel(value);
   }
 }

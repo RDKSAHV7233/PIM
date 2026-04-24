@@ -108,8 +108,8 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       body: profile.suspensionReason
         ? `${profile.suspensionReason}${suspendedAt ? ` Since ${suspendedAt}.` : ""}`
         : suspendedAt
-          ? `This workspace has been suspended since ${suspendedAt}. Contact TEJ commercial ops to restore access.`
-          : "This workspace is suspended. Contact TEJ commercial ops to restore access.",
+          ? `This workspace has been suspended since ${suspendedAt}. Contact Vexa commercial ops to restore access.`
+          : "This workspace is suspended. Contact Vexa commercial ops to restore access.",
     };
   }
 
@@ -119,7 +119,7 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       title: "Billing needs attention",
       body: graceEndsAt
         ? `Payment is past due. Resolve commercial terms before ${graceEndsAt} to avoid interruption.`
-        : "Payment is past due. Contact TEJ commercial ops to avoid interruption.",
+        : "Payment is past due. Contact Vexa commercial ops to avoid interruption.",
     };
   }
 
@@ -128,8 +128,8 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       tone: "border-slate-300 bg-slate-50 text-slate-800",
       title: "Workspace is scheduled to end",
       body: paidThroughAt
-        ? `Current access is scheduled to continue through ${paidThroughAt} unless TEJ updates the commercial profile.`
-        : "This workspace is marked as cancelled. Contact TEJ commercial ops if continued access is required.",
+        ? `Current access is scheduled to continue through ${paidThroughAt} unless Vexa updates the commercial profile.`
+        : "This workspace is marked as cancelled. Contact Vexa commercial ops if continued access is required.",
     };
   }
 
@@ -139,7 +139,7 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       title: "Trial is active",
       body: trialEndsAt
         ? `Your current trial runs through ${trialEndsAt}. Review commercial terms before then to avoid interruption.`
-        : "Your workspace is currently in trial. TEJ will confirm commercial terms before any access change.",
+        : "Your workspace is currently in trial. Vexa will confirm commercial terms before any access change.",
     };
   }
 
@@ -152,14 +152,14 @@ function resolveUpgradeRequestStatusAlert(statusInput: string | undefined) {
     return {
       tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
       title: "Upgrade request submitted",
-      body: "TEJ commercial ops has your request. We will review your current plan and follow up on next steps.",
+      body: "Vexa commercial ops has your request. We will review your current plan and follow up on next steps.",
     };
   }
   if (status === "already-open") {
     return {
       tone: "border-sky-200 bg-sky-50 text-sky-900",
       title: "Upgrade request already open",
-      body: "An open upgrade request already exists for this workspace. TEJ commercial ops will continue from the existing request.",
+      body: "An open upgrade request already exists for this workspace. Vexa commercial ops will continue from the existing request.",
     };
   }
   if (status === "forbidden") {
@@ -213,13 +213,13 @@ function describeUpgradeRequest(
   if (request.status === "acknowledged") {
     return {
       title: "Upgrade request acknowledged",
-      body: "TEJ commercial ops has picked this up and is reviewing the next plan change with your workspace context.",
+      body: "Vexa commercial ops has picked this up and is reviewing the next plan change with your workspace context.",
       tone: "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950",
     };
   }
   return {
     title: "Upgrade request pending",
-    body: "TEJ commercial ops is reviewing this request.",
+    body: "Vexa commercial ops is reviewing this request.",
     tone: "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950",
   };
 }
@@ -766,8 +766,8 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           <CardTitle>Plan management</CardTitle>
           <div className="mt-3 space-y-4 text-sm text-slate-700">
             <p>
-              Plan changes are managed by TEJ commercial ops. Customer admins can review plan usage
-              here, but paid-plan changes are applied through TEJ&apos;s commercial workflow.
+              Plan changes are managed by Vexa commercial ops. Customer admins can review plan usage
+              here, but paid-plan changes are applied through Vexa&apos;s commercial workflow.
             </p>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</div>
@@ -794,7 +794,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                   Billing contact email
                 </label>
                 <p className="mt-1 text-xs text-slate-500">
-                  Commercial notices go to this email first. If you leave it empty, TEJ falls back to active workspace admins.
+                  Commercial notices go to this email first. If you leave it empty, Vexa falls back to active workspace admins.
                 </p>
                 <input
                   id="billing-contact-email"
@@ -839,7 +839,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 <div className="font-semibold">{upgradeRequestDescriptor?.title ?? "Upgrade request pending"}</div>
                 <div className="mt-1">
                   Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
-                  {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "TEJ commercial ops is reviewing this request."}
+                  {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "Vexa commercial ops is reviewing this request."}
                 </div>
                 {upgradeRequest.notes ? (
                   <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">
@@ -857,7 +857,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     Request notes
                   </label>
                   <p className="mt-1 text-xs text-slate-500">
-                    Share what changed so TEJ commercial ops can review the right plan and timeline.
+                    Share what changed so Vexa commercial ops can review the right plan and timeline.
                   </p>
                   <textarea
                     id="upgrade-request-notes"
@@ -876,7 +876,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     Request upgrade
                   </button>
                   <p className="text-xs text-slate-500">
-                    TEJ commercial ops will review your request and follow up with the right plan change.
+                    Vexa commercial ops will review your request and follow up with the right plan change.
                   </p>
                 </div>
               </form>

@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
-import { MARKETPLACE_CHANNELS } from "./simulate-marketplace.dto";
+import { MARKETPLACE_CHANNELS } from "../marketplace-channels";
 
 export class CreateExportJobDto {
   @IsIn(MARKETPLACE_CHANNELS)

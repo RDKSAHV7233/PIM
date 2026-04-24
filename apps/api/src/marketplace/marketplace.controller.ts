@@ -26,6 +26,7 @@ import { CreateExportJobDto } from "./dto/create-export-job.dto";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { SimulateMarketplaceDto } from "./dto/simulate-marketplace.dto";
 import { UpdateMappingTemplateDto } from "./dto/update-mapping-template.dto";
+import { DEFAULT_MARKETPLACE_CHANNEL } from "./marketplace-channels";
 import { MarketplaceService } from "./marketplace.service";
 
 @Controller("marketplace")
@@ -244,7 +245,7 @@ export class MarketplaceController {
   @Get("products/:id/simulate")
   simulateProductQuery(
     @Param("id") productId: string,
-    @Query("channel") channel = "amazon",
+    @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
     @Query("templateId") templateId?: string,
   ) {
     return this.marketplaceService.simulateProduct(productId, channel, templateId);

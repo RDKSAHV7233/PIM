@@ -530,22 +530,20 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
-      UPDATE connector_credentials
-      SET
-        last_validated_at = NOW(),
-        failure_reason = $3,
-        updated_at = NOW()
-      WHERE tenant_key = $1
-        AND installation_id = $2
-        AND credential_type IN ('access_token', 'refresh_token', 'client_id', 'client_secret')
-      `,
-      ctx.tenantId,
-      ctx.installationId,
-      failureReason,
-    );
+    await db.connectorCredential.updateMany({
+      where: {
+        tenantKey: ctx.tenantId,
+        installationId: ctx.installationId,
+        credentialType: {
+          in: ["access_token", "refresh_token", "client_id", "client_secret"],
+        },
+      },
+      data: {
+        lastValidatedAt: new Date(),
+        failureReason,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async noteCredentialWarning(ctx: ConnectorContext, warningReason: string): Promise<void> {
@@ -583,27 +581,22 @@ export class FlipkartConnector implements ConnectorInterface {
     credentialType: string,
   ): Promise<CredentialRow | null> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await db.$queryRawUnsafe<CredentialRow[]>(
-      `
-      SELECT
-        id,
-        encrypted_value AS "encryptedValue",
-        key_version AS "keyVersion",
-        status,
-        expires_at AS "expiresAt",
-        failure_reason AS "failureReason"
-      FROM connector_credentials
-      WHERE tenant_key = $1
-        AND installation_id = $2
-        AND credential_type = $3
-      LIMIT 1
-      `,
-      ctx.tenantId,
-      ctx.installationId,
-      credentialType,
-    );
-    return rows[0] ?? null;
+    const row = await db.connectorCredential.findFirst({
+      where: {
+        tenantKey: ctx.tenantId,
+        installationId: ctx.installationId,
+        credentialType,
+      },
+      select: {
+        id: true,
+        encryptedValue: true,
+        keyVersion: true,
+        status: true,
+        expiresAt: true,
+        failureReason: true,
+      },
+    });
+    return row ?? null;
   }
 
   private async checkRefreshTokenHealth(ctx: ConnectorContext): Promise<"ok" | "expiring_soon" | "expired"> {
@@ -641,45 +634,31 @@ export class FlipkartConnector implements ConnectorInterface {
     const db = this.prismaDirect.getClient();
     const id = `${ctx.installationId}:${credentialType}`;
 
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
-      INSERT INTO connector_credentials (
+    await db.connectorCredential.upsert({
+      where: { id },
+      create: {
         id,
-        tenant_key,
-        installation_id,
-        credential_type,
-        encrypted_value,
-        key_version,
-        status,
-        expires_at,
-        failure_reason,
-        last_refresh_at,
-        updated_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, 'ACTIVE', $7, NULL, NOW(), NOW()
-      )
-      ON CONFLICT (id)
-      DO UPDATE SET
-        tenant_key = EXCLUDED.tenant_key,
-        installation_id = EXCLUDED.installation_id,
-        credential_type = EXCLUDED.credential_type,
-        encrypted_value = EXCLUDED.encrypted_value,
-        key_version = EXCLUDED.key_version,
-        status = 'ACTIVE',
-        expires_at = EXCLUDED.expires_at,
-        failure_reason = NULL,
-        last_refresh_at = NOW(),
-        updated_at = NOW()
-      `,
-      id,
-      ctx.tenantId,
-      ctx.installationId,
-      credentialType,
-      encrypted.cipher,
-      keyVersion,
-      options.expiresAt ?? null,
-    );
+        tenantKey: ctx.tenantId,
+        installationId: ctx.installationId,
+        credentialType,
+        encryptedValue: encrypted.cipher,
+        keyVersion,
+        status: "ACTIVE",
+        expiresAt: options.expiresAt ?? null,
+        failureReason: null,
+        lastRefreshAt: new Date(),
+      },
+      update: {
+        tenantKey: ctx.tenantId,
+        encryptedValue: encrypted.cipher,
+        keyVersion,
+        status: "ACTIVE",
+        expiresAt: options.expiresAt ?? null,
+        failureReason: null,
+        lastRefreshAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private resolveOauthBaseUrl(): string {
@@ -793,18 +772,17 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private async invalidateAccessToken(ctx: ConnectorContext): Promise<void> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
-      UPDATE connector_credentials
-      SET expires_at = NOW(), updated_at = NOW()
-      WHERE tenant_key = $1
-        AND installation_id = $2
-        AND credential_type = 'access_token'
-      `,
-      ctx.tenantId,
-      ctx.installationId,
-    );
+    await db.connectorCredential.updateMany({
+      where: {
+        tenantKey: ctx.tenantId,
+        installationId: ctx.installationId,
+        credentialType: "access_token",
+      },
+      data: {
+        expiresAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async parseJsonResponse<T>(response: Response): Promise<T> {

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { RuleSeverity, ValidationIssueStatus } from "@prisma/client";
+import { Prisma, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MetricsService } from "../metrics/metrics.service";
@@ -161,27 +161,75 @@ function highestCompatibility(states: MappingCompatibility[]): MappingCompatibil
   return selected;
 }
 
+function firstDefined<T>(...values: T[]): T | undefined {
+  for (const value of values) {
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 function toVersion(row: Record<string, unknown>): ConnectorMappingVersion {
+  const id = firstDefined(row.id);
+  const tenantKey = firstDefined(row.tenantKey, row.tenant_key);
+  const connectorSlug = firstDefined(row.connectorSlug, row.connector_slug);
+  const categoryScope = firstDefined(row.categoryScope, row.category_scope);
+  const mappingLevel = firstDefined(row.mappingLevel, row.mapping_level);
+  const lifecycleState = firstDefined(row.lifecycleState, row.lifecycle_state);
+  const connectorDefinitionId = firstDefined(row.connectorDefinitionId, row.connector_definition_id);
+  const connectorDefinitionVersion = firstDefined(row.connectorDefinitionVersion, row.connector_definition_version);
+  const compatibilityState = firstDefined(row.compatibilityState, row.compatibility_state);
+  const mappingRules = firstDefined(row.mappingRules, row.mapping_rules);
+  const fallbackPolicy = firstDefined(row.fallbackPolicy, row.fallback_policy);
+  const fallbackAckRequired = firstDefined(row.fallbackAckRequired, row.fallback_ack_required);
+  const publishedAt = firstDefined(row.publishedAt, row.published_at);
+  const supersededBy = firstDefined(row.supersededBy, row.superseded_by);
+  const createdBy = firstDefined(row.createdBy, row.created_by);
+  const createdAt = firstDefined(row.createdAt, row.created_at);
+  const updatedAt = firstDefined(row.updatedAt, row.updated_at);
+  const archivedAt = firstDefined(row.archivedAt, row.archived_at);
   return {
-    id: String(row.id),
-    tenantKey: String(row.tenant_key),
-    connectorSlug: String(row.connector_slug),
-    categoryScope: String(row.category_scope),
-    mappingLevel: String(row.mapping_level) as MappingLevel,
-    lifecycleState: String(row.lifecycle_state) as MappingLifecycle,
-    connectorDefinitionId: String(row.connector_definition_id),
-    connectorDefinitionVersion: String(row.connector_definition_version),
-    compatibilityState: String(row.compatibility_state) as MappingCompatibility,
-    mappingRules: parseObject(row.mapping_rules),
-    fallbackPolicy: parseObject(row.fallback_policy),
-    fallbackAckRequired: Boolean(row.fallback_ack_required),
-    publishedAt: normalizeIso(row.published_at),
-    supersededBy: row.superseded_by ? String(row.superseded_by) : null,
-    createdBy: row.created_by ? String(row.created_by) : null,
-    createdAt: new Date(String(row.created_at)).toISOString(),
-    updatedAt: new Date(String(row.updated_at)).toISOString(),
-    archivedAt: normalizeIso(row.archived_at),
+    id: String(id),
+    tenantKey: String(tenantKey),
+    connectorSlug: String(connectorSlug),
+    categoryScope: String(categoryScope),
+    mappingLevel: String(mappingLevel) as MappingLevel,
+    lifecycleState: String(lifecycleState) as MappingLifecycle,
+    connectorDefinitionId: String(connectorDefinitionId),
+    connectorDefinitionVersion: String(connectorDefinitionVersion),
+    compatibilityState: String(compatibilityState) as MappingCompatibility,
+    mappingRules: parseObject(mappingRules),
+    fallbackPolicy: parseObject(fallbackPolicy),
+    fallbackAckRequired: Boolean(fallbackAckRequired),
+    publishedAt: normalizeIso(publishedAt),
+    supersededBy: supersededBy ? String(supersededBy) : null,
+    createdBy: createdBy ? String(createdBy) : null,
+    createdAt: new Date(String(createdAt)).toISOString(),
+    updatedAt: new Date(String(updatedAt)).toISOString(),
+    archivedAt: normalizeIso(archivedAt),
   };
+}
+
+function mappingResolutionWeight(level: MappingLevel): number {
+  switch (level) {
+    case "tenant_connector_default":
+      return 1;
+    case "tenant_connector_category_mapping":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function sortMappingsForResolution(items: ConnectorMappingVersion[]): ConnectorMappingVersion[] {
+  return [...items].sort((left, right) => {
+    const weightDiff = mappingResolutionWeight(left.mappingLevel) - mappingResolutionWeight(right.mappingLevel);
+    if (weightDiff !== 0) {
+      return weightDiff;
+    }
+    return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+  });
 }
 
 @Injectable()
@@ -202,19 +250,15 @@ export class ConnectorMappingService {
     actorId?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    await this.prisma.tenant(input.tenantKey).$executeRawUnsafe(
-      `
-      INSERT INTO connector_mapping_events (
-        id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-      `,
-      randomUUID(),
-      input.tenantKey,
-      input.mappingVersionId,
-      input.eventType,
-      input.actorId ?? null,
-      JSON.stringify(input.metadata ?? {}),
-    );
+    await this.prisma.tenant(input.tenantKey).connectorMappingEvent.create({
+      data: {
+        id: randomUUID(),
+        mappingVersionId: input.mappingVersionId,
+        eventType: input.eventType,
+        actorId: input.actorId ?? null,
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+    });
   }
 
   validateMappingRules(input: {
@@ -266,22 +310,15 @@ export class ConnectorMappingService {
     includeArchived?: boolean;
   }): Promise<ConnectorMappingVersion[]> {
     const tenantKey = this.getTenantKey();
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT *
-      FROM connector_mapping_versions
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND ($3::text IS NULL OR category_scope = $3::text)
-        AND ($4::boolean = TRUE OR lifecycle_state <> 'archived')
-      ORDER BY created_at DESC
-      `,
-      tenantKey,
-      input.connectorSlug,
-      input.categoryScope ?? null,
-      Boolean(input.includeArchived),
-    );
-    return rows.map(toVersion);
+    const rows = await this.prisma.tenant(tenantKey).connectorMappingVersion.findMany({
+      where: {
+        connectorSlug: input.connectorSlug,
+        ...(input.categoryScope ? { categoryScope: input.categoryScope } : {}),
+        ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map((row) => toVersion(row as unknown as Record<string, unknown>));
   }
 
   async createDraft(input: {
@@ -311,41 +348,23 @@ export class ConnectorMappingService {
       });
     }
 
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      INSERT INTO connector_mapping_versions (
-        id,
-        tenant_key,
-        connector_slug,
-        category_scope,
-        mapping_level,
-        lifecycle_state,
-        connector_definition_id,
-        connector_definition_version,
-        compatibility_state,
-        mapping_rules,
-        fallback_policy,
-        fallback_ack_required,
-        created_by
-      ) VALUES (
-        $1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12
-      )
-      RETURNING *
-      `,
-      randomUUID(),
-      tenantKey,
-      input.connectorSlug,
-      input.categoryScope,
-      input.mappingLevel,
-      input.connectorDefinitionId,
-      input.connectorDefinitionVersion,
-      input.compatibilityState ?? "compatible",
-      JSON.stringify(input.mappingRules ?? {}),
-      JSON.stringify(input.fallbackPolicy ?? {}),
-      Boolean(input.fallbackAckRequired),
-      input.actorId ?? null,
-    );
-    const version = toVersion(rows[0]!);
+    const created = await this.prisma.tenant(tenantKey).connectorMappingVersion.create({
+      data: {
+        id: randomUUID(),
+        connectorSlug: input.connectorSlug,
+        categoryScope: input.categoryScope,
+        mappingLevel: input.mappingLevel,
+        lifecycleState: "draft",
+        connectorDefinitionId: input.connectorDefinitionId,
+        connectorDefinitionVersion: input.connectorDefinitionVersion,
+        compatibilityState: input.compatibilityState ?? "compatible",
+        mappingRules: (input.mappingRules ?? {}) as Prisma.InputJsonValue,
+        fallbackPolicy: (input.fallbackPolicy ?? {}) as Prisma.InputJsonValue,
+        fallbackAckRequired: Boolean(input.fallbackAckRequired),
+        createdBy: input.actorId ?? null,
+      },
+    });
+    const version = toVersion(created as unknown as Record<string, unknown>);
     await this.appendEvent({
       tenantKey,
       mappingVersionId: version.id,
@@ -360,23 +379,16 @@ export class ConnectorMappingService {
 
   async getVersionById(input: { connectorSlug: string; versionId: string }): Promise<ConnectorMappingVersion> {
     const tenantKey = this.getTenantKey();
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT *
-      FROM connector_mapping_versions
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND id = $3
-      LIMIT 1
-      `,
-      tenantKey,
-      input.connectorSlug,
-      input.versionId,
-    );
-    if (!rows[0]) {
+    const row = await this.prisma.tenant(tenantKey).connectorMappingVersion.findFirst({
+      where: {
+        id: input.versionId,
+        connectorSlug: input.connectorSlug,
+      },
+    });
+    if (!row) {
       throw new NotFoundException("mapping_version_not_found");
     }
-    return toVersion(rows[0]);
+    return toVersion(row as unknown as Record<string, unknown>);
   }
 
   async validateVersion(input: {
@@ -406,21 +418,19 @@ export class ConnectorMappingService {
       });
     }
 
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      UPDATE connector_mapping_versions
-      SET lifecycle_state = 'validated',
-          updated_at = NOW()
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND id = $3
-      RETURNING *
-      `,
-      tenantKey,
-      input.connectorSlug,
-      input.versionId,
-    );
-    const version = toVersion(rows[0]!);
+    await this.prisma.tenant(tenantKey).connectorMappingVersion.updateMany({
+      where: {
+        id: input.versionId,
+        connectorSlug: input.connectorSlug,
+      },
+      data: {
+        lifecycleState: "validated",
+      },
+    });
+    const version = await this.getVersionById({
+      connectorSlug: input.connectorSlug,
+      versionId: input.versionId,
+    });
     await this.appendEvent({
       tenantKey,
       mappingVersionId: version.id,
@@ -442,90 +452,92 @@ export class ConnectorMappingService {
     }
     const tenantKey = this.getTenantKey();
     const result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
-      const selectedRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        SELECT *
-        FROM connector_mapping_versions
-        WHERE tenant_key = $1
-          AND connector_slug = $2
-          AND id = $3
-        FOR UPDATE
-        `,
-        tenantKey,
-        input.connectorSlug,
-        input.versionId,
-      );
-      if (!selectedRows[0]) {
+      const selectedRow = await tx.connectorMappingVersion.findFirst({
+        where: {
+          id: input.versionId,
+          connectorSlug: input.connectorSlug,
+        },
+      });
+      if (!selectedRow) {
         throw new NotFoundException("mapping_version_not_found");
       }
-      const selected = toVersion(selectedRows[0]);
+      const selected = toVersion(selectedRow as unknown as Record<string, unknown>);
       if (selected.lifecycleState !== "validated") {
         throw new ConflictException("must_validate_before_publish");
       }
 
-      const supersededRows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `
-        UPDATE connector_mapping_versions
-        SET lifecycle_state = 'superseded',
-            superseded_by = $1,
-            updated_at = NOW()
-        WHERE tenant_key = $2
-          AND connector_slug = $3
-          AND category_scope = $4
-          AND lifecycle_state = 'published'
-          AND id <> $1
-        RETURNING id::text AS id
-        `,
-        selected.id,
-        tenantKey,
-        input.connectorSlug,
-        selected.categoryScope,
-      );
-
-      const publishedRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        UPDATE connector_mapping_versions
-        SET lifecycle_state = 'published',
-            published_at = NOW(),
-            updated_at = NOW()
-        WHERE tenant_key = $1
-          AND connector_slug = $2
-          AND id = $3
-        RETURNING *
-        `,
-        tenantKey,
-        input.connectorSlug,
-        selected.id,
-      );
-
-      const published = toVersion(publishedRows[0]!);
-      const supersededIds = supersededRows.map((row) => String(row.id));
-      for (const supersededId of supersededIds) {
-        await tx.$executeRawUnsafe(
-          `
-          INSERT INTO connector_mapping_events (
-            id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-          ) VALUES ($1, $2, $3, 'superseded', $4, $5::jsonb)
-          `,
-          randomUUID(),
-          tenantKey,
-          supersededId,
-          input.actorId ?? null,
-          JSON.stringify({ superseded_by: published.id }),
-        );
+      const supersededRows = await tx.connectorMappingVersion.findMany({
+        where: {
+          connectorSlug: input.connectorSlug,
+          categoryScope: selected.categoryScope,
+          lifecycleState: "published",
+          NOT: { id: selected.id },
+        },
+        select: { id: true },
+      });
+      const supersededIds = supersededRows.map((row) => row.id);
+      if (supersededIds.length > 0) {
+        await tx.connectorMappingVersion.updateMany({
+          where: {
+            id: { in: supersededIds },
+          },
+          data: {
+            lifecycleState: "superseded",
+            supersededBy: selected.id,
+          },
+        });
       }
-      await tx.$executeRawUnsafe(
-        `
-        INSERT INTO connector_mapping_events (
-          id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-        ) VALUES ($1, $2, $3, 'published', $4, $5::jsonb)
-        `,
-        randomUUID(),
-        tenantKey,
-        published.id,
-        input.actorId ?? null,
-        JSON.stringify({ superseded_count: supersededIds.length }),
-      );
+
+      const publishUpdate = await tx.connectorMappingVersion.updateMany({
+        where: {
+          id: selected.id,
+          connectorSlug: input.connectorSlug,
+          lifecycleState: "validated",
+        },
+        data: {
+          lifecycleState: "published",
+          publishedAt: new Date(),
+          supersededBy: null,
+        },
+      });
+      if (publishUpdate.count !== 1) {
+        throw new ConflictException("must_validate_before_publish");
+      }
+
+      const publishedRow = await tx.connectorMappingVersion.findFirst({
+        where: {
+          id: selected.id,
+          connectorSlug: input.connectorSlug,
+        },
+      });
+      if (!publishedRow) {
+        throw new NotFoundException("mapping_version_not_found");
+      }
+      const published = toVersion(publishedRow as unknown as Record<string, unknown>);
+      for (const supersededId of supersededIds) {
+        await tx.connectorMappingEvent.create({
+          data: {
+            id: randomUUID(),
+            mappingVersionId: supersededId,
+            eventType: "superseded",
+            actorId: input.actorId ?? null,
+            metadata: {
+              superseded_by: published.id,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+      await tx.connectorMappingEvent.create({
+        data: {
+          id: randomUUID(),
+          mappingVersionId: published.id,
+          eventType: "published",
+          actorId: input.actorId ?? null,
+          metadata: {
+            superseded_count: supersededIds.length,
+          } as Prisma.InputJsonValue,
+        },
+      });
       return { published, superseded: supersededIds };
     });
     await this.emitMappingCompletionMetric(tenantKey, input.connectorSlug);
@@ -544,23 +556,16 @@ export class ConnectorMappingService {
     }
     const tenantKey = this.getTenantKey();
     const result = await this.prisma.tenant(tenantKey).$transaction(async (tx) => {
-      const sourceRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        SELECT *
-        FROM connector_mapping_versions
-        WHERE tenant_key = $1
-          AND connector_slug = $2
-          AND id = $3
-        FOR UPDATE
-        `,
-        tenantKey,
-        input.connectorSlug,
-        input.versionId,
-      );
-      if (!sourceRows[0]) {
+      const sourceRow = await tx.connectorMappingVersion.findFirst({
+        where: {
+          id: input.versionId,
+          connectorSlug: input.connectorSlug,
+        },
+      });
+      if (!sourceRow) {
         throw new NotFoundException("mapping_version_not_found");
       }
-      const source = toVersion(sourceRows[0]);
+      const source = toVersion(sourceRow as unknown as Record<string, unknown>);
       if (source.lifecycleState === "draft" || source.lifecycleState === "validated") {
         throw new ConflictException("rollback_requires_previously_published_version");
       }
@@ -585,149 +590,123 @@ export class ConnectorMappingService {
         });
       }
 
-      const currentlyPublishedRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        SELECT *
-        FROM connector_mapping_versions
-        WHERE tenant_key = $1
-          AND connector_slug = $2
-          AND category_scope = $3
-          AND lifecycle_state = 'published'
-        FOR UPDATE
-        `,
-        tenantKey,
-        input.connectorSlug,
-        source.categoryScope,
-      );
+      const currentlyPublishedRows = await tx.connectorMappingVersion.findMany({
+        where: {
+          connectorSlug: input.connectorSlug,
+          categoryScope: source.categoryScope,
+          lifecycleState: "published",
+        },
+        orderBy: { createdAt: "desc" },
+      });
 
       const rollbackVersionId = randomUUID();
-      await tx.$queryRawUnsafe(
-        `
-        INSERT INTO connector_mapping_versions (
-          id,
-          tenant_key,
-          connector_slug,
-          category_scope,
-          mapping_level,
-          lifecycle_state,
-          connector_definition_id,
-          connector_definition_version,
-          compatibility_state,
-          mapping_rules,
-          fallback_policy,
-          fallback_ack_required,
-          created_by
-        ) VALUES (
-          $1, $2, $3, $4, $5, 'validated', $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12
-        )
-        `,
-        rollbackVersionId,
-        tenantKey,
-        input.connectorSlug,
-        source.categoryScope,
-        source.mappingLevel,
-        source.connectorDefinitionId,
-        source.connectorDefinitionVersion,
-        source.compatibilityState,
-        JSON.stringify(source.mappingRules),
-        JSON.stringify(source.fallbackPolicy),
-        source.fallbackAckRequired,
-        input.actorId ?? null,
-      );
+      await tx.connectorMappingVersion.create({
+        data: {
+          id: rollbackVersionId,
+          connectorSlug: input.connectorSlug,
+          categoryScope: source.categoryScope,
+          mappingLevel: source.mappingLevel,
+          lifecycleState: "validated",
+          connectorDefinitionId: source.connectorDefinitionId,
+          connectorDefinitionVersion: source.connectorDefinitionVersion,
+          compatibilityState: source.compatibilityState,
+          mappingRules: source.mappingRules as Prisma.InputJsonValue,
+          fallbackPolicy: source.fallbackPolicy as Prisma.InputJsonValue,
+          fallbackAckRequired: source.fallbackAckRequired,
+          createdBy: input.actorId ?? null,
+        },
+      });
 
-      const supersededRows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `
-        UPDATE connector_mapping_versions
-        SET lifecycle_state = 'superseded',
-            superseded_by = $1,
-            updated_at = NOW()
-        WHERE tenant_key = $2
-          AND connector_slug = $3
-          AND category_scope = $4
-          AND lifecycle_state = 'published'
-          AND id <> $5
-        RETURNING id::text AS id
-        `,
-        rollbackVersionId,
-        tenantKey,
-        input.connectorSlug,
-        source.categoryScope,
-        source.id,
-      );
+      const supersededIds = currentlyPublishedRows
+        .map((row) => row.id)
+        .filter((id) => id !== source.id);
+      if (supersededIds.length > 0) {
+        await tx.connectorMappingVersion.updateMany({
+          where: {
+            id: { in: supersededIds },
+          },
+          data: {
+            lifecycleState: "superseded",
+            supersededBy: rollbackVersionId,
+          },
+        });
+      }
 
-      const rollbackRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
-        UPDATE connector_mapping_versions
-        SET lifecycle_state = 'published',
-            published_at = NOW(),
-            updated_at = NOW()
-        WHERE tenant_key = $1
-          AND connector_slug = $2
-          AND id = $3
-        RETURNING *
-        `,
-        tenantKey,
-        input.connectorSlug,
-        rollbackVersionId,
-      );
-      const published = toVersion(rollbackRows[0]!);
-      const supersededIds = supersededRows.map((row) => String(row.id));
+      const publishUpdate = await tx.connectorMappingVersion.updateMany({
+        where: {
+          id: rollbackVersionId,
+          connectorSlug: input.connectorSlug,
+          lifecycleState: "validated",
+        },
+        data: {
+          lifecycleState: "published",
+          publishedAt: new Date(),
+          supersededBy: null,
+        },
+      });
+      if (publishUpdate.count !== 1) {
+        throw new ConflictException("rollback_requires_previously_published_version");
+      }
 
-      for (const currentPublished of currentlyPublishedRows.map(toVersion)) {
+      const rollbackRow = await tx.connectorMappingVersion.findFirst({
+        where: {
+          id: rollbackVersionId,
+          connectorSlug: input.connectorSlug,
+        },
+      });
+      if (!rollbackRow) {
+        throw new NotFoundException("mapping_version_not_found");
+      }
+      const published = toVersion(rollbackRow as unknown as Record<string, unknown>);
+
+      for (const currentPublished of currentlyPublishedRows.map((row) =>
+        toVersion(row as unknown as Record<string, unknown>),
+      )) {
         if (currentPublished.id === source.id) {
           continue;
         }
-        await tx.$executeRawUnsafe(
-          `
-          INSERT INTO connector_mapping_events (
-            id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-          ) VALUES ($1, $2, $3, 'superseded', $4, $5::jsonb)
-          `,
-          randomUUID(),
-          tenantKey,
-          currentPublished.id,
-          input.actorId ?? null,
-          JSON.stringify({
-            superseded_by: published.id,
-            rollback_source_version_id: source.id,
-          }),
-        );
+        await tx.connectorMappingEvent.create({
+          data: {
+            id: randomUUID(),
+            mappingVersionId: currentPublished.id,
+            eventType: "superseded",
+            actorId: input.actorId ?? null,
+            metadata: {
+              superseded_by: published.id,
+              rollback_source_version_id: source.id,
+            } as Prisma.InputJsonValue,
+          },
+        });
       }
 
-      await tx.$executeRawUnsafe(
-        `
-        INSERT INTO connector_mapping_events (
-          id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-        ) VALUES ($1, $2, $3, 'created', $4, $5::jsonb)
-        `,
-        randomUUID(),
-        tenantKey,
-        published.id,
-        input.actorId ?? null,
-        JSON.stringify({
-          rollback: true,
-          rollback_source_version_id: source.id,
-          rollback_source_lifecycle_state: source.lifecycleState,
-          reason: input.reason,
-        }),
-      );
-      await tx.$executeRawUnsafe(
-        `
-        INSERT INTO connector_mapping_events (
-          id, tenant_key, mapping_version_id, event_type, actor_id, metadata
-        ) VALUES ($1, $2, $3, 'published', $4, $5::jsonb)
-        `,
-        randomUUID(),
-        tenantKey,
-        published.id,
-        input.actorId ?? null,
-        JSON.stringify({
-          rollback: true,
-          rollback_source_version_id: source.id,
-          rollback_reason: input.reason,
-          superseded_count: supersededIds.length,
-        }),
-      );
+      await tx.connectorMappingEvent.create({
+        data: {
+          id: randomUUID(),
+          mappingVersionId: published.id,
+          eventType: "created",
+          actorId: input.actorId ?? null,
+          metadata: {
+            rollback: true,
+            rollback_source_version_id: source.id,
+            rollback_source_lifecycle_state: source.lifecycleState,
+            reason: input.reason,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.connectorMappingEvent.create({
+        data: {
+          id: randomUUID(),
+          mappingVersionId: published.id,
+          eventType: "published",
+          actorId: input.actorId ?? null,
+          metadata: {
+            rollback: true,
+            rollback_source_version_id: source.id,
+            rollback_reason: input.reason,
+            superseded_count: supersededIds.length,
+          } as Prisma.InputJsonValue,
+        },
+      });
 
       return {
         published,
@@ -753,22 +732,20 @@ export class ConnectorMappingService {
     if (!canTransition(current.lifecycleState, "archived")) {
       throw new ConflictException("invalid_lifecycle_transition");
     }
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      UPDATE connector_mapping_versions
-      SET lifecycle_state = 'archived',
-          archived_at = NOW(),
-          updated_at = NOW()
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND id = $3
-      RETURNING *
-      `,
-      tenantKey,
-      input.connectorSlug,
-      input.versionId,
-    );
-    const archived = toVersion(rows[0]!);
+    await this.prisma.tenant(tenantKey).connectorMappingVersion.updateMany({
+      where: {
+        id: input.versionId,
+        connectorSlug: input.connectorSlug,
+      },
+      data: {
+        lifecycleState: "archived",
+        archivedAt: new Date(),
+      },
+    });
+    const archived = await this.getVersionById({
+      connectorSlug: input.connectorSlug,
+      versionId: input.versionId,
+    });
     await this.appendEvent({
       tenantKey,
       mappingVersionId: archived.id,
@@ -801,28 +778,27 @@ export class ConnectorMappingService {
   }> {
     const tenantKey = this.getTenantKey();
     const categoryScope = String(input.categoryScope ?? "").trim() || "*";
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT *
-      FROM connector_mapping_versions
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND lifecycle_state = 'published'
-        AND (
-          (mapping_level = 'tenant_connector_default' AND category_scope = '*')
-          OR (mapping_level = 'tenant_connector_category_mapping' AND category_scope = $3)
-        )
-      ORDER BY CASE mapping_level
-        WHEN 'tenant_connector_default' THEN 1
-        ELSE 2
-      END ASC, created_at ASC
-      `,
-      tenantKey,
-      input.connectorSlug,
-      categoryScope,
-    );
+    const rows = await this.prisma.tenant(tenantKey).connectorMappingVersion.findMany({
+      where: {
+        connectorSlug: input.connectorSlug,
+        lifecycleState: "published",
+        OR: [
+          {
+            mappingLevel: "tenant_connector_default",
+            categoryScope: "*",
+          },
+          {
+            mappingLevel: "tenant_connector_category_mapping",
+            categoryScope,
+          },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-    const matched = rows.map(toVersion);
+    const matched = sortMappingsForResolution(
+      rows.map((row) => toVersion(row as unknown as Record<string, unknown>)),
+    );
     let merged: Record<string, unknown> = this.systemDefaultForConnector(input.connectorSlug);
     const compatStates: MappingCompatibility[] = ["compatible"];
     for (const version of matched) {
@@ -969,21 +945,20 @@ export class ConnectorMappingService {
     }>
   > {
     const tenantKey = this.getTenantKey();
-    const publishedScopesRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ category_scope: string }>>(
-      `
-      SELECT DISTINCT category_scope
-      FROM connector_mapping_versions
-      WHERE tenant_key = $1
-        AND connector_slug = $2
-        AND lifecycle_state = 'published'
-        AND mapping_level = 'tenant_connector_category_mapping'
-      `,
-      tenantKey,
-      input.connectorSlug,
-    );
+    const publishedScopesRows = await this.prisma.tenant(tenantKey).connectorMappingVersion.findMany({
+      where: {
+        connectorSlug: input.connectorSlug,
+        lifecycleState: "published",
+        mappingLevel: "tenant_connector_category_mapping",
+      },
+      select: {
+        categoryScope: true,
+      },
+      distinct: ["categoryScope"],
+    });
     const publishedScopes = new Set(
       publishedScopesRows
-        .map((row) => String(row.category_scope ?? "").trim())
+        .map((row) => String(row.categoryScope ?? "").trim())
         .filter((item) => item.length > 0),
     );
     const categories = await this.prisma.tenant(tenantKey).category.findMany({
@@ -1026,22 +1001,22 @@ export class ConnectorMappingService {
     const blockers = [...preflight.blockers];
     const warnings = [...preflight.warnings];
 
-    const installationRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        ci.id,
-        ci.status
-      FROM connector_installations ci
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE ci.tenant_key = $1
-        AND cd.slug = $2
-      ORDER BY ci.installed_at DESC
-      LIMIT 1
-      `,
-      tenantKey,
-      input.connectorSlug,
-    );
-    const installation = installationRows[0];
+    const connectorDefinition = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+      where: { slug: input.connectorSlug },
+      select: { id: true },
+    });
+    const installation = connectorDefinition
+      ? await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+          where: {
+            connectorId: connectorDefinition.id,
+          },
+          orderBy: [{ installedAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            status: true,
+          },
+        })
+      : null;
     if (!installation) {
       blockers.push("connector_not_installed");
     } else {
@@ -1149,20 +1124,19 @@ export class ConnectorMappingService {
     try {
       const [totalCategories, mappedCategoryRows] = await Promise.all([
         this.prisma.tenant(tenantKey).category.count(),
-        this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<{ category_scope: string }>>(
-          `
-          SELECT DISTINCT category_scope
-          FROM connector_mapping_versions
-          WHERE tenant_key = $1
-            AND connector_slug = $2
-            AND lifecycle_state = 'published'
-            AND mapping_level = 'tenant_connector_category_mapping'
-          `,
-          tenantKey,
-          connectorSlug,
-        ),
+        this.prisma.tenant(tenantKey).connectorMappingVersion.findMany({
+          where: {
+            connectorSlug,
+            lifecycleState: "published",
+            mappingLevel: "tenant_connector_category_mapping",
+          },
+          select: {
+            categoryScope: true,
+          },
+          distinct: ["categoryScope"],
+        }),
       ]);
-      const mappedCategories = mappedCategoryRows.filter((row) => String(row.category_scope ?? "").trim() !== "*").length;
+      const mappedCategories = mappedCategoryRows.filter((row) => String(row.categoryScope ?? "").trim() !== "*").length;
       const completionPercent = totalCategories > 0 ? (mappedCategories / totalCategories) * 100 : 100;
       await this.metricsService.emit({
         tenantKey,

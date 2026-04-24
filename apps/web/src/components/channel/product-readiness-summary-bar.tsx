@@ -6,13 +6,6 @@ import { Button } from "@/components/ui/button";
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
 import { READINESS_CHANNELS, type ChannelReadinessResult } from "@/lib/channel-readiness";
 
-function toChannel(value: MarketplaceChannel): "amazon" | "flipkart" | "meesho" {
-  if (value === "flipkart" || value === "meesho") {
-    return value;
-  }
-  return "amazon";
-}
-
 function relativeTime(from: Date | null): string {
   if (!from) {
     return "not checked";
@@ -116,7 +109,7 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
         return (
           <ChannelReadinessBadge
             key={channel}
-            channel={toChannel(channel)}
+            channel={channel}
             status={item.status}
             errorCount={item.errorCount}
             warningCount={item.warningCount}
