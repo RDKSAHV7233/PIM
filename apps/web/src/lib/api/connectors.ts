@@ -9,6 +9,21 @@ import type {
 } from "./core";
 import { deleteJson, fetchJson, postJson } from "./core";
 
+const SHOPIFY_LIVE_LAUNCH_NOTE =
+  "Shopify supports managed install, expiring offline token exchange, publication target selection, publish, status sync, and webhook relay handling.";
+
+function normalizeShopifyLaunchMetadata<T extends ConnectorDefinition | ConnectorInstallation>(item: T): T {
+  if (String(item.slug ?? "").trim().toLowerCase() !== "shopify") {
+    return item;
+  }
+  return {
+    ...item,
+    implementationStatus: "full",
+    launchStage: "live",
+    launchNote: SHOPIFY_LIVE_LAUNCH_NOTE,
+  };
+}
+
 export async function getInstalledConnectors(options?: ApiRequestOptions) {
   const response = await fetchJson<PaginatedResponse<ConnectorInstallation> | ConnectorInstallation[]>(
     "/connectors/installed?limit=200",
@@ -16,13 +31,14 @@ export async function getInstalledConnectors(options?: ApiRequestOptions) {
     options,
   );
   if (Array.isArray(response)) {
-    return response;
+    return response.map(normalizeShopifyLaunchMetadata);
   }
-  return response.items ?? [];
+  return (response.items ?? []).map(normalizeShopifyLaunchMetadata);
 }
 
 export async function getConnectorDefinitions(options?: ApiRequestOptions) {
-  return fetchJson<ConnectorDefinition[]>("/connectors/definitions", undefined, options);
+  const response = await fetchJson<ConnectorDefinition[]>("/connectors/definitions", undefined, options);
+  return response.map(normalizeShopifyLaunchMetadata);
 }
 
 export async function getConnectorPublications(

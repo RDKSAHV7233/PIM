@@ -16,13 +16,16 @@ function assert(condition, message) {
 function run() {
   const source = fs.readFileSync(CONNECTORS_PAGE, "utf8");
   const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
+  const staleShopifyCatalogCopy = [
+    "Visible in the channel catalog as a guided",
+    "Shopify connector.",
+  ].join(" ");
   assert(
-    setupSource.includes("isGuidedSetupConnector") &&
-      setupSource.includes('definition.slug === "shopify" && definition.launchStage === "manual"') &&
-      setupSource.includes("Shopify guided setup creates the Vexa connector account first.") &&
+    setupSource.includes('item.definition.launchStage === "live"') &&
+      setupSource.includes("Shopify live install creates the Vexa connector account with store-domain context.") &&
       setupSource.includes('name="shopDomain"') &&
-      setupSource.includes("Create guided connector"),
-    "Connector setup page must surface Shopify as a guided Vexa setup lane with a store-domain install contract.",
+      setupSource.includes("Create Shopify connector"),
+    "Connector setup page must surface Shopify as a live Vexa setup lane with a store-domain install contract.",
   );
   assert(
     source.includes("definition.launchNote") &&
@@ -30,11 +33,10 @@ function run() {
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
-    source.includes("function isCatalogPilotConnector(") &&
-      source.includes("guided setup") &&
-      source.includes("Visible in the channel catalog as a guided Shopify connector.") &&
-      source.includes("install and manage it like the other Vexa connectors"),
-    "Shopify guided connectors must stay in the channel catalog and use the normal Vexa setup lane.",
+    !source.includes("function isCatalogPilotConnector(") &&
+      !source.includes(staleShopifyCatalogCopy) &&
+      source.includes("Review live connector lanes first so operators can install, map, and manage each Vexa connector"),
+    "Shopify must use the live channel catalog path instead of manual rollout presentation.",
   );
   assert(
     source.includes("function connectorStatusNote(") &&

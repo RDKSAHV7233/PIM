@@ -1069,7 +1069,7 @@ export class ConnectorInstallerService {
     if (!input.shopDomain) {
       throw new BadRequestException({
         error: "SHOPIFY_SHOP_DOMAIN_REQUIRED",
-        message: "Shopify guided setup requires a store domain before the connector account can be created.",
+        message: "Shopify install requires a store domain before the connector account can be created.",
       });
     }
 

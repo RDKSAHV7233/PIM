@@ -70,7 +70,7 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
     return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
   }
   if (value === "SHOPIFY_SHOP_DOMAIN_REQUIRED") {
-    return "Shopify guided setup requires the store domain before the connector account can be created.";
+    return "Shopify install requires the store domain before the connector account can be created.";
   }
   if (value === "SHOPIFY_SHOP_DOMAIN_INVALID") {
     return "Shopify store domain must be a valid *.myshopify.com hostname.";
@@ -107,10 +107,6 @@ function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
     return "not seller-ready";
   }
   return "live";
-}
-
-function isGuidedSetupConnector(definition: ConnectorDefinition): boolean {
-  return definition.slug === "shopify" && definition.launchStage === "manual";
 }
 
 function connectorStatusNote(
@@ -258,7 +254,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     return (
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Shopify guided setup creates the Vexa connector account first. Add the store domain here, then finish the managed install and token exchange from the connector detail workflow.
+          Shopify live install creates the Vexa connector account with store-domain context. Finish managed install and token exchange from the connector detail workflow before publishing.
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -309,7 +305,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
-      .filter((item) => item.definition.launchStage === "live" || isGuidedSetupConnector(item.definition))
+      .filter((item) => item.definition.launchStage === "live")
       .filter((item) => (selectedSlug ? item.definition.slug === selectedSlug : true))
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => left.definition.displayName.localeCompare(right.definition.displayName));
@@ -412,7 +408,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">2. Add credentials</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Enter the account alias and connector credentials once. For Shopify, this step captures the store domain and guided-install context before the managed install continues.
+                  Enter the account alias and connector credentials once. For Shopify, this step captures the store domain and managed-install context before token exchange continues.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -527,8 +523,8 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                       </p>
                       <PendingSubmitButton
                         type="submit"
-                        idleLabel={definition.slug === "shopify" ? "Create guided connector" : "Install connector"}
-                        pendingLabel={definition.slug === "shopify" ? "Creating guided connector..." : "Installing connector..."}
+                        idleLabel={definition.slug === "shopify" ? "Create Shopify connector" : "Install connector"}
+                        pendingLabel={definition.slug === "shopify" ? "Creating Shopify connector..." : "Installing connector..."}
                       />
                     </div>
                   </form>

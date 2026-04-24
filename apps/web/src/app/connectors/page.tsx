@@ -197,10 +197,6 @@ function formatDateTime(value: string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
-function isCatalogPilotConnector(definition: ConnectorDefinition): boolean {
-  return definition.slug === "shopify" && (definition.launchStage === "planned" || definition.launchStage === "manual");
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -427,13 +423,12 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         return left.definition.displayName.localeCompare(right.definition.displayName);
       });
     const liveDefinitions = definitionModels.filter((item) => item.definition.launchStage === "live");
-    const catalogPilotDefinitions = definitionModels.filter((item) => isCatalogPilotConnector(item.definition));
-    const channelCatalogDefinitions = [...liveDefinitions, ...catalogPilotDefinitions];
+    const channelCatalogDefinitions = liveDefinitions;
     const manualDefinitions = definitionModels.filter(
-      (item) => item.definition.launchStage === "manual" && !isCatalogPilotConnector(item.definition),
+      (item) => item.definition.launchStage === "manual",
     );
     const plannedDefinitions = definitionModels.filter(
-      (item) => item.definition.launchStage === "planned" && !isCatalogPilotConnector(item.definition),
+      (item) => item.definition.launchStage === "planned",
     );
     const needsSetupDefinitions = definitionModels.filter(
       (item) => item.workspaceState.label === "Needs setup",
@@ -559,7 +554,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                   <StatusChip label="setup lane" tone="info" />
                 </div>
                 <p className="mt-2 text-sm text-slate-600">
-                  Open the dedicated setup workspace to install the first healthy account for each live catalog channel and guided Shopify rollout lane.
+                  Open the dedicated setup workspace to install the first healthy account for each live catalog channel.
                 </p>
               </Link>
               <a
@@ -598,7 +593,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first, plus guided Shopify rollout inside the same catalog workspace so operators can install and manage it like the other Vexa connectors{portfolioContext}.
+                  Review live connector lanes first so operators can install, map, and manage each Vexa connector from the same catalog workspace{portfolioContext}.
                 </p>
               </div>
               <StatusChip
@@ -650,17 +645,10 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           label={connectorLaunchLabel(definition.launchStage)}
                           tone={connectorLaunchTone(definition.launchStage)}
                         />
-                        {isCatalogPilotConnector(definition) ? (
-                          <StatusChip label="guided setup" tone="info" />
-                        ) : null}
                       </div>
                     </div>
 
-                      <p className="mt-3 text-sm text-slate-600">
-                        {isCatalogPilotConnector(definition)
-                          ? "Visible in the channel catalog as a guided Shopify connector. Install starts in Vexa, then continues through the managed-install handshake before publishing."
-                          : workspaceState.description}
-                      </p>
+                      <p className="mt-3 text-sm text-slate-600">{workspaceState.description}</p>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -679,13 +667,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       </div>
 
                       {definition.launchNote ? (
-                        <p
-                          className={`mt-3 rounded-xl px-3 py-2 text-sm ${
-                            isCatalogPilotConnector(definition)
-                              ? "border border-sky-200 bg-sky-50 text-sky-800"
-                              : "border border-amber-200 bg-amber-50 text-amber-900"
-                          }`}
-                        >
+                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                           {definition.launchNote}
                         </p>
                       ) : null}
@@ -700,7 +682,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                           href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}
                           className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                         >
-                          {installedForDefinition.length > 0 ? "Open setup lane" : "Start setup"}
+                          {installedForDefinition.length > 0 ? "Open setup" : "Start setup"}
                         </Link>
                         <Link
                           href={mappingHref}

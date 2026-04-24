@@ -228,10 +228,10 @@ async function run() {
       accountAlias: "primary",
       shopDomain: "vishaltest112.myshopify.com",
     });
-    assertStatus(install, 201, "guided Shopify install");
+    assertStatus(install, 201, "Shopify install");
     assert(
-      String(install.payload?.status ?? "") === "PAUSED",
-      `expected guided Shopify install to create PAUSED account, got ${JSON.stringify(install.payload)}`,
+      String(install.payload?.status ?? "") === "ACTIVE",
+      `expected Shopify install to create ACTIVE account, got ${JSON.stringify(install.payload)}`,
     );
 
     const rows = await prisma.$queryRawUnsafe(
@@ -244,8 +244,8 @@ async function run() {
       `,
       tenantId,
     );
-    assert(Array.isArray(rows) && rows.length === 1, "guided Shopify install should create one connector_installations row");
-    assert(String(rows[0].status) === "PAUSED", `expected PAUSED install row, got ${JSON.stringify(rows[0])}`);
+    assert(Array.isArray(rows) && rows.length === 1, "Shopify install should create one connector_installations row");
+    assert(String(rows[0].status) === "ACTIVE", `expected ACTIVE install row, got ${JSON.stringify(rows[0])}`);
     assert(
       String(rows[0].externalAccountRef ?? "") === "vishaltest112.myshopify.com",
       `expected externalAccountRef to default to shop domain, got ${JSON.stringify(rows[0])}`,
@@ -271,7 +271,7 @@ async function run() {
     );
     assert(
       Array.isArray(credentialRows) && credentialRows.some((row) => row.credentialType === "shop_domain"),
-      "guided Shopify install should persist encrypted shop_domain credential",
+      "Shopify install should persist encrypted shop_domain credential",
     );
 
     console.log(
@@ -279,10 +279,10 @@ async function run() {
         {
           status: "ok",
           validated: [
-            "shopify_manual_launch_stage_is_installable",
-            "shopify_guided_install_requires_shop_domain",
-            "shopify_guided_install_creates_paused_installation",
-            "shopify_guided_install_persists_shop_context",
+            "shopify_live_launch_stage_is_installable",
+            "shopify_install_requires_shop_domain",
+            "shopify_install_creates_active_installation",
+            "shopify_install_persists_shop_context",
           ],
           checkedAt: new Date().toISOString(),
         },
@@ -294,7 +294,7 @@ async function run() {
     const details = error instanceof Error ? error.message : String(error);
     const stdout = stdoutBuffer.join("").slice(-4000);
     const stderr = stderrBuffer.join("").slice(-4000);
-    console.error("Shopify guided install integration test failed:");
+    console.error("Shopify install integration test failed:");
     console.error(details);
     if (stdout) {
       console.error("--- API stdout tail ---");

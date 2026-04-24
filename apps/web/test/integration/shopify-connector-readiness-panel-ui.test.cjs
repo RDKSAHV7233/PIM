@@ -30,8 +30,8 @@ function run() {
       detailSource.includes("Managed install token exchanged") &&
       detailSource.includes("Store identity recorded") &&
       detailSource.includes("Publication targets selected") &&
-      detailSource.includes("Pilot publish ready"),
-    "Shopify connector detail page must render the readiness ladder for pilot publish.",
+      detailSource.includes("Publish ready"),
+    "Shopify connector detail page must render the readiness ladder for live publish.",
   );
 
   assert(
@@ -43,9 +43,9 @@ function run() {
 
   assert(
     detailSource.includes("completedShopifyReadinessSteps") &&
-      detailSource.includes("pilot publish ready") &&
+      detailSource.includes("publish ready") &&
       detailSource.includes("setup still required"),
-    "Shopify readiness panel must summarize whether the account is pilot-ready or still needs setup.",
+    "Shopify readiness panel must summarize whether the account is publish-ready or still needs setup.",
   );
 
   console.log(
@@ -55,7 +55,7 @@ function run() {
         validated: [
           "shopify_detail_page_renders_readiness_ladder",
           "shopify_readiness_uses_metadata_backed_state",
-          "shopify_readiness_summarizes_pilot_publish_state",
+          "shopify_readiness_summarizes_publish_state",
         ],
         checkedAt: new Date().toISOString(),
       },

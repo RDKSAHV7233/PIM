@@ -28,25 +28,25 @@ function run() {
   const detailSource = fs.readFileSync(DETAIL_PAGE, "utf8");
 
   assert(
-    setupSource.includes("Shopify guided setup creates the Vexa connector account first.") &&
+    setupSource.includes("Shopify live install creates the Vexa connector account with store-domain context.") &&
       setupSource.includes('name="shopDomain"') &&
-      setupSource.includes("Create guided connector") &&
-      setupSource.includes("managed install continues"),
-    "Setup page must expose Shopify as a guided setup lane that captures store context before the managed install continues.",
+      setupSource.includes("Create Shopify connector") &&
+      setupSource.includes("managed install and token exchange"),
+    "Setup page must expose Shopify as a live setup lane that captures store context before managed install continues.",
   );
 
   assert(
     detailSource.includes("CardTitle>Managed Install Handoff<") &&
-      detailSource.includes("Start guided install handoff") &&
+      detailSource.includes("Start managed install handoff") &&
       detailSource.includes("Complete managed install and token exchange") &&
       detailSource.includes("Confirm shop identity and publish controls"),
     "Shopify connector detail page must show a managed-install handoff ladder for operators.",
   );
 
   assert(
-    detailSource.includes("Seller self-serve still stays locked.") &&
+    detailSource.includes("Shopify is live for this workspace.") &&
       detailSource.includes("Refresh credential state"),
-    "Shopify handoff copy must stay honest about launch stage and give operators a concrete refresh action.",
+    "Shopify handoff copy must stay honest about live launch stage and give operators a concrete refresh action.",
   );
 
   console.log(

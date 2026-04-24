@@ -221,9 +221,9 @@ async function run() {
     assert(amazon.implementationStatus === "full", `amazon-in implementationStatus expected full, got ${amazon.implementationStatus}`);
     assert(meesho.implementationStatus === "partial", `meesho implementationStatus expected partial, got ${meesho.implementationStatus}`);
     assert(flipkart.implementationStatus === "full", `flipkart implementationStatus expected full, got ${flipkart.implementationStatus}`);
-    assert(shopify.implementationStatus === "partial", `shopify implementationStatus expected partial, got ${shopify.implementationStatus}`);
+    assert(shopify.implementationStatus === "full", `shopify implementationStatus expected full, got ${shopify.implementationStatus}`);
     assert(amazon.launchStage === "live", `amazon-in launchStage expected live, got ${amazon.launchStage}`);
-    assert(shopify.launchStage === "manual", `shopify launchStage expected manual, got ${shopify.launchStage}`);
+    assert(shopify.launchStage === "live", `shopify launchStage expected live, got ${shopify.launchStage}`);
     assert(shopify.actions?.install?.allowed === true, `shopify install action should be allowed, got ${JSON.stringify(shopify.actions)}`);
 
     console.log(
