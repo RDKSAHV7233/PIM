@@ -375,17 +375,18 @@ export class MarketplaceService implements OnModuleInit {
 
   async cloneTemplate(templateId: string, dto: CloneMappingTemplateDto) {
     const source = await this.requireTemplate(templateId);
+    const sourceChannel = this.parseChannel(source.channel);
     const cloneNameInput = dto.name ? dto.name.trim() : "";
     const cloneName =
       cloneNameInput.length > 0
         ? cloneNameInput
-        : await this.generateCloneTemplateName(source.categoryId, source.channel, source.name);
+        : await this.generateCloneTemplateName(source.categoryId, sourceChannel, source.name);
     const cloneIsDefault = dto.isDefault ?? false;
     if (cloneIsDefault) {
       await this.prisma.tenant().channelMappingTemplate.updateMany({
         where: {
           categoryId: source.categoryId,
-          channel: source.channel,
+          channel: sourceChannel,
         },
         data: { isDefault: false },
       });
@@ -396,7 +397,7 @@ export class MarketplaceService implements OnModuleInit {
         data: {
           categoryId: source.categoryId,
           name: cloneName,
-          channel: source.channel,
+          channel: sourceChannel,
           requiredFields: source.requiredFields as Prisma.InputJsonValue,
           fieldMap: source.fieldMap as Prisma.InputJsonValue,
           isDefault: cloneIsDefault,
