@@ -48,6 +48,14 @@ function run() {
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
     "Channel connector detail must fetch permissions, installation-scoped submissions, and product lookup data together.",
   );
+  assert(
+    source.includes("getConnectorPublications(installation.id, { role: actorRole, authHeader })") &&
+      source.includes("updateConnectorPublicationTargetsAction") &&
+      source.includes('name="publicationIds"') &&
+      source.includes("Save publication targets") &&
+      source.includes("Managed Install Readiness"),
+    "Channel connector detail must surface live publication target management and Shopify managed-install guidance.",
+  );
 
   assert(
     source.includes('const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [') &&
@@ -124,6 +132,7 @@ function run() {
           "channel_connector_detail_route_uses_params_and_shared_server_auth_context",
           "channel_connector_detail_route_resolves_installation_and_404s_missing_records",
           "channel_connector_detail_route_fetches_permissions_and_submissions_in_parallel",
+          "channel_connector_detail_route_surfaces_publication_target_management",
           "channel_connector_detail_route_exposes_pim_focused_detail_tabs",
           "channel_connector_detail_route_builds_catalog_and_issue_views_from_submission_history",
           "channel_connector_detail_route_preserves_installation_and_access_kpis",

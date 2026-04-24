@@ -1,6 +1,8 @@
+import type { MarketplaceChannel } from "../marketplace-channels";
+
 export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
-export type MarketplaceChannel = "amazon" | "flipkart" | "meesho";
+export type { MarketplaceChannel };
 export type AppRole = "admin" | "editor" | "reviewer" | "viewer";
 
 const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
@@ -212,6 +214,21 @@ export interface ConnectorPermission {
   action: "install" | "reconnect" | "uninstall";
   createdBy: string | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConnectorPublicationTarget {
+  id: string;
+  name: string;
+  selected: boolean;
+  catalogId?: string | null;
+  catalogTitle?: string | null;
+  catalogType?: string | null;
+}
+
+export interface ConnectorPublicationTargetsUpdateResponse {
+  id: string;
+  publicationTargets: ConnectorPublicationTarget[];
   updatedAt: string;
 }
 

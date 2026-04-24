@@ -151,7 +151,7 @@ const SUPPRESSED_PRODUCT_STATUSES = new Set(["ARCHIVED"]);
 export class ShopifyConnector implements ConnectorInterface {
   readonly slug = "shopify";
   readonly displayName = "Shopify";
-  readonly implementationStatus = "partial" as const;
+  readonly implementationStatus = "full" as const;
   readonly capabilities: ConnectorCap[] = [
     "PUBLISH",
     "VALIDATE",

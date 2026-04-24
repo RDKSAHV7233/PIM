@@ -3,6 +3,7 @@ import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/
 import { FastifyReply, FastifyRequest } from "fastify";
 import { AuditService } from "../audit/audit.service";
 import { AppRole, Roles } from "../common/rbac/roles";
+import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { Public } from "../auth/public.decorator";
 import { CommercialRequestsService } from "./commercial-requests.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
@@ -79,6 +80,7 @@ export class BillingController {
       action: "TENANT_BILLING_CONTACT_UPDATED",
       resource: "TENANT_PLAN_PROFILE",
       resourceId: profile.tenantKey,
+      tenantKey: profile.tenantKey,
       metadata: {
         event: "tenant_billing_contact_updated",
         previousBillingContactEmail: current.billingContactEmail,
@@ -127,6 +129,7 @@ export class BillingController {
       action: result.created ? "COMMERCIAL_UPGRADE_REQUEST_CREATED" : "COMMERCIAL_UPGRADE_REQUEST_REUSED",
       resource: "TENANT_COMMERCIAL_REQUEST",
       resourceId: result.item.id,
+      tenantKey: result.item.tenantKey,
       metadata: {
         event: result.created ? "commercial_upgrade_request_created" : "commercial_upgrade_request_reused",
         tenantKey: result.item.tenantKey,
@@ -194,6 +197,7 @@ export class BillingController {
       action: "COMMERCIAL_OVERVIEW_VIEWED",
       resource: "TENANT_PLAN_PROFILE",
       resourceId: "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(),
       metadata: {
         event: "commercial_overview_viewed",
         totalTenants: tenantOverview.totalTenants,
@@ -234,6 +238,7 @@ export class BillingController {
       action: "COMMERCIAL_UPGRADE_REQUEST_LISTED",
       resource: "TENANT_COMMERCIAL_REQUEST",
       resourceId: query.tenantKey ?? "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
       metadata: {
         event: "commercial_upgrade_request_listed",
         tenantKey: query.tenantKey ?? null,
@@ -267,7 +272,7 @@ export class BillingController {
       operatorRoleHeader,
     );
     const stamp = new Date().toISOString().slice(0, 10);
-    response.header("Content-Disposition", `attachment; filename="tej-pim-commercial-requests-${stamp}.csv"`);
+    response.header("Content-Disposition", `attachment; filename="vexa-pim-commercial-requests-${stamp}.csv"`);
     const csv = await this.commercialRequestsService.exportUpgradeRequestsCsvInternal({
       tenantKey: query.tenantKey,
       status: query.status,
@@ -280,6 +285,7 @@ export class BillingController {
       action: "COMMERCIAL_UPGRADE_REQUEST_EXPORTED",
       resource: "TENANT_COMMERCIAL_REQUEST",
       resourceId: query.tenantKey ?? "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
       metadata: {
         event: "commercial_upgrade_request_exported",
         tenantKey: query.tenantKey ?? null,
@@ -326,6 +332,7 @@ export class BillingController {
       action: "COMMERCIAL_UPGRADE_REQUEST_STATUS_UPDATED",
       resource: "TENANT_COMMERCIAL_REQUEST",
       resourceId: item.id,
+      tenantKey: item.tenantKey,
       metadata: {
         event: "commercial_upgrade_request_status_updated",
         tenantKey: item.tenantKey,
@@ -370,6 +377,7 @@ export class BillingController {
       action: "COMMERCIAL_TENANT_SEARCH",
       resource: "WORKSPACE_DIRECTORY",
       resourceId: query.q,
+      tenantKey: this.resolveCommercialAuditTenantKey(),
       metadata: {
         event: "commercial_tenant_search",
         query: query.q,
@@ -403,7 +411,7 @@ export class BillingController {
     );
 
     const stamp = new Date().toISOString().slice(0, 10);
-    response.header("Content-Disposition", `attachment; filename="tej-pim-commercial-tenants-${stamp}.csv"`);
+    response.header("Content-Disposition", `attachment; filename="vexa-pim-commercial-tenants-${stamp}.csv"`);
     const csv = await this.planUsageService.exportCommercialTenantsCsvInternal({
       query: query.q,
       limit: query.limit ?? 250,
@@ -414,6 +422,7 @@ export class BillingController {
       action: "COMMERCIAL_TENANT_EXPORTED",
       resource: "WORKSPACE_DIRECTORY",
       resourceId: query.q ?? "all",
+      tenantKey: this.resolveCommercialAuditTenantKey(),
       metadata: {
         event: "commercial_tenant_exported",
         query: query.q ?? null,
@@ -447,6 +456,7 @@ export class BillingController {
       action: "PLAN_TIER_CHANGE",
       resource: "TENANT_PLAN_PROFILE",
       resourceId: profile.tenantKey,
+      tenantKey: profile.tenantKey,
       metadata: {
         event: "plan_tier_changed",
         planTier: profile.planTier,
@@ -520,6 +530,7 @@ export class BillingController {
       action: auditAction,
       resource: "TENANT_PLAN_PROFILE",
       resourceId: profile.tenantKey,
+      tenantKey: profile.tenantKey,
       metadata: {
         event: auditEvent,
         billingStatus: profile.billingStatus,
@@ -570,20 +581,9 @@ export class BillingController {
     }
     return { actorId, actorRole };
   }
-}
-import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
-      tenantKey: profile.tenantKey,
-      tenantKey: result.item.tenantKey,
-      tenantKey: this.resolveCommercialAuditTenantKey(),
-      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
-      tenantKey: this.resolveCommercialAuditTenantKey(query.tenantKey),
-      tenantKey: item.tenantKey,
-      tenantKey: this.resolveCommercialAuditTenantKey(),
-      tenantKey: this.resolveCommercialAuditTenantKey(),
-      tenantKey: profile.tenantKey,
-      tenantKey: profile.tenantKey,
 
   private resolveCommercialAuditTenantKey(tenantKey?: string | null): string {
     const normalized = String(tenantKey ?? "").trim();
     return normalized.length > 0 ? normalizeTenantKey(normalized) : DEFAULT_TENANT_KEY;
   }
+}

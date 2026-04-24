@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { LoggerService } from "../common/logging/logger.service";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import {
@@ -81,55 +82,35 @@ export class ConnectorCredentialEncryptionService {
     const keyVersion = formatCredentialKeyVersion(encrypted.keyVersion);
     const id = `${input.installationId}:${input.credentialType}`;
     const db = this.prismaDirect.getClient();
-    const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+    const metadata: Prisma.InputJsonValue | typeof Prisma.DbNull = input.metadata
+      ? (input.metadata as Prisma.InputJsonValue)
+      : Prisma.DbNull;
 
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
-      INSERT INTO connector_credentials (
+    await db.connectorCredential.upsert({
+      where: { id },
+      create: {
         id,
-        tenant_key,
-        installation_id,
-        credential_type,
-        encrypted_value,
-        key_version,
-        status,
-        scope,
-        expires_at,
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        credentialType: input.credentialType,
+        encryptedValue: encrypted.cipher,
+        keyVersion,
+        status: input.status ?? "ACTIVE",
+        scope: input.scope ?? null,
+        expiresAt: input.expiresAt ?? null,
         metadata,
-        created_at,
-        updated_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        COALESCE($7, 'ACTIVE'),
-        $8,
-        $9,
-        CASE WHEN $10::jsonb IS NULL THEN NULL ELSE $10::jsonb END,
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (installation_id, credential_type)
-      DO UPDATE SET
-        tenant_key = EXCLUDED.tenant_key,
-        encrypted_value = EXCLUDED.encrypted_value,
-        key_version = EXCLUDED.key_version,
-        status = EXCLUDED.status,
-        scope = EXCLUDED.scope,
-        expires_at = EXCLUDED.expires_at,
-        metadata = EXCLUDED.metadata,
-        updated_at = NOW()
-      `,
-      id,
-      input.tenantKey,
-      input.installationId,
-      input.credentialType,
-      encrypted.cipher,
-      keyVersion,
-      input.status ?? "ACTIVE",
-      input.scope ?? null,
-      input.expiresAt ?? null,
-      metadata,
-    );
+      },
+      update: {
+        tenantKey: input.tenantKey,
+        encryptedValue: encrypted.cipher,
+        keyVersion,
+        status: input.status ?? "ACTIVE",
+        scope: input.scope ?? null,
+        expiresAt: input.expiresAt ?? null,
+        metadata,
+        updatedAt: new Date(),
+      },
+    });
 
     return {
       id,
@@ -170,24 +151,19 @@ export class ConnectorCredentialEncryptionService {
     const toTag = formatCredentialKeyVersion(toVersion);
 
     while (true) {
-      // RLS-BYPASS: manual tenant filter
-      const rows = await db.$queryRawUnsafe<CredentialRow[]>(
-        `
-        SELECT
-          id,
-          encrypted_value AS "encryptedValue",
-          key_version AS "keyVersion"
-        FROM connector_credentials
-        WHERE id > $1
-          AND key_version IN ($2, $3)
-        ORDER BY id ASC
-        LIMIT $4
-        `,
-        lastId,
-        fromTag,
-        fromLegacyTag,
-        batchSize,
-      );
+      const rows = await db.connectorCredential.findMany({
+        where: {
+          id: { gt: lastId },
+          keyVersion: { in: [fromTag, fromLegacyTag] },
+        },
+        orderBy: [{ id: "asc" }],
+        take: batchSize,
+        select: {
+          id: true,
+          encryptedValue: true,
+          keyVersion: true,
+        },
+      });
 
       if (rows.length === 0) {
         break;
@@ -201,19 +177,14 @@ export class ConnectorCredentialEncryptionService {
           const rotated = buildEncryptedCredential(plain, toVersion, this.keys);
 
           if (!dryRun) {
-            // RLS-BYPASS: manual tenant filter
-            await db.$executeRawUnsafe(
-              `
-              UPDATE connector_credentials
-              SET encrypted_value = $2,
-                  key_version = $3,
-                  updated_at = NOW()
-              WHERE id = $1
-              `,
-              row.id,
-              rotated.cipher,
-              toTag,
-            );
+            await db.connectorCredential.update({
+              where: { id: row.id },
+              data: {
+                encryptedValue: rotated.cipher,
+                keyVersion: toTag,
+                updatedAt: new Date(),
+              },
+            });
           }
 
           result.rotated += 1;

@@ -1044,7 +1044,7 @@ export default async function ChannelConnectorDetailPage({
                     ))}
                   </ul>
                   <p className="text-xs text-slate-500">
-                    This panel is operational guidance only. Shopify is in guided rollout and still requires the managed-install handshake before it should be treated as a healthy publish channel.
+                    This panel is operational guidance only. Shopify uses managed install, token exchange, and saved publication targets before publish traffic should be treated as healthy.
                   </p>
                 </div>
               </Card>

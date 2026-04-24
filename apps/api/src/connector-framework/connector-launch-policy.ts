@@ -34,9 +34,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === "shopify") {
     return {
-      launchStage: "manual",
+      launchStage: "live",
       launchNote:
-        "Shopify is available as a guided Vexa connector. Create the account in Vexa first, then complete the managed-install token exchange before pilot publishing.",
+        "Shopify supports managed install, expiring offline token exchange, publication target selection, publish, status sync, and webhook relay handling.",
       surfacedCapabilities: capabilities,
     };
   }

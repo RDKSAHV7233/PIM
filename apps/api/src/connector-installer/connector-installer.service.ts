@@ -281,7 +281,7 @@ export class ConnectorInstallerService {
           String(definition.id),
           accountAlias,
           externalAccountRef,
-          normalizedSlug === "shopify" ? "PAUSED" : "ACTIVE",
+          "ACTIVE",
           actor.actorId,
         );
       } catch (error: unknown) {

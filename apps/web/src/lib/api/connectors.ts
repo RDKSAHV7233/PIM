@@ -4,6 +4,7 @@ import type {
   ConnectorInstallation,
   ConnectorPermission,
   ConnectorPublicationTarget,
+  ConnectorPublicationTargetsUpdateResponse,
   PaginatedResponse,
 } from "./core";
 import { deleteJson, fetchJson, postJson } from "./core";
@@ -60,4 +61,16 @@ export async function grantConnectorPermission(
 
 export async function revokeConnectorPermission(permissionId: string, options?: ApiRequestOptions) {
   return deleteJson(`/connectors/permissions/${encodeURIComponent(permissionId)}`, options);
+}
+
+export async function updateConnectorPublicationTargets(
+  installationId: string,
+  body: { publicationIds: string[] },
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorPublicationTargetsUpdateResponse>(
+    `/connectors/${encodeURIComponent(installationId)}/publication-targets`,
+    body,
+    options,
+  );
 }

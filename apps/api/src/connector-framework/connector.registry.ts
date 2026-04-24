@@ -54,14 +54,14 @@ export class ConnectorRegistry implements OnModuleInit {
 
   private async refreshFromDefinitions(): Promise<void> {
     try {
-      // RLS-BYPASS: manual tenant filter - connector definitions are globally shared runtime metadata and this query is not tenant-filtered data access.
-      const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ slug: string }>>(
-        `
-        SELECT slug
-        FROM connector_definitions
-        WHERE is_active = TRUE
-        `,
-      );
+      const rows = await this.prisma.tenant().connectorDefinition.findMany({
+        where: {
+          isActive: true,
+        },
+        select: {
+          slug: true,
+        },
+      });
       const activeSlugs = new Set(
         rows.map((row) => String(row.slug ?? "").trim().toLowerCase()).filter((slug) => slug.length > 0),
       );

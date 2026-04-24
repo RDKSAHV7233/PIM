@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -74,60 +75,61 @@ export class ConnectorFrameworkService {
   }
 
   async getInstallation(tenantKey: string, slug: string): Promise<ConnectorInstallationRecord | null> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      SELECT
-        ci.id,
-        ci.tenant_key AS "tenantKey",
-        ci.connector_id AS "connectorId",
-        cd.slug,
-        cd.display_name AS "displayName",
-        ci.account_alias AS "accountAlias",
-        ci.external_account_ref AS "externalAccountRef",
-        ci.status,
-        cd.capabilities,
-        ci.metadata,
-        ci.installed_at AS "installedAt",
-        ci.installed_by AS "installedBy",
-        ci.last_sync_at AS "lastSyncAt",
-        ci.created_at AS "createdAt",
-        ci.updated_at AS "updatedAt"
-      FROM connector_installations ci
-      JOIN connector_definitions cd ON cd.id = ci.connector_id
-      WHERE ci.tenant_key = $1 AND cd.slug = $2
-      ORDER BY ci.installed_at DESC
-      LIMIT 1
-      `,
-      tenantKey,
-      slug,
-    );
-
-    const row = rows[0];
-    if (!row) {
+    const connectorDefinition = await this.prisma.tenant(tenantKey).connectorDefinition.findFirst({
+      where: { slug },
+      select: {
+        id: true,
+        slug: true,
+        displayName: true,
+        capabilities: true,
+      },
+    });
+    if (!connectorDefinition) {
       return null;
     }
 
-    const launchPolicy = resolveConnectorLaunchPolicy(String(row.slug), parseCapabilities(row.capabilities));
+    const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+      where: { connectorId: connectorDefinition.id },
+      orderBy: [{ installedAt: "desc" }],
+      select: {
+        id: true,
+        tenantKey: true,
+        connectorId: true,
+        accountAlias: true,
+        externalAccountRef: true,
+        status: true,
+        metadata: true,
+        installedAt: true,
+        installedBy: true,
+        lastSyncAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!installation) {
+      return null;
+    }
+
+    const launchPolicy = resolveConnectorLaunchPolicy(connectorDefinition.slug, parseCapabilities(connectorDefinition.capabilities));
     return {
-      id: String(row.id),
-      tenantKey: String(row.tenantKey),
-      connectorId: String(row.connectorId),
-      slug: String(row.slug),
-      displayName: String(row.displayName),
-      accountAlias: String(row.accountAlias),
-      externalAccountRef: row.externalAccountRef ? String(row.externalAccountRef) : null,
-      status: String(row.status) as ConnectorInstallationRecord["status"],
+      id: installation.id,
+      tenantKey: installation.tenantKey,
+      connectorId: installation.connectorId,
+      slug: connectorDefinition.slug,
+      displayName: connectorDefinition.displayName,
+      accountAlias: installation.accountAlias,
+      externalAccountRef: installation.externalAccountRef,
+      status: installation.status as ConnectorInstallationRecord["status"],
       capabilities: launchPolicy.surfacedCapabilities,
-      implementationStatus: this.resolveImplementationStatus(String(row.slug)),
+      implementationStatus: this.resolveImplementationStatus(connectorDefinition.slug),
       launchStage: launchPolicy.launchStage,
       launchNote: launchPolicy.launchNote,
-      metadata: parseMetadata(row.metadata),
-      installedAt: String(row.installedAt),
-      installedBy: String(row.installedBy),
-      lastSyncAt: row.lastSyncAt ? String(row.lastSyncAt) : null,
-      createdAt: String(row.createdAt),
-      updatedAt: String(row.updatedAt),
+      metadata: parseMetadata(installation.metadata),
+      installedAt: installation.installedAt.toISOString(),
+      installedBy: installation.installedBy,
+      lastSyncAt: installation.lastSyncAt ? installation.lastSyncAt.toISOString() : null,
+      createdAt: installation.createdAt.toISOString(),
+      updatedAt: installation.updatedAt.toISOString(),
     };
   }
 
@@ -239,84 +241,69 @@ export class ConnectorFrameworkService {
       input.jobId,
       input.payloadSnapshot ?? {},
     );
-    const channelErrorsJson = JSON.stringify(input.channelErrors ?? []);
+    const payloadSnapshot = JSON.parse(cappedPayload.snapshotJson) as Prisma.InputJsonValue;
+    const channelErrors = (input.channelErrors ?? []) as Prisma.InputJsonValue;
     const resolvedAt = ["SUCCESS", "REJECTED", "SUPPRESSED", "ERROR"].includes(input.status)
       ? new Date()
       : null;
 
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(input.installation.tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
-      INSERT INTO connector_submissions (
-        id,
-        tenant_key,
-        installation_id,
-        product_id,
-        variant_id,
-        idempotency_key,
-        submission_type,
-        source,
-        attempt_number,
-        status,
-        external_ref,
-        payload_snapshot,
-        payload_snapshot_url,
-        channel_errors,
-        submitted_at,
-        resolved_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11::jsonb, $12, $13::jsonb, NOW(), $14
-      )
-      ON CONFLICT (tenant_key, installation_id, idempotency_key) DO UPDATE
-      SET
-        attempt_number = connector_submissions.attempt_number + 1,
-        status = EXCLUDED.status,
-        external_ref = COALESCE(EXCLUDED.external_ref, connector_submissions.external_ref),
-        payload_snapshot = EXCLUDED.payload_snapshot,
-        payload_snapshot_url = EXCLUDED.payload_snapshot_url,
-        channel_errors = EXCLUDED.channel_errors,
-        resolved_at = CASE
-          WHEN EXCLUDED.status IN ('SUCCESS', 'REJECTED', 'SUPPRESSED', 'ERROR') THEN NOW()
-          ELSE connector_submissions.resolved_at
-        END
-      RETURNING
-        id,
-        idempotency_key AS "idempotencyKey",
-        attempt_number AS "attemptNumber",
-        status,
-        submission_type AS "submissionType",
-        source,
-        payload_snapshot_url AS "payloadSnapshotUrl"
-      `,
-      randomUUID(),
-      input.installation.tenantKey,
-      input.installation.id,
-      input.productId,
-      input.variantId ?? null,
-      idempotencyKey,
-      input.operation,
-      input.source,
-      input.status,
-      input.externalRef ?? null,
-      cappedPayload.snapshotJson,
-      cappedPayload.payloadSnapshotUrl,
-      channelErrorsJson,
-      resolvedAt,
-    );
+    const row = await this.prisma.tenant(input.installation.tenantKey).connectorSubmission.upsert({
+      where: {
+        tenantKey_installationId_idempotencyKey: {
+          tenantKey: input.installation.tenantKey,
+          installationId: input.installation.id,
+          idempotencyKey,
+        },
+      },
+      create: {
+        id: randomUUID(),
+        installationId: input.installation.id,
+        productId: input.productId,
+        variantId: input.variantId ?? null,
+        idempotencyKey,
+        submissionType: input.operation,
+        source: input.source,
+        attemptNumber: 1,
+        status: input.status,
+        externalRef: input.externalRef ?? null,
+        payloadSnapshot,
+        payloadSnapshotUrl: cappedPayload.payloadSnapshotUrl,
+        channelErrors,
+        resolvedAt,
+      },
+      update: {
+        attemptNumber: {
+          increment: 1,
+        },
+        status: input.status,
+        ...(input.externalRef ? { externalRef: input.externalRef } : {}),
+        payloadSnapshot,
+        payloadSnapshotUrl: cappedPayload.payloadSnapshotUrl,
+        channelErrors,
+        ...(resolvedAt ? { resolvedAt } : {}),
+      },
+      select: {
+        id: true,
+        idempotencyKey: true,
+        attemptNumber: true,
+        status: true,
+        submissionType: true,
+        source: true,
+        payloadSnapshotUrl: true,
+      },
+    });
 
-    const row = rows[0];
     return {
-      id: String(row.id),
-      idempotencyKey: String(row.idempotencyKey),
-      attemptNumber: Number(row.attemptNumber),
-      status: String(row.status),
-      submissionType: String(row.submissionType),
-      source: String(row.source),
+      id: row.id,
+      idempotencyKey: row.idempotencyKey,
+      attemptNumber: row.attemptNumber,
+      status: row.status,
+      submissionType: row.submissionType,
+      source: row.source,
       payloadSnapshotUrl:
         row.payloadSnapshotUrl === null || row.payloadSnapshotUrl === undefined
           ? null
-          : String(row.payloadSnapshotUrl),
+          : row.payloadSnapshotUrl,
     };
   }
 

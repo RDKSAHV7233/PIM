@@ -34,13 +34,21 @@ function run() {
     "Connector setup page must render Amazon-specific seller ID and credential guidance inside the dedicated setup workspace.",
   );
   assert(
+    setupSource.includes('if (slug === "shopify")') &&
+      setupSource.includes("Shopify uses managed install.") &&
+      setupSource.includes("demo-store.myshopify.com") &&
+      setupSource.includes("managed-install lanes continue in the provider callback"),
+    "Connector setup page must explain the Shopify managed-install domain handoff inside the dedicated setup workspace.",
+  );
+  assert(
     setupSource.includes("encrypted on save and never shown again"),
     "Connector setup forms must explain secret handling truthfully.",
   );
   assert(
     setupSource.includes("installErrorMessage") &&
       setupSource.includes("FLIPKART_CREDENTIALS_INVALID") &&
-      setupSource.includes("AMAZON_CREDENTIALS_INVALID"),
+      setupSource.includes("AMAZON_CREDENTIALS_INVALID") &&
+      setupSource.includes("SHOPIFY_SHOP_DOMAIN_INVALID"),
     "Connector setup flow must surface install-time validation failures back to the user.",
   );
   assert(
@@ -67,6 +75,10 @@ function run() {
     "installConnectorAction must forward Flipkart credentials to the connector install endpoint.",
   );
   assert(
+    actionsSource.includes("externalAccountRef: externalAccountRef || undefined"),
+    "installConnectorAction must forward connector account references such as the Shopify store domain to the install endpoint.",
+  );
+  assert(
     actionsSource.includes("installError") && actionsSource.includes("connectorSlug"),
     "installConnectorAction must redirect with an installError and connectorSlug when validation fails.",
   );
@@ -80,6 +92,7 @@ function run() {
           "connector_workspace_routes_setup_to_dedicated_page",
           "flipkart_install_form_collects_credentials",
           "amazon_install_form_collects_seller_credentials",
+          "shopify_install_form_collects_store_domain_handoff",
           "connector_install_form_explains_secret_handling",
           "flipkart_install_action_surfaces_validation_error",
         ],
