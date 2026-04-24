@@ -184,15 +184,6 @@ export interface ConnectorDefinition {
   actions?: ConnectorActionMatrix;
 }
 
-export interface ConnectorPublicationTarget {
-  id: string;
-  name: string;
-  catalogId?: string | null;
-  catalogTitle?: string | null;
-  catalogType?: string | null;
-  selected?: boolean;
-}
-
 export interface ConnectorActionRule {
   allowed: boolean;
   reason: string | null;
