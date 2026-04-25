@@ -45,9 +45,9 @@ function run() {
     "Catalog products route must redirect unauthorized users through the centralized login redirect helper.",
   );
   assert(
-    source.includes('if (slug === "amazon-in") {') &&
-      source.includes('return "amazon";') &&
-      source.includes('if (slug === "flipkart" || slug === "meesho") {'),
+    source.includes('import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";') &&
+      source.includes("item.status === \"ACTIVE\" && mapConnectorSlugToMarketplaceChannel(item.slug)") &&
+      source.includes("mapConnectorSlugToMarketplaceChannel(firstActiveConnector.slug)"),
     "Catalog products route must normalize installed connector slugs to supported channel filters before deep-linking mappings.",
   );
   assert(

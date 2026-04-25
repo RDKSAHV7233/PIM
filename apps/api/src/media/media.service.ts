@@ -14,6 +14,7 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
@@ -53,6 +54,7 @@ const CHANNEL_RULES: Record<Channel, ChannelRule> = {
   amazon: { minWidth: 1000, minHeight: 1000, aspectMin: 0.8, aspectMax: 1.91 },
   flipkart: { minWidth: 800, minHeight: 800, aspectMin: 0.75, aspectMax: 1.5 },
   meesho: { minWidth: 700, minHeight: 700, aspectMin: 0.75, aspectMax: 1.6 },
+  shopify: { minWidth: 800, minHeight: 800, aspectMin: 0.5, aspectMax: 2 },
 };
 
 const MAX_MEDIA_FILE_BYTES = 10 * 1024 * 1024;
@@ -65,6 +67,13 @@ const BLOCKED_HOSTS = new Set([
   "169.254.169.254",
   "169.254.170.2",
 ]);
+
+function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, right: T | undefined): T | undefined {
+  if (left && right) {
+    return { AND: [left, right] } as unknown as T;
+  }
+  return left ?? right;
+}
 
 function isBlockedIpv4(address: string): boolean {
   const parts = address.split(".").map((part) => Number.parseInt(part, 10));
@@ -129,11 +138,15 @@ function parsePngDimensions(buffer: Buffer): { width: number; height: number } |
 
 @Injectable()
 export class MediaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
 
-  async createAsset(dto: CreateMediaAssetDto) {
-    const entity = await this.resolveEntityLink(dto.productId, dto.variantId);
+  async createAsset(dto: CreateMediaAssetDto, actor?: PolicyActor) {
+    const entity = await this.resolveEntityLink(dto.productId, dto.variantId, actor);
     return this.createAssetFromBuffer({
+      actor,
       entity,
       fileName: dto.fileName.trim(),
       mimeType: dto.mimeType.trim().toLowerCase(),
@@ -145,7 +158,7 @@ export class MediaService {
     });
   }
 
-  async bulkAssociate(dto: BulkMediaAssociationDto) {
+  async bulkAssociate(dto: BulkMediaAssociationDto, actor?: PolicyActor) {
     const rows = await this.resolveBulkRows(dto);
     if (rows.length === 0) {
       throw new BadRequestException("Bulk media association requires at least one row.");
@@ -181,9 +194,18 @@ export class MediaService {
         if (!variant) {
           throw new NotFoundException(`Variant not found for skuCode '${skuCode}'.`);
         }
+        const product = await this.prisma.tenant().product.findUnique({
+          where: { id: variant.productId },
+          select: { id: true, categoryId: true, brand: true },
+        });
+        if (!product) {
+          throw new NotFoundException("Product not found for media association.");
+        }
+        await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", product);
 
         const resolved = await this.resolveBulkRowMediaInput(row);
         const asset = (await this.createAssetFromBuffer({
+          actor,
           entity: {
             productId: variant.productId,
             variantId: variant.id,
@@ -229,7 +251,35 @@ export class MediaService {
     };
   }
 
-  async listAssets(productId?: string, variantId?: string, pagination?: CursorPaginationQuery) {
+  async listAssets(productId?: string, variantId?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
+    const scopeWhere = await this.accessPolicy.buildMediaScopeWhere(actor ?? {}, "view");
+    if (productId) {
+      const product = await this.prisma.tenant().product.findUnique({
+        where: { id: productId },
+        select: { id: true, categoryId: true, brand: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product);
+    }
+    if (variantId) {
+      const variant = await this.prisma.tenant().variant.findUnique({
+        where: { id: variantId },
+        select: { id: true, productId: true },
+      });
+      if (!variant) {
+        throw new NotFoundException("Variant not found");
+      }
+      const product = await this.prisma.tenant().product.findUnique({
+        where: { id: variant.productId },
+        select: { id: true, categoryId: true, brand: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product);
+    }
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -242,20 +292,23 @@ export class MediaService {
       }
 
       const rows = await this.prisma.tenant().mediaAsset.findMany({
-        where: {
-          ...(variantId ? { variantId } : productId ? { productId } : {}),
-          ...(token && cursorDate
-            ? {
-                OR: [
-                  { createdAt: { lt: cursorDate } },
-                  {
-                    createdAt: cursorDate,
-                    id: { lt: token.id },
-                  },
-                ],
-              }
-            : {}),
-        },
+        where: mergeWhere(
+          {
+            ...(variantId ? { variantId } : productId ? { productId } : {}),
+            ...(token && cursorDate
+              ? {
+                  OR: [
+                    { createdAt: { lt: cursorDate } },
+                    {
+                      createdAt: cursorDate,
+                      id: { lt: token.id },
+                    },
+                  ],
+                }
+              : {}),
+          },
+          scopeWhere,
+        ),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit + 1,
       });
@@ -279,33 +332,35 @@ export class MediaService {
 
     if (variantId) {
       return this.prisma.tenant().mediaAsset.findMany({
-        where: { variantId },
+        where: mergeWhere({ variantId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
     }
     if (productId) {
       return this.prisma.tenant().mediaAsset.findMany({
-        where: { productId },
+        where: mergeWhere({ productId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
     }
     return this.prisma.tenant().mediaAsset.findMany({
+      where: scopeWhere,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 200,
     });
   }
 
-  async getAsset(assetId: string) {
+  async getAsset(assetId: string, actor?: PolicyActor) {
     const asset = await this.prisma.tenant().mediaAsset.findUnique({ where: { id: assetId } });
     if (!asset) {
       throw new NotFoundException("Media asset not found");
     }
+    await this.assertAssetAccess(actor ?? {}, asset.id, asset.productId, asset.variantId);
     return asset;
   }
 
-  async validateAsset(assetId: string, channelInput: string) {
+  async validateAsset(assetId: string, channelInput: string, actor?: PolicyActor) {
     const channel = this.parseChannel(channelInput);
-    const asset = (await this.getAsset(assetId)) as {
+    const asset = (await this.getAsset(assetId, actor)) as {
       width: number | null;
       height: number | null;
       mimeType: string;
@@ -349,6 +404,7 @@ export class MediaService {
   }
 
   private async createAssetFromBuffer(input: {
+    actor?: PolicyActor;
     entity: EntityLink;
     fileName: string;
     mimeType: string;
@@ -381,7 +437,7 @@ export class MediaService {
       select: { id: true },
     });
     if (existing) {
-      const asset = (await this.getAsset(existing.id)) as Record<string, unknown>;
+      const asset = (await this.getAsset(existing.id, input.actor)) as Record<string, unknown>;
       return {
         ...asset,
         deduplicated: true,
@@ -418,10 +474,10 @@ export class MediaService {
       },
     });
 
-    return this.getAsset(assetId);
+    return this.getAsset(assetId, input.actor);
   }
 
-  private async resolveEntityLink(productId?: string, variantId?: string): Promise<EntityLink> {
+  private async resolveEntityLink(productId?: string, variantId?: string, actor?: PolicyActor): Promise<EntityLink> {
     const normalizedProductId = productId?.trim() || null;
     const normalizedVariantId = variantId?.trim() || null;
     if (normalizedVariantId) {
@@ -435,6 +491,14 @@ export class MediaService {
       if (normalizedProductId && normalizedProductId !== variant.productId) {
         throw new BadRequestException("Provided productId does not match variant product.");
       }
+      const product = await this.prisma.tenant().product.findUnique({
+        where: { id: variant.productId },
+        select: { id: true, categoryId: true, brand: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", product);
       return {
         productId: variant.productId,
         variantId: variant.id,
@@ -444,11 +508,12 @@ export class MediaService {
     if (normalizedProductId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: normalizedProductId },
-        select: { id: true },
+        select: { id: true, categoryId: true, brand: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
       }
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", product);
       return {
         productId: normalizedProductId,
         variantId: null,
@@ -460,6 +525,39 @@ export class MediaService {
       variantId: null,
       entityType: "product",
     };
+  }
+
+  private async assertAssetAccess(actor: PolicyActor, assetId: string, productId: string | null, variantId: string | null) {
+    if (productId) {
+      const product = await this.prisma.tenant().product.findUnique({
+        where: { id: productId },
+        select: { id: true, categoryId: true, brand: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      await this.accessPolicy.assertProductAccess(actor, "view", product, "MediaAsset");
+      return;
+    }
+    if (variantId) {
+      const variant = await this.prisma.tenant().variant.findUnique({
+        where: { id: variantId },
+        select: { id: true, productId: true },
+      });
+      if (!variant) {
+        throw new NotFoundException("Variant not found");
+      }
+      const product = await this.prisma.tenant().product.findUnique({
+        where: { id: variant.productId },
+        select: { id: true, categoryId: true, brand: true },
+      });
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+      await this.accessPolicy.assertProductAccess(actor, "view", product, "MediaAsset");
+      return;
+    }
+    await this.accessPolicy.assertProductAccess(actor, "view", { id: assetId, categoryId: null, brand: null }, "MediaAsset");
   }
 
   private async resolveBulkRows(dto: BulkMediaAssociationDto): Promise<BulkMediaAssociationRowDto[]> {

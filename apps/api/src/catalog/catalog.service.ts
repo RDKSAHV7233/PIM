@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { AppliesTo, Prisma, RecordStatus, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
+import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { withSoftDeleteBypass } from "../common/prisma-soft-delete.middleware";
 import {
@@ -21,6 +22,7 @@ import { UpdateVariantDto } from "./dto/update-variant.dto";
 type ActorContext = {
   id: string;
   role: "admin" | "editor" | "reviewer" | "viewer";
+  tenantId?: string;
 };
 
 type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
@@ -33,6 +35,13 @@ const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = 
   archived: ["draft", "in_review"],
 };
 
+function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, right: T | undefined): T | undefined {
+  if (left && right) {
+    return { AND: [left, right] } as unknown as T;
+  }
+  return left ?? right;
+}
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -41,6 +50,7 @@ export class CatalogService {
     private readonly planUsageService: PlanUsageService,
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
   async stats() {
@@ -59,10 +69,20 @@ export class CatalogService {
     options?: {
       slim?: boolean;
     },
+    actor?: ActorContext,
   ) {
     if (options?.slim) {
-      return this.listProductsSlim(pagination);
+      return this.listProductsSlim(pagination, actor);
     }
+
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "view",
+    );
 
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
@@ -75,17 +95,20 @@ export class CatalogService {
         throw new BadRequestException("Invalid cursor.");
       }
       const products = await this.prisma.tenant().product.findMany({
-        where: token && cursorDate
-          ? {
-              OR: [
-                { updatedAt: { lt: cursorDate } },
-                {
-                  updatedAt: cursorDate,
-                  id: { lt: token.id },
-                },
-              ],
-            }
-          : undefined,
+        where: mergeWhere(
+          token && cursorDate
+            ? {
+                OR: [
+                  { updatedAt: { lt: cursorDate } },
+                  {
+                    updatedAt: cursorDate,
+                    id: { lt: token.id },
+                  },
+                ],
+              }
+            : undefined,
+          scopeWhere,
+        ),
         include: {
           category: true,
           variants: true,
@@ -111,6 +134,7 @@ export class CatalogService {
     }
 
     const products = await this.prisma.tenant().product.findMany({
+      where: scopeWhere,
       include: {
         category: true,
         variants: true,
@@ -121,7 +145,15 @@ export class CatalogService {
     return this.attachCompletenessScores(products);
   }
 
-  private async listProductsSlim(pagination?: CursorPaginationQuery) {
+  private async listProductsSlim(pagination?: CursorPaginationQuery, actor?: ActorContext) {
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "view",
+    );
     const limit = resolveCursorLimit(pagination?.limit ?? 50);
     const token = decodeCursorToken(pagination?.cursor);
     if (pagination?.cursor && !token) {
@@ -133,17 +165,20 @@ export class CatalogService {
     }
 
     const products = await this.prisma.tenant().product.findMany({
-      where: token && cursorDate
-        ? {
-            OR: [
-              { updatedAt: { lt: cursorDate } },
-              {
-                updatedAt: cursorDate,
-                id: { lt: token.id },
-              },
-            ],
-          }
-        : undefined,
+      where: mergeWhere(
+        token && cursorDate
+          ? {
+              OR: [
+                { updatedAt: { lt: cursorDate } },
+                {
+                  updatedAt: cursorDate,
+                  id: { lt: token.id },
+                },
+              ],
+            }
+          : undefined,
+        scopeWhere,
+      ),
       select: {
         id: true,
         title: true,
@@ -245,11 +280,20 @@ export class CatalogService {
     };
   }
 
-  async searchProducts(query: string | undefined, limit?: number) {
+  async searchProducts(query: string | undefined, limit?: number, actor?: ActorContext) {
     const normalizedQuery = String(query ?? "").trim();
     if (!normalizedQuery) {
       return [];
     }
+
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "view",
+    );
 
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.trunc(limit as number))) : 8;
     const loweredQuery = normalizedQuery.toLowerCase();
@@ -281,27 +325,33 @@ export class CatalogService {
 
     const [titleMatches, skuMatches] = await Promise.all([
       this.prisma.tenant().product.findMany({
-        where: {
-          title: {
-            contains: normalizedQuery,
-            mode: "insensitive",
+        where: mergeWhere(
+          {
+            title: {
+              contains: normalizedQuery,
+              mode: "insensitive",
+            },
           },
-        },
+          scopeWhere,
+        ),
         select: resultSelect,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: fetchWindow,
       }),
       this.prisma.tenant().product.findMany({
-        where: {
-          variants: {
-            some: {
-              skuCode: {
-                contains: normalizedQuery,
-                mode: "insensitive",
+        where: mergeWhere(
+          {
+            variants: {
+              some: {
+                skuCode: {
+                  contains: normalizedQuery,
+                  mode: "insensitive",
+                },
               },
             },
           },
-        },
+          scopeWhere,
+        ),
         select: resultSelect,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: fetchWindow,
@@ -372,7 +422,7 @@ export class CatalogService {
       .map(({ score: _score, ...product }) => product);
   }
 
-  async getProduct(productId: string) {
+  async getProduct(productId: string, actor?: ActorContext) {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
@@ -384,12 +434,38 @@ export class CatalogService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "view",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
     const [withScore] = await this.attachCompletenessScores([product]);
     return withScore;
   }
 
-  async createProduct(dto: CreateProductDto) {
+  async createProduct(dto: CreateProductDto, actor?: ActorContext) {
     await this.requireCategory(dto.categoryId);
+    await this.accessPolicy.assertRequestedProductScopeAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "create",
+      {
+        categoryId: dto.categoryId,
+        brand: dto.brand,
+        resource: "Product",
+      },
+    );
     const requestedStatus = (dto.status ?? RecordStatus.draft) as RecordStatus;
     this.assertDraftWorkflowEntry(requestedStatus, "create_product");
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
@@ -413,14 +489,53 @@ export class CatalogService {
 
   async updateProduct(productId: string, dto: UpdateProductDto, actor?: ActorContext) {
     const current = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "edit",
+      {
+        id: current.id,
+        categoryId: current.categoryId,
+        brand: current.brand,
+      },
+    );
     if (dto.expectedVersion !== current.version) {
       this.throwVersionConflict(dto.expectedVersion, current.version);
     }
     await this.requireCategory(dto.categoryId);
+    await this.accessPolicy.assertRequestedProductScopeAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "edit",
+      {
+        resource: "Product",
+        resourceId: productId,
+        categoryId: dto.categoryId,
+        brand: dto.brand,
+      },
+    );
     const nextStatus = dto.status as RecordStatus;
     if (!this.isValidWorkflowTransition(current.status, nextStatus)) {
       throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
     }
+    this.assertProductContentMutationAllowed(current, dto);
+    await this.accessPolicy.assertProductAttributeWriteAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      {
+        resourceId: productId,
+        changedAttributePaths: this.collectChangedRestrictedProductAttributeFields(current.attributes, dto.attributes ?? {}),
+      },
+    );
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
     const updateResult = await this.prisma.tenant().product.updateMany({
       where: {
@@ -471,6 +586,19 @@ export class CatalogService {
     actor: ActorContext,
   ) {
     const current = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor.id,
+        actorRole: actor.role,
+        tenantId: actor.tenantId,
+      },
+      dto.status === "approved" ? "approve" : "reject",
+      {
+        id: current.id,
+        categoryId: current.categoryId,
+        brand: current.brand,
+      },
+    );
     if (current.status !== RecordStatus.in_review) {
       throw new BadRequestException(`Review decision requires product to be in_review. Current status is ${current.status}.`);
     }
@@ -522,8 +650,21 @@ export class CatalogService {
     return product;
   }
 
-  async deleteProduct(productId: string) {
-    await this.requireProduct(productId);
+  async deleteProduct(productId: string, actor?: ActorContext) {
+    const product = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "delete",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
     await this.prisma.tenant().product.update({
       where: { id: productId },
       data: {
@@ -533,16 +674,29 @@ export class CatalogService {
     });
   }
 
-  async purgeProduct(productId: string, actorId: string) {
+  async purgeProduct(productId: string, actor: ActorContext) {
     const product = await this.requireProductIncludingDeleted(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor.id,
+        actorRole: actor.role,
+        tenantId: actor.tenantId,
+      },
+      "delete",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
     if (!product.deletedAt) {
       throw new BadRequestException("Product must be soft-deleted before purge.");
     }
 
     await this.prisma.tenant().product.delete({ where: { id: productId } });
     await this.auditService.record({
-      actorId,
-      actorRole: "admin",
+      actorId: actor.id,
+      actorRole: actor.role,
       action: "PURGE",
       resource: "/api/v1/catalog/products/:id/purge",
       resourceId: productId,
@@ -559,8 +713,22 @@ export class CatalogService {
   async listVariants(
     productId: string,
     pagination?: CursorPaginationQuery,
+    actor?: ActorContext,
   ) {
-    await this.requireProduct(productId);
+    const product = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "view",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -609,8 +777,32 @@ export class CatalogService {
     });
   }
 
-  async createVariant(productId: string, dto: CreateVariantDto) {
-    await this.requireProduct(productId);
+  async createVariant(productId: string, dto: CreateVariantDto, actor?: ActorContext) {
+    const product = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "edit",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
+    this.assertWorkflowStateAllowsContentMutation(product.status, "create_variant");
+    await this.accessPolicy.assertVariantWriteAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      {
+        changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
+      },
+    );
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
       return await this.prisma.tenant().variant.create({
@@ -632,8 +824,34 @@ export class CatalogService {
     }
   }
 
-  async updateVariant(variantId: string, dto: UpdateVariantDto) {
-    await this.requireVariant(variantId);
+  async updateVariant(variantId: string, dto: UpdateVariantDto, actor?: ActorContext) {
+    const variant = await this.requireVariant(variantId);
+    const product = await this.requireProduct(variant.productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "edit",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
+    this.assertWorkflowStateAllowsContentMutation(product.status, "update_variant");
+    await this.accessPolicy.assertVariantWriteAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      {
+        resourceId: variantId,
+        changedFields: this.collectChangedVariantFields(variant, dto),
+      },
+    );
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
       return await this.prisma.tenant().variant.update({
@@ -655,8 +873,34 @@ export class CatalogService {
     }
   }
 
-  async deleteVariant(variantId: string) {
-    await this.requireVariant(variantId);
+  async deleteVariant(variantId: string, actor?: ActorContext) {
+    const variant = await this.requireVariant(variantId);
+    const product = await this.requireProduct(variant.productId);
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "delete",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+    );
+    this.assertWorkflowStateAllowsContentMutation(product.status, "delete_variant");
+    await this.accessPolicy.assertVariantWriteAllowed(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      {
+        resourceId: variantId,
+        changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
+      },
+    );
     await this.prisma.tenant().variant.delete({ where: { id: variantId } });
   }
 
@@ -784,6 +1028,68 @@ export class CatalogService {
     return allowed.includes(nextCanonical);
   }
 
+  private assertProductContentMutationAllowed(
+    current: {
+      status: RecordStatus;
+      title: string;
+      description: string;
+      brand: string;
+      categoryId: string;
+      hsnCode: string | null;
+      gstRate: number | null;
+      attributes: unknown;
+    },
+    dto: UpdateProductDto,
+  ) {
+    if (!this.isWorkflowStateContentLocked(current.status)) {
+      return;
+    }
+
+    const nextAttributes = this.normalizeProductAttributes(dto.attributes ?? {});
+    const currentAttributes = this.normalizeProductAttributes(this.asRecord(current.attributes));
+    const contentChanged =
+      current.title !== dto.title.trim() ||
+      current.description !== dto.description.trim() ||
+      current.brand !== dto.brand.trim() ||
+      current.categoryId !== dto.categoryId ||
+      (current.hsnCode ?? null) !== (dto.hsnCode?.trim() || null) ||
+      (current.gstRate ?? null) !== (dto.gstRate ?? null) ||
+      !this.recordsEqual(currentAttributes, nextAttributes);
+
+    if (!contentChanged) {
+      return;
+    }
+
+    throw new BadRequestException({
+      code: "WORKFLOW_CONTENT_LOCKED",
+      message: `Products in ${current.status} status require a workflow transition before content can change.`,
+      currentStatus: current.status,
+      allowedAction: "status_transition_only",
+    });
+  }
+
+  private assertWorkflowStateAllowsContentMutation(status: RecordStatus, source: string) {
+    if (!this.isWorkflowStateContentLocked(status)) {
+      return;
+    }
+    throw new BadRequestException({
+      code: "WORKFLOW_CONTENT_LOCKED",
+      message: `Products in ${status} status require a workflow transition before content can change.`,
+      currentStatus: status,
+      source,
+      allowedAction: "status_transition_only",
+    });
+  }
+
+  private isWorkflowStateContentLocked(status: RecordStatus): boolean {
+    const canonical = this.canonicalWorkflowStatus(status);
+    return canonical === "approved" || canonical === "archived";
+  }
+
+  private recordsEqual(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
   private assertDraftWorkflowEntry(status: RecordStatus, source: "create_product") {
     if (status === RecordStatus.draft) {
       return;
@@ -870,6 +1176,59 @@ export class CatalogService {
       return value as Record<string, unknown>;
     }
     return {};
+  }
+
+  private collectChangedRestrictedProductAttributeFields(currentInput: unknown, nextInput: Record<string, unknown>): string[] {
+    const current = this.asRecord(currentInput);
+    const next = this.asRecord(nextInput);
+    const changed: string[] = [];
+    const paths = [
+      ["pricing", "mrp"],
+      ["pricing", "sellingPrice"],
+      ["mrp"],
+      ["sellingPrice"],
+      ["selling_price"],
+      ["price"],
+      ["cost"],
+      ["sku"],
+      ["inventoryQty"],
+    ] as const;
+    for (const path of paths) {
+      if (JSON.stringify(this.readPath(current, path)) !== JSON.stringify(this.readPath(next, path))) {
+        changed.push(path.join("."));
+      }
+    }
+    return changed;
+  }
+
+  private collectChangedVariantFields(
+    current: {
+      skuCode: string;
+      mrp: number | null;
+      sellingPrice: number | null;
+      inventoryQty: number;
+      status: RecordStatus;
+    },
+    dto: UpdateVariantDto,
+  ): string[] {
+    const changed: string[] = [];
+    if (current.skuCode !== dto.skuCode.trim()) changed.push("sku");
+    if ((current.mrp ?? null) !== (dto.mrp ?? null)) changed.push("mrp");
+    if ((current.sellingPrice ?? null) !== (dto.sellingPrice ?? null)) changed.push("sellingPrice");
+    if (current.inventoryQty !== dto.inventoryQty) changed.push("inventoryQty");
+    if (current.status !== (dto.status as RecordStatus)) changed.push("status");
+    return changed;
+  }
+
+  private readPath(source: Record<string, unknown>, path: readonly string[]): unknown {
+    let current: unknown = source;
+    for (const segment of path) {
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        return undefined;
+      }
+      current = (current as Record<string, unknown>)[segment];
+    }
+    return current;
   }
 
   private isEmpty(value: unknown) {

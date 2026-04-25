@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RecordStatus } from "@prisma/client";
+import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import {
   CursorPaginationQuery,
@@ -23,6 +24,13 @@ const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = 
   rejected: ["draft", "in_review", "archived"],
   archived: ["draft", "in_review"],
 };
+
+function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, right: T | undefined): T | undefined {
+  if (left && right) {
+    return { AND: [left, right] } as unknown as T;
+  }
+  return left ?? right;
+}
 
 function canonicalWorkflowStatus(status: RecordStatus): WorkflowStatus {
   if (status === RecordStatus.active) {
@@ -69,13 +77,24 @@ export class BulkEditService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
-  async preview(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
+  async preview(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>, actor?: PolicyActor) {
     const normalizedScope = this.normalizeScope(scope);
     this.ensureNonEmptyScope(normalizedScope);
     const normalizedUpdates = this.normalizeUpdates(updatesInput);
-    const where = this.buildWhere(normalizedScope);
+    if (normalizedScope.categoryId) {
+      await this.accessPolicy.assertCategoryAccess(actor ?? {}, "bulk_edit", normalizedScope.categoryId, "BulkEditOperation");
+    }
+    await this.accessPolicy.assertBulkEditAllowed(actor ?? {}, {
+      fields: Object.keys(normalizedUpdates),
+    });
+    await this.assertExplicitProductIdsAllowed(normalizedScope.productIds, actor ?? {}, "bulk_edit");
+    const where = mergeWhere(
+      this.buildWhere(normalizedScope),
+      await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "edit"),
+    );
 
     const [requestedCount, sample] = await Promise.all([
       this.prisma.tenant().product.count({ where }),
@@ -96,11 +115,21 @@ export class BulkEditService {
     };
   }
 
-  async apply(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>) {
+  async apply(scope: BulkEditScopeDto, updatesInput: Record<string, unknown>, actor?: PolicyActor) {
     const normalizedScope = this.normalizeScope(scope);
     this.ensureNonEmptyScope(normalizedScope);
     const normalizedUpdates = this.normalizeUpdates(updatesInput);
-    const where = this.buildWhere(normalizedScope);
+    if (normalizedScope.categoryId) {
+      await this.accessPolicy.assertCategoryAccess(actor ?? {}, "bulk_edit", normalizedScope.categoryId, "BulkEditOperation");
+    }
+    await this.accessPolicy.assertBulkEditAllowed(actor ?? {}, {
+      fields: Object.keys(normalizedUpdates),
+    });
+    await this.assertExplicitProductIdsAllowed(normalizedScope.productIds, actor ?? {}, "bulk_edit");
+    const where = mergeWhere(
+      this.buildWhere(normalizedScope),
+      await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "edit"),
+    );
     const updateData = this.toUpdateData(normalizedUpdates);
 
     const products = await this.prisma.tenant().product.findMany({
@@ -122,8 +151,18 @@ export class BulkEditService {
     let failedCount = 0;
 
     for (const product of products) {
-        const before = this.toSnapshot(product);
+      const before = this.toSnapshot(product);
       try {
+        await this.accessPolicy.assertRequestedProductScopeAllowed(
+          actor ?? {},
+          "edit",
+          {
+            resource: "BulkEditOperation",
+            resourceId: product.id,
+            categoryId: product.categoryId,
+            brand: normalizedUpdates.brand ?? product.brand,
+          },
+        );
         if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
           throw new BadRequestException(
             `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
@@ -472,5 +511,41 @@ export class BulkEditService {
       return error.message;
     }
     return "Unknown bulk edit error";
+  }
+
+  private async assertExplicitProductIdsAllowed(
+    productIds: string[] | undefined,
+    actor: PolicyActor,
+    action: "bulk_edit",
+  ) {
+    if (!productIds || productIds.length === 0) {
+      return;
+    }
+    const allowedWhere = await this.accessPolicy.buildProductScopeWhere(actor, "edit");
+    if (!allowedWhere) {
+      return;
+    }
+    const count = await this.prisma.tenant().product.count({
+      where: mergeWhere(
+        {
+          id: {
+            in: productIds,
+          },
+        },
+        allowedWhere,
+      ),
+    });
+    if (count !== productIds.length) {
+      await this.accessPolicy.assertRequestedProductScopeAllowed(
+        actor,
+        action,
+        {
+          resource: "BulkEditOperation",
+          resourceId: productIds.join(","),
+          categoryId: null,
+          brand: null,
+        },
+      );
+    }
   }
 }

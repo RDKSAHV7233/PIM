@@ -12,7 +12,7 @@ import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto"
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
-type AuthenticatedRequest = FastifyRequest & { pimUserId?: string; pimRole?: AppRole };
+type AuthenticatedRequest = FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
 
 @Controller("connectors")
 @ApiTags("Connectors")
@@ -23,10 +23,12 @@ export class ConnectorInstallerController {
     return {
       actorId: request.pimUserId ?? "system",
       actorRole: request.pimRole ?? "viewer",
+      tenantId: request.pimTenant,
     } as const;
   }
 
   @Get("definitions")
+  @Roles("admin", "editor")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }
@@ -46,6 +48,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("installed")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "List installed connectors" })
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {
@@ -94,6 +97,7 @@ export class ConnectorInstallerController {
   }
 
   @Get(":id/product-type-schema")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Fetch connector product type schema for an installed account" })
   @ApiResponse({ status: 200, description: "Product type schema fetched" })
   productTypeSchema(
@@ -116,6 +120,7 @@ export class ConnectorInstallerController {
   }
 
   @Get(":id/publications")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "List publication targets for an installed connector account" })
   @ApiResponse({ status: 200, description: "Publication targets fetched" })
   listPublications(
@@ -145,13 +150,15 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/payload-preview")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Generate payload preview for connector installation + product" })
   @ApiResponse({ status: 200, description: "Payload preview generated" })
   payloadPreview(
     @Param("id") installationId: string,
     @Body() dto: ConnectorPayloadPreviewDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.connectorInstallerService.previewPayload(installationId, dto);
+    return this.connectorInstallerService.previewPayload(installationId, dto, this.resolveActor(request));
   }
 
   @Get("permissions")

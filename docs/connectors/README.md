@@ -1,11 +1,11 @@
 # Vexa PIM Connector Documentation Index
 
 Status: Canonical connector-documentation entry point  
-Date: 2026-03-23
+Date: 2026-04-25
 
 ## Purpose
 
-This file is the entry point for connector-development documentation in TEJ PIM.
+This file is the entry point for connector-development documentation in Vexa PIM.
 
 Use this page first to determine:
 - which connector documents are current
@@ -95,7 +95,7 @@ Current note:
 
 ## Current connector state summary
 
-As of 2026-03-23:
+As of 2026-04-25:
 - mapping lifecycle exists
 - rollback exists
 - step-up re-auth exists for high-risk mapping actions
@@ -103,6 +103,8 @@ As of 2026-03-23:
 - legacy connector mapping path is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
 - broad rollout readiness is still blocked under `INC-08` rollout evidence
+- Amazon India, Flipkart, and Shopify are implemented as publish-capable connectors in `apps/api/src/connectors`
+- Meesho remains partial/export-oriented and does not implement direct product publish
 
 For implementation and current-state guidance, use:
 - `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`

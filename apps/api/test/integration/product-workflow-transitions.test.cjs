@@ -6,8 +6,6 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
-const AUTH_PASSWORD = process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
-
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return;
@@ -119,6 +117,7 @@ function assertStatus(result, expected, context) {
 
 async function run() {
   prepareEnv();
+  const authPassword = process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
@@ -128,14 +127,16 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `workflow-tenant-${runId}`;
   const workspaceSlug = `wf-${runId}`.slice(0, 24);
-  const userId = `workflow-user-${runId}`;
+  const adminUserId = `workflow-admin-${runId}`;
+  const editorUserId = `workflow-editor-${runId}`;
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin", workspaceSlug },
+      [adminUserId]: { tenantId, role: "admin", workspaceSlug },
+      [editorUserId]: { tenantId, role: "editor", workspaceSlug },
     }),
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Workflow" },
@@ -165,24 +166,34 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
 
-    const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
-      userId,
+    const adminLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      userId: adminUserId,
       workspaceSlug,
-      password: AUTH_PASSWORD,
+      password: authPassword,
       expiresInMinutes: 30,
     });
-    assertStatus(login, 201, "login");
-    const token = login.payload?.accessToken;
-    assert(typeof token === "string" && token.length > 10, "missing access token");
+    assertStatus(adminLogin, 201, "admin login");
+    const adminToken = adminLogin.payload?.accessToken;
+    assert(typeof adminToken === "string" && adminToken.length > 10, "missing admin access token");
 
-    const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", token, {
+    const editorLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      userId: editorUserId,
+      workspaceSlug,
+      password: authPassword,
+      expiresInMinutes: 30,
+    });
+    assertStatus(editorLogin, 201, "editor login");
+    const editorToken = editorLogin.payload?.accessToken;
+    assert(typeof editorToken === "string" && editorToken.length > 10, "missing editor access token");
+
+    const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", adminToken, {
       name: `Workflow Category ${runId}`,
     });
     assertStatus(category, 201, "create category");
 
-    const nonDraftCreate = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
+    const nonDraftCreate = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Invalid Workflow Entry ${runId}`,
-      brand: "Vexa PIM",
+      brand: "Aarika Looms",
       description: "Workflow entry status enforcement",
       categoryId: category.payload.id,
       status: "approved",
@@ -193,9 +204,9 @@ async function run() {
       "expected WORKFLOW_ENTRY_INVALID code for non-draft create",
     );
 
-    const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
+    const product = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Workflow Product ${runId}`,
-      brand: "Vexa PIM",
+      brand: "Aarika Looms",
       description: "Workflow transition test",
       categoryId: category.payload.id,
       status: "draft",
@@ -206,7 +217,7 @@ async function run() {
       baseUrl,
       "PATCH",
       `/catalog/products/${product.payload.id}`,
-      token,
+      adminToken,
       {
         expectedVersion: product.payload.version,
         title: product.payload.title,
@@ -221,7 +232,7 @@ async function run() {
     );
     assertStatus(invalidTransition, 400, "invalid draft->approved transition");
 
-    const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, token, {
+    const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
       expectedVersion: product.payload.version,
       title: product.payload.title,
       description: product.payload.description,
@@ -234,14 +245,14 @@ async function run() {
     });
     assertStatus(toReview, 200, "draft->in_review transition");
 
-    const statsInReview = await apiRequest(baseUrl, "GET", "/catalog/stats", token);
+    const statsInReview = await apiRequest(baseUrl, "GET", "/catalog/stats", adminToken);
     assertStatus(statsInReview, 200, "catalog stats after in_review transition");
     assert(
       Number(statsInReview.payload?.pendingApprovals ?? 0) === 1,
       `expected pendingApprovals=1 after in_review, got ${JSON.stringify(statsInReview.payload)}`,
     );
 
-    const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, token, {
+    const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
       expectedVersion: toReview.payload.version,
       title: toReview.payload.title,
       description: toReview.payload.description,
@@ -254,14 +265,91 @@ async function run() {
     });
     assertStatus(toApproved, 200, "in_review->approved transition");
 
-    const statsApproved = await apiRequest(baseUrl, "GET", "/catalog/stats", token);
+    const editorApprovedContentEdit = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, editorToken, {
+      expectedVersion: toApproved.payload.version,
+      title: `${toApproved.payload.title} editor change`,
+      description: toApproved.payload.description,
+      brand: toApproved.payload.brand,
+      categoryId: toApproved.payload.categoryId,
+      hsnCode: toApproved.payload.hsnCode,
+      gstRate: toApproved.payload.gstRate,
+      attributes: toApproved.payload.attributes,
+      status: toApproved.payload.status,
+    });
+    assertStatus(editorApprovedContentEdit, 400, "editor content edit blocked for approved product");
+    assert(
+      String(editorApprovedContentEdit.payload?.code ?? "") === "WORKFLOW_CONTENT_LOCKED",
+      `expected WORKFLOW_CONTENT_LOCKED for editor approved edit, got ${JSON.stringify(editorApprovedContentEdit.payload)}`,
+    );
+
+    const adminApprovedContentEdit = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
+      expectedVersion: toApproved.payload.version,
+      title: `${toApproved.payload.title} admin change`,
+      description: toApproved.payload.description,
+      brand: toApproved.payload.brand,
+      categoryId: toApproved.payload.categoryId,
+      hsnCode: toApproved.payload.hsnCode,
+      gstRate: toApproved.payload.gstRate,
+      attributes: toApproved.payload.attributes,
+      status: toApproved.payload.status,
+    });
+    assertStatus(adminApprovedContentEdit, 400, "admin content edit blocked for approved product");
+    assert(
+      String(adminApprovedContentEdit.payload?.code ?? "") === "WORKFLOW_CONTENT_LOCKED",
+      `expected WORKFLOW_CONTENT_LOCKED for admin approved edit, got ${JSON.stringify(adminApprovedContentEdit.payload)}`,
+    );
+
+    const archiveApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
+      expectedVersion: toApproved.payload.version,
+      title: toApproved.payload.title,
+      description: toApproved.payload.description,
+      brand: toApproved.payload.brand,
+      categoryId: toApproved.payload.categoryId,
+      hsnCode: toApproved.payload.hsnCode,
+      gstRate: toApproved.payload.gstRate,
+      attributes: toApproved.payload.attributes,
+      status: "archived",
+    });
+    assertStatus(archiveApproved, 200, "admin status-only archive allowed from approved");
+
+    const editorArchivedContentEdit = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, editorToken, {
+      expectedVersion: archiveApproved.payload.version,
+      title: `${archiveApproved.payload.title} archived edit`,
+      description: archiveApproved.payload.description,
+      brand: archiveApproved.payload.brand,
+      categoryId: archiveApproved.payload.categoryId,
+      hsnCode: archiveApproved.payload.hsnCode,
+      gstRate: archiveApproved.payload.gstRate,
+      attributes: archiveApproved.payload.attributes,
+      status: archiveApproved.payload.status,
+    });
+    assertStatus(editorArchivedContentEdit, 400, "editor content edit blocked for archived product");
+    assert(
+      String(editorArchivedContentEdit.payload?.code ?? "") === "WORKFLOW_CONTENT_LOCKED",
+      `expected WORKFLOW_CONTENT_LOCKED for editor archived edit, got ${JSON.stringify(editorArchivedContentEdit.payload)}`,
+    );
+
+    const reopenArchived = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
+      expectedVersion: archiveApproved.payload.version,
+      title: archiveApproved.payload.title,
+      description: archiveApproved.payload.description,
+      brand: archiveApproved.payload.brand,
+      categoryId: archiveApproved.payload.categoryId,
+      hsnCode: archiveApproved.payload.hsnCode,
+      gstRate: archiveApproved.payload.gstRate,
+      attributes: archiveApproved.payload.attributes,
+      status: "draft",
+    });
+    assertStatus(reopenArchived, 200, "admin status-only reopen allowed from archived");
+
+    const statsApproved = await apiRequest(baseUrl, "GET", "/catalog/stats", adminToken);
     assertStatus(statsApproved, 200, "catalog stats after approval transition");
     assert(
       Number(statsApproved.payload?.pendingApprovals ?? 0) === 0,
       `expected pendingApprovals=0 after approval, got ${JSON.stringify(statsApproved.payload)}`,
     );
 
-    const invalidBulkEdit = await apiRequest(baseUrl, "POST", "/bulk-edit/apply", token, {
+    const invalidBulkEdit = await apiRequest(baseUrl, "POST", "/bulk-edit/apply", adminToken, {
       scope: {
         productIds: [product.payload.id],
       },
@@ -292,14 +380,14 @@ async function run() {
       `expected workflow transition error in bulk edit item, got ${JSON.stringify(invalidBulkItems[0])}`,
     );
 
-    const importJob = await apiRequest(baseUrl, "POST", "/bulk-import/jobs", token, {
+    const importJob = await apiRequest(baseUrl, "POST", "/bulk-import/jobs", adminToken, {
       categoryId: category.payload.id,
       sourceFormat: "json",
       rows: [
         {
           title: `Workflow Import Product ${runId}`,
           description: "Import workflow entry enforcement",
-          brand: "Vexa PIM",
+          brand: "Aarika Looms",
           status: "approved",
           hsnCode: "62046200",
           gstRate: 18,
@@ -315,7 +403,7 @@ async function run() {
       baseUrl,
       "POST",
       `/bulk-import/jobs/${importJob.payload.id}/process`,
-      token,
+      adminToken,
       { chunkSize: 1 },
     );
     assert(
@@ -323,7 +411,7 @@ async function run() {
       `process import job failed: expected 200/201, got ${processedImport.status}`,
     );
 
-    const refreshedImport = await apiRequest(baseUrl, "GET", `/bulk-import/jobs/${importJob.payload.id}`, token);
+    const refreshedImport = await apiRequest(baseUrl, "GET", `/bulk-import/jobs/${importJob.payload.id}`, adminToken);
     assertStatus(refreshedImport, 200, "get bulk import job after process");
     const importRows = Array.isArray(refreshedImport.payload?.rows) ? refreshedImport.payload.rows : [];
     assert(importRows.length === 1, "expected one import row for workflow entry test");
@@ -337,7 +425,7 @@ async function run() {
     );
     assert(importRows[0].productId === null, "workflow-invalid import row must not create product");
 
-    const logs = await apiRequest(baseUrl, "GET", `/audit/logs?actorId=${encodeURIComponent(userId)}&limit=100`, token);
+    const logs = await apiRequest(baseUrl, "GET", `/audit/logs?actorId=${encodeURIComponent(adminUserId)}&limit=100`, adminToken);
     assertStatus(logs, 200, "audit logs");
     const rows = Array.isArray(logs.payload) ? logs.payload : logs.payload?.items ?? [];
     const statusTransitions = rows.filter((row) => row.action === "STATUS_TRANSITION" && row.resourceId === product.payload.id);
@@ -353,6 +441,11 @@ async function run() {
             "workflow_transition_invalid_direct_draft_to_approved_rejected",
             "workflow_transition_draft_to_in_review_allowed",
             "workflow_transition_in_review_to_approved_allowed",
+            "editor_content_edit_blocked_for_approved_product",
+            "admin_content_edit_blocked_for_approved_product",
+            "admin_status_only_archive_allowed_for_approved_product",
+            "editor_content_edit_blocked_for_archived_product",
+            "admin_status_only_reopen_allowed_for_archived_product",
             "catalog_stats_pending_approvals_tracks_in_review_products",
             "bulk_edit_invalid_workflow_transition_recorded_as_failed_item",
             "create_product_rejects_non_draft_workflow_entry",

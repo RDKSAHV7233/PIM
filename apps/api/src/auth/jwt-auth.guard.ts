@@ -13,6 +13,7 @@ import { PlanUsageService } from "../billing/plan-usage.service";
 import { resolveDefaultRole } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
+import { PrismaService } from "../prisma/prisma.service";
 import { ALLOW_SUSPENDED_TENANT_KEY } from "./allow-suspended.decorator";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, decodePimJwtFromAuthHeader } from "./jwt";
@@ -34,6 +35,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwtBlocklistService: JwtBlocklistService,
     private readonly apiKeysService: ApiKeysService,
     private readonly planUsageService: PlanUsageService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -68,6 +70,7 @@ export class JwtAuthGuard implements CanActivate {
       if (!allowSuspendedTenant) {
         await this.assertTenantAccessActive(tenantId);
       }
+      await this.assertUserAccessActive(tenantId, claims.sub);
       request.pimUserId = claims.sub;
       request.pimTenant = tenantId;
       request.pimRole = claims.role ?? resolveDefaultRole();
@@ -107,5 +110,42 @@ export class JwtAuthGuard implements CanActivate {
       accessStatus: profile.accessStatus,
       suspensionReason: profile.suspensionReason,
     });
+  }
+
+  private async assertUserAccessActive(tenantKey: string, userId: string): Promise<void> {
+    const normalizedUserId = String(userId ?? "").trim().toLowerCase();
+    if (!normalizedUserId) {
+      throw new UnauthorizedException({ error: "USER_ID_REQUIRED" });
+    }
+
+    const identity = await this.prisma.tenant(tenantKey).authIdentity.findFirst({
+      where: {
+        tenantKey,
+        userId: normalizedUserId,
+      },
+      select: {
+        isActive: true,
+        lockedUntil: true,
+      },
+    });
+
+    const dbAuthRequired = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    if (!identity) {
+      if (dbAuthRequired) {
+        throw new UnauthorizedException({ error: "USER_NOT_FOUND" });
+      }
+      return;
+    }
+
+    if (!identity.isActive) {
+      throw new UnauthorizedException({ error: "USER_INACTIVE" });
+    }
+
+    if (identity.lockedUntil && identity.lockedUntil.getTime() > Date.now()) {
+      throw new UnauthorizedException({
+        error: "USER_LOCKED",
+        unlockAt: identity.lockedUntil.toISOString(),
+      });
+    }
   }
 }

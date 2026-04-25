@@ -28,10 +28,10 @@ function run() {
   const detailSource = fs.readFileSync(DETAIL_PAGE, "utf8");
 
   assert(
-    setupSource.includes("Shopify live install creates the Vexa connector account with store-domain context.") &&
+      setupSource.includes("Shopify uses managed install. Create the Vexa connector account with store-domain context here;") &&
       setupSource.includes('name="shopDomain"') &&
       setupSource.includes("Create Shopify connector") &&
-      setupSource.includes("managed install and token exchange"),
+      setupSource.includes("managed-install context before token exchange continues"),
     "Setup page must expose Shopify as a live setup lane that captures store context before managed install continues.",
   );
 

@@ -5,7 +5,7 @@
 - Last updated: 2026-03-19
 
 ## 1. Parties and Scope
-This Data Processing Agreement applies where the customer uses TEJ PIM and the TEJ PIM operator processes personal data on the customer’s behalf.
+This Data Processing Agreement applies where the customer uses Vexa PIM and the Vexa PIM operator processes personal data on the customer’s behalf.
 
 This DPA supplements the applicable:
 - order form;
@@ -17,10 +17,10 @@ If there is a conflict, the customer agreement governs first, then this DPA, the
 
 ## 2. Roles
 - Customer: controller or business owner
-- TEJ PIM operator: processor or service provider, except where the operator acts under an independent legal obligation
+- Vexa PIM operator: processor or service provider, except where the operator acts under an independent legal obligation
 
 ## 3. Subject Matter and Duration
-The processing covers personal data necessary to provide TEJ PIM and continues for the duration of the customer relationship, plus any lawful retention period required for security, audit, or compliance.
+The processing covers personal data necessary to provide Vexa PIM and continues for the duration of the customer relationship, plus any lawful retention period required for security, audit, or compliance.
 
 ## 4. Nature and Purpose of Processing
 Processing may include:
@@ -55,7 +55,7 @@ The operator will process personal data only:
 - as required to provide the service; or
 - where required by law.
 
-The customer is responsible for ensuring its instructions are lawful and that it has the right to submit the relevant data to TEJ PIM.
+The customer is responsible for ensuring its instructions are lawful and that it has the right to submit the relevant data to Vexa PIM.
 
 ## 8. Confidentiality
 The operator must ensure that personnel with access to personal data are bound by confidentiality obligations or equivalent duties.
@@ -70,7 +70,7 @@ The operator will implement technical and organizational measures appropriate to
 - operational monitoring and incident handling procedures proportionate to current maturity.
 
 ## 10. Subprocessors
-The operator may engage subprocessors required to run TEJ PIM, subject to appropriate contractual safeguards.
+The operator may engage subprocessors required to run Vexa PIM, subject to appropriate contractual safeguards.
 
 At minimum, subprocessors must be bound to:
 - confidentiality;

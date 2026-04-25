@@ -13,6 +13,7 @@ import {
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
 import { ProductPayload } from "../connector-framework/connector.interface";
+import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -209,6 +210,22 @@ const MAPPING_PACKS: Record<MarketplaceChannel, MappingPack> = {
       "attributes.material": "fabric",
     },
   },
+  shopify: {
+    channel: "shopify",
+    displayName: "Shopify",
+    requiredFields: ["title", "description", "attributes.mainImageUrl"],
+    fieldMap: {
+      title: "title",
+      description: "descriptionHtml",
+      brand: "vendor",
+      "attributes.productType": "productType",
+      "attributes.mainImageUrl": "images.0.src",
+      "attributes.sku": "variants.0.sku",
+      "attributes.inventoryQty": "variants.0.inventoryQuantity",
+      "attributes.color": "options.color",
+      "attributes.size": "options.size",
+    },
+  },
 };
 
 @Injectable()
@@ -224,6 +241,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly connectorMappingService: ConnectorMappingService,
     private readonly notificationsService: NotificationsService,
     private readonly logger: LoggerService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
   onModuleInit() {
@@ -242,7 +260,11 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
-  async getChannelMapping(channelInput: string, categoryId?: string, templateId?: string) {
+  async getChannelMapping(channelInput: string, categoryId?: string, templateId?: string, actor?: PolicyActor) {
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "view", channelInput, "ChannelMappingTemplate");
+    if (categoryId) {
+      await this.accessPolicy.assertCategoryAccess(actor ?? {}, "view", categoryId, "ChannelMappingTemplate");
+    }
     const mapping = await this.getEffectiveMapping(channelInput, categoryId, templateId);
     return {
       channel: mapping.channel,
@@ -255,7 +277,11 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async listTemplates(categoryId: string, channelInput?: string) {
+  async listTemplates(categoryId: string, channelInput?: string, actor?: PolicyActor) {
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "view", categoryId, "ChannelMappingTemplate");
+    if (channelInput) {
+      await this.accessPolicy.assertChannelAccess(actor ?? {}, "view", channelInput, "ChannelMappingTemplate");
+    }
     await this.requireCategory(categoryId);
     const channel = channelInput ? this.parseChannel(channelInput) : undefined;
     return this.prisma.tenant().channelMappingTemplate.findMany({
@@ -267,7 +293,9 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
-  async createTemplate(categoryId: string, dto: CreateMappingTemplateDto) {
+  async createTemplate(categoryId: string, dto: CreateMappingTemplateDto, actor?: PolicyActor) {
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "edit", categoryId, "ChannelMappingTemplate");
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "edit", dto.channel, "ChannelMappingTemplate");
     await this.requireCategory(categoryId);
     const channel = this.parseChannel(dto.channel);
     const requiredFields = this.normalizeRequiredFields(dto.requiredFields);
@@ -299,12 +327,17 @@ export class MarketplaceService implements OnModuleInit {
     }
   }
 
-  async getTemplate(templateId: string) {
-    return this.requireTemplate(templateId);
+  async getTemplate(templateId: string, actor?: PolicyActor) {
+    const template = await this.requireTemplate(templateId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "view", template.categoryId, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "view", template.channel, "ChannelMappingTemplate", templateId);
+    return template;
   }
 
-  async updateTemplate(templateId: string, dto: UpdateMappingTemplateDto) {
+  async updateTemplate(templateId: string, dto: UpdateMappingTemplateDto, actor?: PolicyActor) {
     const existing = await this.requireTemplate(templateId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "edit", existing.categoryId, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "edit", dto.channel ?? existing.channel, "ChannelMappingTemplate", templateId);
     if (existing.isSystemPack) {
       throw new BadRequestException("System mapping packs are read-only.");
     }
@@ -359,8 +392,10 @@ export class MarketplaceService implements OnModuleInit {
     }
   }
 
-  async deleteTemplate(templateId: string) {
+  async deleteTemplate(templateId: string, actor?: PolicyActor) {
     const template = await this.requireTemplate(templateId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "delete", template.categoryId, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "delete", template.channel, "ChannelMappingTemplate", templateId);
     if (template.isSystemPack) {
       throw new BadRequestException("System mapping packs cannot be deleted.");
     }
@@ -373,8 +408,10 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async cloneTemplate(templateId: string, dto: CloneMappingTemplateDto) {
+  async cloneTemplate(templateId: string, dto: CloneMappingTemplateDto, actor?: PolicyActor) {
     const source = await this.requireTemplate(templateId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "create", source.categoryId, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "create", source.channel, "ChannelMappingTemplate", templateId);
     const sourceChannel = this.parseChannel(source.channel);
     const cloneNameInput = dto.name ? dto.name.trim() : "";
     const cloneName =
@@ -442,13 +479,24 @@ export class MarketplaceService implements OnModuleInit {
     };
   }
 
-  async createExportJob(productId: string, dto: CreateExportJobDto, actorId?: string) {
+  async createExportJob(productId: string, dto: CreateExportJobDto, actor?: PolicyActor) {
+    await this.accessPolicy.assertSensitivePayloadAccessAllowed(actor ?? {}, {
+      action: "marketplace.export",
+      resource: "MarketplaceExportJob",
+      resourceId: productId,
+    });
     const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    await this.accessPolicy.assertProductAccess(actor ?? {}, "export", {
+      id: product.id,
+      categoryId: product.categoryId,
+      brand: product.brand,
+    });
 
     const channel = this.parseChannel(dto.channel);
+    await this.accessPolicy.assertChannelAccess(actor ?? {}, "export", channel, "MarketplaceExportJob", productId);
     const connectorSlug = this.mapChannelToConnectorSlug(channel);
     try {
       const tenantKey = this.connectorFramework.getCurrentTenantKey();
@@ -476,7 +524,7 @@ export class MarketplaceService implements OnModuleInit {
     });
     const job = await this.prisma.tenant().marketplaceExportJob.create({
       data: {
-        createdBy: actorId?.trim() ? actorId.trim() : null,
+        createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
         productId,
         categoryId: product.categoryId,
         channel: simulation.channel,

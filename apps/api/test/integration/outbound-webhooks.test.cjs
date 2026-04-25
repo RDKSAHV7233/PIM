@@ -609,7 +609,6 @@ async function run() {
           title: `Webhook Import Product ${runId}`,
           description: "Webhook integration validation import ready for success",
           brand: "WebhookBrand",
-          status: "draft",
           hsnCode: "62046200",
           gstRate: 18,
           attributes: {},
@@ -702,14 +701,14 @@ async function run() {
     flipkartInstallationId = String(installConnector.payload?.id ?? "");
     assert(flipkartInstallationId.length > 0, "missing flipkart installation id");
 
-    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${productId}/export-jobs`, editorToken, {
+    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${productId}/export-jobs`, adminToken, {
       channel: "flipkart",
       maxRetries: 1,
     });
     assertStatus(exportJob, 201, "create export job");
 
     webhookState.received = null;
-    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, editorToken);
+    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, adminToken);
     assertStatus(processedExport, 201, "process export job");
     assert(
       ["dead_letter", "failed"].includes(String(processedExport.payload?.status ?? "")),
@@ -719,7 +718,7 @@ async function run() {
     const publishReceived = await waitForWebhook(webhookState, 15_000);
     assert(publishReceived.method === "POST", `expected POST publish_failed webhook delivery, got ${publishReceived.method}`);
     assert(publishReceived.payload && publishReceived.payload.type === "publish_failed", "publish webhook payload must be publish_failed");
-    assert(publishReceived.payload && publishReceived.payload.userId === editorUserId.toLowerCase(), "publish webhook payload must target the editor");
+    assert(publishReceived.payload && publishReceived.payload.userId === adminUserId.toLowerCase(), "publish webhook payload must target the admin actor");
     assert(
       String(publishReceived.payload?.metadata?.exportJobId ?? "") === String(exportJob.payload.id),
       "publish webhook metadata must include exportJobId",
@@ -813,7 +812,7 @@ async function run() {
       baseUrl,
       "POST",
       `/catalog/products/${encodeURIComponent(publishReadyProductId)}/variants`,
-      editorToken,
+      adminToken,
       {
         skuCode: `FK-${runId}`,
         attributes: {},
@@ -829,7 +828,7 @@ async function run() {
       baseUrl,
       "POST",
       `/marketplace/products/${encodeURIComponent(publishReadyProductId)}/export-jobs`,
-      editorToken,
+      adminToken,
       {
         channel: "flipkart",
         maxRetries: 1,
@@ -842,7 +841,7 @@ async function run() {
       baseUrl,
       "POST",
       `/marketplace/export-jobs/${successExportJob.payload.id}/process`,
-      editorToken,
+      adminToken,
     );
     assertStatus(processedSuccessExport, 201, "process successful export job");
     assert(
@@ -853,7 +852,7 @@ async function run() {
     const publishSucceededReceived = await waitForWebhook(webhookState, 15_000);
     assert(publishSucceededReceived.method === "POST", `expected POST publish_succeeded webhook delivery, got ${publishSucceededReceived.method}`);
     assert(publishSucceededReceived.payload && publishSucceededReceived.payload.type === "publish_succeeded", "publish_succeeded webhook payload must be publish_succeeded");
-    assert(publishSucceededReceived.payload && publishSucceededReceived.payload.userId === editorUserId.toLowerCase(), "publish_succeeded webhook payload must target the editor");
+    assert(publishSucceededReceived.payload && publishSucceededReceived.payload.userId === adminUserId.toLowerCase(), "publish_succeeded webhook payload must target the admin actor");
     assert(
       String(publishSucceededReceived.payload?.metadata?.exportJobId ?? "") === String(successExportJob.payload.id),
       "publish_succeeded webhook metadata must include exportJobId",

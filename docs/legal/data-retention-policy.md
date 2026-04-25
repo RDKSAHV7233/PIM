@@ -5,7 +5,7 @@
 - Last updated: 2026-03-19
 
 ## 1. Purpose
-This policy defines the baseline retention and deletion posture for data processed in TEJ PIM.
+This policy defines the baseline retention and deletion posture for data processed in Vexa PIM.
 
 The objective is to:
 - retain enough information for security, auditability, support, and legal compliance;

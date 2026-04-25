@@ -135,7 +135,7 @@ function installationStatusTone(status: string): StatusTone {
   if (normalized === "ACTIVE") {
     return "success";
   }
-  if (normalized === "PAUSED" || normalized === "DISABLED" || normalized === "INACTIVE") {
+  if (normalized === "PAUSED" || normalized === "INACTIVE") {
     return "warning";
   }
   if (normalized === "CREDENTIAL_EXPIRED" || normalized === "ERROR" || normalized === "FAILED") {
@@ -146,6 +146,14 @@ function installationStatusTone(status: string): StatusTone {
 
 function isInstallationAttentionStatus(status: string): boolean {
   return installationStatusTone(status) === "warning" || installationStatusTone(status) === "danger";
+}
+
+function isActiveInstallation(installation: ConnectorInstallation): boolean {
+  return String(installation.status ?? "").trim().toUpperCase() === "ACTIVE";
+}
+
+function isDisabledInstallation(installation: ConnectorInstallation): boolean {
+  return String(installation.status ?? "").trim().toUpperCase() === "DISABLED";
 }
 
 function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
@@ -187,6 +195,25 @@ function resolveInstalledStatusPresentation(
 
 function formatCapabilityList(capabilities: string[]): string {
   return capabilities.length > 0 ? capabilities.join(", ") : "-";
+}
+
+function formatInstallFootprint(installations: ConnectorInstallation[]): string {
+  const activeCount = installations.filter(isActiveInstallation).length;
+  const disabledCount = installations.filter(isDisabledInstallation).length;
+  const attentionCount = installations.filter(
+    (installation) => !isDisabledInstallation(installation) && isInstallationAttentionStatus(installation.status),
+  ).length;
+
+  if (activeCount > 0) {
+    return `${activeCount} active account${activeCount === 1 ? "" : "s"}`;
+  }
+  if (attentionCount > 0) {
+    return `${attentionCount} account${attentionCount === 1 ? "" : "s"} need follow-up`;
+  }
+  if (disabledCount > 0) {
+    return `0 active accounts (${disabledCount} disabled)`;
+  }
+  return "0 accounts installed";
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -325,11 +352,10 @@ function summarizeDefinitionWorkspace(
   definition: ConnectorDefinition,
   installedForDefinition: ConnectorInstallation[],
 ): { label: string; tone: StatusTone; description: string } {
-  const activeAccounts = installedForDefinition.filter(
-    (installation) => String(installation.status ?? "").trim().toUpperCase() === "ACTIVE",
-  ).length;
-  const attentionAccounts = installedForDefinition.filter((installation) =>
-    isInstallationAttentionStatus(installation.status),
+  const activeAccounts = installedForDefinition.filter(isActiveInstallation).length;
+  const disabledAccounts = installedForDefinition.filter(isDisabledInstallation).length;
+  const attentionAccounts = installedForDefinition.filter(
+    (installation) => !isDisabledInstallation(installation) && isInstallationAttentionStatus(installation.status),
   ).length;
 
   if (activeAccounts > 0) {
@@ -364,7 +390,10 @@ function summarizeDefinitionWorkspace(
     return {
       label: "Needs setup",
       tone: "info",
-      description: "Ready for the first account connection and downstream mapping work.",
+      description:
+        disabledAccounts > 0
+          ? `${disabledAccounts} disabled account${disabledAccounts === 1 ? "" : "s"} retained in history. Ready for a new account connection and downstream mapping work.`
+          : "Ready for the first account connection and downstream mapping work.",
     };
   }
   if (isPlanBlockedReason(definition.actions?.install.reason)) {
@@ -449,11 +478,11 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     const activeAccountsCount = filteredInstallations.filter(
       (installation) => String(installation.status ?? "").trim().toUpperCase() === "ACTIVE",
     ).length;
-    const attentionAccountsCount = filteredInstallations.filter((installation) =>
-      isInstallationAttentionStatus(installation.status),
+    const attentionAccountsCount = filteredInstallations.filter(
+      (installation) => !isDisabledInstallation(installation) && isInstallationAttentionStatus(installation.status),
     ).length;
-    const attentionInstallations = filteredInstallations.filter((installation) =>
-      isInstallationAttentionStatus(installation.status),
+    const attentionInstallations = filteredInstallations.filter(
+      (installation) => !isDisabledInstallation(installation) && isInstallationAttentionStatus(installation.status),
     );
     const portfolioContext = searchValue ? ` for "${searchValue}"` : "";
 
@@ -597,7 +626,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 </p>
               </div>
               <StatusChip
-                label={`${channelCatalogDefinitions.filter((item) => item.installedForDefinition.length > 0).length} with active footprint`}
+                label={`${
+                  channelCatalogDefinitions.filter((item) => item.installedForDefinition.some(isActiveInstallation)).length
+                } with active footprint`}
                 tone="info"
               />
             </div>
@@ -657,9 +688,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Install footprint</p>
-                          <p className="mt-2 text-sm text-slate-700">
-                            {installedForDefinition.length} account{installedForDefinition.length === 1 ? "" : "s"} installed
-                          </p>
+                          <p className="mt-2 text-sm text-slate-700">{formatInstallFootprint(installedForDefinition)}</p>
                           <p className="mt-1 text-xs text-slate-500">
                             Auth {definition.authType} · Version {definition.connectorVersion}
                           </p>

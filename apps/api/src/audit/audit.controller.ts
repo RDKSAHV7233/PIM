@@ -10,6 +10,7 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get("logs")
+  @Roles("admin")
   listLogs(@Query("limit") limit?: string, @Query("actorId") actorId?: string, @Query() pagination?: CursorPaginationDto) {
     const parsedLimit = limit ? Number(limit) : 50;
     return this.auditService.list(parsedLimit, actorId, pagination);

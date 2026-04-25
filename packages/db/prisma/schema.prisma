@@ -95,6 +95,18 @@ enum ConnectorPermissionAction {
   uninstall
 }
 
+enum AccessScopeSubjectType {
+  user
+  role
+}
+
+enum AccessScopeType {
+  category
+  brand
+  channel
+  connector_account
+}
+
 model Category {
   id                   String                @id @default(cuid())
   tenantKey            String                @default("default")
@@ -111,6 +123,7 @@ model Category {
   exportJobs           MarketplaceExportJob[]
   bulkImportJobs       BulkImportJob[]
   bulkImportTemplates  BulkImportTemplate[]
+  accessScopeAssignments AccessScopeAssignment[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -776,6 +789,28 @@ model ConnectorPermission {
   @@unique([tenantKey, principalType, principalId, connectorSlug, accountAlias, action])
   @@index([tenantKey, principalType, principalId])
   @@index([tenantKey, connectorSlug, action])
+}
+
+model AccessScopeAssignment {
+  id                      String                 @id @default(cuid())
+  tenantKey               String                 @default("default")
+  subjectType             AccessScopeSubjectType
+  subjectId               String
+  scopeType               AccessScopeType
+  categoryId              String?
+  category                Category?              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  connectorInstallationId String?                @map("connector_installation_id")
+  scopeValue              String?
+  actions                 String[]               @default([])
+  createdBy               String?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  @@index([tenantKey, subjectType, subjectId], map: "idx_scope_assignment_subject")
+  @@index([tenantKey, scopeType, categoryId], map: "idx_scope_assignment_category")
+  @@index([tenantKey, scopeType, connectorInstallationId], map: "idx_scope_assignment_connector_account")
+  @@index([tenantKey, scopeType, scopeValue], map: "idx_scope_assignment_scope_value")
+  @@unique([tenantKey, subjectType, subjectId, scopeType, categoryId, connectorInstallationId, scopeValue], map: "access_scope_assignments_unique")
 }
 
 model AuthIdentity {

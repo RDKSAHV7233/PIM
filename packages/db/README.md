@@ -1,6 +1,6 @@
 # @pim1/db
 
-Prisma schema package for PIM1 catalog domain.
+Prisma schema package for Vexa PIM catalog domain.
 
 ## Commands
 - `npm run prisma:generate --workspace @pim1/db`

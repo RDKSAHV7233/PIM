@@ -1,11 +1,11 @@
 # Vexa PIM Product Test Strategy
 
-Status: Current-state product test architecture for TEJ PIM  
+Status: Current-state product test architecture for Vexa PIM
 Last updated: 2026-03-11
 
 ## Purpose
 
-TEJ PIM already has many integration tests, but they were accumulated by technical slice. The product now needs a stable, product-facing test surface that answers a different question:
+Vexa PIM already has many integration tests, but they were accumulated by technical slice. The product now needs a stable, product-facing test surface that answers a different question:
 
 - can a seller log in and operate the shell?
 - can catalog teams author and fix products?
@@ -43,7 +43,7 @@ That keeps the suite anchored to a buildable current-state product before featur
 Goal:
 - authenticated shell is usable
 - topbar navigation is present
-- sidebar reflects current TEJ PIM information architecture
+- sidebar reflects current Vexa PIM information architecture
 
 Coverage:
 - `apps/web/test/integration/auth-shell-ui.test.cjs`
@@ -110,7 +110,7 @@ Coverage:
 
 ## UI/UX Validation Model
 
-TEJ PIM does not currently use a browser-driven visual regression stack in this suite. Current UI/UX regression protection is a combination of:
+Vexa PIM does not currently use a browser-driven visual regression stack in this suite. Current UI/UX regression protection is a combination of:
 
 - source-structure assertions on shipped page/component files
 - build validation

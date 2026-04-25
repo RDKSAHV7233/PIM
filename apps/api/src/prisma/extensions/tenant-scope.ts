@@ -29,6 +29,7 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "ConnectorWebhookEvent",
   "TenantPlanProfile",
   "ConnectorPermission",
+  "AccessScopeAssignment",
   "OndcMapping",
   "PlanUsage",
   "UserNotification",

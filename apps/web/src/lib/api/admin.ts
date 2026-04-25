@@ -1,4 +1,4 @@
-import type { ApiAccessKey, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, WorkspaceUser } from "./core";
+import type { AccessScopeAssignment, AccessScopeAssignmentAction, AccessScopeAssignmentScopeType, AccessScopeAssignmentSubjectType, ApiAccessKey, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, WorkspaceUser } from "./core";
 import { fetchJson, patchJson, postJson } from "./core";
 
 export async function getWorkspaceUsers(options?: ApiRequestOptions) {
@@ -34,6 +34,33 @@ export async function unlockWorkspaceUser(userId: string, options?: ApiRequestOp
 
 export async function deactivateWorkspaceUser(userId: string, options?: ApiRequestOptions) {
   return postJson<WorkspaceUser>(`/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`, {}, options);
+}
+
+export async function getAccessScopeAssignments(options?: ApiRequestOptions) {
+  return fetchJson<AccessScopeAssignment[]>("/admin/workspace/access-scopes", undefined, options);
+}
+
+export async function createAccessScopeAssignment(
+  dto: {
+    subjectType: AccessScopeAssignmentSubjectType;
+    subjectId: string;
+    scopeType: AccessScopeAssignmentScopeType;
+    categoryId?: string;
+    connectorInstallationId?: string;
+    scopeValue?: string;
+    actions?: AccessScopeAssignmentAction[];
+  },
+  options?: ApiRequestOptions,
+) {
+  return postJson<AccessScopeAssignment>("/admin/workspace/access-scopes", dto, options);
+}
+
+export async function deleteAccessScopeAssignment(assignmentId: string, options?: ApiRequestOptions) {
+  return fetchJson<{ id: string; deleted: true }>(
+    `/admin/workspace/access-scopes/${encodeURIComponent(assignmentId)}`,
+    { method: "DELETE" },
+    options,
+  );
 }
 
 export async function getApiAccessKeys(options?: ApiRequestOptions) {

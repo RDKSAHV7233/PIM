@@ -6,7 +6,7 @@ import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
-import { Roles } from "../common/rbac/roles";
+import { AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { BatchMarketplaceReadinessDto } from "./dto/batch-marketplace-readiness.dto";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
@@ -37,12 +37,22 @@ export class MarketplaceController {
     private readonly connectorMappingService: ConnectorMappingService,
   ) {}
 
+  private resolveActor(request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+    return {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    };
+  }
+
   @Get("channels")
+  @Roles("admin", "editor")
   listChannels() {
     return this.marketplaceService.listChannels();
   }
 
   @Get("connectors/:connectorSlug/mappings/versions")
+  @Roles("admin", "editor")
   listConnectorMappingVersions(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ListConnectorMappingVersionsQueryDto,
@@ -145,6 +155,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/mappings/resolve")
+  @Roles("admin", "editor")
   resolveConnectorMapping(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ResolveConnectorMappingQueryDto,
@@ -170,6 +181,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/taxonomy/search")
+  @Roles("admin", "editor")
   searchConnectorTaxonomy(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ConnectorTaxonomySearchQueryDto,
@@ -182,6 +194,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/taxonomy/unmapped")
+  @Roles("admin", "editor")
   listUnmappedConnectorTaxonomy(@Param("connectorSlug") connectorSlug: string) {
     return this.connectorMappingService.listUnmappedCategories({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
@@ -204,45 +217,72 @@ export class MarketplaceController {
   }
 
   @Get("channels/:channel/mapping")
+  @Roles("admin", "editor")
   getChannelMapping(
     @Param("channel") channel: string,
     @Query("categoryId") categoryId?: string,
     @Query("templateId") templateId?: string,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.marketplaceService.getChannelMapping(channel, categoryId, templateId);
+    return this.marketplaceService.getChannelMapping(channel, categoryId, templateId, this.resolveActor(request ?? {}));
   }
 
   @Get("categories/:id/templates")
-  listTemplates(@Param("id") categoryId: string, @Query("channel") channel?: string) {
-    return this.marketplaceService.listTemplates(categoryId, channel);
+  @Roles("admin", "editor")
+  listTemplates(
+    @Param("id") categoryId: string,
+    @Query("channel") channel?: string,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.listTemplates(categoryId, channel, this.resolveActor(request ?? {}));
   }
 
   @Post("categories/:id/templates")
-  createTemplate(@Param("id") categoryId: string, @Body() dto: CreateMappingTemplateDto) {
-    return this.marketplaceService.createTemplate(categoryId, dto);
+  createTemplate(
+    @Param("id") categoryId: string,
+    @Body() dto: CreateMappingTemplateDto,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.createTemplate(categoryId, dto, this.resolveActor(request ?? {}));
   }
 
   @Get("templates/:id")
-  getTemplate(@Param("id") templateId: string) {
-    return this.marketplaceService.getTemplate(templateId);
+  @Roles("admin", "editor")
+  getTemplate(
+    @Param("id") templateId: string,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.getTemplate(templateId, this.resolveActor(request ?? {}));
   }
 
   @Patch("templates/:id")
-  updateTemplate(@Param("id") templateId: string, @Body() dto: UpdateMappingTemplateDto) {
-    return this.marketplaceService.updateTemplate(templateId, dto);
+  updateTemplate(
+    @Param("id") templateId: string,
+    @Body() dto: UpdateMappingTemplateDto,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.updateTemplate(templateId, dto, this.resolveActor(request ?? {}));
   }
 
   @Delete("templates/:id")
-  deleteTemplate(@Param("id") templateId: string) {
-    return this.marketplaceService.deleteTemplate(templateId);
+  deleteTemplate(
+    @Param("id") templateId: string,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.deleteTemplate(templateId, this.resolveActor(request ?? {}));
   }
 
   @Post("templates/:id/clone")
-  cloneTemplate(@Param("id") templateId: string, @Body() dto: CloneMappingTemplateDto) {
-    return this.marketplaceService.cloneTemplate(templateId, dto);
+  cloneTemplate(
+    @Param("id") templateId: string,
+    @Body() dto: CloneMappingTemplateDto,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.cloneTemplate(templateId, dto, this.resolveActor(request ?? {}));
   }
 
   @Get("products/:id/simulate")
+  @Roles("admin")
   simulateProductQuery(
     @Param("id") productId: string,
     @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
@@ -252,6 +292,7 @@ export class MarketplaceController {
   }
 
   @Post("products/:id/simulate")
+  @Roles("admin")
   simulateProductBody(@Param("id") productId: string, @Body() dto: SimulateMarketplaceDto) {
     return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId);
   }
@@ -263,16 +304,26 @@ export class MarketplaceController {
   }
 
   @Post("products/:id/export-jobs")
+  @Roles("admin", "editor")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create marketplace export job" })
   @ApiResponse({ status: 201, description: "Export job queued" })
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
-  createExportJob(@Param("id") productId: string, @Body() dto: CreateExportJobDto, @Req() request: { pimUserId?: string }) {
-    return this.marketplaceService.createExportJob(productId, dto, request.pimUserId);
+  createExportJob(
+    @Param("id") productId: string,
+    @Body() dto: CreateExportJobDto,
+    @Req() request: { pimUserId?: string; pimRole?: import("../common/rbac/roles").AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.createExportJob(productId, dto, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
   }
 
   @Get("export-jobs")
+  @Roles("admin")
   @ApiOperation({ summary: "List export jobs" })
   @ApiResponse({ status: 200, description: "Export jobs fetched" })
   listExportJobs(
@@ -287,26 +338,37 @@ export class MarketplaceController {
   }
 
   @Post("export-job")
+  @Roles("admin", "editor")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create export job (alias endpoint)" })
   @ApiResponse({ status: 201, description: "Export job queued" })
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
-  createExportJobAlias(@Body() dto: CreateExportJobAliasDto, @Req() request: { pimUserId?: string }) {
-    return this.marketplaceService.createExportJob(dto.productId, dto, request.pimUserId);
+  createExportJobAlias(
+    @Body() dto: CreateExportJobAliasDto,
+    @Req() request: { pimUserId?: string; pimRole?: import("../common/rbac/roles").AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.createExportJob(dto.productId, dto, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
   }
 
   @Get("export-jobs/:id")
+  @Roles("admin")
   getExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.getExportJob(jobId);
   }
 
   @Post("export-jobs/:id/process")
+  @Roles("admin")
   processExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.processExportJob(jobId);
   }
 
   @Post("export-jobs/:id/requeue")
+  @Roles("admin")
   requeueExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.requeueExportJob(jobId);
   }

@@ -30,19 +30,22 @@ function run() {
     "Admin users must normalize page status and invite query state while deriving write access from shared role capabilities.",
   );
   assert(
-    source.includes("const [usage, connectorPermissions, workspaceUsers] = await Promise.all([") &&
+    source.includes("const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([") &&
       source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
       source.includes("getConnectorPermissions(undefined, { role: actorRole, authHeader })") &&
-      source.includes("getWorkspaceUsers({ role: actorRole, authHeader })"),
-    "Admin users must load billing usage, connector overrides, and workspace users together through the shared auth context.",
+      source.includes("getWorkspaceUsers({ role: actorRole, authHeader })") &&
+      source.includes("getAccessScopeAssignments({ role: actorRole, authHeader })"),
+    "Admin users must load billing usage, connector overrides, workspace users, and delegated scope assignments together through the shared auth context.",
   );
   assert(
     source.includes("const byPrincipalType = connectorPermissions.reduce<Record<string, number>>") &&
       source.includes('label="User Limit"') &&
       source.includes('label="Connector Overrides"') &&
       source.includes('label="User Principals"') &&
-      source.includes('helper={`Role principals: ${byPrincipalType.role ?? 0}`}'),
-    "Admin users must derive top-line access metrics from live billing and connector permission data.",
+      source.includes('helper={`Role principals: ${byPrincipalType.role ?? 0}`}') &&
+      source.includes('label="Delegated Scopes"') &&
+      source.includes("value={accessScopeAssignments.length}"),
+    "Admin users must derive top-line access metrics from live billing, connector permission, and delegated scope data.",
   );
   assert(
     source.includes("<CardTitle>Workspace Access Management</CardTitle>") &&
@@ -66,11 +69,15 @@ function run() {
       source.includes('status === "user-locked"') &&
       source.includes('status === "user-unlocked"') &&
       source.includes('status === "user-deactivated"') &&
+      source.includes('status === "scope-created"') &&
+      source.includes('status === "scope-deleted"') &&
       source.includes('message="Workspace user role updated."') &&
       source.includes('message="Workspace user locked."') &&
       source.includes('message="Workspace user unlocked."') &&
-      source.includes('message="Workspace user deactivated."'),
-    "Admin users must surface invite, error, role change, lock, unlock, and deactivate outcomes through page-level status banners.",
+      source.includes('message="Workspace user deactivated."') &&
+      source.includes('message="Delegated access scope assigned."') &&
+      source.includes('message="Delegated access scope removed."'),
+    "Admin users must surface user lifecycle and delegated-scope outcomes through page-level status banners.",
   );
   assert(
     source.includes("const isSelf = user.userId === currentUserId;") &&
@@ -84,6 +91,20 @@ function run() {
     "Admin users must enforce self-protection on role and lifecycle actions while preserving a read-only fallback for non-admin operators.",
   );
   assert(
+    source.includes("<CardTitle>Delegated Access Scopes</CardTitle>") &&
+      source.includes("Admin-only delegated scope assignments constrain non-admin access by category, brand, channel, and connector account.") &&
+      source.includes("form action={createAccessScopeAssignmentAction}") &&
+      source.includes('name="subjectType"') &&
+      source.includes('name="subjectId"') &&
+      source.includes('name="scopeType"') &&
+      source.includes('name="categoryId"') &&
+      source.includes('name="scopeValue"') &&
+      source.includes('name="connectorInstallationId"') &&
+      source.includes('name="actions"') &&
+      source.includes("form action={deleteAccessScopeAssignmentAction}"),
+    "Admin users must keep delegated scope assignment management in the admin-only users workspace.",
+  );
+  assert(
     source.includes("<CardTitle>Role Matrix</CardTitle>") &&
       source.includes("<CardTitle>Connector Permission Overrides</CardTitle>") &&
       source.includes('No connector-specific overrides are configured.') &&
@@ -93,11 +114,15 @@ function run() {
   assert(
     source.includes('const errorMessage = String(query.message ?? "").trim();') &&
       source.includes('<input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />') &&
+      actionsSource.includes("createAccessScopeAssignmentAction") &&
+      actionsSource.includes("deleteAccessScopeAssignmentAction") &&
       actionsSource.includes("const actorRole = await getServerActorRole();") &&
       actionsSource.includes('if (actorRole !== "admin") {') &&
       actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to invite workspace user.", errorRedirectTo);') &&
-      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update workspace user.");'),
-    "Admin users must keep invite errors inline, preserve invite state, and enforce admin role checks in server actions.",
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update workspace user.");') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to create scope assignment.");') &&
+      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to delete scope assignment.");'),
+    "Admin users must keep invite and delegated-scope errors inline while enforcing admin role checks in server actions.",
   );
   assert(
     source.includes('redirect(buildLoginRedirect("/admin/users", error));'),
@@ -116,6 +141,7 @@ function run() {
           "admin_users_route_explains_read_only_access_honestly",
           "admin_users_route_keeps_invite_flow_and_roles_explicit",
           "admin_users_route_surfaces_user_lifecycle_status_banners",
+          "admin_users_route_surfaces_delegated_access_scope_management",
           "admin_users_route_keeps_error_feedback_inline",
           "admin_users_route_enforces_self_protection_and_read_only_fallback",
           "admin_users_route_surfaces_role_matrix_and_connector_overrides",

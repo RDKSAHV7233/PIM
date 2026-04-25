@@ -5,14 +5,14 @@
 - Last updated: 2026-03-19
 
 ## 1. Purpose
-This Privacy Policy explains how TEJ PIM handles personal data in connection with the TEJ PIM platform and related controlled-rollout operations.
+This Privacy Policy explains how Vexa PIM handles personal data in connection with the Vexa PIM platform and related controlled-rollout operations.
 
-TEJ PIM is an India-first multi-tenant product information management platform. Most personal data processed in TEJ PIM is customer account, workspace administration, audit, or support data rather than consumer-profile data.
+Vexa PIM is an India-first multi-tenant product information management platform. Most personal data processed in Vexa PIM is customer account, workspace administration, audit, or support data rather than consumer-profile data.
 
 ## 2. Roles
 In most service scenarios:
-- the customer organization acts as the controller or business owner for data it submits to TEJ PIM; and
-- the TEJ PIM operator acts as processor or service provider on the customer’s instructions.
+- the customer organization acts as the controller or business owner for data it submits to Vexa PIM; and
+- the Vexa PIM operator acts as processor or service provider on the customer’s instructions.
 
 The operator may act as an independent controller where required for:
 - security logging;
@@ -22,7 +22,7 @@ The operator may act as an independent controller where required for:
 - incident response.
 
 ## 3. Categories of Data We Process
-TEJ PIM may process the following categories of data:
+Vexa PIM may process the following categories of data:
 
 ### 3.1 Account and workspace data
 - user ID or login identifier;
@@ -68,7 +68,7 @@ Depending on the relationship and applicable law, processing may be based on:
 - customer instructions under a service agreement or DPA.
 
 ## 6. Security Measures
-TEJ PIM uses technical and organizational controls appropriate to the current service stage, including:
+Vexa PIM uses technical and organizational controls appropriate to the current service stage, including:
 - role-based access control;
 - tenant-scoped data access patterns;
 - audit logging;
@@ -82,7 +82,7 @@ No system can guarantee absolute security. Customers must also manage internal a
 We do not sell customer personal data.
 
 We may share or disclose data:
-- with infrastructure and service providers needed to operate TEJ PIM;
+- with infrastructure and service providers needed to operate Vexa PIM;
 - with connectors or marketplaces when the customer initiates export or publish actions;
 - with professional advisers bound by confidentiality; or
 - where required by law, court order, or regulatory process.
@@ -118,7 +118,7 @@ At the current rollout stage:
 - account export requests are recorded in-product and handled through an admin-led process until automated fulfillment is implemented.
 
 ## 11. Children’s Data
-TEJ PIM is intended for business use and is not directed to children. Customers must not use TEJ PIM to intentionally collect or process children’s personal data without a lawful basis and appropriate safeguards.
+Vexa PIM is intended for business use and is not directed to children. Customers must not use Vexa PIM to intentionally collect or process children’s personal data without a lawful basis and appropriate safeguards.
 
 ## 12. Changes to This Policy
 We may update this Privacy Policy to reflect product, legal, or operational changes. Material changes should be communicated through the service or associated customer communication channels.

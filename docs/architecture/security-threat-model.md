@@ -1,5 +1,5 @@
 ---
-title: TEJ PIM Security Threat Model
+title: Vexa PIM Security Threat Model
 audience: internal-engineering
 status: active
 last_updated: 2026-03-19
@@ -8,7 +8,7 @@ owner: CTO + Backend Lead
 
 ## 1. System boundary
 
-TEJ PIM runs as a browser-facing Next.js application backed by a NestJS API, PostgreSQL, Redis, and BullMQ workers. The main trust boundaries in the reviewed repo are:
+Vexa PIM runs as a browser-facing Next.js application backed by a NestJS API, PostgreSQL, Redis, and BullMQ workers. The main trust boundaries in the reviewed repo are:
 
 ```text
 [ Public internet ]
@@ -138,5 +138,5 @@ These are current limitations in the reviewed repo. They are real and should be 
 This document does not model or guarantee:
 - DDoS mitigation at the Railway edge or upstream network providers.
 - Physical security of developer laptops, CI runners, or hosted infrastructure.
-- General browser or client-device compromise outside the controls implemented by TEJ PIM.
+- General browser or client-device compromise outside the controls implemented by Vexa PIM.
 - Security controls enforced by Amazon, Flipkart, Meesho, or any other third-party marketplace APIs.

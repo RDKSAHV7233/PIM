@@ -1,9 +1,12 @@
 # Vexa PIM Admin Setup Checklist
 
-This checklist is for workspace admins setting up a tenant in the current TEJ PIM application.
+Status: Supporting checklist
+Canonical admin guide: `docs/admin-guide.md`
+
+This checklist is for workspace admins setting up a tenant in the current Vexa PIM application.
 
 Use this document when you want a shorter, action-focused setup guide.
-Use the full guide for detailed workflows: `docs/pim-user-guide.md`.
+Use the full guide for detailed workflows: `docs/user-guide.md`.
 
 ## Before You Start
 
@@ -329,7 +332,7 @@ A tenant is reasonably set up when all of these are true:
 
 ## Related Docs
 
-1. Full user guide: `docs/pim-user-guide.md`
+1. Full user guide: `docs/user-guide.md`
 2. First seller onboarding playbook: `docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md`
 3. Product user-guide bundle: `docs/product/user-guide/`
 4. API contract reference: `docs/openapi.yaml`

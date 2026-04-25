@@ -7,6 +7,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
+import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { AppRole } from "../common/rbac/roles";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
@@ -115,6 +116,7 @@ export class ConnectorInstallerService {
     private readonly connectorRegistry: ConnectorRegistry,
     private readonly credentialEncryptionService: ConnectorCredentialEncryptionService,
     private readonly connectorPermissionService: ConnectorPermissionService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
   private getTenantKey(): string {
@@ -477,10 +479,21 @@ export class ConnectorInstallerService {
         };
       }),
     );
+    const filteredItems = actor
+      ? await this.accessPolicy.filterConnectorInstallations(
+          {
+            actorId: actor.actorId,
+            actorRole: actor.actorRole,
+            tenantId: tenantKey,
+          },
+          items,
+          "manage_connector",
+        )
+      : items;
 
-    const last = items[items.length - 1];
+    const last = filteredItems[filteredItems.length - 1];
     return {
-      items,
+      items: filteredItems,
       limit,
       nextCursor:
         hasNext && last
@@ -728,7 +741,55 @@ export class ConnectorInstallerService {
     return this.connectorPermissionService.revokePermission(permissionId, actor);
   }
 
-  async previewPayload(installationId: string, dto: ConnectorPayloadPreviewDto) {
+  async previewPayload(installationId: string, dto: ConnectorPayloadPreviewDto, actor: ConnectorActor) {
+    const tenantKey = this.getTenantKey();
+    const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+    await this.accessPolicy.assertConnectorInstallationAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "preview_connector_payload",
+      {
+        installationId: installation.id,
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+      },
+    );
+    await this.connectorPermissionService.assertActionAllowed(actor, {
+      connectorSlug: installation.slug,
+      action: "reconnect",
+      accountAlias: installation.accountAlias,
+    });
+    const product = await this.prisma.tenant(tenantKey).product.findUnique({
+      where: { id: dto.productId },
+      select: { id: true, categoryId: true, brand: true },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+    await this.accessPolicy.assertProductAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "view",
+      product,
+    );
+    await this.accessPolicy.assertSensitivePayloadAccessAllowed(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      {
+        action: "connector.preview",
+        resource: "ConnectorInstallation",
+        resourceId: installationId,
+      },
+    );
     return this.marketplaceService.previewPayloadForInstallation(
       installationId,
       dto.productId,
@@ -777,6 +838,19 @@ export class ConnectorInstallerService {
   ) {
     const tenantKey = this.getTenantKey();
     const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+    await this.accessPolicy.assertConnectorInstallationAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "manage_connector",
+      {
+        installationId: installation.id,
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+      },
+    );
 
     await this.connectorPermissionService.assertActionAllowed(actor, {
       connectorSlug: installation.slug,
@@ -801,6 +875,19 @@ export class ConnectorInstallerService {
   ): Promise<ConnectorPublicationTarget[]> {
     const tenantKey = this.getTenantKey();
     const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+    await this.accessPolicy.assertConnectorInstallationAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "manage_connector",
+      {
+        installationId: installation.id,
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+      },
+    );
 
     await this.connectorPermissionService.assertActionAllowed(actor, {
       connectorSlug: installation.slug,
@@ -830,6 +917,19 @@ export class ConnectorInstallerService {
   }> {
     const tenantKey = this.getTenantKey();
     const installation = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+    await this.accessPolicy.assertConnectorInstallationAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "manage_connector",
+      {
+        installationId: installation.id,
+        connectorSlug: installation.slug,
+        accountAlias: installation.accountAlias,
+      },
+    );
 
     await this.connectorPermissionService.assertActionAllowed(actor, {
       connectorSlug: installation.slug,

@@ -235,6 +235,45 @@ export interface WorkspaceUser {
   updatedAt: string;
 }
 
+export type AccessScopeAssignmentSubjectType = "user" | "role";
+export type AccessScopeAssignmentScopeType = "category" | "brand" | "channel" | "connector_account";
+export type AccessScopeAssignmentAction =
+  | "view"
+  | "create"
+  | "edit"
+  | "delete"
+  | "archive"
+  | "approve"
+  | "reject"
+  | "publish"
+  | "unpublish"
+  | "import"
+  | "export"
+  | "bulk_edit"
+  | "preview_connector_payload"
+  | "manage_connector"
+  | "manage_users"
+  | "manage_settings"
+  | "view_audit_logs";
+
+export interface AccessScopeAssignment {
+  id: string;
+  tenantKey: string;
+  subjectType: AccessScopeAssignmentSubjectType;
+  subjectId: string;
+  scopeType: AccessScopeAssignmentScopeType;
+  categoryId: string | null;
+  connectorInstallationId: string | null;
+  scopeValue: string | null;
+  actions: AccessScopeAssignmentAction[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  categoryPath?: string | null;
+  connectorAccountAlias?: string | null;
+  connectorSlug?: string | null;
+}
+
 export interface ApiAccessKey {
   id: string;
   label: string;

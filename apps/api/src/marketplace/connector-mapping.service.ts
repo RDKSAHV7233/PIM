@@ -60,6 +60,16 @@ const lifecycleTransitions: Record<MappingLifecycle, MappingLifecycle[]> = {
 };
 
 const SYSTEM_CONNECTOR_DEFAULTS: Record<string, Record<string, string>> = {
+  "amazon-in": {
+    title: "item_name",
+    brand: "brand_name",
+    description: "product_description",
+    hsnCode: "hsn_code",
+    gstRate: "tax_rate",
+    "attributes.color": "color_name",
+    "attributes.material": "material_type",
+    "attributes.size": "size_name",
+  },
   amazon: {
     title: "item_name",
     brand: "brand_name",
@@ -87,6 +97,17 @@ const SYSTEM_CONNECTOR_DEFAULTS: Record<string, Record<string, string>> = {
     gstRate: "gst",
     "attributes.color": "color",
     "attributes.material": "fabric",
+  },
+  shopify: {
+    title: "title",
+    description: "descriptionHtml",
+    brand: "vendor",
+    "attributes.productType": "productType",
+    "attributes.mainImageUrl": "images.0.src",
+    "attributes.sku": "variants.0.sku",
+    "attributes.inventoryQty": "variants.0.inventoryQuantity",
+    "attributes.color": "options.color",
+    "attributes.size": "options.size",
   },
 };
 

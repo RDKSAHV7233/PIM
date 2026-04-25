@@ -60,6 +60,13 @@ function run() {
     "Connectors page must render the operator-facing workspace anchors for the marketplace hub.",
   );
   assert(
+    pageSource.includes("function isDisabledInstallation") &&
+      pageSource.includes("!isDisabledInstallation(installation) && isInstallationAttentionStatus") &&
+      pageSource.includes("formatInstallFootprint(installedForDefinition)") &&
+      pageSource.includes("0 active accounts"),
+    "Connectors page must not treat disabled historical installations as unhealthy active connector footprint.",
+  );
+  assert(
     pageSource.includes('href="/channels/connectors/setup"') &&
       pageSource.includes('href={`/channels/connectors/setup?slug=${encodeURIComponent(definition.slug)}`}') &&
       pageSource.includes('id="connector-catalog"') &&
@@ -89,6 +96,7 @@ function run() {
         status: "ok",
         validated: [
           "connector_workspace_hub_anchors_present",
+          "connector_workspace_excludes_disabled_history_from_attention_state",
           "connector_workspace_routes_setup_to_dedicated_page",
           "flipkart_install_form_collects_credentials",
           "amazon_install_form_collects_seller_credentials",

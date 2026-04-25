@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { randomUUID } from "crypto";
 import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
 import * as XLSX from "xlsx";
+import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -130,13 +131,15 @@ export class BulkImportService {
     private readonly prisma: PrismaService,
     private readonly complianceService: ComplianceService,
     private readonly notificationsService: NotificationsService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
   suggestMapping(headers: string[]) {
     return this.suggestMappingFromHeaders(headers);
   }
 
-  async createTemplate(dto: CreateBulkImportTemplateDto) {
+  async createTemplate(dto: CreateBulkImportTemplateDto, actor?: PolicyActor) {
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportTemplate");
     const category = await this.requireCategory(dto.categoryId);
     const tenantKey = this.resolveRequestTenantKey(dto.tenantKey);
     const sourceFormat = this.parseTemplateSourceFormat(dto.sourceFormat);
@@ -189,9 +192,12 @@ export class BulkImportService {
     return this.mapTemplateResponse((await this.attachTemplateCompatibility([created]))[0]);
   }
 
-  async listTemplates(tenantKey?: string, categoryId?: string, pagination?: CursorPaginationQuery) {
+  async listTemplates(tenantKey?: string, categoryId?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
     const normalizedTenant = this.resolveRequestTenantKey(tenantKey);
     const categoryFilter = categoryId?.trim() || null;
+    if (categoryFilter) {
+      await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", categoryFilter, "BulkImportTemplate");
+    }
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -284,10 +290,15 @@ export class BulkImportService {
       `,
     );
     const enriched = await this.attachTemplateCompatibility(templates);
-    return enriched.map((template) => this.mapTemplateResponse(template));
+    const filtered = categoryFilter
+      ? enriched
+      : actor && actor.actorRole !== "admin"
+        ? await this.filterTemplatesByScope(enriched, actor)
+        : enriched;
+    return filtered.map((template) => this.mapTemplateResponse(template));
   }
 
-  async getTemplate(templateId: string, tenantKey?: string) {
+  async getTemplate(templateId: string, tenantKey?: string, actor?: PolicyActor) {
     const normalizedTenant = this.resolveRequestTenantKey(tenantKey);
     const templates = await this.prisma.tenant().$queryRaw<BulkImportTemplateRow[]>(
       Prisma.sql`
@@ -315,11 +326,13 @@ export class BulkImportService {
     if (templates.length === 0) {
       throw new NotFoundException("Bulk import template not found");
     }
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", templates[0].categoryId, "BulkImportTemplate", templateId);
     const enriched = (await this.attachTemplateCompatibility(templates))[0];
     return this.mapTemplateResponse(enriched);
   }
 
-  async createJob(dto: CreateBulkImportJobDto) {
+  async createJob(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
     await this.requireCategory(dto.categoryId);
 
     const sourceRows = (() => {
@@ -344,6 +357,16 @@ export class BulkImportService {
     const normalizedRows = sourceRows.rows.map((row) =>
       this.normalizeCanonicalPayload(row, suggestion.mapping),
     );
+    for (const row of normalizedRows) {
+      await this.accessPolicy.assertRequestedProductScopeAllowed(actor ?? {}, "import", {
+        resource: "BulkImportJob",
+        categoryId: dto.categoryId,
+        brand: typeof row.brand === "string" ? row.brand : null,
+      });
+    }
+    await this.accessPolicy.assertBulkImportAllowed(actor ?? {}, {
+      fields: normalizedRows.some((row) => row.status !== undefined) ? ["status"] : [],
+    });
     const sourceBytes = this.estimateSourceBytes(dto, normalizedRows);
     this.assertSourceSize(sourceBytes);
 
@@ -382,7 +405,7 @@ export class BulkImportService {
     return this.getJob(created.id);
   }
 
-  async listJobs(status?: string, pagination?: CursorPaginationQuery) {
+  async listJobs(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
     const where = status
       ? {
           status: this.parseJobStatus(status),
@@ -421,7 +444,8 @@ export class BulkImportService {
       });
       const hasNext = jobs.length > limit;
       const page = hasNext ? jobs.slice(0, limit) : jobs;
-      const items = await this.attachMetrics(page);
+      const allowedPage = actor && actor.actorRole !== "admin" ? await this.filterJobsByScope(page, actor) : page;
+      const items = await this.attachMetrics(allowedPage);
       const last = page[page.length - 1];
       return {
         items,
@@ -442,10 +466,11 @@ export class BulkImportService {
       orderBy: [{ updatedAt: "desc" }],
       take: 50,
     });
-    return this.attachMetrics(jobs);
+    const filtered = actor && actor.actorRole !== "admin" ? await this.filterJobsByScope(jobs, actor) : jobs;
+    return this.attachMetrics(filtered);
   }
 
-  async getJob(jobId: string) {
+  async getJob(jobId: string, actor?: PolicyActor) {
     const job = await this.prisma.tenant().bulkImportJob.findUnique({
       where: { id: jobId },
       include: {
@@ -459,11 +484,13 @@ export class BulkImportService {
     if (!job) {
       throw new NotFoundException("Bulk import job not found");
     }
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     return (await this.attachMetrics([job]))[0];
   }
 
-  async listJobRows(jobId: string, status?: string, limit = 100, pagination?: CursorPaginationQuery) {
-    await this.requireJob(jobId);
+  async listJobRows(jobId: string, status?: string, limit = 100, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
+    const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     if (isCursorPagination(pagination)) {
       const safeLimit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -518,8 +545,9 @@ export class BulkImportService {
     });
   }
 
-  async processJob(jobId: string, chunkSize?: number) {
+  async processJob(jobId: string, chunkSize?: number, actor?: PolicyActor) {
     const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     if (job.status === BulkImportJobStatus.completed) {
       return this.getJob(job.id);
     }
@@ -548,11 +576,12 @@ export class BulkImportService {
     }
 
     await this.refreshJobCounters(job.id);
-    return this.getJob(job.id);
+    return this.getJob(job.id, actor);
   }
 
-  async processRowById(jobId: string, rowId: string) {
+  async processRowById(jobId: string, rowId: string, actor?: PolicyActor) {
     const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     const row = await this.requireRow(jobId, rowId);
     if (row.status === BulkImportRowStatus.success) {
       return row;
@@ -563,8 +592,9 @@ export class BulkImportService {
     return this.requireRow(jobId, rowId);
   }
 
-  async repairRow(jobId: string, rowId: string, dto: RepairBulkImportRowDto) {
-    await this.requireJob(jobId);
+  async repairRow(jobId: string, rowId: string, dto: RepairBulkImportRowDto, actor?: PolicyActor) {
+    const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     const row = await this.requireRow(jobId, rowId);
     const existingPayload = this.asRowPayload(row.payload);
     const payload = dto.payload ? { ...existingPayload, ...dto.payload } : existingPayload;
@@ -585,8 +615,9 @@ export class BulkImportService {
     return this.requireRow(jobId, rowId);
   }
 
-  async requeueDlq(jobId: string, limit = 100) {
-    await this.requireJob(jobId);
+  async requeueDlq(jobId: string, limit = 100, actor?: PolicyActor) {
+    const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     const boundedLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
@@ -617,8 +648,9 @@ export class BulkImportService {
     return this.getJob(jobId);
   }
 
-  async buildErrorReportCsv(jobId: string) {
-    await this.requireJob(jobId);
+  async buildErrorReportCsv(jobId: string, actor?: PolicyActor) {
+    const job = await this.requireJob(jobId);
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
@@ -1531,5 +1563,34 @@ export class BulkImportService {
       throw new NotFoundException("Category not found");
     }
     return category;
+  }
+
+  private async filterTemplatesByScope<T extends { categoryId: string }>(templates: T[], actor: PolicyActor) {
+    const results = await Promise.all(
+      templates.map(async (template) => ({
+        template,
+        allowed: await this.isCategoryAllowed(actor, template.categoryId),
+      })),
+    );
+    return results.filter((entry) => entry.allowed).map((entry) => entry.template);
+  }
+
+  private async filterJobsByScope<T extends { categoryId: string }>(jobs: T[], actor: PolicyActor) {
+    const results = await Promise.all(
+      jobs.map(async (job) => ({
+        job,
+        allowed: await this.isCategoryAllowed(actor, job.categoryId),
+      })),
+    );
+    return results.filter((entry) => entry.allowed).map((entry) => entry.job);
+  }
+
+  private async isCategoryAllowed(actor: PolicyActor, categoryId: string) {
+    try {
+      await this.accessPolicy.assertCategoryAccess(actor, "import", categoryId, "BulkImportJob");
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

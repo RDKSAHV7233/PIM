@@ -1,18 +1,23 @@
 # Vexa PIM User Guide
 
-This guide explains how to use TEJ PIM as it exists in this repository today.
+Status: Detailed legacy guide retained for reference
+Canonical replacement: `docs/user-guide.md`
+
+This detailed guide is retained for workflow history and deeper operational notes. Use `docs/user-guide.md` as the current concise operator guide, and verify any detailed claim here against the current web routes and API controllers before release.
+
+This guide explains how to use Vexa PIM as it exists in this repository today.
 
 Audience:
 - Primary: merchandising teams, eCommerce managers, onboarding staff, and support staff
 - Secondary: technical admins who set up workspaces, channel access, API keys, and webhooks
 
-This guide is based on the current TEJ PIM web routes, Prisma schema, API contracts, README, and product playbooks in the repo. If a workflow is not clearly implemented in code, it is called out as a limitation instead of being assumed.
+This guide is based on the current Vexa PIM web routes, Prisma schema, API contracts, README, and product playbooks in the repo. If a workflow is not clearly implemented in code, it is called out as a limitation instead of being assumed.
 
 ## 1. Overview
 
-### What TEJ PIM does
+### What Vexa PIM does
 
-TEJ PIM is a multi-tenant Product Information Management system for central product data, catalog quality, channel readiness, and operational workflows.
+Vexa PIM is a multi-tenant Product Information Management system for central product data, catalog quality, channel readiness, and operational workflows.
 
 In day-to-day use, teams can:
 1. Create and edit products and variants.
@@ -47,7 +52,7 @@ Technical admin surfaces also support:
 
 ### Important product boundary
 
-TEJ PIM includes both catalog management and operational channel workflows. However, not every route group in `apps/web/src/app` is fully seller-facing. The normal seller shell today is:
+Vexa PIM includes both catalog management and operational channel workflows. However, not every route group in `apps/web/src/app` is fully seller-facing. The normal seller shell today is:
 1. Dashboard
 2. Products
 3. Catalog
@@ -167,7 +172,7 @@ Completeness is a quality score based on core product fields and required catego
 
 ### Channels and connectors
 
-A channel connector links TEJ PIM to an external destination such as Flipkart. Connectors have:
+A channel connector links Vexa PIM to an external destination such as Flipkart. Connectors have:
 1. a slug such as `flipkart`, `amazon-in`, or `meesho`
 2. a display name
 3. capabilities such as publish, validate, or status sync
@@ -194,7 +199,7 @@ After a product is ready, channel jobs and submissions track the publish or expo
 
 ### User access
 
-To sign in to TEJ PIM, a user needs:
+To sign in to Vexa PIM, a user needs:
 1. workspace slug
 2. user ID or email
 3. password
@@ -735,7 +740,7 @@ Actions:
 
 ### A. What happens before publish
 
-Before queueing a channel export or publish job, TEJ PIM runs readiness checks. In the current implementation, blockers can include:
+Before queueing a channel export or publish job, Vexa PIM runs readiness checks. In the current implementation, blockers can include:
 1. connector not installed
 2. connector credentials missing
 3. mapping not published
@@ -1076,9 +1081,9 @@ These are current product limitations that are visible in the codebase today.
 
 ## 13. FAQ
 
-### Is TEJ PIM the main place to manage my catalog?
+### Is Vexa PIM the main place to manage my catalog?
 
-Yes. In this repo, TEJ PIM includes the product workbench, categories, attributes, media, imports, quality, and channel operations.
+Yes. In this repo, Vexa PIM includes the product workbench, categories, attributes, media, imports, quality, and channel operations.
 
 ### Which channels are ready today?
 

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { AccessPolicyModule } from "../common/access-policy/access-policy.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConnectorFrameworkModule } from "../connector-framework/connector-framework.module";
 import { MetricsModule } from "../metrics/metrics.module";
@@ -11,7 +12,7 @@ import { MarketplaceService } from "./marketplace.service";
 import { SubmissionsController } from "./submissions.controller";
 
 @Module({
-  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule],
+  imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule, AccessPolicyModule],
   controllers: [MarketplaceController, SubmissionsController],
   providers: [MarketplaceService, ConnectorMappingService],
   exports: [MarketplaceService, ConnectorMappingService],

@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  createAccessScopeAssignment,
   createWorkspaceUser,
+  deleteAccessScopeAssignment,
   deactivateWorkspaceUser,
   lockWorkspaceUser,
   unlockWorkspaceUser,
@@ -134,4 +136,58 @@ export async function deactivateWorkspaceUserAction(formData: FormData) {
     redirectWithError(error instanceof Error ? error.message : "Unable to deactivate workspace user.");
   }
   redirectWithStatus("user-deactivated");
+}
+
+export async function createAccessScopeAssignmentAction(formData: FormData) {
+  const subjectType = String(formData.get("subjectType") ?? "").trim().toLowerCase() as "user" | "role";
+  const subjectId = String(formData.get("subjectId") ?? "").trim();
+  const scopeType = String(formData.get("scopeType") ?? "").trim().toLowerCase() as
+    | "category"
+    | "brand"
+    | "channel"
+    | "connector_account";
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const connectorInstallationId = String(formData.get("connectorInstallationId") ?? "").trim();
+  const scopeValue = String(formData.get("scopeValue") ?? "").trim();
+  const actionsRaw = String(formData.get("actions") ?? "").trim();
+  const actions = actionsRaw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  try {
+    if (!subjectId) {
+      throw new Error("Subject ID is required.");
+    }
+    await createAccessScopeAssignment(
+      {
+        subjectType,
+        subjectId,
+        scopeType,
+        ...(categoryId ? { categoryId } : {}),
+        ...(connectorInstallationId ? { connectorInstallationId } : {}),
+        ...(scopeValue ? { scopeValue } : {}),
+        ...(actions.length > 0 ? { actions: actions as NonNullable<Parameters<typeof createAccessScopeAssignment>[0]["actions"]> } : {}),
+      },
+      await requireAdminRequestOptions(),
+    );
+    revalidatePath("/admin/users");
+  } catch (error) {
+    redirectWithError(error instanceof Error ? error.message : "Unable to create scope assignment.");
+  }
+  redirectWithStatus("scope-created");
+}
+
+export async function deleteAccessScopeAssignmentAction(formData: FormData) {
+  const assignmentId = String(formData.get("assignmentId") ?? "").trim();
+  try {
+    if (!assignmentId) {
+      throw new Error("Assignment ID is required.");
+    }
+    await deleteAccessScopeAssignment(assignmentId, await requireAdminRequestOptions());
+    revalidatePath("/admin/users");
+  } catch (error) {
+    redirectWithError(error instanceof Error ? error.message : "Unable to delete scope assignment.");
+  }
+  redirectWithStatus("scope-deleted");
 }

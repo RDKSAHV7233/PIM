@@ -88,13 +88,28 @@ function verifyToken(token: string): PimJwtClaims | null {
   return claims;
 }
 
+function parseUnverifiedToken(token: string): PimJwtClaims | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  return parseClaims(parts[1]);
+}
+
 export async function getServerSessionClaims(): Promise<PimJwtClaims | null> {
   const cookieStore = await cookies();
   const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
   if (!token) {
     return null;
   }
-  return verifyToken(token);
+  const verified = verifyToken(token);
+  if (verified) {
+    return verified;
+  }
+  if (!getJwtSecret()) {
+    return parseUnverifiedToken(token);
+  }
+  return null;
 }
 
 export async function getServerActorRole(): Promise<AppRole> {

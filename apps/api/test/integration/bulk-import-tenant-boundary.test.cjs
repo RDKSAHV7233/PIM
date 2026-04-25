@@ -36,10 +36,16 @@ function setDefaultEnv(name, value) {
 
 function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
-    setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
-    setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
+  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+    process.env.DATABASE_URL = localDatabaseUrl;
+  }
+  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+    process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
+  }
+  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+    process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
   setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
@@ -47,6 +53,7 @@ function prepareEnv() {
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
+  setDefaultEnv("PIM_AUTH_REDIS_DISABLED", "true");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
@@ -135,8 +142,9 @@ async function run() {
   const tenantId = `bulk-tenant-${runId}`;
   const otherTenantId = `bulk-tenant-other-${runId}`;
   const userId = `bulk-user-${runId}`;
+  const workspaceSlug = `bulk-${runId}`.slice(0, 24);
   const authIdentityJson = JSON.stringify({
-    [userId]: { tenantId, role: "admin" },
+    [userId]: { tenantId, role: "admin", workspaceSlug },
   });
 
   const env = {
@@ -146,6 +154,10 @@ async function run() {
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_DEFAULT_ROLE: "admin",
     PIM_AUTH_IDENTITIES_JSON: authIdentityJson,
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Bulk Import Boundary" },
+    }),
+    PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
   };
 
   const stdoutBuffer = [];
@@ -173,8 +185,7 @@ async function run() {
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       userId,
-      tenantId,
-      role: "admin",
+      workspaceSlug,
       password: "vexa-pim-demo-password",
       expiresInMinutes: 30,
     });

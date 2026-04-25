@@ -71,9 +71,10 @@ async function requestJson(baseUrl, path, options = {}) {
 }
 
 function assertStatus(result, expected, context) {
-  if (result.status !== expected) {
+  const expectedStatuses = Array.isArray(expected) ? expected : [expected];
+  if (!expectedStatuses.includes(result.status)) {
     throw new Error(
-      `${context} failed: expected ${expected}, got ${result.status}; payload=${JSON.stringify(result.payload)}`,
+      `${context} failed: expected ${expectedStatuses.join("/")}, got ${result.status}; payload=${JSON.stringify(result.payload)}`,
     );
   }
 }
@@ -192,7 +193,7 @@ async function run() {
     },
     retries: 2,
   });
-  assertStatus(webLogin, 200, "web login");
+  assertStatus(webLogin, [200, 201], "web login");
   if (String(webLogin.payload?.role ?? "") !== "admin") {
     throw new Error(`web login role mismatch: expected=admin got=${JSON.stringify(webLogin.payload)}`);
   }

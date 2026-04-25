@@ -1,5 +1,24 @@
 # Vexa PIM Documentation Structure (Canonical)
 
+Last updated: 2026-04-25
+
+The current codebase is the source of truth. Start with these canonical docs:
+
+- `../README.md`
+- `getting-started.md`
+- `installation.md`
+- `configuration.md`
+- `user-guide.md`
+- `admin-guide.md`
+- `api.md`
+- `developer-guide.md`
+- `architecture.md`
+- `troubleshooting.md`
+- `faq.md`
+- `documentation-audit-2026-04-25.md`
+
+Older execution snapshots, imported planning files, and transfer artifacts are historical unless a current canonical document explicitly links to them.
+
 - Current canonical snapshot: `docs/execution/CURRENT_STATE.md`
 - Connector documentation entry point: `docs/connectors/README.md`
 

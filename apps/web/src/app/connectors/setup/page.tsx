@@ -254,7 +254,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     return (
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Shopify live install creates the Vexa connector account with store-domain context. Finish managed install and token exchange from the connector detail workflow before publishing.
+          Shopify uses managed install. Create the Vexa connector account with store-domain context here; managed-install lanes continue in the provider callback and connector detail workflow before publishing.
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -264,7 +264,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
             id={`install-shop-domain-${definitionId}`}
             name="shopDomain"
             autoComplete="off"
-            placeholder="vishaltest112.myshopify.com"
+            placeholder="demo-store.myshopify.com"
           />
         </div>
       </>

@@ -17,6 +17,14 @@ import { UpdateVariantDto } from "./dto/update-variant.dto";
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 
+  private resolveActor(request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+    return {
+      id: request.pimUserId ?? "system",
+      role: request.pimRole ?? "viewer",
+      tenantId: request.pimTenant,
+    } as const;
+  }
+
   @Get("stats")
   stats() {
     return this.catalogService.stats();
@@ -25,52 +33,61 @@ export class CatalogController {
   @Get("products")
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
-  listProducts(@Query() pagination: CursorPaginationDto, @Query("slim") slim?: string) {
+  listProducts(
+    @Query() pagination: CursorPaginationDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Query("slim") slim?: string,
+  ) {
     // Full list payload remains available for legacy callers; prefer ?slim=true for list surfaces.
-    return this.catalogService.listProducts(pagination, { slim: slim === "true" });
+    return this.catalogService.listProducts(pagination, { slim: slim === "true" }, this.resolveActor(request));
   }
 
   @Get("products/search")
   @ApiOperation({ summary: "Search products by title or SKU" })
   @ApiResponse({ status: 200, description: "Product search results fetched" })
-  searchProducts(@Query("q") query?: string, @Query("limit") limit?: string) {
+  searchProducts(
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Query("q") query?: string,
+    @Query("limit") limit?: string,
+  ) {
     const parsedLimit = limit ? Number(limit) : undefined;
-    return this.catalogService.searchProducts(query, parsedLimit);
+    return this.catalogService.searchProducts(query, parsedLimit, this.resolveActor(request));
   }
 
   @Get("products/:id")
   @ApiOperation({ summary: "Get product by id" })
   @ApiResponse({ status: 200, description: "Product fetched" })
-  getProduct(@Param("id") id: string) {
-    return this.catalogService.getProduct(id);
+  getProduct(
+    @Param("id") id: string,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.getProduct(id, this.resolveActor(request));
   }
 
   @Post("products")
+  @Roles("admin", "editor")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("skus")
   @ApiOperation({ summary: "Create product" })
   @ApiResponse({ status: 201, description: "Product created" })
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
-  createProduct(@Body() dto: CreateProductDto) {
-    return this.catalogService.createProduct(dto);
+  createProduct(
+    @Body() dto: CreateProductDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.createProduct(dto, this.resolveActor(request));
   }
 
   @Patch("products/:id")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Update product" })
   @ApiResponse({ status: 200, description: "Product updated" })
   updateProduct(
     @Param("id") id: string,
     @Body() dto: UpdateProductDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
-      ? request.pimUserId.trim()
-      : "system";
-    const actorRole = request.pimRole ?? "admin";
-    return this.catalogService.updateProduct(id, dto, {
-      id: actorId,
-      role: actorRole,
-    });
+    return this.catalogService.updateProduct(id, dto, this.resolveActor(request));
   }
 
   @Post("products/:id/review-decision")
@@ -82,19 +99,16 @@ export class CatalogController {
     @Body() dto: DecideProductReviewDto,
     @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole },
   ) {
-    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
-      ? request.pimUserId.trim()
-      : "system";
-    const actorRole = request.pimRole ?? "viewer";
-    return this.catalogService.decideProductReview(id, dto, {
-      id: actorId,
-      role: actorRole,
-    });
+    return this.catalogService.decideProductReview(id, dto, this.resolveActor(request));
   }
 
   @Delete("products/:id")
-  deleteProduct(@Param("id") id: string) {
-    return this.catalogService.deleteProduct(id);
+  @Roles("admin", "editor")
+  deleteProduct(
+    @Param("id") id: string,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.deleteProduct(id, this.resolveActor(request));
   }
 
   @Delete("products/:id/purge")
@@ -103,29 +117,44 @@ export class CatalogController {
     @Param("id") id: string,
     @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole },
   ) {
-    const actorId = typeof request.pimUserId === "string" && request.pimUserId.trim().length > 0
-      ? request.pimUserId.trim()
-      : "system";
-    return this.catalogService.purgeProduct(id, actorId);
+    return this.catalogService.purgeProduct(id, this.resolveActor(request));
   }
 
   @Get("products/:id/variants")
-  listVariants(@Param("id") productId: string, @Query() pagination: CursorPaginationDto) {
-    return this.catalogService.listVariants(productId, pagination);
+  listVariants(
+    @Param("id") productId: string,
+    @Query() pagination: CursorPaginationDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.listVariants(productId, pagination, this.resolveActor(request));
   }
 
   @Post("products/:id/variants")
-  createVariant(@Param("id") productId: string, @Body() dto: CreateVariantDto) {
-    return this.catalogService.createVariant(productId, dto);
+  @Roles("admin", "editor")
+  createVariant(
+    @Param("id") productId: string,
+    @Body() dto: CreateVariantDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.createVariant(productId, dto, this.resolveActor(request));
   }
 
   @Patch("variants/:id")
-  updateVariant(@Param("id") variantId: string, @Body() dto: UpdateVariantDto) {
-    return this.catalogService.updateVariant(variantId, dto);
+  @Roles("admin", "editor")
+  updateVariant(
+    @Param("id") variantId: string,
+    @Body() dto: UpdateVariantDto,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.updateVariant(variantId, dto, this.resolveActor(request));
   }
 
   @Delete("variants/:id")
-  deleteVariant(@Param("id") variantId: string) {
-    return this.catalogService.deleteVariant(variantId);
+  @Roles("admin", "editor")
+  deleteVariant(
+    @Param("id") variantId: string,
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.deleteVariant(variantId, this.resolveActor(request));
   }
 }

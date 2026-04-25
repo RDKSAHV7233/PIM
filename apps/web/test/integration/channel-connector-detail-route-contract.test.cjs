@@ -42,18 +42,19 @@ function run() {
   );
 
   assert(
-    source.includes("const [permissions, submissionsRaw, products] = await Promise.all([") &&
+    source.includes("const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([") &&
       source.includes("getConnectorPermissions(installation.slug, { role: actorRole, authHeader })") &&
       source.includes("getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader })") &&
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
     "Channel connector detail must fetch permissions, installation-scoped submissions, and product lookup data together.",
   );
   assert(
-    source.includes("getConnectorPublications(installation.id, { role: actorRole, authHeader })") &&
+      source.includes("getConnectorPublications(installation.id, { role: actorRole, authHeader })") &&
       source.includes("updateConnectorPublicationTargetsAction") &&
-      source.includes('name="publicationIds"') &&
+      source.includes('name="publicationId"') &&
       source.includes("Save publication targets") &&
-      source.includes("Managed Install Readiness"),
+      source.includes("Shopify Readiness") &&
+      source.includes("Managed Install Handoff"),
     "Channel connector detail must surface live publication target management and Shopify managed-install guidance.",
   );
 

@@ -2286,6 +2286,41 @@ paths:
         "200":
           description: ""
       tags: *a20
+  /api/v1/admin/workspace/access-scopes:
+    get:
+      operationId: WorkspaceAccessScopesController_listAccessScopes
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: &a21
+        - WorkspaceAccessScopes
+    post:
+      operationId: WorkspaceAccessScopesController_createAccessScope
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccessScopeAssignmentDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a21
+  /api/v1/admin/workspace/access-scopes/{assignmentId}:
+    delete:
+      operationId: WorkspaceAccessScopesController_deleteAccessScope
+      parameters:
+        - name: assignmentId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a21
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -2298,7 +2333,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a21
+      tags: &a22
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -2312,7 +2347,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -2325,7 +2360,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a21
+      tags: *a22
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -2338,7 +2373,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a21
+      tags: *a22
 info:
   title: Vexa PIM API
   description: Vexa PIM API OpenAPI specification
@@ -2799,5 +2834,8 @@ components:
       type: object
       properties: {}
     SetUserPasswordDto:
+      type: object
+      properties: {}
+    CreateAccessScopeAssignmentDto:
       type: object
       properties: {}

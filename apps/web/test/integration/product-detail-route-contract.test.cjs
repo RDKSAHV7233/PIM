@@ -29,7 +29,7 @@ function run() {
 
   assert(
     sharedSource.includes('return matched?.key ?? "overview";') &&
-      sharedSource.includes('return READINESS_CHANNELS[0] ?? "amazon";') &&
+      sharedSource.includes("READINESS_CHANNELS[0] ?? DEFAULT_MARKETPLACE_CHANNEL") &&
       sharedSource.includes("return trimmed || undefined;"),
     "Product detail shared helpers must normalize unknown tabs, channels, and template ids into safe defaults.",
   );

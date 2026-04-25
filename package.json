@@ -155,6 +155,7 @@
     "test:staging:postdeploy-check": "node scripts/staging-postdeploy-check.test.cjs",
     "test:staging:public-signup-check": "node scripts/staging-public-signup-check.test.cjs",
     "test:staging:live-evidence": "node scripts/validate-live-staging-evidence.test.cjs",
+    "qa:pim-product:inputs": "node scripts/pim-product-qa-input-gate.cjs",
     "release:staging:public-signup-check": "node scripts/staging-public-signup-check.cjs",
     "release:staging:signup-console-verify": "node scripts/staging-console-signup-verify.cjs",
     "release:validate-live-staging-evidence": "node scripts/validate-live-staging-evidence.cjs",

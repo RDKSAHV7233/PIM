@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { AccessPolicyModule } from "../common/access-policy/access-policy.module";
 import { ConnectorFrameworkModule } from "../connector-framework/connector-framework.module";
 import { LoggingModule } from "../common/logging/logging.module";
 import { MarketplaceModule } from "../marketplace/marketplace.module";
@@ -9,7 +10,7 @@ import { ConnectorCredentialEncryptionService } from "./credential-encryption.se
 import { ConnectorInstallerService } from "./connector-installer.service";
 
 @Module({
-  imports: [ConnectorFrameworkModule, AuditModule, LoggingModule, MarketplaceModule],
+  imports: [ConnectorFrameworkModule, AuditModule, LoggingModule, MarketplaceModule, AccessPolicyModule],
   controllers: [ConnectorInstallerController],
   providers: [ConnectorInstallerService, ConnectorCredentialEncryptionService, ConnectorPermissionService],
   exports: [ConnectorInstallerService, ConnectorCredentialEncryptionService],

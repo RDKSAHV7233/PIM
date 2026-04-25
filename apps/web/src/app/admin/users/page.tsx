@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  createAccessScopeAssignmentAction,
   createWorkspaceUserAction,
+  deleteAccessScopeAssignmentAction,
   deactivateWorkspaceUserAction,
   lockWorkspaceUserAction,
   unlockWorkspaceUserAction,
@@ -13,6 +15,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
+  getAccessScopeAssignments,
   getBillingUsage,
   getConnectorPermissions,
   getWorkspaceUsers,
@@ -85,10 +88,11 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const canManageUsers = actorRole === "admin";
 
   try {
-    const [usage, connectorPermissions, workspaceUsers] = await Promise.all([
+    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([
       getBillingUsage({ role: actorRole, authHeader }),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
+      getAccessScopeAssignments({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -134,8 +138,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         {status === "user-locked" ? <StatusBanner tone="success" message="Workspace user locked." /> : null}
         {status === "user-unlocked" ? <StatusBanner tone="success" message="Workspace user unlocked." /> : null}
         {status === "user-deactivated" ? <StatusBanner tone="success" message="Workspace user deactivated." /> : null}
+        {status === "scope-created" ? <StatusBanner tone="success" message="Delegated access scope assigned." /> : null}
+        {status === "scope-deleted" ? <StatusBanner tone="success" message="Delegated access scope removed." /> : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
           <KpiCard label="Role Profiles" value={rolePermissions.length} />
           <KpiCard label="Connector Overrides" value={connectorPermissions.length} tone="info" />
@@ -144,6 +150,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             value={byPrincipalType.user ?? 0}
             helper={`Role principals: ${byPrincipalType.role ?? 0}`}
           />
+          <KpiCard label="Delegated Scopes" value={accessScopeAssignments.length} tone="info" />
         </section>
 
         {!canManageUsers ? (
@@ -296,6 +303,111 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle>Delegated Access Scopes</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Admin-only delegated scope assignments constrain non-admin access by category, brand, channel, and connector account.
+          </p>
+          {canManageUsers ? (
+            <form action={createAccessScopeAssignmentAction} className="mt-4 grid gap-3 md:grid-cols-6">
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Subject Type</span>
+                <select name="subjectType" defaultValue="user" className="rounded-md border border-slate-300 px-3 py-2">
+                  <option value="user">User</option>
+                  <option value="role">Role</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Subject ID</span>
+                <input type="text" name="subjectId" placeholder="user@example.com or editor" className="rounded-md border border-slate-300 px-3 py-2" required />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Scope Type</span>
+                <select name="scopeType" defaultValue="category" className="rounded-md border border-slate-300 px-3 py-2">
+                  <option value="category">Category</option>
+                  <option value="brand">Brand</option>
+                  <option value="channel">Channel</option>
+                  <option value="connector_account">Connector Account</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Category ID</span>
+                <input type="text" name="categoryId" placeholder="Category scope" className="rounded-md border border-slate-300 px-3 py-2" />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Scope Value</span>
+                <input type="text" name="scopeValue" placeholder="Brand or channel" className="rounded-md border border-slate-300 px-3 py-2" />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Connector Installation</span>
+                <input type="text" name="connectorInstallationId" placeholder="Connector account scope" className="rounded-md border border-slate-300 px-3 py-2" />
+              </label>
+              <label className="grid gap-1 text-sm md:col-span-5">
+                <span className="font-medium text-slate-700">Actions</span>
+                <input
+                  type="text"
+                  name="actions"
+                  placeholder="Comma-separated action list, or leave blank for all scoped actions"
+                  className="rounded-md border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <div className="md:col-span-1 md:flex md:items-end">
+                <button type="submit" className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                  Assign Scope
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {accessScopeAssignments.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No delegated access assignments are configured.</p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2">Subject</th>
+                    <th className="py-2">Scope</th>
+                    <th className="py-2">Value</th>
+                    <th className="py-2">Actions</th>
+                    <th className="py-2">Updated</th>
+                    <th className="py-2">Admin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessScopeAssignments.map((assignment) => (
+                    <tr key={assignment.id} className="border-t border-slate-200">
+                      <td className="py-2">
+                        <div className="space-y-1">
+                          <p className="font-medium text-slate-900">{assignment.subjectId}</p>
+                          <p className="text-xs text-slate-500">{assignment.subjectType}</p>
+                        </div>
+                      </td>
+                      <td className="py-2">{assignment.scopeType}</td>
+                      <td className="py-2 text-slate-600">
+                        {assignment.categoryPath ?? assignment.connectorAccountAlias ?? assignment.scopeValue ?? assignment.categoryId ?? assignment.connectorInstallationId ?? "-"}
+                      </td>
+                      <td className="py-2 text-slate-600">{assignment.actions.length > 0 ? assignment.actions.join(", ") : "all"}</td>
+                      <td className="py-2 text-slate-600">{formatDateTime(assignment.updatedAt)}</td>
+                      <td className="py-2">
+                        {canManageUsers ? (
+                          <form action={deleteAccessScopeAssignmentAction}>
+                            <input type="hidden" name="assignmentId" value={assignment.id} />
+                            <button type="submit" className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">
+                              Remove
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="text-xs text-slate-500">Read-only</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

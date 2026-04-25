@@ -25,6 +25,7 @@ export const colors = {
   amazonText: "#111",
   flipkart: "#2874f0",
   meesho: "#e8450a",
+  shopify: "#008060",
 } as const;
 
 export const radius = {
@@ -67,4 +68,5 @@ export const channelConfig: Record<
   amazon: { label: "Amazon.in", short: "A", bg: "#fffbeb", text: "#92400e", border: "#fbbf24" },
   flipkart: { label: "Flipkart", short: "F", bg: "#eff6ff", text: "#1e40af", border: "#93c5fd" },
   meesho: { label: "Meesho", short: "M", bg: "#fff1ec", text: "#9a3412", border: "#fdba74" },
+  shopify: { label: "Shopify", short: "S", bg: "#ecfdf5", text: "#047857", border: "#6ee7b7" },
 };

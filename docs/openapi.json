@@ -3890,6 +3890,65 @@
         ]
       }
     },
+    "/api/v1/admin/workspace/access-scopes": {
+      "get": {
+        "operationId": "WorkspaceAccessScopesController_listAccessScopes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceAccessScopes"
+        ]
+      },
+      "post": {
+        "operationId": "WorkspaceAccessScopesController_createAccessScope",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccessScopeAssignmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceAccessScopes"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace/access-scopes/{assignmentId}": {
+      "delete": {
+        "operationId": "WorkspaceAccessScopesController_deleteAccessScope",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkspaceAccessScopes"
+        ]
+      }
+    },
     "/api/v1/auto-suggestions/products/{id}/title-suggestion": {
       "get": {
         "operationId": "AutoSuggestionsController_getTitleSuggestion",
@@ -4585,6 +4644,10 @@
         "properties": {}
       },
       "SetUserPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateAccessScopeAssignmentDto": {
         "type": "object",
         "properties": {}
       }

@@ -307,8 +307,44 @@ async function run() {
     const viewerToken = String(viewerLogin.payload?.accessToken ?? "");
     assert(viewerToken.length > 10, "missing viewer access token after unlock");
 
+    const viewerAuthProbeBeforeRelock = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", viewerToken);
+    assertStatus(viewerAuthProbeBeforeRelock, 200, "viewer token reaches authenticated route before relock");
+
+    const relockViewer = await apiRequest(
+      baseUrl,
+      "POST",
+      `/admin/workspace/users/${encodeURIComponent(viewerUserId)}/lock`,
+      adminToken,
+      { durationMinutes: 60, reason: "stale-token-check" },
+    );
+    assertStatus(relockViewer, 200, "relock user after viewer JWT issued");
+
+    const staleLockedTokenAttempt = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", viewerToken);
+    assertStatus(staleLockedTokenAttempt, 401, "stale viewer token denied after lock");
+    assert(
+      String(staleLockedTokenAttempt.payload?.error ?? "") === "USER_LOCKED",
+      "stale viewer token after lock must return USER_LOCKED",
+    );
+
+    const secondUnlockViewer = await apiRequest(
+      baseUrl,
+      "POST",
+      `/admin/workspace/users/${encodeURIComponent(viewerUserId)}/unlock`,
+      adminToken,
+      {},
+    );
+    assertStatus(secondUnlockViewer, 200, "unlock relocked user");
+
+    const secondViewerLogin = await login(baseUrl, workspaceSlug, viewerUserId);
+    assertStatus(secondViewerLogin, 201, "viewer login after second unlock");
+    const secondViewerToken = String(secondViewerLogin.payload?.accessToken ?? "");
+    assert(secondViewerToken.length > 10, "missing viewer access token after second unlock");
+
     const viewerListAttempt = await apiRequest(baseUrl, "GET", "/admin/workspace/users", viewerToken);
     assertStatus(viewerListAttempt, 403, "viewer denied admin workspace users route");
+
+    const viewerAuthProbeBeforeDeactivate = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", secondViewerToken);
+    assertStatus(viewerAuthProbeBeforeDeactivate, 200, "viewer token reaches authenticated route before deactivation");
 
     const deactivateViewer = await apiRequest(
       baseUrl,
@@ -323,6 +359,13 @@ async function run() {
     const deactivatedLogin = await login(baseUrl, workspaceSlug, viewerUserId);
     assertStatus(deactivatedLogin, 401, "deactivated user login rejected");
     assert(String(deactivatedLogin.payload?.error ?? "") === "INVALID_CREDENTIALS", "deactivated user should look like invalid credentials");
+
+    const staleDeactivatedTokenAttempt = await apiRequest(baseUrl, "GET", "/auth/account/privacy-status", secondViewerToken);
+    assertStatus(staleDeactivatedTokenAttempt, 401, "stale viewer token denied after deactivation");
+    assert(
+      String(staleDeactivatedTokenAttempt.payload?.error ?? "") === "USER_INACTIVE",
+      "stale viewer token after deactivation must return USER_INACTIVE",
+    );
 
     const auditRows = await prisma.$queryRawUnsafe(
       `
@@ -358,9 +401,11 @@ async function run() {
         "self_role_change_rejected",
         "admin_can_lock_and_unlock_user",
         "locked_user_login_returns_account_locked",
+        "stale_jwt_rejected_after_later_lock",
         "viewer_forbidden_from_admin_workspace_users_route",
         "admin_can_deactivate_user",
-        "deactivated_user_login_returns_invalid_credentials"
+        "deactivated_user_login_returns_invalid_credentials",
+        "stale_jwt_rejected_after_later_deactivation"
       ],
       checkedAt: new Date().toISOString(),
     }, null, 2));
