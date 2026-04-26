@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 
+const { randomUUID } = require("node:crypto");
+
 function requireEnv(name) {
   const value = String(process.env[name] ?? "").trim();
   if (!value) {
@@ -17,6 +19,27 @@ function normalizeHeaders(headers = {}) {
   return Object.fromEntries(
     Object.entries(headers).map(([key, value]) => [key, value]),
   );
+}
+
+function headersToObject(headers) {
+  if (!headers) {
+    return {};
+  }
+  if (typeof headers.entries === "function") {
+    return Object.fromEntries(headers.entries());
+  }
+  if (typeof headers.forEach === "function") {
+    const values = {};
+    headers.forEach((value, key) => {
+      values[key] = value;
+    });
+    return values;
+  }
+  if (typeof headers.get === "function") {
+    const setCookie = headers.get("set-cookie");
+    return setCookie ? { "set-cookie": setCookie } : {};
+  }
+  return { ...headers };
 }
 
 async function request(baseUrl, path, options = {}) {
@@ -46,7 +69,7 @@ async function request(baseUrl, path, options = {}) {
         status: response.status,
         payload,
         text,
-        headers: normalizeHeaders(Object.fromEntries(response.headers.entries())),
+        headers: normalizeHeaders(headersToObject(response.headers)),
         setCookie:
           typeof response.headers.getSetCookie === "function"
             ? response.headers.getSetCookie()
@@ -86,6 +109,228 @@ function extractCookieHeader(setCookieHeaders) {
     .map((value) => value.split(";")[0])
     .filter(Boolean);
   return cookies.join("; ");
+}
+
+function envFlagEnabled(name) {
+  const value = String(process.env[name] ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminToken) {
+  const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`.toLowerCase();
+  const tempPassword = `VexaTmp!${randomUUID().replace(/-/g, "").slice(0, 12)}#1a`;
+  const adminHeaders = {
+    authorization: `Bearer ${adminToken}`,
+  };
+  const adminJsonHeaders = {
+    ...adminHeaders,
+    "content-type": "application/json",
+  };
+  const tempUsers = [
+    { userId: `access-policy-viewer-${suffix}@vexa-pim.local`, role: "viewer" },
+    { userId: `access-policy-reviewer-${suffix}@vexa-pim.local`, role: "reviewer" },
+    { userId: `access-policy-editor-${suffix}@vexa-pim.local`, role: "editor" },
+  ];
+  const validated = [];
+
+  async function deactivateUser(userId) {
+    await requestJson(
+      baseUrl,
+      `/api/v1/admin/workspace/users/${encodeURIComponent(userId)}/deactivate`,
+      {
+        method: "POST",
+        headers: adminHeaders,
+        retries: 1,
+      },
+    ).catch(() => null);
+  }
+
+  try {
+    for (const user of tempUsers) {
+      const created = await requestJson(baseUrl, "/api/v1/admin/workspace/users", {
+        method: "POST",
+        headers: adminJsonHeaders,
+        body: {
+          userId: user.userId,
+          role: user.role,
+        },
+        retries: 2,
+      });
+      assertStatus(created, 201, `create ${user.role} workspace user`);
+
+      const passwordSet = await requestJson(
+        baseUrl,
+        `/api/v1/admin/workspace/users/${encodeURIComponent(user.userId)}/password`,
+        {
+          method: "POST",
+          headers: adminJsonHeaders,
+          body: {
+            password: tempPassword,
+          },
+          retries: 2,
+        },
+      );
+      assertStatus(passwordSet, 200, `set ${user.role} workspace user password`);
+    }
+
+    const loginResults = {};
+    for (const user of tempUsers) {
+      const login = await requestJson(baseUrl, "/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: {
+          workspaceSlug,
+          userId: user.userId,
+          password: tempPassword,
+          expiresInMinutes: 30,
+        },
+        retries: 2,
+      });
+      assertStatus(login, 201, `${user.role} login`);
+      const token = String(login.payload?.accessToken ?? "");
+      if (!token) {
+        throw new Error(`${user.role} login response missing accessToken`);
+      }
+      loginResults[user.role] = { userId: user.userId, token };
+    }
+
+    for (const role of ["viewer", "reviewer", "editor"]) {
+      const deniedAuditLogs = await requestJson(baseUrl, "/api/v1/audit/logs?limit=1", {
+        headers: {
+          authorization: `Bearer ${loginResults[role].token}`,
+        },
+        retries: 1,
+      });
+      assertStatus(deniedAuditLogs, 403, `${role} audit log denial`);
+    }
+    validated.push(
+      "viewer_denied_audit_logs_in_staging",
+      "reviewer_denied_audit_logs_in_staging",
+      "editor_denied_audit_logs_in_staging",
+    );
+
+    const viewerAdminListDenied = await requestJson(baseUrl, "/api/v1/admin/workspace/users", {
+      headers: {
+        authorization: `Bearer ${loginResults.viewer.token}`,
+      },
+      retries: 1,
+    });
+    assertStatus(viewerAdminListDenied, 403, "viewer denied workspace user admin route");
+    validated.push("viewer_denied_workspace_user_admin_route_in_staging");
+
+    const viewerPrivacyBeforeLock = await requestJson(baseUrl, "/api/v1/auth/account/privacy-status", {
+      headers: {
+        authorization: `Bearer ${loginResults.viewer.token}`,
+      },
+      retries: 1,
+    });
+    assertStatus(viewerPrivacyBeforeLock, 200, "viewer privacy status before lock");
+
+    const lockViewer = await requestJson(
+      baseUrl,
+      `/api/v1/admin/workspace/users/${encodeURIComponent(loginResults.viewer.userId)}/lock`,
+      {
+        method: "POST",
+        headers: adminJsonHeaders,
+        body: {
+          durationMinutes: 60,
+          reason: "access-policy-staging-smoke",
+        },
+        retries: 2,
+      },
+    );
+    assertStatus(lockViewer, 200, "lock viewer");
+
+    const staleViewerAfterLock = await requestJson(baseUrl, "/api/v1/auth/account/privacy-status", {
+      headers: {
+        authorization: `Bearer ${loginResults.viewer.token}`,
+      },
+      retries: 1,
+    });
+    assertStatus(staleViewerAfterLock, 401, "stale viewer token denied after lock");
+    if (String(staleViewerAfterLock.payload?.error ?? "") !== "USER_LOCKED") {
+      throw new Error(`stale viewer token after lock returned unexpected payload: ${JSON.stringify(staleViewerAfterLock.payload)}`);
+    }
+    validated.push("stale_viewer_token_denied_after_lock_in_staging");
+
+    const unlockViewer = await requestJson(
+      baseUrl,
+      `/api/v1/admin/workspace/users/${encodeURIComponent(loginResults.viewer.userId)}/unlock`,
+      {
+        method: "POST",
+        headers: adminHeaders,
+        retries: 2,
+      },
+    );
+    assertStatus(unlockViewer, 200, "unlock viewer");
+
+    const viewerLoginAfterUnlock = await requestJson(baseUrl, "/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: {
+        workspaceSlug,
+        userId: loginResults.viewer.userId,
+        password: tempPassword,
+        expiresInMinutes: 30,
+      },
+      retries: 2,
+    });
+    assertStatus(viewerLoginAfterUnlock, 201, "viewer login after unlock");
+    const viewerTokenAfterUnlock = String(viewerLoginAfterUnlock.payload?.accessToken ?? "");
+    if (!viewerTokenAfterUnlock) {
+      throw new Error("viewer login after unlock response missing accessToken");
+    }
+
+    const deactivateViewer = await requestJson(
+      baseUrl,
+      `/api/v1/admin/workspace/users/${encodeURIComponent(loginResults.viewer.userId)}/deactivate`,
+      {
+        method: "POST",
+        headers: adminHeaders,
+        retries: 2,
+      },
+    );
+    assertStatus(deactivateViewer, 200, "deactivate viewer");
+
+    const staleViewerAfterDeactivate = await requestJson(baseUrl, "/api/v1/auth/account/privacy-status", {
+      headers: {
+        authorization: `Bearer ${viewerTokenAfterUnlock}`,
+      },
+      retries: 1,
+    });
+    assertStatus(staleViewerAfterDeactivate, 401, "stale viewer token denied after deactivation");
+    if (String(staleViewerAfterDeactivate.payload?.error ?? "") !== "USER_INACTIVE") {
+      throw new Error(
+        `stale viewer token after deactivation returned unexpected payload: ${JSON.stringify(staleViewerAfterDeactivate.payload)}`,
+      );
+    }
+
+    const viewerLoginAfterDeactivate = await requestJson(baseUrl, "/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: {
+        workspaceSlug,
+        userId: loginResults.viewer.userId,
+        password: tempPassword,
+        expiresInMinutes: 30,
+      },
+      retries: 1,
+    });
+    assertStatus(viewerLoginAfterDeactivate, 401, "deactivated viewer login denied");
+    if (String(viewerLoginAfterDeactivate.payload?.error ?? "") !== "INVALID_CREDENTIALS") {
+      throw new Error(`deactivated viewer login returned unexpected payload: ${JSON.stringify(viewerLoginAfterDeactivate.payload)}`);
+    }
+    validated.push(
+      "stale_viewer_token_denied_after_deactivation_in_staging",
+      "deactivated_viewer_login_denied_in_staging",
+    );
+
+    return validated;
+  } finally {
+    for (const user of tempUsers) {
+      await deactivateUser(user.userId);
+    }
+  }
 }
 
 async function run() {
@@ -158,6 +403,10 @@ async function run() {
     retries: 2,
   });
   assertStatus(connectors, 200, "connectors installed");
+
+  const nonAdminValidated = envFlagEnabled("STAGING_VALIDATE_NON_ADMIN")
+    ? await runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, token)
+    : [];
 
   const logout = await requestJson(baseUrl, "/api/v1/auth/logout", {
     method: "POST",
@@ -250,6 +499,7 @@ async function run() {
           "web_login_sets_admin_session_cookie",
           "web_channels_renders_admin_governance_cta",
           "web_governance_renders_admin_policy_form",
+          ...nonAdminValidated,
         ],
         checkedAt: new Date().toISOString(),
       },

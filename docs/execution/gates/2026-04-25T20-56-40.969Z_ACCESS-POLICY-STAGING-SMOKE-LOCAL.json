@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "default",
+  "date": "2026-04-25T20:56:40.969Z",
+  "gitTag": "sha-fb48504",
+  "runUrl": "local://pim1/access-policy-staging-smoke-2026-04-26",
+  "suite": "ACCESS-POLICY-STAGING-SMOKE-LOCAL"
+}

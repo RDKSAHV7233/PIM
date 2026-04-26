@@ -117,6 +117,11 @@ function main() {
   requireEnvVar(postDeployStep, "STAGING_SMOKE_USER", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_SMOKE_PASSWORD", "Post-deploy verification");
   requireEnvVar(postDeployStep, "STAGING_EXPECTED_ENV", "Post-deploy verification");
+  requireEnvVar(postDeployStep, "STAGING_VALIDATE_NON_ADMIN", "Post-deploy verification");
+  assert(
+    String(postDeployStep.env?.STAGING_VALIDATE_NON_ADMIN ?? "").trim() === "true",
+    "Post-deploy verification must enable STAGING_VALIDATE_NON_ADMIN=true",
+  );
   requireRunContains(postDeployStep, "node scripts/staging-postdeploy-check.cjs", "Post-deploy verification");
 
   const publicSignupStep = requireStep(steps, "Public signup smoke check");
@@ -184,6 +189,7 @@ function main() {
           "deploy_step_uses_checked_in_railway_script",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
+          "postdeploy_verification_enables_non_admin_access_policy_smoke",
           "public_signup_smoke_check_runs_after_postdeploy_verification",
           "postdeploy_e2e_smoke_runs_before_gate_recording",
           "gate_artifact_step_records_staging_postcheck_suite",

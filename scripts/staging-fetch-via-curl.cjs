@@ -22,7 +22,21 @@ class CurlHeaders {
     this.values = values;
   }
   get(name) {
-    return this.values[String(name).toLowerCase()] ?? null;
+    const value = this.values[String(name).toLowerCase()];
+    if (Array.isArray(value)) {
+      return value[value.length - 1] ?? null;
+    }
+    return value ?? null;
+  }
+  getSetCookie() {
+    const value = this.values["set-cookie"];
+    if (Array.isArray(value)) {
+      return value;
+    }
+    return value ? [value] : [];
+  }
+  entries() {
+    return Object.entries(this.values).map(([key, value]) => [key, Array.isArray(value) ? value[value.length - 1] : value]);
   }
 }
 
@@ -40,7 +54,13 @@ function parseHeaders(raw) {
     if (idx === -1) continue;
     const key = line.slice(0, idx).trim().toLowerCase();
     const value = line.slice(idx + 1).trim();
-    map[key] = value;
+    if (map[key] === undefined) {
+      map[key] = value;
+    } else if (Array.isArray(map[key])) {
+      map[key].push(value);
+    } else {
+      map[key] = [map[key], value];
+    }
   }
   return { status, statusText, headers: new CurlHeaders(map) };
 }
