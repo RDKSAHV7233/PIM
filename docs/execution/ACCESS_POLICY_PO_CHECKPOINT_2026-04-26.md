@@ -9,7 +9,7 @@ Baseline:
 
 Decision: **Continue approved as a controlled remediation milestone.**
 
-This checkpoint confirms that the access-policy and delegated-access implementation is not only present in code, but also validated through the current repo test surface, exposed through standard repo commands, and partially verified against the deployed staging app.
+This checkpoint confirms that the access-policy and delegated-access implementation is not only present in code, but also validated through the current repo test surface, exposed through standard repo commands, verified against the deployed staging app, and backed by GitHub deploy-run evidence for the bounded access-policy slice.
 
 This is still **not** approval to position Vexa as fully enterprise-access-policy ready.
 
@@ -36,6 +36,7 @@ This checkpoint adds confirmation that:
 - the deployed staging app now also passes selected non-admin denial-path validation for viewer, reviewer, and editor behavior
 - the staging smoke path is now stronger because the checked-in post-deploy checker can automate those non-admin validations instead of relying on one-off manual probes
 - the staging deploy workflow now enables the enhanced non-admin smoke path for future deploy-backed staging signoff runs
+- GitHub CI and Deploy Staging both passed on commit `6f4f7d4`, and the uploaded staging gate artifact bundle passed local evidence validation
 
 ## Evidence Executed In This Checkpoint
 
@@ -64,6 +65,9 @@ This checkpoint adds confirmation that:
 | Live staging non-admin access-policy smoke | enhanced staging smoke with `STAGING_VALIDATE_NON_ADMIN=true` | Passed | Viewer/reviewer/editor denied audit logs; viewer denied admin workspace-users; stale viewer JWT rejected after later lock and deactivation |
 | Non-admin staging smoke signoff | `$env:APP_ENV='staging'; npm run gate:signoff -- --suite ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL --tenantId default --runUrl local://pim1/access-policy-staging-nonadmin-smoke-2026-04-26` | Passed | Local signoff artifact now exists for the enhanced deployed staging smoke pass |
 | Live rollout snapshot | `$env:APP_ENV='staging'; $env:STAGING_RESOLVE_IP='151.101.2.15'; node -r ./scripts/staging-fetch-via-curl.cjs scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId default --apiBase https://api-staging-490e.up.railway.app/api/v1` | Passed | Deployed staging snapshot reports `health.ok=true`, `controlledPending=[]`, `broadPending=[]` |
+| GitHub CI | [Run 24964166068](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166068) | Passed | Commit `6f4f7d4`; repo CI accepted the access-policy staging-smoke changes |
+| GitHub Deploy Staging | [Run 24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066) | Passed | Deploy-backed staging verification ran the enhanced post-deploy checks |
+| Deploy-backed evidence validation | `node scripts/validate-live-staging-evidence.cjs --artifactDir ".tmp/staging-artifacts/24964166066" --environment staging --tenantId default` | Passed | Validated the GitHub artifact bundle, including deploy postcheck and clean rollout snapshot |
 
 ## PO Acceptance Update
 
@@ -107,6 +111,7 @@ The rollout evidence is now materially stronger for this slice:
 - the deployed staging snapshot reports healthy app status
 - controlled rollout has no pending blockers
 - broad rollout has no pending blockers in the current evidence window
+- GitHub deploy-backed artifact validation now confirms this evidence with an external run URL
 
 The latest deployed staging smoke evidence improves the PO position further:
 
@@ -117,6 +122,7 @@ The latest deployed staging smoke evidence improves the PO position further:
 - viewer, reviewer, and editor denial of audit-log access is confirmed in the deployed app
 - viewer denial of the admin workspace-users route is confirmed in the deployed app
 - stale viewer JWT rejection after later lock and deactivation is confirmed in the deployed app
+- the same staging evidence path is confirmed by Deploy Staging run [24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066)
 
 ## PO Release Position
 
@@ -144,7 +150,7 @@ Required next PO backlog actions remain:
 - explicit release-note guardrails that only supported scopes are claimed
 - future epics for read-redaction completion and broader sensitive-GET hardening
 - final role-maturity work only after scope, policy, and migration prerequisites are complete
-- a GitHub deploy-backed staging signoff artifact if stronger provenance than local-run gate evidence is required before a broader enterprise claim
+- continued backlog execution for unsupported scopes, read-time redaction, and broader sensitive-GET hardening before any broader enterprise claim
 
 ## PO Verdict
 
@@ -157,7 +163,8 @@ This checkpoint confirms the current branch is in a materially stronger place th
 - the delegated-access scope tests are passing
 - the tests are now reachable through standard repo scripts
 - the deployed staging app validates the key admin smoke path, auth trust-boundary behavior, selected non-admin denial paths, and stale-token rejection after later lock/deactivate
+- GitHub deploy-backed staging evidence validates the same bounded smoke and rollout proof
 
 The product claim must still stay narrow:
 
-> Vexa PIM now has verified access-policy hardening and supported delegated-access enforcement for selected scope dimensions, with deployed staging validation for health, auth trust-boundary, revoked-token handling, admin governance rendering, selected non-admin denial paths, and stale-token rejection after later lock/deactivate, but it does not yet have a complete enterprise authorization model across all scope, field-redaction, and role-maturity requirements.
+> Vexa PIM now has verified access-policy hardening and supported delegated-access enforcement for selected scope dimensions, with deploy-backed staging validation for health, auth trust-boundary, revoked-token handling, admin governance rendering, selected non-admin denial paths, and stale-token rejection after later lock/deactivate, but it does not yet have a complete enterprise authorization model across all scope, field-redaction, and role-maturity requirements.

@@ -16,6 +16,7 @@ This execution record covers the current bounded access-policy release slice:
 - local gate execution proof for the current branch
 - live staging smoke validation for deployed admin and selected non-admin paths
 - live rollout snapshot capture against the deployed staging API
+- GitHub deploy-backed staging signoff and artifact validation
 
 This record does not claim that the full multi-release access-policy roadmap is complete.
 
@@ -46,6 +47,7 @@ This slice adds delivery-governance execution proof that those protections are n
 - [staging-postdeploy-check.cjs](../../scripts/staging-postdeploy-check.cjs) now supports opt-in non-admin staging validation for viewer, reviewer, and editor denial paths plus stale-token rejection after later lock/deactivate
 - [staging-fetch-via-curl.cjs](../../scripts/staging-fetch-via-curl.cjs) now preserves multi-cookie responses so Railway web-session proofs work through the local DNS override path
 - live staging smoke validation is now proven at the deployed app layer for both admin smoke behavior and selected non-admin denial paths using the supplied staging API base, smoke credentials, and a DNS override workaround for this machine
+- GitHub deploy-backed evidence now proves the enhanced staging smoke path on commit `6f4f7d4`, with CI and Deploy Staging both passing and the uploaded gate artifacts validating successfully
 
 ## Commands Executed
 
@@ -102,6 +104,13 @@ This slice adds delivery-governance execution proof that those protections are n
 - `$env:APP_ENV='staging'; npm run gate:signoff -- --suite ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL --tenantId default --runUrl local://pim1/access-policy-staging-nonadmin-smoke-2026-04-26`
 - `$env:APP_ENV='staging'; $env:STAGING_RESOLVE_IP='151.101.2.15'; node -r ./scripts/staging-fetch-via-curl.cjs scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId default --apiBase https://api-staging-490e.up.railway.app/api/v1`
 
+### GitHub Deploy-Backed Evidence
+
+- `gh run view 24964166068 --json databaseId,status,conclusion,name,event,headSha,displayTitle,url,createdAt,updatedAt`
+- `gh run view 24964166066 --json databaseId,status,conclusion,name,event,headSha,displayTitle,url,createdAt,updatedAt`
+- `gh run download 24964166066 --name "staging-gate-artifacts-24964166066" --dir ".tmp/staging-artifacts/24964166066"`
+- `node scripts/validate-live-staging-evidence.cjs --artifactDir ".tmp/staging-artifacts/24964166066" --environment staging --tenantId default`
+
 ## Results
 
 | Area | Command | Result | Notes |
@@ -135,6 +144,9 @@ This slice adds delivery-governance execution proof that those protections are n
 | Live non-admin access-policy smoke | enhanced staging smoke with `STAGING_VALIDATE_NON_ADMIN=true` | Passed | Viewer/reviewer/editor denied audit logs; viewer denied admin workspace-users; stale viewer JWT rejected after later lock and deactivation |
 | Non-admin staging smoke signoff artifact | `$env:APP_ENV='staging'; npm run gate:signoff -- --suite ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL --tenantId default --runUrl local://pim1/access-policy-staging-nonadmin-smoke-2026-04-26` | Passed | Wrote [ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL](./gates/2026-04-26T01-29-30.857Z_ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL.json) |
 | Live rollout snapshot | `$env:APP_ENV='staging'; $env:STAGING_RESOLVE_IP='151.101.2.15'; node -r ./scripts/staging-fetch-via-curl.cjs scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId default --apiBase https://api-staging-490e.up.railway.app/api/v1` | Passed | Wrote [2026-04-25T21-17-37.433Z_CONTROLLED_ROLLOUT_SNAPSHOT.json](./rollout/2026-04-25T21-17-37.433Z_CONTROLLED_ROLLOUT_SNAPSHOT.json) with `health.ok=true`, `controlledPending=[]`, `broadPending=[]` |
+| GitHub CI | [Run 24964166068](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166068) | Passed | Commit `6f4f7d4`; critical access-policy staging-smoke changes passed CI |
+| GitHub Deploy Staging | [Run 24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066) | Passed | Deployed commit `6f4f7d4`; staging post-deploy verification ran with `STAGING_VALIDATE_NON_ADMIN=true` |
+| Deploy-backed evidence validation | `node scripts/validate-live-staging-evidence.cjs --artifactDir ".tmp/staging-artifacts/24964166066" --environment staging --tenantId default` | Passed | Validated `2026-04-26T18-50-10.965Z_STAGING_DEPLOY_POSTCHECK.json` and `2026-04-26T18-50-11.013Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` from the GitHub artifact bundle |
 
 ## Gate Notes
 
@@ -146,6 +158,7 @@ This slice adds delivery-governance execution proof that those protections are n
 - The staging deploy workflow now carries that enhanced smoke path by default through `STAGING_VALIDATE_NON_ADMIN=true`, and the workflow validator protects that setting.
 - Real staging API and web smoke validation now succeeded using the supplied credentials, including viewer/reviewer/editor denial-path coverage and stale-token rejection after later lock/deactivate.
 - A live rollout snapshot against the deployed staging API now reports `health.ok=true`, `controlledPending=[]`, and `broadPending=[]`.
+- GitHub Deploy Staging run [24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066) now provides deploy-backed provenance for the same evidence path, and the downloaded artifact bundle passed `validate-live-staging-evidence.cjs`.
 - This machine's default DNS resolver still refuses Railway hostnames, so live staging checks and the live rollout snapshot were executed with externally resolved IPs and the curl-based DNS shim rather than direct hostname resolution.
 
 ## Sign-off Position
@@ -157,6 +170,7 @@ Current execution verdict:
 - PR CI now enforces the critical access-policy suites
 - formal increment and sprint gate runners now enforce the same authz suites locally
 - deploy-backed staging verification is configured to run the enhanced non-admin access-policy smoke on future staging deploy runs
+- deploy-backed staging verification has now passed on GitHub Deploy Staging run [24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066)
 - live staging smoke now validates the deployed app for health, legacy-header rejection, login, revoked-token handling, admin API reads, admin web governance rendering, selected non-admin denial paths, and stale-token rejection after later lock/deactivate
 - live rollout evidence for this slice now includes a clean deployed staging snapshot with no controlled or broad pending blockers
 
@@ -169,6 +183,7 @@ This branch is therefore stronger than a documentation-only remediation claim be
 - included in PR CI
 - included in local gate runners
 - validated against the live deployed staging app for the bounded access-policy slice
+- validated through a GitHub deploy-backed staging artifact bundle
 
 ## Limits Of This Record
 
@@ -187,8 +202,14 @@ A local staging-format signoff artifact was created in this slice:
 - [2026-04-26T01-29-30.857Z_ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL.json](./gates/2026-04-26T01-29-30.857Z_ACCESS-POLICY-STAGING-NONADMIN-SMOKE-LOCAL.json)
 - [2026-04-25T21-17-37.433Z_CONTROLLED_ROLLOUT_SNAPSHOT.json](./rollout/2026-04-25T21-17-37.433Z_CONTROLLED_ROLLOUT_SNAPSHOT.json)
 
-Those artifacts are intentionally local-run evidence. They now include a real deployed staging smoke pass plus a clean deployed staging rollout snapshot, but they still do not replace a GitHub deploy-backed staging signoff run with an external run URL captured directly from the deploy workflow.
+GitHub deploy-backed staging evidence is now also available:
+
+- [Deploy Staging run 24964166066](https://github.com/RDKSAHV7233/PIM1/actions/runs/24964166066)
+- `2026-04-26T18-50-10.965Z_STAGING_DEPLOY_POSTCHECK.json`
+- `2026-04-26T18-50-11.013Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+
+Those deploy artifacts were downloaded from GitHub and validated locally with [validate-live-staging-evidence.cjs](../../scripts/validate-live-staging-evidence.cjs).
 
 ## Next Execution Step
 
-The next useful bounded step is to carry this same automated evidence path into a real staging deployment signoff run with a GitHub Actions run URL, so the same smoke and rollout proof can be validated by [validate-live-staging-evidence.cjs](../../scripts/validate-live-staging-evidence.cjs) without relying on local-run artifacts.
+The next useful bounded step is backlog execution for the remaining enterprise-readiness gaps: broader sensitive `GET` deny-by-default migration, universal read-time field redaction, unsupported scope dimensions, and role-maturity migration. Do not expand roles before the policy, scope, and migration prerequisites are validated.
