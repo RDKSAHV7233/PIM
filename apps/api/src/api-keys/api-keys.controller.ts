@@ -9,6 +9,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { type AppRole, Roles } from "../common/rbac/roles";
 import { ApiKeysService } from "./api-keys.service";
 import { CreateApiKeyDto } from "./dto/create-api-key.dto";
@@ -25,6 +27,8 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 @Controller("admin/api-keys")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Roles("admin")
 export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}

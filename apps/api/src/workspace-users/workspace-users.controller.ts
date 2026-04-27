@@ -10,6 +10,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { FastifyRequest } from "fastify";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
@@ -29,6 +31,8 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 @Controller("admin/workspace/users")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Roles("admin")
 export class WorkspaceUsersController {
   constructor(private readonly workspaceUsersService: WorkspaceUsersService) {}

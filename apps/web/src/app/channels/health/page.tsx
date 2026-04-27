@@ -21,6 +21,9 @@ export default async function ChannelsHealthPage() {
     const connectorEntries = Object.entries(health.snapshot.publishReadyByConnector);
     const totalReady = connectorEntries.reduce((sum, [, count]) => sum + count, 0);
     const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);
+    const readyListings = typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : totalReady;
+    const blockedListings = typeof health.blockedTotal === "number" ? health.blockedTotal : totalBlocked;
+    const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
 
     return (
       <div className="space-y-5">
@@ -45,8 +48,8 @@ export default async function ChannelsHealthPage() {
         />
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard label="Ready Listings" value={totalReady} tone="success" />
-          <KpiCard label="Blocked Listings" value={totalBlocked} tone={totalBlocked > 0 ? "danger" : "default"} />
+          <KpiCard label="Ready Listings" value={readyListings} tone="success" />
+          <KpiCard label="Blocked Listings" value={blockedListings} tone={blockedListings > 0 ? "danger" : "default"} />
           <KpiCard label="Blocking Issues" value={health.snapshot.openIssuesBlocking} tone="warning" />
           <KpiCard label="Warning Issues" value={health.snapshot.openIssuesWarning} />
         </section>
@@ -54,7 +57,12 @@ export default async function ChannelsHealthPage() {
         <Card>
           <CardTitle>Per Channel</CardTitle>
           <p className="mt-2 text-xs text-slate-500">As of {new Date(health.asOf).toLocaleString()}</p>
-          {connectorEntries.length === 0 ? (
+          {connectorBreakdownRedacted ? (
+            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Per-channel connector breakdown is limited to editor and admin roles. The aggregate readiness and blocking
+              totals above remain available for read-only quality review.
+            </div>
+          ) : connectorEntries.length === 0 ? (
             <div className="mt-3">
               <EmptyState
                 icon="PLUG"

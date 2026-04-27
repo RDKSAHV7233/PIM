@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { normalizeApiClientScopes, type ApiClientScope } from "../common/rbac/api-client-policy.decorator";
 import { normalizeAppRole } from "../common/rbac/role-utils";
 import { type AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -25,6 +26,7 @@ type ApiKeyRow = {
   tenantKey: string;
   label: string;
   role: string;
+  scopes: string[];
   keyPrefix: string;
   lastUsedAt: Date | null;
   expiresAt: Date | null;
@@ -58,6 +60,7 @@ export type ResolvedApiKeyIdentity = {
   tenantId: string;
   role: AppRole;
   label: string;
+  scopes: ApiClientScope[];
 };
 
 function isRowActive(row: Pick<ApiKeyRow, "revokedAt" | "expiresAt">, now = new Date()): boolean {
@@ -92,6 +95,7 @@ export class ApiKeysService {
         tenantKey: true,
         label: true,
         role: true,
+        scopes: true,
         keyPrefix: true,
         lastUsedAt: true,
         expiresAt: true,
@@ -120,6 +124,7 @@ export class ApiKeysService {
     if (role === "admin") {
       throw new ForbiddenException({ error: "API_KEY_ADMIN_ROLE_FORBIDDEN" });
     }
+    const scopes = normalizeApiClientScopes(dto.scopes ?? []);
 
     const expiresAt = this.resolveExpiry(dto.expiresAt);
     const id = randomUUID();
@@ -132,6 +137,7 @@ export class ApiKeysService {
         tenantKey: tenantId,
         label,
         role,
+        scopes,
         keyPrefix: buildApiKeyPrefix(id),
         secretHash: hashApiKeySecret(secret),
         expiresAt,
@@ -142,6 +148,7 @@ export class ApiKeysService {
         tenantKey: true,
         label: true,
         role: true,
+        scopes: true,
         keyPrefix: true,
         lastUsedAt: true,
         expiresAt: true,
@@ -162,6 +169,7 @@ export class ApiKeysService {
         label: created.label,
         keyPrefix: created.keyPrefix,
         role,
+        scopes,
         expiresAt: created.expiresAt?.toISOString() ?? null,
       },
     });
@@ -194,6 +202,7 @@ export class ApiKeysService {
         tenantKey: true,
         label: true,
         role: true,
+        scopes: true,
         keyPrefix: true,
         lastUsedAt: true,
         expiresAt: true,
@@ -219,6 +228,7 @@ export class ApiKeysService {
         tenantKey: true,
         label: true,
         role: true,
+        scopes: true,
         keyPrefix: true,
         lastUsedAt: true,
         expiresAt: true,
@@ -259,6 +269,7 @@ export class ApiKeysService {
         tenantKey: true,
         label: true,
         role: true,
+        scopes: true,
         secretHash: true,
         expiresAt: true,
         revokedAt: true,
@@ -277,6 +288,7 @@ export class ApiKeysService {
       tenantId: normalizeTenantKey(row.tenantKey),
       role: normalizeAppRole(row.role) ?? "viewer",
       label: row.label,
+      scopes: normalizeApiClientScopes(row.scopes),
     };
   }
 

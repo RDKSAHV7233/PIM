@@ -1,0 +1,2 @@
+ALTER TABLE "api_access_keys"
+ADD COLUMN IF NOT EXISTS "scopes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

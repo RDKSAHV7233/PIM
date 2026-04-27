@@ -3,7 +3,9 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
 import { CreateProductDto } from "./dto/create-product.dto";
@@ -13,6 +15,7 @@ import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
 
 @Controller("catalog")
+@ApiClientPolicy("allowed_with_api_scope")
 @ApiTags("Catalog")
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
@@ -26,11 +29,15 @@ export class CatalogController {
   }
 
   @Get("stats")
-  stats() {
-    return this.catalogService.stats();
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_stats_redacted")
+  stats(@Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+    return this.catalogService.stats(this.resolveActor(request));
   }
 
   @Get("products")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_products_redacted")
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
   listProducts(
@@ -43,6 +50,8 @@ export class CatalogController {
   }
 
   @Get("products/search")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_search_redacted")
   @ApiOperation({ summary: "Search products by title or SKU" })
   @ApiResponse({ status: 200, description: "Product search results fetched" })
   searchProducts(
@@ -55,6 +64,8 @@ export class CatalogController {
   }
 
   @Get("products/:id")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_product_detail_redacted")
   @ApiOperation({ summary: "Get product by id" })
   @ApiResponse({ status: 200, description: "Product fetched" })
   getProduct(
@@ -65,6 +76,7 @@ export class CatalogController {
   }
 
   @Post("products")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("skus")
@@ -79,6 +91,7 @@ export class CatalogController {
   }
 
   @Patch("products/:id")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Update product" })
   @ApiResponse({ status: 200, description: "Product updated" })
@@ -91,6 +104,7 @@ export class CatalogController {
   }
 
   @Post("products/:id/review-decision")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor", "reviewer")
   @ApiOperation({ summary: "Approve or reject an in-review product" })
   @ApiResponse({ status: 201, description: "Review decision applied" })
@@ -103,6 +117,7 @@ export class CatalogController {
   }
 
   @Delete("products/:id")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   deleteProduct(
     @Param("id") id: string,
@@ -112,6 +127,7 @@ export class CatalogController {
   }
 
   @Delete("products/:id/purge")
+  @ApiClientScopes("catalog.write")
   @Roles("admin")
   purgeProduct(
     @Param("id") id: string,
@@ -121,6 +137,8 @@ export class CatalogController {
   }
 
   @Get("products/:id/variants")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_variants_redacted")
   listVariants(
     @Param("id") productId: string,
     @Query() pagination: CursorPaginationDto,
@@ -130,6 +148,7 @@ export class CatalogController {
   }
 
   @Post("products/:id/variants")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   createVariant(
     @Param("id") productId: string,
@@ -140,6 +159,7 @@ export class CatalogController {
   }
 
   @Patch("variants/:id")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   updateVariant(
     @Param("id") variantId: string,
@@ -150,6 +170,7 @@ export class CatalogController {
   }
 
   @Delete("variants/:id")
+  @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   deleteVariant(
     @Param("id") variantId: string,

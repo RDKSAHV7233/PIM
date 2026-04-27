@@ -50,7 +50,9 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
       inbox.items.filter((item) => item.severity === "WARNING").map((item) => item.productId),
     ).size;
     const reviewedProductIds = new Set(inbox.items.map((item) => item.productId)).size;
-    const cleanForDecision = Math.max(0, stats.pendingApprovals - reviewedProductIds);
+    const approvalQueueRedacted =
+      Array.isArray(stats.redactedSections) && stats.redactedSections.includes("approval_queue");
+    const cleanForDecision = approvalQueueRedacted ? 0 : Math.max(0, stats.pendingApprovals - reviewedProductIds);
     const decisionEnabled = canDecideApproval(actorRole);
     const returnTo = "/quality/approvals";
     const inReviewProducts = products
@@ -97,8 +99,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label="Products In Review"
-            value={stats.pendingApprovals}
-            tone={stats.pendingApprovals > 0 ? "warning" : "default"}
+            value={approvalQueueRedacted ? "-" : stats.pendingApprovals}
+            tone={approvalQueueRedacted ? "default" : stats.pendingApprovals > 0 ? "warning" : "default"}
           />
           <KpiCard
             label="Products Blocked"
@@ -112,8 +114,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           />
           <KpiCard
             label="Clean For Decision"
-            value={cleanForDecision}
-            tone={cleanForDecision > 0 ? "success" : "default"}
+            value={approvalQueueRedacted ? "-" : cleanForDecision}
+            tone={approvalQueueRedacted ? "default" : cleanForDecision > 0 ? "success" : "default"}
           />
         </section>
 
@@ -122,8 +124,14 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
             <CardTitle>Workflow Status</CardTitle>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusChip
-                label={stats.pendingApprovals > 0 ? "Review queue active" : "No products in review"}
-                tone={stats.pendingApprovals > 0 ? "warning" : "neutral"}
+                label={
+                  approvalQueueRedacted
+                    ? "Approval queue restricted"
+                    : stats.pendingApprovals > 0
+                      ? "Review queue active"
+                      : "No products in review"
+                }
+                tone={approvalQueueRedacted ? "neutral" : stats.pendingApprovals > 0 ? "warning" : "neutral"}
               />
               <StatusChip
                 label={blockingProducts > 0 ? `${blockingProducts} blocked` : "No blocking issues"}
@@ -131,7 +139,9 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
               />
             </div>
             <p className="mt-3 text-sm text-slate-600">
-              This queue reflects real `in_review` workflow status, not a placeholder approval stage.
+              {approvalQueueRedacted
+                ? "Approval queue counts require reviewer, editor, or admin access."
+                : "This queue reflects real `in_review` workflow status, not a placeholder approval stage."}
             </p>
           </Card>
           <Card>
@@ -257,7 +267,17 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
 
         <Card>
           <CardTitle>Items In Review</CardTitle>
-          {stats.pendingApprovals === 0 ? (
+          {approvalQueueRedacted ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700">
+                Approval queue counts are restricted for your role. Reviewers, editors, and admins can view the live
+                in-review count here.
+              </p>
+              <p className="text-sm text-slate-600">
+                You can still use Issue Inbox and product detail to investigate quality blockers.
+              </p>
+            </div>
+          ) : stats.pendingApprovals === 0 ? (
             <EmptyState
               icon="CHECK"
               title="No products waiting for approval"

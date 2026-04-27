@@ -4,20 +4,28 @@ import {
   getDashboardHealth,
   getDashboardOperationsSummary,
 } from "@/lib/api";
+import { canEditWorkspace } from "@/lib/role-capabilities";
+import { getServerActorRole } from "@/lib/server-session";
 import { resolveBearerToken } from "../../_auth";
 
 export async function GET(request: NextRequest) {
+  const role = await getServerActorRole();
   const authHeader = resolveBearerToken(request) ?? undefined;
+  const canViewOperationsSummary = canEditWorkspace(role);
 
   try {
     const [health, operationsSummary] = await Promise.all([
-      getDashboardHealth({ authHeader }),
-      getDashboardOperationsSummary({ authHeader }),
+      getDashboardHealth({ role, authHeader }),
+      canViewOperationsSummary
+        ? getDashboardOperationsSummary({ role, authHeader })
+        : Promise.resolve(null),
     ]);
 
     return NextResponse.json({
       quality: Number(health.snapshot.openIssuesBlocking ?? 0),
-      operations: operationsSummary.failedImportJobs + operationsSummary.jobsNeedingRetry,
+      operations: operationsSummary
+        ? Number(operationsSummary.failedImportJobs ?? 0) + Number(operationsSummary.jobsNeedingRetry ?? 0)
+        : 0,
     });
   } catch (error: unknown) {
     if (error instanceof ApiHttpError) {

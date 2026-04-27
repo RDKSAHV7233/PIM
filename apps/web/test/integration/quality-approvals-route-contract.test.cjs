@@ -36,8 +36,10 @@ function run() {
       approvalsSource.includes('item.severity === "BLOCKING"') &&
       approvalsSource.includes("const warningProducts = new Set(") &&
       approvalsSource.includes('item.severity === "WARNING"') &&
-      approvalsSource.includes("const cleanForDecision = Math.max(0, stats.pendingApprovals - reviewedProductIds);"),
-    "Approval Queue must derive blocking, warning, and clean-for-decision metrics from the real in-review inbox state.",
+      approvalsSource.includes("const approvalQueueRedacted =") &&
+      approvalsSource.includes('stats.redactedSections.includes("approval_queue")') &&
+      approvalsSource.includes("const cleanForDecision = approvalQueueRedacted ? 0 : Math.max(0, stats.pendingApprovals - reviewedProductIds);"),
+    "Approval Queue must derive blocking, warning, and clean-for-decision metrics from the real in-review inbox state while honoring restricted approval-queue counts.",
   );
   assert(
     capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "reviewer";') &&
@@ -54,6 +56,13 @@ function run() {
       approvalsSource.includes('.filter((product) => product.status === "in_review")') &&
       approvalsSource.includes('.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));'),
     "Approval Queue must only render real in-review products and keep the newest items at the top of the decision list.",
+  );
+  assert(
+    approvalsSource.includes("approvalQueueRedacted") &&
+      approvalsSource.includes("Approval queue restricted") &&
+      approvalsSource.includes("Approval queue counts require reviewer, editor, or admin access.") &&
+      approvalsSource.includes("Approval queue counts are restricted for your role."),
+    "Approval Queue must render an honest restricted state when approval-count visibility is redacted for the current role.",
   );
   assert(
     approvalsSource.includes('const canApprove = summary.blocking === 0;') &&

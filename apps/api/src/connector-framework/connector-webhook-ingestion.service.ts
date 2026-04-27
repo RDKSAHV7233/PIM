@@ -197,6 +197,7 @@ export class ConnectorWebhookIngestionService {
       return null;
     }
 
+    // RLS-BYPASS: manual tenant filter
     const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<SubmissionLookup[]>(
       `
       SELECT cs.id

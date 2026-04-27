@@ -131,14 +131,19 @@ async function run() {
   const apiPort = 5700 + Math.floor(Math.random() * 120);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `rejection-notification-tenant-${runId}`;
+  const workspaceSlug = `rn-${runId}`.slice(0, 24);
   const userId = `rejection-notification-user-${runId}`;
   const env = {
     ...process.env,
     PORT: String(apiPort),
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
+    }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Rejection Notification Test" },
     }),
   };
 
@@ -172,6 +177,7 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId,
       password: "vexa-pim-demo-password",
       expiresInMinutes: 30,

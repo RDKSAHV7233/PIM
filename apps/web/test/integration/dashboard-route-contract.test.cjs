@@ -17,28 +17,36 @@ function run() {
 
   assert(
     source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("const canViewOperationsSummary = canEditWorkspace(actorRole);") &&
+      source.includes("const canViewBillingUsage = canViewOperationsSummary;"),
     "Dashboard must derive shared server auth/session context before loading catalog and reporting data.",
   );
   assert(
     source.includes("const [health, usage, operationsSummary, products, signupTrends] = await Promise.all([") &&
       source.includes("getDashboardHealth({ role: actorRole, authHeader })") &&
-      source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
-      source.includes("getDashboardOperationsSummary({ role: actorRole, authHeader })") &&
+      source.includes("canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null)") &&
+      source.includes("canViewOperationsSummary") &&
+      source.includes("? getDashboardOperationsSummary({ role: actorRole, authHeader })") &&
+      source.includes(": Promise.resolve(null)") &&
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })") &&
       source.includes('actorRole === "admin"') &&
       source.includes("getKpiTrends({ days: 30 }, { role: actorRole, authHeader })") &&
       source.includes("Promise.resolve(null)"),
-    "Dashboard must load health, usage, operations, product priority data, and admin-only signup trends in one shared server pass.",
+    "Dashboard must load health, scoped billing usage, scoped operations data, product priority data, and admin-only signup trends in one shared server pass.",
   );
   assert(
     source.includes("const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce(") &&
       source.includes("const readinessTotal = Object.values(health.snapshot.publishReadyByConnector).reduce(") &&
+      source.includes("const blockedListingsTotal =") &&
+      source.includes("const readinessGrandTotal =") &&
       source.includes("const completeness =") &&
       source.includes("const pendingApprovals = Number(health.pendingApprovals ?? 0);") &&
-      source.includes("const failedImportJobs = operationsSummary.failedImportJobs;") &&
-      source.includes("const jobsNeedingRetry = operationsSummary.jobsNeedingRetry;"),
-    "Dashboard must derive top-line catalog, publish, and operations KPIs from live backend snapshots.",
+      source.includes('const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;') &&
+      source.includes('const approvalQueueRedacted = health.redactedSections?.includes("approval_queue") ?? false;') &&
+      source.includes("const failedImportJobs = operationsSummary?.failedImportJobs ?? null;") &&
+      source.includes("const jobsNeedingRetry = operationsSummary?.jobsNeedingRetry ?? null;"),
+    "Dashboard must derive top-line catalog, publish, redaction-aware, and operations KPIs from live backend snapshots.",
   );
   assert(
     source.includes("<RefreshOnInterval intervalMs={30_000} />") &&
@@ -62,7 +70,7 @@ function run() {
       source.includes('label="Active Channels"') &&
       source.includes('label="Warnings to Review"') &&
       source.includes('href="/channels/health"') &&
-      source.includes('href="/channels/connectors"'),
+      source.includes('href={operationsSummary ? "/channels/connectors" : undefined}'),
     "Dashboard must surface channel readiness and publish-health drilldowns.",
   );
   assert(
@@ -95,11 +103,15 @@ function run() {
   assert(
     source.includes("Catalog Work Queue") &&
       source.includes("Operations &amp; Usage") &&
-      source.includes('href="/operations/jobs"') &&
-      source.includes('href="/admin/plan"') &&
-      source.includes('label={usage.planTier}') &&
-      source.includes('label={`${usage.skus.current}/${usage.skus.limit}`}'),
-    "Dashboard must surface catalog backlog plus plan and operations drilldowns from live usage data.",
+      source.includes("Operational job counts are limited to editor and admin roles.") &&
+      source.includes('Plan and billing usage are limited to editor and admin roles.') &&
+      source.includes("Approval queue visibility requires reviewer, editor, or admin access.") &&
+      source.includes("Aggregate blocked counts are visible. Channel-level breakdown requires editor or admin access.") &&
+      source.includes("StatusChip label={usage.planTier}") &&
+      source.includes("StatusChip label={`${usage.skus.current}/${usage.skus.limit}`}") &&
+      source.includes("canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null)") &&
+      source.includes('href={operationsSummary ? "/channels/connectors" : undefined}'),
+    "Dashboard must surface catalog backlog plus role-aware operations, usage, and redaction-aware drilldowns without exposing restricted data to read-only roles.",
   );
   assert(
     source.includes('redirect(buildLoginRedirect("/dashboard", error));'),

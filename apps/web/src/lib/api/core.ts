@@ -143,6 +143,7 @@ export interface CatalogStats {
   products: number;
   variants: number;
   pendingApprovals: number;
+  redactedSections?: string[];
 }
 
 export interface ConnectorInstallation {
@@ -468,6 +469,9 @@ export interface DashboardHealthResponse {
   trend: DashboardHealthSnapshot[];
   asOf: string;
   pendingApprovals: number;
+  publishReadyTotal?: number;
+  blockedTotal?: number;
+  redactedSections?: string[];
 }
 
 export interface DashboardOperationsSummaryResponse {

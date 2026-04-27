@@ -42,6 +42,12 @@ export default async function ChannelsOverviewPage() {
     ).length;
     const pendingSubmissions = submissions.filter((submission) => submission.status === "PENDING").length;
     const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);
+    const readyToPublish = Object.values(health.snapshot.publishReadyByConnector).reduce((sum, count) => sum + count, 0);
+    const blockedListingsTotal =
+      typeof health.blockedTotal === "number" ? health.blockedTotal : blockedListings;
+    const readyToPublishTotal =
+      typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : readyToPublish;
+    const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
 
     return (
       <div className="space-y-5">
@@ -64,13 +70,23 @@ export default async function ChannelsOverviewPage() {
           />
           <KpiCard
             label="Ready for Publish"
-            value={Object.values(health.snapshot.publishReadyByConnector).reduce((sum, count) => sum + count, 0)}
+            value={readyToPublishTotal}
+            helper={
+              connectorBreakdownRedacted
+                ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
+                : undefined
+            }
             tone="success"
           />
           <KpiCard
             label="Blocked Listings"
-            value={blockedListings}
-            tone={blockedListings > 0 ? "danger" : "default"}
+            value={blockedListingsTotal}
+            helper={
+              connectorBreakdownRedacted
+                ? "Aggregate blocked totals are visible. Channel-level breakdown requires editor or admin access."
+                : undefined
+            }
+            tone={blockedListingsTotal > 0 ? "danger" : "default"}
           />
         </section>
 
@@ -80,7 +96,8 @@ export default async function ChannelsOverviewPage() {
             <StatusChip label={`${activeConnectors} active`} tone="success" />
             <StatusChip label={`${inactiveConnectors} inactive`} tone={inactiveConnectors > 0 ? "warning" : "neutral"} />
             <StatusChip label={`${failedSubmissions} failed/rejected`} tone={failedSubmissions > 0 ? "danger" : "neutral"} />
-            <StatusChip label={`${blockedListings} blocked listings`} tone={blockedListings > 0 ? "danger" : "neutral"} />
+            <StatusChip label={`${blockedListingsTotal} blocked listings`} tone={blockedListingsTotal > 0 ? "danger" : "neutral"} />
+            {connectorBreakdownRedacted ? <StatusChip label="Per-channel details limited" tone="neutral" /> : null}
           </div>
         </Card>
 

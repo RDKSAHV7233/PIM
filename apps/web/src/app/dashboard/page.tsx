@@ -14,6 +14,7 @@ import {
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { cn } from "@/lib/utils";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -228,18 +229,22 @@ function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<t
 export default async function DashboardPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+  const canViewOperationsSummary = canEditWorkspace(actorRole);
+  const canViewBillingUsage = canViewOperationsSummary;
 
   try {
     const [health, usage, operationsSummary, products, signupTrends] = await Promise.all([
       getDashboardHealth({ role: actorRole, authHeader }),
-      getBillingUsage({ role: actorRole, authHeader }),
-      getDashboardOperationsSummary({ role: actorRole, authHeader }),
+      canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null),
+      canViewOperationsSummary
+        ? getDashboardOperationsSummary({ role: actorRole, authHeader })
+        : Promise.resolve(null),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
       actorRole === "admin"
         ? getKpiTrends({ days: 30 }, { role: actorRole, authHeader })
         : Promise.resolve(null),
     ]);
-    const activeConnectors = operationsSummary.activeConnectors;
+    const activeConnectors = operationsSummary?.activeConnectors ?? null;
     const blockingIssues = health.snapshot.openIssuesBlocking;
     const warningIssues = health.snapshot.openIssuesWarning;
     const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce(
@@ -250,13 +255,19 @@ export default async function DashboardPage() {
       (sum, count) => sum + count,
       0,
     );
+    const blockedListingsTotal =
+      typeof health.blockedTotal === "number" ? health.blockedTotal : blockedListings;
+    const readinessGrandTotal =
+      typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : readinessTotal;
     const completeness =
       health.snapshot.totalSkus > 0
         ? (health.snapshot.completeSkus / health.snapshot.totalSkus) * 100
         : 0;
     const pendingApprovals = Number(health.pendingApprovals ?? 0);
-    const failedImportJobs = operationsSummary.failedImportJobs;
-    const jobsNeedingRetry = operationsSummary.jobsNeedingRetry;
+    const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
+    const approvalQueueRedacted = health.redactedSections?.includes("approval_queue") ?? false;
+    const failedImportJobs = operationsSummary?.failedImportJobs ?? null;
+    const jobsNeedingRetry = operationsSummary?.jobsNeedingRetry ?? null;
     const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
     const signupVerifications = signupTrends
       ? Math.round(sumTrendValues(signupTrends.signupVerifications))
@@ -386,17 +397,25 @@ export default async function DashboardPage() {
             />
             <KpiCard
               label="Pending Approvals"
-              value={pendingApprovals}
-              helper="Products waiting for review"
-              tone={pendingApprovals > 0 ? "warning" : "default"}
-              href="/quality/approvals"
+              value={approvalQueueRedacted ? "-" : pendingApprovals}
+              helper={
+                approvalQueueRedacted
+                  ? "Approval queue visibility requires reviewer, editor, or admin access."
+                  : "Products waiting for review"
+              }
+              tone={approvalQueueRedacted ? "default" : pendingApprovals > 0 ? "warning" : "default"}
+              href={approvalQueueRedacted ? undefined : "/quality/approvals"}
             />
             <KpiCard
               label="Ready to Publish"
-              value={readinessTotal}
-              helper={`${health.snapshot.totalSkus} total products`}
-              tone={readinessTotal > 0 ? "success" : "info"}
-              href="/catalog/products?view=ready"
+              value={readinessGrandTotal}
+              helper={
+                connectorBreakdownRedacted
+                  ? "Aggregate readiness is visible. Channel-level breakdown requires editor or admin access."
+                  : `${health.snapshot.totalSkus} total products`
+              }
+              tone={readinessGrandTotal > 0 ? "success" : "info"}
+              href={connectorBreakdownRedacted ? "/channels/health" : "/catalog/products?view=ready"}
             />
           </div>
         </section>
@@ -411,17 +430,31 @@ export default async function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <KpiCard
               label="Blocked Listings"
-              value={blockedListings}
-              helper="Publish-ready products currently blocked by channel rules"
-              tone={blockedListings > 0 ? "danger" : "success"}
+              value={blockedListingsTotal}
+              helper={
+                connectorBreakdownRedacted
+                  ? "Aggregate blocked counts are visible. Channel-level breakdown requires editor or admin access."
+                  : "Publish-ready products currently blocked by channel rules"
+              }
+              tone={blockedListingsTotal > 0 ? "danger" : "success"}
               href="/channels/health"
             />
             <KpiCard
               label="Active Channels"
-              value={activeConnectors}
-              helper={`${operationsSummary.installedConnectors} installed`}
-              tone={activeConnectors > 0 ? "info" : "warning"}
-              href="/channels/connectors"
+              value={activeConnectors ?? "-"}
+              helper={
+                operationsSummary
+                  ? `${operationsSummary.installedConnectors} installed`
+                  : "Channel operations are limited to editor and admin roles."
+              }
+              tone={
+                operationsSummary
+                  ? operationsSummary.activeConnectors > 0
+                    ? "info"
+                    : "warning"
+                  : "default"
+              }
+              href={operationsSummary ? "/channels/connectors" : undefined}
             />
             <KpiCard
               label="Warnings to Review"
@@ -694,7 +727,10 @@ export default async function DashboardPage() {
               </li>
               <li className="flex items-center justify-between">
                 <span>Pending approvals</span>
-                <StatusChip label={String(pendingApprovals)} tone={pendingApprovals > 0 ? "warning" : "neutral"} />
+                <StatusChip
+                  label={approvalQueueRedacted ? "Restricted" : String(pendingApprovals)}
+                  tone={approvalQueueRedacted ? "neutral" : pendingApprovals > 0 ? "warning" : "neutral"}
+                />
               </li>
               <li className="flex items-center justify-between">
                 <span>Blocking issues</span>
@@ -723,34 +759,59 @@ export default async function DashboardPage() {
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               <li className="flex items-center justify-between">
                 <span>Imports needing repair</span>
-                <StatusChip
-                  label={String(failedImportJobs)}
-                  tone={failedImportJobs > 0 ? "warning" : "neutral"}
-                />
+                {operationsSummary ? (
+                  <StatusChip
+                    label={String(failedImportJobs)}
+                    tone={operationsSummary.failedImportJobs > 0 ? "warning" : "neutral"}
+                  />
+                ) : (
+                  <StatusChip label="Restricted" tone="neutral" />
+                )}
               </li>
               <li className="flex items-center justify-between">
                 <span>Jobs needing retry</span>
-                <StatusChip
-                  label={String(jobsNeedingRetry)}
-                  tone={jobsNeedingRetry > 0 ? "warning" : "neutral"}
-                />
+                {operationsSummary ? (
+                  <StatusChip
+                    label={String(jobsNeedingRetry)}
+                    tone={operationsSummary.jobsNeedingRetry > 0 ? "warning" : "neutral"}
+                  />
+                ) : (
+                  <StatusChip label="Restricted" tone="neutral" />
+                )}
               </li>
-              <li className="flex items-center justify-between">
-                <span>Plan tier</span>
-                <StatusChip label={usage.planTier} tone="info" />
-              </li>
-              <li className="flex items-center justify-between">
-                <span>SKU usage</span>
-                <StatusChip label={`${usage.skus.current}/${usage.skus.limit}`} tone="neutral" />
-              </li>
+              {!operationsSummary ? (
+                <li className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Operational job counts are limited to editor and admin roles.
+                </li>
+              ) : null}
+              {usage ? (
+                <>
+                  <li className="flex items-center justify-between">
+                    <span>Plan tier</span>
+                    <StatusChip label={usage.planTier} tone="info" />
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>SKU usage</span>
+                    <StatusChip label={`${usage.skus.current}/${usage.skus.limit}`} tone="neutral" />
+                  </li>
+                </>
+              ) : (
+                <li className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Plan and billing usage are limited to editor and admin roles.
+                </li>
+              )}
             </ul>
             <div className="mt-4 flex gap-2">
-              <Link href="/operations/jobs" className="text-sm font-medium text-blue-700 hover:underline">
-                Open Failed Jobs
-              </Link>
-              <Link href="/admin/plan" className="text-sm font-medium text-blue-700 hover:underline">
-                Open Plan &amp; Usage
-              </Link>
+              {operationsSummary ? (
+                <Link href="/operations/jobs" className="text-sm font-medium text-blue-700 hover:underline">
+                  Open Failed Jobs
+                </Link>
+              ) : null}
+              {usage ? (
+                <Link href="/admin/plan" className="text-sm font-medium text-blue-700 hover:underline">
+                  Open Plan &amp; Usage
+                </Link>
+              ) : null}
             </div>
           </div>
         </section>

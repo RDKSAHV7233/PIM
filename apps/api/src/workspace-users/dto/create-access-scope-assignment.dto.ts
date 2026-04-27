@@ -1,7 +1,20 @@
 import { IsArray, IsIn, IsOptional, IsString } from "class-validator";
 
 const SUBJECT_TYPES = ["user", "role"] as const;
-const SCOPE_TYPES = ["category", "brand", "channel", "connector_account"] as const;
+const SCOPE_TYPES = [
+  "category",
+  "brand",
+  "channel",
+  "connector_account",
+  "vendor",
+  "owner",
+  "supplier",
+  "locale",
+  "market",
+  "catalog",
+  "team",
+  "assignee",
+] as const;
 const ACTIONS = [
   "view",
   "create",

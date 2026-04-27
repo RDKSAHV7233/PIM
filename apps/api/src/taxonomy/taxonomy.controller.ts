@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -8,16 +10,19 @@ import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { TaxonomyService } from "./taxonomy.service";
 
 @Controller("taxonomy/categories")
+@DisallowApiClient()
 export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
 
   @Get()
+  @ReadAccessPolicy("taxonomy_safe_metadata")
   listCategories(@Query() pagination: CursorPaginationDto, @Query("all") all?: string) {
     // Unbounded tree fetch is deprecated for default callers; pass ?all=true when the full tree is required.
     return this.taxonomyService.listCategories(pagination, { all: all === "true" });
   }
 
   @Get(":id")
+  @ReadAccessPolicy("taxonomy_safe_metadata")
   getCategory(@Param("id") id: string) {
     return this.taxonomyService.getCategory(id);
   }
@@ -41,6 +46,7 @@ export class TaxonomyController {
   }
 
   @Get(":id/attributes")
+  @ReadAccessPolicy("taxonomy_safe_metadata")
   listAttributeDefinitions(@Param("id") categoryId: string) {
     return this.taxonomyService.listAttributeDefinitions(categoryId);
   }

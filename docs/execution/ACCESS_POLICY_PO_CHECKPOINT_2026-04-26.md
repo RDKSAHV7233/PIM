@@ -168,3 +168,522 @@ This checkpoint confirms the current branch is in a materially stronger place th
 The product claim must still stay narrow:
 
 > Vexa PIM now has verified access-policy hardening and supported delegated-access enforcement for selected scope dimensions, with deploy-backed staging validation for health, auth trust-boundary, revoked-token handling, admin governance rendering, selected non-admin denial paths, and stale-token rejection after later lock/deactivate, but it does not yet have a complete enterprise authorization model across all scope, field-redaction, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up
+
+Decision: **Conditionally accepted for the bounded sensitive-read and shadow-mode foundation follow-up.**
+
+Accepted in this follow-up:
+
+- sensitive submission read metadata now requires explicit `admin` or `editor` access
+- `AccessPolicyService.can(...)` now exists as a deterministic shadow-mode foundation with stable reason codes
+- RBAC remains authoritative while shadow-mode mismatches are audited with sanitized metadata
+- increment and sprint gates now run the access-policy remediation suite, delegated-access scope suite, and sensitive-GET guard
+- local validation passed for API build, web build, focused access-policy suites, formal increment gate, formal sprint gate, staging workflow validation, and staging postdeploy harness validation
+
+Still not accepted as complete:
+
+- universal read-time redaction
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Catalog Read Redaction
+
+Decision: **Conditionally accepted for the bounded catalog read-redaction follow-up.**
+
+Accepted in this follow-up:
+
+- viewer and reviewer catalog product reads now redact sensitive pricing and inventory fields on the covered product and variant paths
+- admin and editor catalog behavior remains intact on the covered paths
+- the legacy `/products/:id` API alias now uses authenticated actor context, so delegated scope intersection and redaction rules apply there too
+- focused remediation tests and the increment gate both passed after this change
+
+Still not accepted as complete:
+
+- universal read-time redaction outside the covered catalog product and variant paths
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog read redaction, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: AI Helper Sensitive Read Hardening
+
+Decision: **Conditionally accepted for the bounded AI helper hardening follow-up.**
+
+Accepted in this follow-up:
+
+- `auto-suggestions` sensitive GET routes now require explicit `admin` or `editor` access
+- `rejection-intelligence` score reads now require explicit `admin`, `editor`, or `reviewer` access
+- direct object-ID scope enforcement now extends to AI helper read and repair routes for supported category and brand intersections
+- the sensitive-GET guard, focused remediation suite, delegated-access scope suite, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the change
+- a checked-in PO execution prompt now documents the remaining backlog order and the hard product rules for future continuous execution
+
+Still not accepted as complete:
+
+- broader sensitive `GET` hardening for remaining authenticated read surfaces such as dashboard, metrics, billing, and other low-annotation routes
+- universal read-time redaction outside the covered catalog product and variant paths
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog and AI helper routes, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Billing Usage Sensitive Read Hardening
+
+Decision: **Conditionally accepted for the bounded billing usage hardening follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /billing/usage` now requires explicit `admin` or `editor` access instead of broad authenticated access
+- viewer and reviewer denial is proven in the focused remediation suite
+- editor and admin billing usage behavior remains intact
+- reviewer and viewer dashboards no longer depend on billing usage and now show a role-aware fallback instead of breaking on a protected commercial read
+- the sensitive-GET guard, billing cache integration coverage, web dashboard route contract, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the change
+
+Still not accepted as complete:
+
+- broader sensitive `GET` hardening for remaining authenticated read surfaces such as dashboard health, dashboard operations, metrics trends, and other still-broad reads
+- universal read-time redaction outside the covered catalog product and variant paths
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, and billing usage routes, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Dashboard Operations And Metrics Sensitive Read Hardening
+
+Decision: **Conditionally accepted for the bounded dashboard operations and metrics hardening follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /dashboard/operations-summary` now requires explicit `admin` or `editor` access instead of broad authenticated access
+- `GET /metrics/kpi-trends` now requires explicit `admin` access instead of broad authenticated access
+- viewer and reviewer denial for dashboard operations summary is proven in the focused remediation suite
+- viewer, reviewer, and editor denial for metrics KPI trends is proven in the focused remediation suite
+- editor and admin operational summary behavior remains intact, and admin KPI trends behavior remains intact
+- reviewer and viewer dashboard and navigation-summary callers now degrade gracefully with role-aware fallbacks instead of breaking on newly protected operational reads
+- the sensitive-GET guard, focused dashboard proofs, delegated-access scope suite, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the change
+
+Still not accepted as complete:
+
+- broader sensitive `GET` hardening for remaining authenticated read surfaces such as `dashboard/readiness`, `dashboard/catalog-health`, `dashboard/health`, and other still-broad reads
+- universal read-time redaction outside the covered catalog product and variant paths
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, dashboard operations summary, and metrics KPI trend routes, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Dashboard Readiness And Catalog-Health Sensitive Read Hardening
+
+Decision: **Conditionally accepted for the bounded dashboard readiness and catalog-health hardening follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /dashboard/readiness` now requires explicit `admin` or `editor` access instead of broad authenticated access
+- `GET /dashboard/catalog-health` now requires explicit `admin` or `editor` access instead of broad authenticated access
+- viewer and reviewer denial for both routes is proven in the focused remediation suite
+- editor and admin behavior remains intact for both routes
+- the sensitive-GET guard, focused remediation suite, delegated-access scope suite, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the change
+
+Still not accepted as complete:
+
+- broader sensitive `GET` hardening still remains for `dashboard/health` and any other broad authenticated aggregate reads
+- universal read-time redaction outside the covered catalog product and variant paths
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- API-client principal separation and UI-login exclusion
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, dashboard readiness, dashboard catalog-health, dashboard operations summary, and metrics KPI trend routes, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Dashboard Health Redaction And API-Client Human-Route Boundaries
+
+Decision: **Conditionally accepted for the bounded dashboard-health and covered API-client-boundary follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /dashboard/health` is no longer treated as a broad, unshaped authenticated read
+- viewer and reviewer dashboard-health responses now use centralized redaction instead of inheriting the full connector-account breakdown
+- viewer approval-queue visibility is removed from `dashboard/health`, while reviewer visibility remains intact for the covered route
+- dashboard and channel web pages now use aggregate totals and explicit restricted copy instead of pretending redacted connector data is zero
+- covered API-client principals are now denied human-only route families on `dashboard`, `billing`, `metrics`, and authenticated `auth` account endpoints, while explicit catalog API reads still remain available to the machine principal model already supported today
+- the focused remediation suite, delegated-access scope suite, sensitive-GET guard, increment gate, sprint gate, workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as vendor/owner, supplier, locale/market, catalog, team, and assignee
+- full API-client permission and scope modeling beyond the newly covered human-route boundary
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, and metrics KPI trend routes, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Compliance Workflow Scope Hardening And Human-Only Notification Boundaries
+
+Decision: **Conditionally accepted for the bounded compliance workflow and notification boundary follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /compliance/rules` now requires explicit `admin` access instead of inheriting broad authenticated read behavior
+- covered API-key principals are now denied the human notification center and human compliance workflow route families
+- supported delegated-scope enforcement now applies to compliance product issue reads, compliance validate requests, issue-inbox list results, and issue-inbox warning resolution
+- human notification-center and issue-inbox behavior remained intact under focused integration proof after the change
+- the sensitive-GET guard, focused remediation suite, delegated-access scope suite, issue-inbox integrations, notifications integrations, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Broad Read Classification And Connector Management Write Hardening
+
+Decision: **Conditionally accepted for the bounded shared read-policy and connector-management hardening follow-up.**
+
+Accepted in this follow-up:
+
+- the currently covered broad authenticated read surfaces now carry explicit checked-in `@ReadAccessPolicy(...)` classification instead of relying on unnamed broad access
+- central response-policy handling now covers the approved catalog list, detail, search, variant, and stats reads plus the covered `dashboard/health` aggregate response
+- viewer catalog search no longer leaks `matchedSku`
+- viewer catalog stats no longer expose approval-queue counts, while reviewer and admin visibility remains intact
+- viewer and reviewer can no longer mutate connector installations or publication-target state through the covered connector-management write routes
+- editor reconnect still works after explicit connector permission grant, and admin publication-target management and connector access-entitlement flows remained intact under focused proof
+- the focused remediation suite, connector access-entitlements integration, Shopify publication-target integration, delegated-access scope suite, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Self-Service Auth Read Classification
+
+Decision: **Conditionally accepted for the bounded self-service auth read classification follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /auth/account/privacy-status` now carries explicit checked-in self-service read classification
+- `GET /auth/account/export/:jobId/download` now carries explicit checked-in self-service download classification
+- the sensitive-GET guard now requires those auth reads to stay explicitly classified
+- a human viewer still gets their own privacy status and can queue then poll their own account export without role regression
+- API-key principals remain blocked from the sensitive account export download route
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Connector Workspace API-Client Boundary
+
+Decision: **Conditionally accepted for the bounded connector workspace API-client boundary follow-up.**
+
+Accepted in this follow-up:
+
+- the covered connector workspace route family is now human-only
+- API-key principals can no longer inherit human connector workspace access to definitions, installed accounts, schema reads, publication-target reads, reconnect flows, payload preview, install, or publication-target mutation routes
+- focused remediation proof now includes explicit API-key denial for covered connector workspace reads
+- human connector install, reconnect, delete, and action-matrix flows remained intact under focused regression proof
+- the focused remediation suite, connector access-entitlements integration, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, human-only connector workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Marketplace Workspace API-Client Boundary
+
+Decision: **Conditionally accepted for the bounded marketplace workspace API-client boundary follow-up.**
+
+Accepted in this follow-up:
+
+- the covered marketplace workspace route family is now human-only
+- API-key principals can no longer inherit covered human marketplace workspace reads
+- the ONDC controller now carries the same API-client boundary annotation for feature-enabled environments
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- ONDC runtime denial is not yet claimed as universally validated because the module is feature-flagged off in the default environment
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, human-only connector and marketplace workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Bulk Operation Read Hardening And API-Client Boundary
+
+Decision: **Conditionally accepted for the bounded bulk-operation read hardening follow-up.**
+
+Accepted in this follow-up:
+
+- covered `bulk-import` and `bulk-edit` reads now have explicit checked-in protected-read inventory coverage
+- covered bulk operation route families are now human-only
+- viewer and reviewer are denied covered bulk reads while editor access remains intact
+- API-key principals can no longer inherit covered human bulk-operation route access
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- this does not complete full import, export, or bulk policy maturity
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only notifications and compliance workflow boundaries, human-only connector, marketplace, and covered bulk-operation workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Audit Read Human-Only Boundary
+
+Decision: **Conditionally accepted for the bounded audit read boundary follow-up.**
+
+Accepted in this follow-up:
+
+- the audit read family is now human-only
+- viewer, reviewer, and editor are denied audit-log reads while admin access remains intact
+- API-key principals can no longer inherit covered audit-route access
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only audit, notifications, and compliance workflow boundaries, human-only connector, marketplace, and covered bulk-operation workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Submission Read Human-Only Boundary
+
+Decision: **Conditionally accepted for the bounded submission read boundary follow-up.**
+
+Accepted in this follow-up:
+
+- the submission read family is now human-only
+- API-key principals can no longer inherit covered submission-route access
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only audit, notifications, compliance workflow, and submission boundaries, human-only connector, marketplace, and covered bulk-operation workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: AI Helper Human-Only Boundary
+
+Decision: **Conditionally accepted for the bounded AI-helper boundary follow-up.**
+
+Accepted in this follow-up:
+
+- the covered AI-helper read family is now human-only
+- API-key principals can no longer inherit covered AI-helper route access
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only audit, notifications, compliance workflow, submission, and AI-helper boundaries, human-only connector, marketplace, and covered bulk-operation workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Follow-Up: Billing Detail Read Inventory Closure
+
+Decision: **Conditionally accepted for the bounded billing detail read inventory follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /billing/plan-profile` and `GET /billing/upgrade-request` are now explicitly represented in the sensitive-read guard inventory
+- viewer, reviewer, and editor denial is proven on the covered admin-only billing detail reads
+- admin allow is proven on the covered admin-only billing detail reads
+- API-key principals are proven denied on the covered billing detail read routes
+- the focused remediation suite, delegated-access scope suite, API build, web build, increment gate, sprint gate, staging workflow validator, and checked-in staging postdeploy harness all passed after the follow-up
+
+Still not accepted as complete:
+
+- broader authenticated read inventory still needs final PO classification outside the already-covered surfaces
+- universal read-time redaction remains incomplete outside covered catalog and `dashboard/health` responses
+- unsupported scope dimensions such as `vendor/owner`, `supplier`, `locale/market`, `catalog`, `team`, and `assignee`
+- full API-client permission and scope modeling beyond the covered human-route boundaries
+- multi-role migration foundation
+- product-admin/system-admin/super-admin boundary maturity
+- any `category_manager` or `vendor` role introduction
+
+Updated claim wording:
+
+> Vexa PIM now has verified access-policy hardening, selected sensitive-read protection including covered catalog, AI helper, billing usage, admin-only billing detail reads, covered self-service auth reads, dashboard readiness, dashboard catalog-health, dashboard health with role-aware redaction, dashboard operations summary, metrics KPI trend routes, compliance rule reads, human-only audit, notifications, compliance workflow, submission, and AI-helper boundaries, human-only connector, marketplace, and covered bulk-operation workspace boundaries, explicit broad-read classification for the covered authenticated read surfaces, restricted connector-management writes for viewer and reviewer, partial API-client versus human route separation on covered surfaces, shadow-mode policy evaluation under legacy RBAC authority, and supported delegated-access enforcement for selected scope dimensions. It is not yet a complete enterprise authorization model across all fields, scopes, API-client principals, and role-maturity requirements.
+
+## 2026-04-27 PO Checkpoint: Foundation Pass To Stop the Blocker Loop
+
+Decision: **Conditionally accepted for the policy-foundation baseline pass.**
+
+Accepted in this follow-up:
+
+- authenticated read coverage is no longer tracked only by a curated route list; the guardrail now auto-discovers authenticated routes and fails when authenticated `GET` or `HEAD` handlers lack explicit classification metadata
+- API-client policy is no longer only a deny-annotation pattern; covered authenticated routes now declare an API-client route policy and API keys are denied by default unless a route explicitly allows API-client access
+- future delegated scope dimensions `vendor`, `owner`, `supplier`, `locale`, `market`, `catalog`, `team`, and `assignee` are now representable in the schema and DTO contract and safely rejected until enforcement exists
+- multi-role migration has a real code-level foundation through deterministic role-resolution helpers that preserve single-role behavior, define explicit precedence, and keep API keys from inheriting human admin-boundary privileges
+- Product Admin, System Admin, and Super Admin boundaries now exist as tested capability helpers even though live route enforcement is still rollout-pending
+- central read-redaction infrastructure is more reusable because route-level read policies now flow through a global interceptor and notifications metadata now uses the shared redaction path
+
+Still not accepted as complete:
+
+- runtime deny of unclassified authenticated reads is not globally enabled yet; this pass enforces classification in guardrails and gates, not universal runtime lockout
+- full API-client permission and scope modeling remains incomplete beyond the new default-deny route policy baseline
+- future scope dimensions are representable and safely rejected, but not yet enforced for real delegated-access use cases
+- multi-role storage rollout is still pending; the first attempt to add persistent role arrays was intentionally backed out after integration proof showed it was unsafe without database rollout sequencing
+- Product Admin, System Admin, and Super Admin route mapping and full boundary maturity remain incomplete
+- universal read-time redaction is still partial beyond the covered catalog, dashboard-health, and notifications families
+- `category_manager` and `vendor` remain blocked because object ownership and scope enforcement are still not proven
+
+Updated claim wording:
+
+> Vexa PIM now has policy-foundation enforcement for authenticated-read classification and API-client route policy coverage in CI and gate validation, explicit default-deny API-key behavior on unclassified human routes, representable-but-safely-rejected future scope dimensions, deterministic multi-role and admin-boundary helper foundations, shadow-mode policy evaluation under legacy RBAC authority, and reusable central read-redaction infrastructure extended beyond catalog and dashboard into notifications. It still does not have full enterprise authorization maturity across runtime classification enforcement, all scope dimensions, API-client permission modeling, multi-role storage rollout, admin-boundary route mapping, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Runtime Classification Enforcement
+
+Decision: **Conditionally accepted for the bounded runtime-enforcement follow-up.**
+
+Accepted in this follow-up:
+
+- authenticated-read classification is now enforced at runtime by default, not only by CI and gate validation
+- unclassified authenticated reads now fail closed
+- classified authenticated reads remain allowed
+- public routes remain unaffected
+- API-client default deny remained intact under the stronger runtime rule
+- the reusable PO backlog prompt now points future work toward the remaining foundation-level blockers instead of another controller-by-controller loop
+
+Still not accepted as complete:
+
+- full API-client permission and scope modeling remains incomplete
+- future scope dimensions are still representable plus safely rejected, not yet fully enforced
+- multi-role storage rollout remains incomplete
+- Product Admin, System Admin, and Super Admin route enforcement maturity remains incomplete
+- broader reusable payload redaction remains incomplete
+- `category_manager` and `vendor` remain blocked because ownership and object-scope enforcement are still not proven
+
+Updated claim wording:
+
+> Vexa PIM now enforces authenticated-read classification both in CI/gates and at runtime, keeps API keys default-denied unless a route explicitly opts into API-client access, and preserves the previously validated policy-foundation behavior for scope handling, role helpers, and central redaction. It still does not have full enterprise authorization maturity across machine-principal permission modeling, full scope-dimension enforcement, multi-role storage rollout, admin-boundary route mapping, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Explicit API-Client Scope Model
+
+Decision: **Conditionally accepted for the bounded machine-principal scope follow-up.**
+
+Accepted in this follow-up:
+
+- API-client authorization moved beyond route-level default deny for the catalog API family
+- machine principals now require explicit matching scopes such as `catalog.read` or `catalog.write`
+- missing scopes, unrelated scopes, and unsupported future scopes now deny safely
+- API keys cannot rely on human role fallback to reach scope-gated catalog routes
+- the scope rollout is additive and migration-backed through `ApiAccessKey.scopes`
+
+Still not accepted as complete:
+
+- the explicit machine-principal scope model is not yet mapped across every future API-client-capable resource family
+- future delegated scope dimensions are still representable plus safely rejected, not yet fully enforced
+- multi-role persistence rollout remains incomplete
+- Product Admin, System Admin, and Super Admin route enforcement maturity remains incomplete
+- broader reusable payload redaction remains incomplete
+- `category_manager` and `vendor` remain blocked because ownership and object-scope enforcement are still not proven
+
+Updated claim wording:
+
+> Vexa PIM now enforces explicit machine-principal scopes for the catalog API family, persists API-key scopes through a migration-backed additive rollout, denies missing or unrelated API-client scopes safely, and preserves default-deny behavior for human-only routes. It still does not have full enterprise authorization maturity across all machine-principal resources, future scope-dimension enforcement, multi-role persistence, admin-boundary route mapping, or universal payload redaction.

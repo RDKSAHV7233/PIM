@@ -1,10 +1,14 @@
 import { Controller, Get, Header, Query, Res } from "@nestjs/common";
 import { FastifyReply } from "fastify";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { AuditService } from "./audit.service";
 import { ListAuditEventsDto } from "./dto/list-audit-events.dto";
 
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("audit")
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}

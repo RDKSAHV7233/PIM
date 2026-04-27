@@ -1,9 +1,13 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
 import { OndcService } from "./ondc.service";
 
 @Controller("ondc")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Roles("admin")
 export class OndcController {
   constructor(private readonly ondcService: OndcService) {}

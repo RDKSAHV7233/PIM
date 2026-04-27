@@ -3,16 +3,42 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../../audit/audit.service";
 import { parseMarketplaceChannel, type MarketplaceChannel } from "../../marketplace/marketplace-channels";
 import { PrismaService } from "../../prisma/prisma.service";
+import {
+  type AuthenticatedReadClassification,
+  READ_ACCESS_POLICY_REASON_CODES,
+  type ReadAccessPolicyId,
+  readAccessPolicyReasonCode,
+} from "../rbac/read-access-policy.decorator";
+import {
+  normalizeApiClientScopes,
+  type ApiClientRoutePolicy,
+  type ApiClientScope,
+} from "../rbac/api-client-policy.decorator";
 import { AppRole, APP_ROLES } from "../rbac/roles";
 
 export type PolicyActor = {
   actorId?: string | null;
   actorRole?: AppRole | null;
   tenantId?: string | null;
+  actorType?: PolicyActorType | null;
+  apiScopes?: string[] | null;
 };
 
+export type PolicyActorType = "human" | "api_client" | "system";
 export type ScopeAssignmentSubjectType = "user" | "role";
-export type ScopeAssignmentType = "category" | "brand" | "channel" | "connector_account";
+export type ScopeAssignmentType =
+  | "category"
+  | "brand"
+  | "channel"
+  | "connector_account"
+  | "vendor"
+  | "owner"
+  | "supplier"
+  | "locale"
+  | "market"
+  | "catalog"
+  | "team"
+  | "assignee";
 export type ScopeAction =
   | "view"
   | "create"
@@ -39,6 +65,31 @@ type DenyInput = {
   resource: string;
   resourceId?: string | null;
   fields?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type PolicyDecision = {
+  allowed: boolean;
+  reasonCode: string;
+  actorType: PolicyActorType;
+  action: string;
+  resource: string;
+  resourceId?: string | null;
+  tenantId?: string | null;
+  context?: Record<string, unknown>;
+};
+
+export type AccessPolicyDecisionContext = {
+  method?: string | null;
+  path?: string | null;
+  requiredRoles?: readonly AppRole[] | null;
+  defaultReadAllowed?: boolean;
+  defaultWriteRoles?: readonly AppRole[] | null;
+  disallowApiClient?: boolean;
+  readAccessPolicy?: ReadAccessPolicyId | null;
+  readClassification?: AuthenticatedReadClassification | null;
+  apiClientPolicy?: ApiClientRoutePolicy | null;
+  requiredApiClientScopes?: readonly ApiClientScope[] | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -82,6 +133,36 @@ type ConnectorScopeCandidate = {
   accountAlias?: string | null;
 };
 
+type DashboardHealthSnapshotPayload = {
+  capturedAt: string;
+  totalSkus: number;
+  completeSkus: number;
+  incompleteSkus: number;
+  publishReadyByConnector: Record<string, number>;
+  blockedByConnector: Record<string, number>;
+  rejectionRiskHigh: number;
+  openIssuesBlocking: number;
+  openIssuesWarning: number;
+};
+
+type DashboardHealthPayload = {
+  snapshot: DashboardHealthSnapshotPayload;
+  trend: DashboardHealthSnapshotPayload[];
+  asOf: string;
+  pendingApprovals: number;
+  publishReadyTotal?: number;
+  blockedTotal?: number;
+  redactedSections?: string[];
+};
+
+type CatalogStatsPayload = {
+  categories: number;
+  products: number;
+  variants: number;
+  pendingApprovals: number;
+  redactedSections?: string[];
+};
+
 const RESTRICTED_VARIANT_FIELDS = ["sku", "mrp", "sellingPrice", "inventoryQty", "status"] as const;
 const RESTRICTED_PRODUCT_ATTRIBUTE_FIELDS = [
   "pricing.mrp",
@@ -92,6 +173,20 @@ const RESTRICTED_PRODUCT_ATTRIBUTE_FIELDS = [
   "price",
   "cost",
   "sku",
+  "inventoryQty",
+] as const;
+const RESTRICTED_PRODUCT_READ_ATTRIBUTE_FIELDS = [
+  "pricing.mrp",
+  "pricing.sellingPrice",
+  "pricing.cost",
+  "pricing.margin",
+  "pricing.inventoryQty",
+  "mrp",
+  "sellingPrice",
+  "selling_price",
+  "price",
+  "cost",
+  "margin",
   "inventoryQty",
 ] as const;
 const RESTRICTED_BULK_EDIT_FIELDS = ["status"] as const;
@@ -115,6 +210,27 @@ const SCOPE_ACTIONS: readonly ScopeAction[] = [
   "manage_settings",
   "view_audit_logs",
 ] as const;
+const SUPPORTED_SCOPE_ASSIGNMENT_TYPES: readonly ScopeAssignmentType[] = ["category", "brand", "channel", "connector_account"] as const;
+const FOUNDATION_SCOPE_ASSIGNMENT_TYPES: readonly ScopeAssignmentType[] = [
+  "vendor",
+  "owner",
+  "supplier",
+  "locale",
+  "market",
+  "catalog",
+  "team",
+  "assignee",
+] as const;
+const NOTIFICATION_METADATA_ALLOWLIST = new Set([
+  "productId",
+  "bulkJobId",
+  "exportJobId",
+  "channel",
+  "status",
+  "failedRows",
+  "deadLetterRows",
+  "totalRows",
+]);
 
 function normalizeSubjectType(value: string | null | undefined): ScopeAssignmentSubjectType {
   return String(value ?? "").trim().toLowerCase() === "role" ? "role" : "user";
@@ -122,7 +238,20 @@ function normalizeSubjectType(value: string | null | undefined): ScopeAssignment
 
 function normalizeScopeType(value: string | null | undefined): ScopeAssignmentType {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "category" || normalized === "brand" || normalized === "channel" || normalized === "connector_account") {
+  if (
+    normalized === "category" ||
+    normalized === "brand" ||
+    normalized === "channel" ||
+    normalized === "connector_account" ||
+    normalized === "vendor" ||
+    normalized === "owner" ||
+    normalized === "supplier" ||
+    normalized === "locale" ||
+    normalized === "market" ||
+    normalized === "catalog" ||
+    normalized === "team" ||
+    normalized === "assignee"
+  ) {
     return normalized;
   }
   throw new NotFoundException("Unsupported scope type.");
@@ -159,6 +288,14 @@ function normalizeRole(value: string | null | undefined): AppRole {
   return "viewer";
 }
 
+function normalizeActorType(value: PolicyActorType | string | null | undefined): PolicyActorType {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "api_client" || normalized === "system") {
+    return normalized;
+  }
+  return "human";
+}
+
 function normalizeBrand(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -192,6 +329,129 @@ export class AccessPolicyService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
+
+  can(
+    actor: PolicyActor,
+    action: string,
+    resource: string,
+    context: AccessPolicyDecisionContext = {},
+  ): PolicyDecision {
+    const actorRole = normalizeRole(actor.actorRole);
+    const actorType = normalizeActorType(actor.actorType);
+    const requiredRoles = Array.isArray(context.requiredRoles) ? context.requiredRoles : [];
+    const method = String(context.method ?? "").trim().toUpperCase();
+    const defaultReadAllowed = context.defaultReadAllowed === true;
+    const defaultWriteRoles = Array.isArray(context.defaultWriteRoles) ? context.defaultWriteRoles : [];
+    const readAccessPolicy = this.normalizeReadAccessPolicy(context.readAccessPolicy);
+    const readClassification = context.readClassification ?? null;
+    const apiClientPolicy = context.apiClientPolicy ?? null;
+    const requiredApiClientScopes = Array.isArray(context.requiredApiClientScopes)
+      ? normalizeApiClientScopes(context.requiredApiClientScopes)
+      : [];
+    const grantedApiClientScopes = normalizeApiClientScopes(actor.apiScopes ?? []);
+
+    if (actorType === "api_client") {
+      if (apiClientPolicy === "allowed_with_api_scope") {
+        if (requiredApiClientScopes.length === 0) {
+          return this.buildDecision(false, "API_CLIENT_SCOPE_REQUIRED", actor, actorType, action, resource, context);
+        }
+        const allowed = requiredApiClientScopes.some((scope) => grantedApiClientScopes.includes(scope));
+        if (!allowed) {
+          return this.buildDecision(false, "API_CLIENT_SCOPE_FORBIDDEN", actor, actorType, action, resource, context);
+        }
+      } else if (apiClientPolicy === "allowed_service_internal") {
+        return this.buildDecision(false, "API_CLIENT_SERVICE_INTERNAL_ONLY", actor, actorType, action, resource, context);
+      } else if (apiClientPolicy === "not_applicable") {
+        return this.buildDecision(false, "API_CLIENT_NOT_APPLICABLE", actor, actorType, action, resource, context);
+      } else if (requiredApiClientScopes.length > 0) {
+        return this.buildDecision(false, "API_CLIENT_SCOPE_NOT_APPLICABLE", actor, actorType, action, resource, context);
+      } else if (context.disallowApiClient || apiClientPolicy === "denied_human_only" || apiClientPolicy === null) {
+        return this.buildDecision(false, "API_CLIENT_FORBIDDEN", actor, actorType, action, resource, context);
+      }
+    }
+
+    if (requiredRoles.length > 0) {
+      return this.buildDecision(
+        requiredRoles.includes(actorRole),
+        requiredRoles.includes(actorRole) ? "ROLE_ALLOWED" : "ROLE_FORBIDDEN",
+        actor,
+        actorType,
+        action,
+        resource,
+        context,
+      );
+    }
+
+    if (readAccessPolicy && (method === "GET" || method === "HEAD" || method === "OPTIONS")) {
+      return this.buildDecision(
+        true,
+        readAccessPolicyReasonCode(readAccessPolicy),
+        actor,
+        actorType,
+        action,
+        resource,
+        context,
+      );
+    }
+
+    if (readClassification && (method === "GET" || method === "HEAD" || method === "OPTIONS")) {
+      return this.buildDecision(
+        true,
+        `READ_CLASSIFIED_${String(readClassification).toUpperCase()}`,
+        actor,
+        actorType,
+        action,
+        resource,
+        context,
+      );
+    }
+
+    if (defaultReadAllowed && (method === "GET" || method === "HEAD" || method === "OPTIONS")) {
+      return this.buildDecision(true, "DEFAULT_READ_ALLOWED", actor, actorType, action, resource, context);
+    }
+
+    if (defaultWriteRoles.length > 0) {
+      return this.buildDecision(
+        defaultWriteRoles.includes(actorRole),
+        defaultWriteRoles.includes(actorRole) ? "DEFAULT_WRITE_ALLOWED" : "WRITE_ROLE_REQUIRED",
+        actor,
+        actorType,
+        action,
+        resource,
+        context,
+      );
+    }
+
+    return this.buildDecision(false, "NO_POLICY_MATCH", actor, actorType, action, resource, context);
+  }
+
+  async recordShadowMismatch(input: {
+    actor: PolicyActor;
+    legacyDecision: PolicyDecision;
+    policyDecision: PolicyDecision;
+  }): Promise<void> {
+    await this.auditService.record({
+      actorId: input.actor.actorId ?? "unknown",
+      actorRole: input.actor.actorRole ?? "viewer",
+      action: "POLICY_SHADOW_MISMATCH",
+      resource: input.policyDecision.resource,
+      resourceId: input.policyDecision.resourceId ?? undefined,
+      tenantKey: input.actor.tenantId ?? undefined,
+      metadata: {
+        result: "shadow_mismatch",
+        tenantId: input.actor.tenantId ?? null,
+        action: input.policyDecision.action,
+        resource: input.policyDecision.resource,
+        path: input.policyDecision.context?.path ?? null,
+        method: input.policyDecision.context?.method ?? null,
+        legacyAllowed: input.legacyDecision.allowed,
+        legacyReasonCode: input.legacyDecision.reasonCode,
+        policyAllowed: input.policyDecision.allowed,
+        policyReasonCode: input.policyDecision.reasonCode,
+        actorType: input.policyDecision.actorType,
+      },
+    });
+  }
 
   async listScopeAssignments(
     tenantId: string,
@@ -304,6 +564,15 @@ export class AccessPolicyService {
     let categoryId: string | null = null;
     let connectorInstallationId: string | null = null;
     let scopeValue: string | null = null;
+
+    if (FOUNDATION_SCOPE_ASSIGNMENT_TYPES.includes(scopeType)) {
+      throw new ForbiddenException({
+        error: "ACCESS_SCOPE_DIMENSION_REQUIRES_ENFORCEMENT",
+        scopeType,
+        supportedForStorage: true,
+        supportedForEnforcement: false,
+      });
+    }
 
     if (scopeType === "category") {
       categoryId = String(input.categoryId ?? "").trim();
@@ -794,8 +1063,225 @@ export class AccessPolicyService {
     });
   }
 
+  redactProductReadPayload<T extends Record<string, unknown>>(actor: PolicyActor, product: T): T {
+    if (this.canReadSensitiveProductFields(actor)) {
+      return product;
+    }
+    const redacted = { ...product } as Record<string, unknown>;
+    if ("attributes" in redacted) {
+      redacted.attributes = this.redactSensitiveAttributeFields(redacted.attributes);
+    }
+    if (Array.isArray(redacted.variants)) {
+      redacted.variants = redacted.variants.map((variant) =>
+        this.redactVariantReadPayload(actor, this.asRecord(variant)),
+      );
+    }
+    return redacted as T;
+  }
+
+  redactVariantReadPayload<T extends Record<string, unknown>>(actor: PolicyActor, variant: T): T {
+    if (this.canReadSensitiveProductFields(actor)) {
+      return variant;
+    }
+    const redacted = { ...variant } as Record<string, unknown>;
+    delete redacted.mrp;
+    delete redacted.sellingPrice;
+    delete redacted.inventoryQty;
+    if ("attributes" in redacted) {
+      redacted.attributes = this.redactSensitiveAttributeFields(redacted.attributes);
+    }
+    return redacted as T;
+  }
+
+  redactDashboardHealthResponse<T extends DashboardHealthPayload>(actor: PolicyActor, health: T): T {
+    const publishReadyTotal = this.sumNumberRecord(health.snapshot.publishReadyByConnector);
+    const blockedTotal = this.sumNumberRecord(health.snapshot.blockedByConnector);
+    const redactedSections = new Set(Array.isArray(health.redactedSections) ? health.redactedSections : []);
+    const redacted: DashboardHealthPayload = {
+      ...health,
+      publishReadyTotal,
+      blockedTotal,
+      snapshot: { ...health.snapshot },
+      trend: Array.isArray(health.trend) ? health.trend.map((entry) => ({ ...entry })) : [],
+      redactedSections: [],
+    };
+
+    if (!this.canReadConnectorBreakdown(actor)) {
+      redacted.snapshot.publishReadyByConnector = {};
+      redacted.snapshot.blockedByConnector = {};
+      redacted.trend = redacted.trend.map((entry) => ({
+        ...entry,
+        publishReadyByConnector: {},
+        blockedByConnector: {},
+      }));
+      redactedSections.add("connector_breakdown");
+    }
+
+    if (!this.canReadApprovalQueue(actor)) {
+      redacted.pendingApprovals = 0;
+      redactedSections.add("approval_queue");
+    }
+
+    redacted.redactedSections = Array.from(redactedSections);
+    return redacted as T;
+  }
+
+  redactCatalogStatsResponse<T extends CatalogStatsPayload>(actor: PolicyActor, stats: T): T {
+    const redactedSections = new Set(Array.isArray(stats.redactedSections) ? stats.redactedSections : []);
+    const redacted: CatalogStatsPayload = {
+      ...stats,
+      redactedSections: [],
+    };
+
+    if (!this.canReadApprovalQueue(actor)) {
+      redacted.pendingApprovals = 0;
+      redactedSections.add("approval_queue");
+    }
+
+    redacted.redactedSections = Array.from(redactedSections);
+    return redacted as T;
+  }
+
+  redactCatalogSearchResults<
+    T extends {
+      matchedSku?: string | null;
+    },
+  >(actor: PolicyActor, results: T[]): T[] {
+    if (this.canReadSensitiveProductFields(actor)) {
+      return results;
+    }
+    return results.map((result) => {
+      const redacted = { ...result };
+      delete redacted.matchedSku;
+      return redacted;
+    });
+  }
+
+  redactNotificationResponse<T extends { items?: unknown[]; metadata?: unknown }>(actor: PolicyActor, payload: T): T {
+    if (this.canReadSensitiveProductFields(actor)) {
+      return payload;
+    }
+    const record = this.asRecord(payload);
+    if (Array.isArray(record.items)) {
+      return {
+        ...(record as Record<string, unknown>),
+        items: record.items.map((item) => this.redactNotificationItem(item)),
+      } as T;
+    }
+    return this.redactNotificationItem(payload) as T;
+  }
+
+  applyReadResponsePolicy<T>(actor: PolicyActor, policy: ReadAccessPolicyId, payload: T): T {
+    switch (policy) {
+      case "catalog_stats_redacted":
+        return this.redactCatalogStatsResponse(actor, payload as CatalogStatsPayload) as T;
+      case "catalog_products_redacted": {
+        if (Array.isArray(payload)) {
+          return payload.map((item) => this.redactProductReadPayload(actor, this.asRecord(item))) as T;
+        }
+        const asRecord = this.asRecord(payload);
+        if (Array.isArray(asRecord.items)) {
+          return {
+            ...(asRecord as Record<string, unknown>),
+            items: asRecord.items.map((item) => this.redactProductReadPayload(actor, this.asRecord(item))),
+          } as T;
+        }
+        return payload;
+      }
+      case "catalog_product_detail_redacted":
+        return this.redactProductReadPayload(actor, this.asRecord(payload)) as T;
+      case "catalog_search_redacted":
+        return this.redactCatalogSearchResults(actor, Array.isArray(payload) ? payload : []) as T;
+      case "catalog_variants_redacted": {
+        if (Array.isArray(payload)) {
+          return payload.map((item) => this.redactVariantReadPayload(actor, this.asRecord(item))) as T;
+        }
+        const asRecord = this.asRecord(payload);
+        if (Array.isArray(asRecord.items)) {
+          return {
+            ...(asRecord as Record<string, unknown>),
+            items: asRecord.items.map((item) => this.redactVariantReadPayload(actor, this.asRecord(item))),
+          } as T;
+        }
+        return payload;
+      }
+      case "dashboard_health_redacted":
+        return this.redactDashboardHealthResponse(actor, payload as DashboardHealthPayload) as T;
+      case "notification_self_service":
+        return this.redactNotificationResponse(actor, payload as { items?: unknown[]; metadata?: unknown }) as T;
+      default:
+        return payload;
+    }
+  }
+
   private isAdmin(actor: PolicyActor): boolean {
     return normalizeRole(actor.actorRole) === "admin";
+  }
+
+  private canReadSensitiveProductFields(actor: PolicyActor): boolean {
+    const role = normalizeRole(actor.actorRole);
+    return role === "admin" || role === "editor";
+  }
+
+  private canReadConnectorBreakdown(actor: PolicyActor): boolean {
+    const role = normalizeRole(actor.actorRole);
+    return role === "admin" || role === "editor";
+  }
+
+  private canReadApprovalQueue(actor: PolicyActor): boolean {
+    const role = normalizeRole(actor.actorRole);
+    return role === "admin" || role === "editor" || role === "reviewer";
+  }
+
+  private redactSensitiveAttributeFields(input: unknown): Record<string, unknown> {
+    const attributes = this.asRecord(input);
+    const redacted = { ...attributes };
+    for (const field of RESTRICTED_PRODUCT_READ_ATTRIBUTE_FIELDS) {
+      if (!field.includes(".")) {
+        delete redacted[field];
+      }
+    }
+    const pricing = this.asRecord(redacted.pricing);
+    if (Object.keys(pricing).length > 0) {
+      const nextPricing = { ...pricing };
+      delete nextPricing.mrp;
+      delete nextPricing.sellingPrice;
+      delete nextPricing.cost;
+      delete nextPricing.margin;
+      delete nextPricing.inventoryQty;
+      if (Object.keys(nextPricing).length > 0) {
+        redacted.pricing = nextPricing;
+      } else {
+        delete redacted.pricing;
+      }
+    }
+    return redacted;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  }
+
+  private sumNumberRecord(value: Record<string, number> | null | undefined): number {
+    return Object.values(this.asNumberRecord(value)).reduce((sum, count) => sum + count, 0);
+  }
+
+  private asNumberRecord(value: unknown): Record<string, number> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+    const record = value as Record<string, unknown>;
+    const normalized: Record<string, number> = {};
+    for (const [key, entry] of Object.entries(record)) {
+      const next = Number(entry ?? 0);
+      if (Number.isFinite(next)) {
+        normalized[key] = next;
+      }
+    }
+    return normalized;
   }
 
   private buildBrandScopeWhere(brands: string[]): Prisma.ProductWhereInput {
@@ -969,5 +1455,61 @@ export class AccessPolicyService {
       resourceId: input.resourceId ?? null,
       fields: input.fields ?? [],
     });
+  }
+
+  private buildDecision(
+    allowed: boolean,
+    reasonCode: string,
+    actor: PolicyActor,
+    actorType: PolicyActorType,
+    action: string,
+    resource: string,
+    context: AccessPolicyDecisionContext,
+  ): PolicyDecision {
+    return {
+      allowed,
+      reasonCode,
+      actorType,
+      action,
+      resource,
+      resourceId: typeof context.metadata?.resourceId === "string" ? context.metadata.resourceId : null,
+      tenantId: actor.tenantId ?? null,
+      context: {
+        method: context.method ?? null,
+        path: context.path ?? null,
+        requiredRoles: Array.isArray(context.requiredRoles) ? [...context.requiredRoles] : [],
+        defaultReadAllowed: context.defaultReadAllowed === true,
+        defaultWriteRoles: Array.isArray(context.defaultWriteRoles) ? [...context.defaultWriteRoles] : [],
+        readAccessPolicy: this.normalizeReadAccessPolicy(context.readAccessPolicy),
+        readClassification: context.readClassification ?? null,
+        apiClientPolicy: context.apiClientPolicy ?? null,
+        ...(context.metadata ?? {}),
+      },
+    };
+  }
+
+  private normalizeReadAccessPolicy(value: ReadAccessPolicyId | string | null | undefined): ReadAccessPolicyId | null {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) {
+      return null;
+    }
+    return Object.prototype.hasOwnProperty.call(READ_ACCESS_POLICY_REASON_CODES, normalized)
+      ? (normalized as ReadAccessPolicyId)
+      : null;
+  }
+
+  private redactNotificationItem<T>(value: T): T {
+    const item = this.asRecord(value);
+    const metadata = this.asRecord(item.metadata);
+    const nextMetadata: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(metadata)) {
+      if (NOTIFICATION_METADATA_ALLOWLIST.has(key)) {
+        nextMetadata[key] = entry;
+      }
+    }
+    return {
+      ...(item as Record<string, unknown>),
+      metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : null,
+    } as T;
   }
 }

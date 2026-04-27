@@ -2,6 +2,8 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Header,
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { AuditService } from "../audit/audit.service";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { Public } from "../auth/public.decorator";
@@ -30,6 +32,7 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 @Controller("billing")
+@DisallowApiClient()
 @ApiTags("Billing")
 export class BillingController {
   constructor(
@@ -40,6 +43,8 @@ export class BillingController {
   ) {}
 
   @Get("usage")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Get current tenant plan usage" })
   @ApiResponse({ status: 200, description: "Plan usage fetched", type: PlanUsageSummaryDto })
   usage() {
@@ -47,6 +52,7 @@ export class BillingController {
   }
 
   @Get("plan-profile")
+  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
   @Roles("admin")
   @ApiOperation({ summary: "Get current tenant plan profile" })
   @ApiResponse({ status: 200, description: "Tenant plan profile fetched", type: PlanProfileSummaryDto })
@@ -91,6 +97,7 @@ export class BillingController {
   }
 
   @Get("upgrade-request")
+  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
   @Roles("admin")
   @ApiOperation({ summary: "Get current open upgrade request for this tenant" })
   @ApiResponse({ status: 200, description: "Current open upgrade request fetched", type: PlanUpgradeRequestLookupDto })

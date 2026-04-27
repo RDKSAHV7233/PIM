@@ -1,9 +1,15 @@
 import { Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { Roles } from "../common/rbac/roles";
 import { MarketplaceService } from "./marketplace.service";
 
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("submissions")
+@Roles("admin", "editor")
 @ApiTags("Marketplace")
 export class SubmissionsController {
   constructor(private readonly marketplaceService: MarketplaceService) {}

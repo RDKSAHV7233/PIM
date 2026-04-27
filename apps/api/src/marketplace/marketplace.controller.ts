@@ -6,6 +6,8 @@ import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { BatchMarketplaceReadinessDto } from "./dto/batch-marketplace-readiness.dto";
@@ -30,6 +32,8 @@ import { DEFAULT_MARKETPLACE_CHANNEL } from "./marketplace-channels";
 import { MarketplaceService } from "./marketplace.service";
 
 @Controller("marketplace")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @ApiTags("Marketplace")
 export class MarketplaceController {
   constructor(

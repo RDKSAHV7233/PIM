@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RecordStatus, RuleSeverity, RuleType, ValidationIssueStatus } from "@prisma/client";
+import { AccessPolicyService, type PolicyActor } from "../common/access-policy/access-policy.service";
 import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
@@ -65,7 +66,10 @@ type IssueInboxRecord = Prisma.ValidationIssueGetPayload<{ select: typeof ISSUE_
 
 @Injectable()
 export class ComplianceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
 
   async listRules(categoryId?: string) {
     return this.prisma.tenant().complianceRule.findMany({
@@ -121,25 +125,38 @@ export class ComplianceService {
     await this.prisma.tenant().complianceRule.delete({ where: { id: ruleId } });
   }
 
-  async getProductIssues(productId: string) {
-    await this.requireProduct(productId);
+  async getProductIssues(productId: string, actor?: PolicyActor) {
+    const product = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product, "ValidationIssue");
     return this.prisma.tenant().validationIssue.findMany({
       where: { productId, status: ValidationIssueStatus.open },
       orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
     });
   }
 
-  async listIssueInbox(query: IssueInboxQueryDto) {
+  async listIssueInbox(query: IssueInboxQueryDto, actor?: PolicyActor) {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const limit = resolveCursorLimit(query.limit);
     const cursor = this.decodeIssueInboxCursor(query.cursor);
-    const installationProductIds = query.installationId
-      ? await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
-          where: { installationId: query.installationId },
-          select: { productId: true },
-          distinct: ["productId"],
-        })
-      : [];
+    let installationProductIds: Array<{ productId: string }> = [];
+    if (query.installationId) {
+      const installation = await this.loadInstallationScopeCandidate(tenantKey, query.installationId);
+      if (!installation) {
+        return this.buildEmptyIssueInboxResult(tenantKey, limit);
+      }
+      await this.accessPolicy.assertConnectorInstallationAccess(actor ?? {}, "view", {
+        installationId: installation.id,
+        connectorSlug: installation.connectorSlug,
+        accountAlias: installation.accountAlias,
+        resource: "ConnectorInstallation",
+      });
+      installationProductIds = await this.prisma.tenant(tenantKey).connectorSubmission.findMany({
+        where: { installationId: query.installationId },
+        select: { productId: true },
+        distinct: ["productId"],
+      });
+    }
+    const productScopeWhere = await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "view");
 
     const filters: Prisma.ValidationIssueWhereInput[] = [
       { status: ValidationIssueStatus.open },
@@ -165,17 +182,12 @@ export class ComplianceService {
     if (query.installationId) {
       const productIds = installationProductIds.map((row) => row.productId);
       if (productIds.length === 0) {
-        const summary = await this.buildIssueInboxSummary(tenantKey);
-        return {
-          items: [],
-          nextCursor: null,
-          limit,
-          resolvedToday: summary.resolvedToday,
-          resolvedYesterday: summary.resolvedYesterday,
-          trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
-        };
+        return this.buildEmptyIssueInboxResult(tenantKey, limit);
       }
       filters.push({ productId: { in: productIds } });
+    }
+    if (productScopeWhere) {
+      filters.push({ product: productScopeWhere });
     }
 
     const cursorWhere = this.buildIssueInboxCursorWhere(cursor);
@@ -212,7 +224,7 @@ export class ComplianceService {
     };
   }
 
-  async resolveIssueInboxWarnings(issueIds: string[]) {
+  async resolveIssueInboxWarnings(issueIds: string[], actor?: PolicyActor) {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const uniqueIssueIds = Array.from(
       new Set(
@@ -234,6 +246,14 @@ export class ComplianceService {
         id: true,
         severity: true,
         status: true,
+        productId: true,
+        product: {
+          select: {
+            id: true,
+            categoryId: true,
+            brand: true,
+          },
+        },
       },
     });
     const issueMap = new Map(existingIssues.map((issue) => [issue.id, issue]));
@@ -248,6 +268,16 @@ export class ComplianceService {
         skippedMissing += 1;
         continue;
       }
+      await this.accessPolicy.assertProductAccess(
+        actor ?? {},
+        "edit",
+        {
+          id: issue.productId,
+          categoryId: issue.product?.categoryId ?? null,
+          brand: issue.product?.brand ?? null,
+        },
+        "ValidationIssue",
+      );
       if (issue.status !== ValidationIssueStatus.open) {
         skippedAlreadyResolved += 1;
         continue;
@@ -284,7 +314,7 @@ export class ComplianceService {
     };
   }
 
-  async validateAndPersistProduct(productId: string) {
+  async validateAndPersistProduct(productId: string, actor?: PolicyActor) {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: { category: true },
@@ -292,6 +322,7 @@ export class ComplianceService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", product);
 
     const attributes = this.asRecord(product.attributes);
     const issues: IssueDraft[] = [];
@@ -716,6 +747,41 @@ export class ComplianceService {
       }),
       "utf8",
     ).toString("base64url");
+  }
+
+  private async buildEmptyIssueInboxResult(tenantKey: string, limit: number) {
+    const summary = await this.buildIssueInboxSummary(tenantKey);
+    return {
+      items: [],
+      nextCursor: null,
+      limit,
+      resolvedToday: summary.resolvedToday,
+      resolvedYesterday: summary.resolvedYesterday,
+      trend: this.resolveTrend(summary.resolvedToday, summary.resolvedYesterday),
+    };
+  }
+
+  private async loadInstallationScopeCandidate(tenantKey: string, installationId: string) {
+    const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findUnique({
+      where: { id: installationId },
+      select: {
+        id: true,
+        accountAlias: true,
+        connectorId: true,
+      },
+    });
+    if (!installation) {
+      return null;
+    }
+    const definition = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true },
+    });
+    return {
+      id: installation.id,
+      accountAlias: installation.accountAlias,
+      connectorSlug: definition?.slug ?? null,
+    };
   }
 
   private async requireRule(ruleId: string) {

@@ -12,6 +12,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles, type AppRole } from "../common/rbac/roles";
 import { CreateOutboundWebhookDto } from "./dto/create-outbound-webhook.dto";
 import { ListOutboundWebhookDeliveriesDto } from "./dto/list-outbound-webhook-deliveries.dto";
@@ -30,6 +32,8 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 @Controller("admin/webhooks")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Roles("admin")
 export class OutboundWebhooksController {
   constructor(private readonly outboundWebhooksService: OutboundWebhooksService) {}

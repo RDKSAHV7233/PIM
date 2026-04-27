@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Header, Param, Post, Query, Req, Res } from "@nestjs/common";
 import { FastifyReply } from "fastify";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { BulkImportService } from "./bulk-import.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
@@ -10,6 +12,8 @@ import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 import { RequeueDlqDto } from "./dto/requeue-dlq.dto";
 import { SuggestMappingDto } from "./dto/suggest-mapping.dto";
 
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("bulk-import")
 export class BulkImportController {
   constructor(private readonly bulkImportService: BulkImportService) {}

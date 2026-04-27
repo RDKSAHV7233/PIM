@@ -53,7 +53,7 @@ export class CatalogService {
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
-  async stats() {
+  async stats(actor?: ActorContext) {
     const [categories, products, variants, pendingApprovals] = await Promise.all([
       this.prisma.tenant().category.count(),
       this.prisma.tenant().product.count(),
@@ -61,7 +61,11 @@ export class CatalogService {
       this.prisma.tenant().product.count({ where: { status: RecordStatus.in_review } }),
     ]);
 
-    return { categories, products, variants, pendingApprovals };
+    return this.accessPolicy.applyReadResponsePolicy(
+      this.toPolicyActor(actor),
+      "catalog_stats_redacted",
+      { categories, products, variants, pendingApprovals },
+    );
   }
 
   async listProducts(
@@ -75,14 +79,8 @@ export class CatalogService {
       return this.listProductsSlim(pagination, actor);
     }
 
-    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "view",
-    );
+    const policyActor = this.toPolicyActor(actor);
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(policyActor, "view");
 
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
@@ -120,9 +118,14 @@ export class CatalogService {
       const hasNext = products.length > limit;
       const page = hasNext ? products.slice(0, limit) : products;
       const scored = await this.attachCompletenessScores(page);
-      const last = scored[scored.length - 1];
+      const redacted = this.accessPolicy.applyReadResponsePolicy(
+        policyActor,
+        "catalog_products_redacted",
+        scored,
+      );
+      const last = redacted[redacted.length - 1];
       return {
-        items: scored,
+        items: redacted,
         limit,
         nextCursor: hasNext && last
           ? encodeCursorToken({
@@ -142,7 +145,8 @@ export class CatalogService {
       },
       orderBy: [{ updatedAt: "desc" }],
     });
-    return this.attachCompletenessScores(products);
+    const scored = await this.attachCompletenessScores(products);
+    return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_products_redacted", scored);
   }
 
   private async listProductsSlim(pagination?: CursorPaginationQuery, actor?: ActorContext) {
@@ -373,7 +377,7 @@ export class CatalogService {
       }
     }
 
-    return Array.from(productsById.values())
+    const results = Array.from(productsById.values())
       .map((product) => {
         const matchingSku = product.variants.find((variant) =>
           String(variant.skuCode ?? "")
@@ -420,9 +424,19 @@ export class CatalogService {
       })
       .slice(0, safeLimit)
       .map(({ score: _score, ...product }) => product);
+    return this.accessPolicy.applyReadResponsePolicy(
+      {
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        tenantId: actor?.tenantId,
+      },
+      "catalog_search_redacted",
+      results,
+    );
   }
 
   async getProduct(productId: string, actor?: ActorContext) {
+    const policyActor = this.toPolicyActor(actor);
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
@@ -434,21 +448,13 @@ export class CatalogService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "view",
-      {
-        id: product.id,
-        categoryId: product.categoryId,
-        brand: product.brand,
-      },
-    );
+    await this.accessPolicy.assertProductAccess(policyActor, "view", {
+      id: product.id,
+      categoryId: product.categoryId,
+      brand: product.brand,
+    });
     const [withScore] = await this.attachCompletenessScores([product]);
-    return withScore;
+    return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_product_detail_redacted", withScore);
   }
 
   async createProduct(dto: CreateProductDto, actor?: ActorContext) {
@@ -715,20 +721,13 @@ export class CatalogService {
     pagination?: CursorPaginationQuery,
     actor?: ActorContext,
   ) {
+    const policyActor = this.toPolicyActor(actor);
     const product = await this.requireProduct(productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "view",
-      {
-        id: product.id,
-        categoryId: product.categoryId,
-        brand: product.brand,
-      },
-    );
+    await this.accessPolicy.assertProductAccess(policyActor, "view", {
+      id: product.id,
+      categoryId: product.categoryId,
+      brand: product.brand,
+    });
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -759,9 +758,14 @@ export class CatalogService {
       });
       const hasNext = variants.length > limit;
       const items = hasNext ? variants.slice(0, limit) : variants;
+      const redactedItems = this.accessPolicy.applyReadResponsePolicy(
+        policyActor,
+        "catalog_variants_redacted",
+        items,
+      );
       const last = items[items.length - 1];
       return {
-        items,
+        items: redactedItems,
         limit,
         nextCursor: hasNext && last
           ? encodeCursorToken({
@@ -771,10 +775,11 @@ export class CatalogService {
           : null,
       };
     }
-    return this.prisma.tenant().variant.findMany({
+    const variants = await this.prisma.tenant().variant.findMany({
       where: { productId },
       orderBy: [{ updatedAt: "desc" }],
     });
+    return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_variants_redacted", variants);
   }
 
   async createVariant(productId: string, dto: CreateVariantDto, actor?: ActorContext) {
@@ -1176,6 +1181,14 @@ export class CatalogService {
       return value as Record<string, unknown>;
     }
     return {};
+  }
+
+  private toPolicyActor(actor?: ActorContext) {
+    return {
+      actorId: actor?.id,
+      actorRole: actor?.role,
+      tenantId: actor?.tenantId,
+    };
   }
 
   private collectChangedRestrictedProductAttributeFields(currentInput: unknown, nextInput: Record<string, unknown>): string[] {

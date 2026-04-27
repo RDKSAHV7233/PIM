@@ -27,8 +27,11 @@ function run() {
   assert(
     source.includes("const connectorEntries = Object.entries(health.snapshot.publishReadyByConnector);") &&
       source.includes("const totalReady = connectorEntries.reduce((sum, [, count]) => sum + count, 0);") &&
-      source.includes("const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);"),
-    "Channels health must derive ready and blocked listing totals from the live dashboard health snapshot.",
+      source.includes("const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);") &&
+      source.includes('const readyListings = typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : totalReady;') &&
+      source.includes('const blockedListings = typeof health.blockedTotal === "number" ? health.blockedTotal : totalBlocked;') &&
+      source.includes('const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;'),
+    "Channels health must derive ready and blocked listing totals from the live dashboard health snapshot while honoring redacted aggregate fallbacks.",
   );
   assert(
     source.includes('label="Ready Listings"') &&
@@ -38,10 +41,13 @@ function run() {
     "Channels health must surface the core readiness and blocking KPI cards.",
   );
   assert(
-    source.includes('title="No channel readiness records yet"') &&
+    source.includes("Per-channel connector breakdown is limited to editor and admin roles.") &&
+      source.includes("The aggregate readiness and blocking") &&
+      source.includes("totals above remain available for read-only quality review.") &&
+      source.includes('title="No channel readiness records yet"') &&
       source.includes('description="Install and configure connectors to start collecting readiness and blocked listing signals."') &&
       source.includes('action={{ label: "Open Connectors", href: "/channels/connectors" }}'),
-    "Channels health must provide an honest empty state that sends operators to connectors setup.",
+    "Channels health must provide an honest restricted fallback and empty state that send operators to the right next step.",
   );
   assert(
     source.includes('const healthTone = blocked > 0 ? "warning" : ready > 0 ? "success" : "neutral";') &&

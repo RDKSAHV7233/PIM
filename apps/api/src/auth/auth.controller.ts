@@ -27,6 +27,8 @@ import { ResendUnlockDto } from "./dto/resend-unlock.dto";
 import { StepUpChallengeDto } from "./dto/step-up.dto";
 import { PimJwtClaims } from "./jwt";
 import { Public } from "./public.decorator";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -37,6 +39,7 @@ interface AuthenticatedRequest extends FastifyRequest {
 }
 
 @Controller("auth")
+@DisallowApiClient()
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -156,6 +159,7 @@ export class AuthController {
   }
 
   @Get("account/privacy-status")
+  @ReadAccessPolicy("account_privacy_self_service")
   @Roles(...APP_ROLES)
   @AllowSuspendedTenant()
   @HttpCode(200)
@@ -178,6 +182,7 @@ export class AuthController {
   }
 
   @Get("account/export/:jobId/download")
+  @ReadAccessPolicy("account_export_download_self_service")
   @Roles(...APP_ROLES)
   @AllowSuspendedTenant()
   async downloadAccountExport(

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { RuleSeverity, ValidationIssueStatus } from "@prisma/client";
+import { AccessPolicyService, type PolicyActor } from "../common/access-policy/access-policy.service";
 import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -7,9 +8,12 @@ type Channel = MarketplaceChannel;
 
 @Injectable()
 export class RejectionIntelligenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicyService: AccessPolicyService,
+  ) {}
 
-  async scoreProduct(productId: string, channelInput: string) {
+  async scoreProduct(productId: string, channelInput: string, actor: PolicyActor) {
     const channel = this.parseChannel(channelInput);
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
@@ -22,6 +26,16 @@ export class RejectionIntelligenceService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    await this.accessPolicyService.assertProductAccess(
+      actor,
+      "view",
+      {
+        id: product.id,
+        categoryId: product.categoryId,
+        brand: product.brand,
+      },
+      "RejectionIntelligenceScore",
+    );
 
     const mediaRows = await this.prisma.tenant().mediaAsset.findMany({
       where: {

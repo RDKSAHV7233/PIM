@@ -10,7 +10,7 @@ import { FastifyRequest } from "fastify";
 import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
 import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
-import { resolveDefaultRole } from "../common/rbac/role-utils";
+import { resolveDefaultRole, resolveEffectiveRoles } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
@@ -26,6 +26,8 @@ interface AuthenticatedRequest extends FastifyRequest {
   pimJwtClaims?: PimJwtClaims;
   pimResolvedApiKey?: ResolvedApiKeyIdentity | null;
   pimAuthType?: "user_jwt" | "api_key";
+  pimEffectiveRoles?: string[];
+  pimApiScopes?: string[];
 }
 
 @Injectable()
@@ -71,9 +73,14 @@ export class JwtAuthGuard implements CanActivate {
         await this.assertTenantAccessActive(tenantId);
       }
       await this.assertUserAccessActive(tenantId, claims.sub);
+      const resolvedRoles = resolveEffectiveRoles({
+        legacyRole: claims.role ?? resolveDefaultRole(),
+        principalType: "human",
+      });
       request.pimUserId = claims.sub;
       request.pimTenant = tenantId;
-      request.pimRole = claims.role ?? resolveDefaultRole();
+      request.pimRole = resolvedRoles.primaryAppRole;
+      request.pimEffectiveRoles = resolvedRoles.foundationRoles;
       request.pimJwtClaims = claims;
       request.pimAuthType = "user_jwt";
       return true;
@@ -87,10 +94,16 @@ export class JwtAuthGuard implements CanActivate {
       }
       const tenantId = normalizeTenantKey(resolved.tenantId);
       await this.assertTenantAccessActive(tenantId);
+      const resolvedRoles = resolveEffectiveRoles({
+        legacyRole: resolved.role ?? resolveDefaultRole(),
+        principalType: "api_client",
+      });
       request.pimUserId = resolved.actorId;
       request.pimTenant = tenantId;
-      request.pimRole = resolved.role ?? resolveDefaultRole();
+      request.pimRole = resolvedRoles.primaryAppRole;
+      request.pimEffectiveRoles = resolvedRoles.foundationRoles;
       request.pimAuthType = "api_key";
+      request.pimApiScopes = resolved.scopes;
       void this.apiKeysService.touchLastUsed(resolved.keyId);
       return true;
     }

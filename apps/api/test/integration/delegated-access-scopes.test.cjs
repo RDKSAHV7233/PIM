@@ -298,7 +298,7 @@ async function run() {
       categoryId: categoryA1.payload.id,
       status: "draft",
       hsnCode: "62046200",
-      gstRate: 18,
+      gstRate: 7,
       attributes: {},
     });
     const productA1Beta = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
@@ -308,7 +308,7 @@ async function run() {
       categoryId: categoryA1.payload.id,
       status: "draft",
       hsnCode: "62046200",
-      gstRate: 18,
+      gstRate: 7,
       attributes: {},
     });
     const productA2Alpha = await apiRequest(baseUrl, "POST", "/catalog/products", adminAToken, {
@@ -471,6 +471,40 @@ async function run() {
     assertStatus(scopeAccountOnly, 201, "create account-only scope assignment");
     assertStatus(scopeTenantB, 201, "create tenant B scope assignment");
 
+    for (const pendingScopeType of ["vendor", "owner", "supplier", "locale", "market", "catalog", "team", "assignee"]) {
+      const pendingScopeAttempt = await apiRequest(baseUrl, "POST", "/admin/workspace/access-scopes", adminAToken, {
+        subjectType: "user",
+        subjectId: comboUser,
+        scopeType: pendingScopeType,
+        scopeValue: `${pendingScopeType}-value`,
+        actions: ["view"],
+      });
+      assertStatusIn(pendingScopeAttempt, [400, 403], `reject pending scope dimension ${pendingScopeType}`);
+      assert(
+        ["ACCESS_SCOPE_DIMENSION_REQUIRES_ENFORCEMENT", "Unsupported scope type."].includes(
+          String(pendingScopeAttempt.payload?.error ?? pendingScopeAttempt.payload?.message ?? ""),
+        ),
+        `expected explicit pending-scope rejection for ${pendingScopeType}, got ${JSON.stringify(pendingScopeAttempt.payload)}`,
+      );
+    }
+
+    const validateScopedProductA1Alpha = await apiRequest(
+      baseUrl,
+      "POST",
+      `/compliance/products/${productA1Alpha.payload.id}/validate`,
+      adminAToken,
+      {},
+    );
+    const validateScopedProductA1Beta = await apiRequest(
+      baseUrl,
+      "POST",
+      `/compliance/products/${productA1Beta.payload.id}/validate`,
+      adminAToken,
+      {},
+    );
+    assertStatus(validateScopedProductA1Alpha, 201, "validate scoped product A1 alpha");
+    assertStatus(validateScopedProductA1Beta, 201, "validate scoped product A1 beta");
+
     const tenantAAssignments = await apiRequest(baseUrl, "GET", "/admin/workspace/access-scopes", adminAToken);
     assertStatus(tenantAAssignments, 200, "list tenant A scope assignments");
     assert(
@@ -528,9 +562,112 @@ async function run() {
     const comboDetailAllowed = await apiRequest(baseUrl, "GET", `/catalog/products/${productA1Alpha.payload.id}`, comboToken);
     const comboDetailCategoryOnlyDenied = await apiRequest(baseUrl, "GET", `/catalog/products/${productA1Beta.payload.id}`, comboToken);
     const comboDetailBrandOnlyDenied = await apiRequest(baseUrl, "GET", `/catalog/products/${productA2Alpha.payload.id}`, comboToken);
+    const comboAliasDetailAllowed = await apiRequest(baseUrl, "GET", `/products/${productA1Alpha.payload.id}`, comboToken);
+    const comboAliasDetailDenied = await apiRequest(baseUrl, "GET", `/products/${productA1Beta.payload.id}`, comboToken);
+    const comboAiTitleAllowed = await apiRequest(
+      baseUrl,
+      "GET",
+      `/auto-suggestions/products/${productA1Alpha.payload.id}/title-suggestion`,
+      comboToken,
+    );
+    const comboAiTitleDenied = await apiRequest(
+      baseUrl,
+      "GET",
+      `/auto-suggestions/products/${productA1Beta.payload.id}/title-suggestion`,
+      comboToken,
+    );
+    const comboRejectionScoreAllowed = await apiRequest(
+      baseUrl,
+      "GET",
+      `/rejection-intelligence/products/${productA1Alpha.payload.id}/score?channel=shopify`,
+      comboToken,
+    );
+    const comboRejectionScoreDenied = await apiRequest(
+      baseUrl,
+      "GET",
+      `/rejection-intelligence/products/${productA1Beta.payload.id}/score?channel=shopify`,
+      comboToken,
+    );
     assertStatus(comboDetailAllowed, 200, "combo product detail allowed");
     assertStatus(comboDetailCategoryOnlyDenied, 403, "combo product detail denied for category-only match");
     assertStatus(comboDetailBrandOnlyDenied, 403, "combo product detail denied for brand-only match");
+    assertStatus(comboAliasDetailAllowed, 200, "legacy product alias detail allowed in scope");
+    assertStatus(comboAliasDetailDenied, 403, "legacy product alias detail denied out of scope");
+    assertStatus(comboAiTitleAllowed, 200, "auto-suggestion direct read allowed in scope");
+    assertStatus(comboAiTitleDenied, 403, "auto-suggestion direct read denied out of scope");
+    assertStatus(comboRejectionScoreAllowed, 200, "rejection intelligence direct read allowed in scope");
+    assertStatus(comboRejectionScoreDenied, 403, "rejection intelligence direct read denied out of scope");
+
+    const comboProductIssuesAllowed = await apiRequest(
+      baseUrl,
+      "GET",
+      `/compliance/products/${productA1Alpha.payload.id}/issues`,
+      comboToken,
+    );
+    const comboProductIssuesDenied = await apiRequest(
+      baseUrl,
+      "GET",
+      `/compliance/products/${productA1Beta.payload.id}/issues`,
+      comboToken,
+    );
+    assertStatus(comboProductIssuesAllowed, 200, "combo compliance product issues allowed");
+    assert(
+      Array.isArray(comboProductIssuesAllowed.payload) && comboProductIssuesAllowed.payload.length >= 1,
+      `expected scoped product issues for combo user, got ${JSON.stringify(comboProductIssuesAllowed.payload)}`,
+    );
+    assertStatus(comboProductIssuesDenied, 403, "combo compliance product issues denied out of scope");
+
+    const comboValidateAllowed = await apiRequest(
+      baseUrl,
+      "POST",
+      `/compliance/products/${productA1Alpha.payload.id}/validate`,
+      comboToken,
+      {},
+    );
+    const comboValidateDenied = await apiRequest(
+      baseUrl,
+      "POST",
+      `/compliance/products/${productA1Beta.payload.id}/validate`,
+      comboToken,
+      {},
+    );
+    assertStatus(comboValidateAllowed, 201, "combo compliance validate allowed in scope");
+    assertStatus(comboValidateDenied, 403, "combo compliance validate denied out of scope");
+
+    const comboIssueInbox = await apiRequest(baseUrl, "GET", "/issues/inbox?pagination=cursor&limit=25", comboToken);
+    assertStatus(comboIssueInbox, 200, "combo issue inbox scoped");
+    assert(Array.isArray(comboIssueInbox.payload?.items), "combo issue inbox should return items array");
+    assert(comboIssueInbox.payload.items.length >= 1, "combo issue inbox should include scoped issues");
+    assert(
+      comboIssueInbox.payload.items.every((item) => item.productId === productA1Alpha.payload.id),
+      `combo issue inbox must only contain fully scoped products, got ${JSON.stringify(comboIssueInbox.payload.items)}`,
+    );
+
+    const adminProductA1BetaIssues = await apiRequest(
+      baseUrl,
+      "GET",
+      `/compliance/products/${productA1Beta.payload.id}/issues`,
+      adminAToken,
+    );
+    assertStatus(adminProductA1BetaIssues, 200, "admin can read beta product issues");
+    assert(
+      Array.isArray(adminProductA1BetaIssues.payload) && adminProductA1BetaIssues.payload.length >= 1,
+      `expected beta issues for admin, got ${JSON.stringify(adminProductA1BetaIssues.payload)}`,
+    );
+
+    const comboResolveScopedWarning = await apiRequest(baseUrl, "POST", "/issues/inbox/resolve", comboToken, {
+      issueIds: [comboIssueInbox.payload.items[0].issueId],
+    });
+    assertStatus(comboResolveScopedWarning, 201, "combo resolve scoped warning allowed");
+    assert(
+      Number(comboResolveScopedWarning.payload?.resolved ?? 0) >= 1,
+      `expected combo scoped warning resolution to succeed, got ${JSON.stringify(comboResolveScopedWarning.payload)}`,
+    );
+
+    const comboResolveOutOfScopeWarningDenied = await apiRequest(baseUrl, "POST", "/issues/inbox/resolve", comboToken, {
+      issueIds: [adminProductA1BetaIssues.payload[0].id],
+    });
+    assertStatus(comboResolveOutOfScopeWarningDenied, 403, "combo resolve out-of-scope warning denied");
 
     const comboUpdateAllowed = await apiRequest(baseUrl, "PATCH", `/catalog/products/${productA1Alpha.payload.id}`, comboToken, {
       expectedVersion: productA1Alpha.payload.version,
@@ -569,6 +706,23 @@ async function run() {
     });
     assertStatus(comboUpdateCategoryOnlyDenied, 403, "combo product update denied for category-only match");
     assertStatus(comboUpdateBrandOnlyDenied, 403, "combo product update denied for brand-only match");
+
+    const comboRepairDryRunAllowed = await apiRequest(
+      baseUrl,
+      "POST",
+      `/auto-suggestions/products/${productA1Alpha.payload.id}/repair`,
+      comboToken,
+      { apply: false },
+    );
+    const comboRepairDryRunDenied = await apiRequest(
+      baseUrl,
+      "POST",
+      `/auto-suggestions/products/${productA1Beta.payload.id}/repair`,
+      comboToken,
+      { apply: false },
+    );
+    assertStatus(comboRepairDryRunAllowed, 201, "auto-suggestion repair dry-run allowed in scope");
+    assertStatus(comboRepairDryRunDenied, 403, "auto-suggestion repair dry-run denied out of scope");
 
     const comboMediaAllowed = await apiRequest(baseUrl, "GET", `/media/assets?productId=${encodeURIComponent(productA1Alpha.payload.id)}`, comboToken);
     const comboMediaDenied = await apiRequest(baseUrl, "GET", `/media/assets/${encodeURIComponent(mediaA1Beta.payload.id)}`, comboToken);
@@ -656,10 +810,18 @@ async function run() {
             "tenant_safe_access_scope_assignment_admin_api",
             "product_scope_dimensions_intersect_when_category_and_brand_are_active",
             "product_list_and_direct_access_require_intersection_match",
+            "legacy_product_alias_direct_access_respects_scope_intersection",
+            "ai_helper_direct_reads_respect_scope_intersection",
+            "compliance_product_issue_reads_respect_scope_intersection",
+            "compliance_validate_route_respects_scope_intersection",
+            "issue_inbox_list_only_returns_fully_scoped_products",
+            "issue_inbox_resolution_respects_scope_intersection",
             "product_write_protection_requires_intersection_match",
+            "ai_repair_edit_paths_respect_scope_intersection",
             "media_access_requires_product_scope_intersection_match",
             "channel_scoped_mapping_enforcement_requires_active_category_and_channel_match",
             "connector_account_and_channel_scopes_intersect_when_both_are_active",
+            "future_scope_dimensions_are_representable_but_safely_rejected_until_enforced",
             "admin_override_within_tenant_boundary",
             "scope_denials_are_audited",
           ],

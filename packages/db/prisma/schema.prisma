@@ -105,6 +105,14 @@ enum AccessScopeType {
   brand
   channel
   connector_account
+  vendor
+  owner
+  supplier
+  locale
+  market
+  catalog
+  team
+  assignee
 }
 
 model Category {
@@ -834,6 +842,7 @@ model ApiAccessKey {
   tenantKey  String    @default("default")
   label      String
   role       String    @default("viewer")
+  scopes     String[]  @default([])
   keyPrefix  String    @map("key_prefix")
   secretHash String    @map("secret_hash")
   lastUsedAt DateTime? @map("last_used_at")

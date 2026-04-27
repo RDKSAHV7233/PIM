@@ -269,21 +269,21 @@ async function run() {
     });
     assertStatus(installConnector, 201, "install flipkart connector");
 
-    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${product.payload.id}/export-jobs`, editorToken, {
+    const exportJob = await apiRequest(baseUrl, "POST", `/marketplace/products/${product.payload.id}/export-jobs`, adminToken, {
       channel: "flipkart",
       maxRetries: 1,
     });
     assertStatus(exportJob, 201, "create export job");
 
-    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, editorToken);
+    const processedExport = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, adminToken);
     assertStatus(processedExport, 201, "process export job");
     assert(
       ["dead_letter", "failed"].includes(String(processedExport.payload?.status ?? "")),
       `expected failed or dead_letter export job, got ${String(processedExport.payload?.status)}`,
     );
 
-    const publishNotifications = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
-    assertStatus(publishNotifications, 200, "list notifications after publish failure");
+    const publishNotifications = await apiRequest(baseUrl, "GET", "/notifications?limit=20", adminToken);
+    assertStatus(publishNotifications, 200, "list admin notifications after publish failure");
     const publishNotification = publishNotifications.payload.items.find((item) => item.eventType === "publish_failed");
     assert(publishNotification, "expected publish_failed notification for export job creator");
     assert(
@@ -304,8 +304,8 @@ async function run() {
       INSERT INTO user_notifications (
         id, tenant_key, user_id, event_type, title, message, action_url, action_label, metadata
       ) VALUES
-        ($1, $2, $3, 'import_failed', 'Import failed', 'Should be hidden from reviewer view', '/operations/imports', 'View import', '{}'::jsonb),
-        ($4, $2, $3, 'approval_decision', 'Approval decision received', 'Visible reviewer approval item', '/quality/approvals', 'Review approval', '{}'::jsonb)
+        ($1, $2, $3, 'import_failed', 'Import failed', 'Should be hidden from reviewer view', '/operations/imports', 'View import', '{"debug":"hidden"}'::jsonb),
+        ($4, $2, $3, 'approval_decision', 'Approval decision received', 'Visible reviewer approval item', '/quality/approvals', 'Review approval', '{"productId":"review-product","debug":"hidden"}'::jsonb)
       `,
       randomUUID(),
       tenantId,
@@ -321,6 +321,14 @@ async function run() {
       reviewerNotifications.payload.items.every((item) => item.eventType === "approval_decision"),
       "reviewer view must filter out non-approval notifications",
     );
+    const reviewerApprovalNotification = reviewerNotifications.payload.items.find((item) => item.eventType === "approval_decision");
+    assert(reviewerApprovalNotification, "reviewer approval notification should remain visible");
+    assert(
+      reviewerApprovalNotification.metadata &&
+        reviewerApprovalNotification.metadata.productId === "review-product" &&
+        reviewerApprovalNotification.metadata.debug === undefined,
+      `expected reviewer notification metadata to be centrally redacted, got ${JSON.stringify(reviewerApprovalNotification)}`,
+    );
 
     console.log(JSON.stringify({
       status: "ok",
@@ -330,6 +338,7 @@ async function run() {
         "publish_failure_notifies_export_job_creator",
         "notification_unread_count_decrements_on_read",
         "reviewer_view_filters_to_approval_notifications",
+        "reviewer_notification_metadata_is_centrally_redacted",
       ],
       checkedAt: new Date().toISOString(),
     }, null, 2));

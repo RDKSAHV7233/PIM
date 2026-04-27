@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { BulkEditApplyDto } from "./dto/bulk-edit-apply.dto";
 import { BulkEditPreviewDto } from "./dto/bulk-edit-preview.dto";
 import { BulkEditService } from "./bulk-edit.service";
 
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("bulk-edit")
 export class BulkEditController {
   constructor(private readonly bulkEditService: BulkEditService) {}

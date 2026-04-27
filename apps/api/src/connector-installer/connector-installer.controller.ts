@@ -3,7 +3,9 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
-import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
@@ -15,6 +17,8 @@ import { ConnectorInstallerService } from "./connector-installer.service";
 type AuthenticatedRequest = FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
 
 @Controller("connectors")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @ApiTags("Connectors")
 export class ConnectorInstallerController {
   constructor(private readonly connectorInstallerService: ConnectorInstallerService) {}
@@ -34,7 +38,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":slug/install")
-  @Roles(...APP_ROLES)
+  @Roles("admin", "editor")
   @UseGuards(PlanGuard)
   @RequirePlanLimit(["connectors_installations", "connector_accounts"])
   @ApiOperation({ summary: "Install connector for tenant" })
@@ -56,7 +60,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/uninstall")
-  @Roles(...APP_ROLES)
+  @Roles("admin", "editor")
   uninstall(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.uninstall(installationId, this.resolveActor(request));
   }
@@ -74,13 +78,13 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/reconnect")
-  @Roles(...APP_ROLES)
+  @Roles("admin", "editor")
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
   }
 
   @Post(":id/oauth/callback")
-  @Roles(...APP_ROLES)
+  @Roles("admin", "editor")
   @HttpCode(200)
   @ApiOperation({ summary: "Complete OAuth callback for a connector installation" })
   @ApiResponse({ status: 200, description: "OAuth callback handled and credentials persisted" })
@@ -134,7 +138,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/publication-targets")
-  @Roles(...APP_ROLES)
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Persist publication targets for an installed connector account" })
   @ApiResponse({ status: 201, description: "Publication targets saved" })
   updatePublicationTargets(

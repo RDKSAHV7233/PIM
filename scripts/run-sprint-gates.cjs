@@ -38,7 +38,20 @@ const STEPS = [
     args: ["run", "test:integration:metrics-kpi-trends"],
     retries: 1,
   },
+  {
+    label: "Integration: access-policy remediation",
+    command: "npm",
+    args: ["run", "test:integration:access-policy-remediation"],
+    retries: 1,
+  },
+  {
+    label: "Integration: delegated access scopes",
+    command: "npm",
+    args: ["run", "test:integration:delegated-access-scopes"],
+    retries: 1,
+  },
   { label: "Guard: unsafe raw", command: "npm", args: ["run", "guard:unsafe-raw"] },
+  { label: "Guard: sensitive GET policy", command: "npm", args: ["run", "guard:sensitive-gets"] },
 ];
 
 function runStep(step) {

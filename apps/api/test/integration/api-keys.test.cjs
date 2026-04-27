@@ -8,15 +8,26 @@ const { PrismaClient } = require("@prisma/client");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const SCHEMA_PATH = path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma");
-const MIGRATION_FILE = path.join(
-  REPO_ROOT,
-  "packages",
-  "db",
-  "prisma",
-  "migrations",
-  "20260318173000_api_access_keys_foundation",
-  "migration.sql",
-);
+const MIGRATION_FILES = [
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "db",
+    "prisma",
+    "migrations",
+    "20260318173000_api_access_keys_foundation",
+    "migration.sql",
+  ),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "db",
+    "prisma",
+    "migrations",
+    "20260427113000_api_access_key_scopes",
+    "migration.sql",
+  ),
+];
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -160,23 +171,25 @@ function runMigrations() {
     DATABASE_URL_POOLED: String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim(),
     DATABASE_URL_DIRECT: String(process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL ?? "").trim(),
   };
-  const command =
-    process.platform === "win32"
-      ? `npx prisma db execute --schema "${SCHEMA_PATH}" --file "${MIGRATION_FILE}"`
-      : `npx prisma db execute --schema '${SCHEMA_PATH}' --file '${MIGRATION_FILE}'`;
-  try {
-    execSync(command, {
-      cwd: REPO_ROOT,
-      stdio: "pipe",
-      encoding: "utf8",
-      env,
-    });
-  } catch (error) {
-    const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
-    if (/already exists/i.test(output)) {
-      return;
+  for (const migrationFile of MIGRATION_FILES) {
+    const command =
+      process.platform === "win32"
+        ? `npx prisma db execute --schema "${SCHEMA_PATH}" --file "${migrationFile}"`
+        : `npx prisma db execute --schema '${SCHEMA_PATH}' --file '${migrationFile}'`;
+    try {
+      execSync(command, {
+        cwd: REPO_ROOT,
+        stdio: "pipe",
+        encoding: "utf8",
+        env,
+      });
+    } catch (error) {
+      const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+      if (/already exists/i.test(output) || /already contains|duplicate column/i.test(output)) {
+        continue;
+      }
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -261,6 +274,7 @@ async function run() {
     const createViewerKey = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
       label: "Viewer automation",
       role: "viewer",
+      scopes: ["catalog.write"],
     });
     assertStatus(createViewerKey, 201, "create viewer api key");
     const viewerApiKey = String(createViewerKey.payload?.plainTextKey ?? "");
@@ -270,6 +284,7 @@ async function run() {
     const createEditorKey = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
       label: "Editor automation",
       role: "editor",
+      scopes: ["catalog.read", "catalog.write"],
     });
     assertStatus(createEditorKey, 201, "create editor api key");
     const editorApiKey = String(createEditorKey.payload?.plainTextKey ?? "");
@@ -281,6 +296,13 @@ async function run() {
       role: "admin",
     });
     assertStatus(createAdminKey, 403, "admin api key role rejected");
+
+    const createInvalidScopeKey = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
+      label: "Invalid scope automation",
+      role: "editor",
+      scopes: ["future.scope"],
+    });
+    assertStatus(createInvalidScopeKey, 400, "unsupported api key scope rejected");
 
     const listKeys = await apiRequest(baseUrl, "GET", "/admin/api-keys", adminToken);
     assertStatus(listKeys, 200, "list api keys");
@@ -326,6 +348,40 @@ async function run() {
     });
     assertStatus(viewerWriteAttempt, 403, "viewer api key cannot write catalog");
 
+    const createReadOnlyKey = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
+      label: "Read only automation",
+      role: "editor",
+      scopes: ["catalog.read"],
+    });
+    assertStatus(createReadOnlyKey, 201, "create read-only api key");
+    const readOnlyApiKey = String(createReadOnlyKey.payload?.plainTextKey ?? "");
+    const readOnlyCreateAttempt = await apiKeyRequest(baseUrl, "POST", "/catalog/products", readOnlyApiKey, {
+      title: `Read Only Product ${runId}`,
+      brand: "ReadOnlyBrand",
+      description: "Should be rejected without catalog.write scope",
+      categoryId,
+      status: "draft",
+      attributes: { pricing: { sellingPrice: 199 } },
+    });
+    assertStatus(readOnlyCreateAttempt, 403, "read-only api key cannot write catalog");
+    assert(
+      String(readOnlyCreateAttempt.payload?.reason ?? "") === "API_CLIENT_SCOPE_FORBIDDEN",
+      `expected API_CLIENT_SCOPE_FORBIDDEN for read-only write attempt, got ${JSON.stringify(readOnlyCreateAttempt.payload)}`,
+    );
+
+    const createNoScopeKey = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
+      label: "No scope automation",
+      role: "editor",
+    });
+    assertStatus(createNoScopeKey, 201, "create no-scope api key");
+    const noScopeApiKey = String(createNoScopeKey.payload?.plainTextKey ?? "");
+    const noScopeReadAttempt = await apiKeyRequest(baseUrl, "GET", "/catalog/products", noScopeApiKey);
+    assertStatus(noScopeReadAttempt, 403, "no-scope api key denied catalog read");
+    assert(
+      String(noScopeReadAttempt.payload?.reason ?? "") === "API_CLIENT_SCOPE_FORBIDDEN",
+      `expected API_CLIENT_SCOPE_FORBIDDEN for no-scope read attempt, got ${JSON.stringify(noScopeReadAttempt.payload)}`,
+    );
+
     await sleep(300);
     const listAfterUsage = await apiRequest(baseUrl, "GET", "/admin/api-keys", adminToken);
     assertStatus(listAfterUsage, 200, "list api keys after usage");
@@ -365,8 +421,11 @@ async function run() {
           validated: [
             "admin_can_create_and_list_api_keys",
             "admin_api_key_role_is_forbidden",
+            "unsupported_api_key_scope_is_rejected",
             "viewer_cannot_access_api_key_admin_routes",
-            "editor_api_key_can_read_and_write_public_api",
+            "editor_api_key_can_read_and_write_catalog_with_matching_scopes",
+            "read_only_api_key_cannot_write_catalog",
+            "no_scope_api_key_cannot_read_catalog",
             "viewer_api_key_cannot_write_public_api",
             "api_key_usage_updates_last_used_at",
             "revoked_api_key_is_rejected",

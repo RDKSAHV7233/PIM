@@ -1,6 +1,8 @@
 import { Controller, Get, Patch, Param, Query, Req, UnauthorizedException } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import type { AppRole } from "../common/rbac/roles";
 import { NotificationsService } from "./notifications.service";
 
@@ -9,11 +11,13 @@ type NotificationRequest = FastifyRequest & {
   pimRole?: AppRole;
 };
 
+@DisallowApiClient()
 @Controller("notifications")
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
+  @ReadAccessPolicy("notification_self_service")
   listNotifications(@Req() request: NotificationRequest, @Query() pagination?: CursorPaginationDto) {
     const actor = this.requireActor(request);
     return this.notificationsService.listForUser(actor.userId, actor.role, pagination);

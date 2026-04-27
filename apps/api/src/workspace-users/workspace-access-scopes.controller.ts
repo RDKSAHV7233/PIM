@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException } from "@nestjs/common";
 import { FastifyRequest } from "fastify";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateAccessScopeAssignmentDto } from "./dto/create-access-scope-assignment.dto";
 
@@ -16,6 +18,8 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 @Controller("admin/workspace/access-scopes")
+@DisallowApiClient()
+@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Roles("admin")
 export class WorkspaceAccessScopesController {
   constructor(private readonly accessPolicyService: AccessPolicyService) {}

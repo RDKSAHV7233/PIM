@@ -33,6 +33,13 @@ export function usePlanUsage(role: AppRole): UsePlanUsageResult {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (role !== "admin" && role !== "editor") {
+      setUsage(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const cacheKey = role;
     const cached = usageCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {

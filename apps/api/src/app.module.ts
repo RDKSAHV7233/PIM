@@ -11,10 +11,12 @@ import { BulkEditModule } from "./bulk-edit/bulk-edit.module";
 import { BulkImportModule } from "./bulk-import/bulk-import.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { AuditLogInterceptor } from "./common/audit/audit-log.interceptor";
+import { AccessPolicyModule } from "./common/access-policy/access-policy.module";
 import { LoggingModule } from "./common/logging/logging.module";
 import { ComplianceModule } from "./compliance/compliance.module";
 import { AppController } from "./common/app.controller";
 import { RbacGuard } from "./common/rbac/rbac.guard";
+import { ReadAccessPolicyInterceptor } from "./common/rbac/read-access-policy.interceptor";
 import { TenantDirectoryModule } from "./common/tenant/tenant-directory.module";
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware";
 import { DashboardModule } from "./dashboard/dashboard.module";
@@ -48,6 +50,7 @@ const FEATURE_ONDC_ENABLED =
     AuthModule,
     PrismaModule,
     AuditModule,
+    AccessPolicyModule,
     BillingModule,
     TaxonomyModule,
     ComplianceModule,
@@ -82,6 +85,10 @@ const FEATURE_ONDC_ENABLED =
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditLogInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ReadAccessPolicyInterceptor,
     },
   ],
 })
