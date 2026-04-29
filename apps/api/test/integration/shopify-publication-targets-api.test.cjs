@@ -4,11 +4,41 @@ const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const http = require("node:http");
-const { spawn, execFileSync } = require("node:child_process");
+const { spawn, execFileSync, execSync } = require("node:child_process");
 const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const SCHEMA_PATH = path.join(REPO_ROOT, "packages", "db", "prisma", "schema.prisma");
+const MIGRATION_FILES = [
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "db",
+    "prisma",
+    "migrations",
+    "20260425140949_add_access_scope_assignments",
+    "migration.sql",
+  ),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "db",
+    "prisma",
+    "migrations",
+    "20260429113000_add_auth_identity_assigned_roles",
+    "migration.sql",
+  ),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "db",
+    "prisma",
+    "migrations",
+    "20260427153000_expand_access_scope_dimensions",
+    "migration.sql",
+  ),
+];
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -39,10 +69,16 @@ function setDefaultEnv(name, value) {
 
 function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
-    setDefaultEnv("DATABASE_URL_POOLED", databaseUrl);
-    setDefaultEnv("DATABASE_URL_DIRECT", databaseUrl);
+  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  if (!databaseUrl || /HOST:5432/i.test(databaseUrl)) {
+    process.env.DATABASE_URL = localDatabaseUrl;
+  }
+  if (!process.env.DATABASE_URL_POOLED || /HOST:5432/i.test(String(process.env.DATABASE_URL_POOLED))) {
+    process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL;
+  }
+  if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
+    process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
   setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
@@ -57,6 +93,30 @@ function prepareEnv() {
   setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
+}
+
+function runMigrations() {
+  const env = { ...process.env };
+  for (const migrationFile of MIGRATION_FILES) {
+    const command =
+      process.platform === "win32"
+        ? `npx prisma db execute --schema "${SCHEMA_PATH}" --file "${migrationFile}"`
+        : `npx prisma db execute --schema '${SCHEMA_PATH}' --file '${migrationFile}'`;
+    try {
+      execSync(command, {
+        cwd: REPO_ROOT,
+        stdio: "pipe",
+        encoding: "utf8",
+        env,
+      });
+    } catch (error) {
+      const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+      if (/already exists/i.test(output) || /already contains|duplicate/i.test(output)) {
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 function sleep(ms) {
@@ -184,6 +244,11 @@ function createShopifyGraphqlStub() {
                       status: "ACTIVE",
                     },
                   },
+                  {
+                    id: "gid://shopify/Publication/3",
+                    name: "No Catalog Target",
+                    catalog: null,
+                  },
                 ],
               },
             },
@@ -220,8 +285,10 @@ async function run() {
   const tenantId = `shopify-publications-${runId}`;
   const workspaceSlug = `shopifypub-${runId}`.slice(0, 24);
   const userId = `shopify-publications-admin-${runId}`;
+  const editorUserId = `shopify-publications-editor-${runId}`;
   const installationId = `inst_shopify_api_${runId}`;
   const stub = await createShopifyGraphqlStub();
+  runMigrations();
 
   process.env.PIM_SHOPIFY_CLIENT_ID = "shopify-client-id";
   process.env.PIM_SHOPIFY_CLIENT_SECRET = "shopify-client-secret";
@@ -270,6 +337,7 @@ async function run() {
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
       [userId]: { tenantId, role: "admin", workspaceSlug },
+      [editorUserId]: { tenantId, role: "editor", workspaceSlug },
     }),
     PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
       [workspaceSlug]: { tenantId, displayName: "Shopify Publication Targets" },
@@ -332,6 +400,22 @@ async function run() {
     const token = String(login.payload?.accessToken ?? "");
     assert(token.length > 10, "missing access token from login response");
 
+    const createEditor = await apiRequest(baseUrl, "POST", "/admin/workspace/users", token, {
+      userId: editorUserId,
+      role: "editor",
+    });
+    assert([201, 409].includes(createEditor.status), `create editor user failed: ${createEditor.status}`);
+
+    const editorLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
+      userId: editorUserId,
+      password: "vexa-pim-demo-password",
+      expiresInMinutes: 30,
+    });
+    assertStatus(editorLogin, 201, "editor login");
+    const editorToken = String(editorLogin.payload?.accessToken ?? "");
+    assert(editorToken.length > 10, "missing editor token from login response");
+
     const publications = await apiRequest(baseUrl, "GET", `/connectors/${installationId}/publications`, token);
     assertStatus(publications, 200, "list Shopify publications");
     assert(Array.isArray(publications.payload), "expected publications payload array");
@@ -369,6 +453,74 @@ async function run() {
     assertStatus(publicationsAfter, 200, "list Shopify publications after update");
     assert(publicationsAfter.payload[0]?.selected === true, "expected selected publication after update");
 
+    const grantEditorReconnect = await apiRequest(baseUrl, "POST", "/connectors/permissions", token, {
+      principalType: "user",
+      principalId: editorUserId,
+      connectorSlug: "shopify",
+      accountAlias: "primary",
+      action: "reconnect",
+    });
+    assertStatus(grantEditorReconnect, 201, "grant editor reconnect permission");
+
+    const assignConnectorScope = await apiRequest(baseUrl, "POST", "/admin/workspace/access-scopes", token, {
+      subjectType: "user",
+      subjectId: editorUserId,
+      scopeType: "connector_account",
+      connectorInstallationId: installationId,
+      actions: ["manage_connector"],
+    });
+    assertStatus(assignConnectorScope, 201, "assign connector-account scope");
+
+    const assignCatalogScope = await apiRequest(baseUrl, "POST", "/admin/workspace/access-scopes", token, {
+      subjectType: "user",
+      subjectId: editorUserId,
+      scopeType: "catalog",
+      scopeValue: "gid://shopify/AppCatalog/1",
+      actions: ["manage_connector"],
+    });
+    assertStatus(assignCatalogScope, 201, "assign catalog scope");
+
+    const scopedPublications = await apiRequest(baseUrl, "GET", `/connectors/${installationId}/publications`, editorToken);
+    assertStatus(scopedPublications, 200, "catalog-scoped editor publication list");
+    assert(Array.isArray(scopedPublications.payload), "expected scoped publications payload array");
+    assert(scopedPublications.payload.length === 1, `expected 1 scoped publication, got ${scopedPublications.payload.length}`);
+    assert(scopedPublications.payload[0]?.id === "gid://shopify/Publication/1", "expected only catalog-1 publication to remain visible");
+
+    const scopedUpdateAllowed = await apiRequest(
+      baseUrl,
+      "POST",
+      `/connectors/${installationId}/publication-targets`,
+      editorToken,
+      { publicationIds: ["gid://shopify/Publication/1"] },
+    );
+    assertStatus(scopedUpdateAllowed, 201, "catalog-scoped publication update allowed");
+
+    const scopedUpdateDenied = await apiRequest(
+      baseUrl,
+      "POST",
+      `/connectors/${installationId}/publication-targets`,
+      editorToken,
+      { publicationIds: ["gid://shopify/Publication/2"] },
+    );
+    assertStatus(scopedUpdateDenied, 403, "catalog-scoped publication update denied outside catalog");
+    assert(
+      String(scopedUpdateDenied.payload?.reason ?? "").includes("CATALOG_SCOPE_DENIED"),
+      `expected CATALOG_SCOPE_DENIED for out-of-scope publication, got ${JSON.stringify(scopedUpdateDenied.payload)}`,
+    );
+
+    const scopedNullCatalogDenied = await apiRequest(
+      baseUrl,
+      "POST",
+      `/connectors/${installationId}/publication-targets`,
+      editorToken,
+      { publicationIds: ["gid://shopify/Publication/3"] },
+    );
+    assertStatus(scopedNullCatalogDenied, 403, "catalog-scoped publication update denied when catalog cannot be proven");
+    assert(
+      String(scopedNullCatalogDenied.payload?.reason ?? "").includes("CATALOG_SCOPE_DENIED"),
+      `expected CATALOG_SCOPE_DENIED for catalogless publication, got ${JSON.stringify(scopedNullCatalogDenied.payload)}`,
+    );
+
     console.log(
       JSON.stringify(
         {
@@ -379,6 +531,8 @@ async function run() {
             "shopify_publication_targets_endpoint_lists_available_targets",
             "shopify_publication_targets_endpoint_persists_selection",
             "shopify_publication_targets_endpoint_reflects_selection_on_read",
+            "catalog_scope_filters_publication_targets_to_allowed_catalog_ids",
+            "catalog_scope_denies_publication_target_updates_outside_scope_or_without_catalog_proof",
           ],
           checkedAt: new Date().toISOString(),
         },

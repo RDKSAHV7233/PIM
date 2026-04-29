@@ -6,7 +6,17 @@ export type ApiClientRoutePolicy =
   | "allowed_service_internal"
   | "not_applicable";
 
-export const API_CLIENT_SCOPE_VALUES = ["catalog.read", "catalog.write"] as const;
+export const API_CLIENT_SCOPE_VALUES = [
+  "catalog.read",
+  "catalog.write",
+  "bulk_import.read",
+  "media.read",
+  "compliance.read",
+  "issues.read",
+  "rejection_intelligence.read",
+  "auto_suggestions.read",
+  "taxonomy.read",
+] as const;
 export type ApiClientScope = (typeof API_CLIENT_SCOPE_VALUES)[number];
 
 export const API_CLIENT_ROUTE_POLICY_KEY = "api_client_route_policy";

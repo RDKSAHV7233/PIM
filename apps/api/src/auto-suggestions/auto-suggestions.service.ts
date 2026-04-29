@@ -11,6 +11,7 @@ type ProductShape = {
   categoryId: string;
   attributes: unknown;
   status: string;
+  vendorScopeKey: string | null;
 };
 
 @Injectable()
@@ -168,6 +169,7 @@ export class AutoSuggestionsService {
         categoryId: true,
         attributes: true,
         status: true,
+        vendorScopeKey: true,
       },
     });
     if (!product) {
@@ -180,6 +182,7 @@ export class AutoSuggestionsService {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
+        vendorScopeKey: product.vendorScopeKey,
       },
       resource,
     );

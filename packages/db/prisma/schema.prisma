@@ -167,6 +167,7 @@ model Product {
   title            String
   description      String            @default("")
   brand            String            @default("")
+  vendorScopeKey   String?           @map("vendor_scope_key")
   status           RecordStatus      @default(draft)
   version          Int               @default(1)
   categoryId       String
@@ -188,7 +189,9 @@ model Product {
   @@index([categoryId])
   @@index([status])
   @@index([hsnCode])
+  @@index([vendorScopeKey])
   @@index([tenantKey])
+  @@index([tenantKey, vendorScopeKey])
   @@index([tenantKey, status])
   @@index([tenantKey, deletedAt])
   @@index([tenantKey, deletedAt, updatedAt(sort: Desc), id(sort: Desc)], map: "idx_product_tenant_deleted_updated_id")
@@ -826,6 +829,7 @@ model AuthIdentity {
   tenantKey String   @default("default")
   userId    String   @unique
   role      String   @default("viewer")
+  assignedRoles String[] @default([]) @map("assigned_roles")
   isActive  Boolean  @default(true)
   lockedUntil DateTime?
   passwordHash String?

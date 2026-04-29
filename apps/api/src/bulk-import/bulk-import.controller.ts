@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, Param, Post, Query, Req, Res } from "@nestjs/common";
 import { FastifyReply } from "fastify";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
-import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { BulkImportService } from "./bulk-import.service";
@@ -46,6 +46,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("templates")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   listTemplates(
     @Query("tenantKey") tenantKey?: string,
     @Query("categoryId") categoryId?: string,
@@ -61,6 +63,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("templates/:id")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   getTemplate(
     @Param("id") templateId: string,
     @Query("tenantKey") tenantKey?: string,
@@ -81,6 +85,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("jobs")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   listJobs(
     @Query("status") status?: string,
     @Query() pagination?: CursorPaginationDto,
@@ -95,6 +101,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("jobs/:id")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   getJob(
     @Param("id") jobId: string,
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
@@ -108,6 +116,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("jobs/:id/rows")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   listRows(
     @Param("id") jobId: string,
     @Query("status") status?: string,
@@ -124,6 +134,8 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Get("jobs/:id/error-report")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
   @Header("Content-Type", "text/csv; charset=utf-8")
   async getErrorReport(
     @Param("id") jobId: string,

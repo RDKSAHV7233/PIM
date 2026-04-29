@@ -25,7 +25,68 @@ const API_CLIENT_POLICIES = new Set([
   "allowed_service_internal",
   "not_applicable",
 ]);
-const API_CLIENT_SCOPES = new Set(["catalog.read", "catalog.write"]);
+const API_CLIENT_SCOPES = new Set([
+  "catalog.read",
+  "catalog.write",
+  "bulk_import.read",
+  "media.read",
+  "compliance.read",
+  "issues.read",
+  "rejection_intelligence.read",
+  "auto_suggestions.read",
+  "taxonomy.read",
+]);
+const ADMIN_BOUNDARY_EXPECTATIONS = {
+  "GET /admin/workspace/users": { capability: "manage_users" },
+  "GET /admin/workspace/access-scopes": { capability: "manage_security" },
+  "POST /admin/workspace/access-scopes": { allowedRoles: ["super_admin"], allowLegacyAdminFallback: true },
+  "DELETE /admin/workspace/access-scopes/:assignmentId": { allowedRoles: ["super_admin"], allowLegacyAdminFallback: true },
+  "GET /admin/api-keys": { capability: "manage_security" },
+  "POST /admin/api-keys": { capability: "manage_security" },
+  "POST /admin/api-keys/:id/revoke": { capability: "manage_security" },
+  "GET /admin/webhooks": { capability: "manage_security" },
+  "GET /admin/webhooks/deliveries": { capability: "manage_security" },
+  "POST /admin/webhooks": { capability: "manage_security" },
+  "PATCH /admin/webhooks/:id": { capability: "manage_security" },
+  "POST /admin/webhooks/:id/test": { capability: "manage_security" },
+  "DELETE /admin/webhooks/:id": { capability: "manage_security" },
+  "GET /audit/logs": { capability: "manage_security" },
+  "GET /audit/events": { capability: "manage_security" },
+  "GET /audit/events/export": { capability: "manage_security" },
+  "GET /billing/plan-profile": { allowedRoles: ["system_admin", "super_admin"] },
+  "POST /billing/billing-contact": { allowedRoles: ["system_admin", "super_admin"] },
+  "GET /billing/upgrade-request": { allowedRoles: ["system_admin", "super_admin"] },
+  "POST /billing/upgrade-request": { allowedRoles: ["system_admin", "super_admin"] },
+  "GET /dashboard/readiness": { capability: "manage_product_data" },
+  "GET /dashboard/catalog-health": { capability: "manage_product_data" },
+  "GET /dashboard/health": { capability: "manage_product_data" },
+  "GET /dashboard/operations-summary": { capability: "manage_product_data" },
+  "GET /metrics/kpi-trends": { capability: "manage_product_data" },
+  "POST /taxonomy/categories": { capability: "manage_product_data" },
+  "PATCH /taxonomy/categories/:id": { capability: "manage_product_data" },
+  "DELETE /taxonomy/categories/:id": { capability: "manage_product_data" },
+  "POST /taxonomy/categories/:id/attributes": { capability: "manage_product_data" },
+  "PATCH /taxonomy/categories/attributes/:attributeId": { capability: "manage_product_data" },
+  "DELETE /taxonomy/categories/attributes/:attributeId": { capability: "manage_product_data" },
+  "GET /compliance/rules": { capability: "manage_product_data" },
+  "POST /compliance/rules": { capability: "manage_product_data" },
+  "PATCH /compliance/rules/:id": { capability: "manage_product_data" },
+  "DELETE /compliance/rules/:id": { capability: "manage_product_data" },
+  "GET /marketplace/products/:id/simulate": { capability: "manage_product_data" },
+  "POST /marketplace/products/:id/simulate": { capability: "manage_product_data" },
+  "POST /marketplace/connectors/:connectorSlug/mappings/versions/:versionId/archive": { capability: "manage_product_data" },
+  "POST /marketplace/connectors/:connectorSlug/mappings/preflight": { capability: "manage_product_data" },
+  "POST /marketplace/connectors/:connectorSlug/publish-readiness": { capability: "manage_product_data" },
+  "GET /marketplace/export-jobs": { capability: "manage_product_data" },
+  "GET /marketplace/export-jobs/:id": { capability: "manage_product_data" },
+  "POST /marketplace/export-jobs/:id/process": { capability: "manage_product_data" },
+  "POST /marketplace/export-jobs/:id/requeue": { capability: "manage_product_data" },
+  "POST /marketplace/readiness/batch": { capability: "manage_product_data" },
+  "DELETE /connectors/:slug/install/:id": { capability: "manage_security" },
+  "GET /connectors/permissions": { capability: "manage_security" },
+  "POST /connectors/permissions": { capability: "manage_security" },
+  "DELETE /connectors/permissions/:id": { capability: "manage_security" },
+};
 const READ_POLICY_CONFIG = {
   account_privacy_self_service: {
     classification: "self_service",
@@ -67,15 +128,65 @@ const READ_POLICY_CONFIG = {
     responseHandling: "redact",
     apiClientPolicy: "denied_human_only",
   },
+  workspace_users_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  workspace_access_scopes_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  api_keys_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  connector_permissions_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  billing_plan_profile_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  billing_upgrade_request_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  audit_events_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  audit_logs_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  outbound_webhooks_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  outbound_webhook_deliveries_governance_redacted: {
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
   issue_inbox_scoped: {
     classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
   media_assets_scoped: {
     classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
   notification_self_service: {
     classification: "self_service",
@@ -83,9 +194,9 @@ const READ_POLICY_CONFIG = {
     apiClientPolicy: "denied_human_only",
   },
   taxonomy_safe_metadata: {
-    classification: "human_only",
+    classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
 };
 
@@ -119,6 +230,7 @@ function collectControllerFiles(rootDir) {
 function parseControllerFile(absoluteFile) {
   const lines = fs.readFileSync(absoluteFile, "utf8").split(/\r?\n/);
   let pendingDecorators = [];
+  let pendingDecoratorDepth = 0;
   let classDecorators = [];
   const methods = [];
 
@@ -130,11 +242,13 @@ function parseControllerFile(absoluteFile) {
     }
     if (trimmed.startsWith("@")) {
       pendingDecorators.push(trimmed);
+      pendingDecoratorDepth += countDecoratorParens(trimmed);
       continue;
     }
     if (/export\s+class\s+\w+/.test(trimmed)) {
       classDecorators = [...pendingDecorators];
       pendingDecorators = [];
+      pendingDecoratorDepth = 0;
       continue;
     }
     if (
@@ -147,10 +261,16 @@ function parseControllerFile(absoluteFile) {
         line: index + 1,
       });
       pendingDecorators = [];
+      pendingDecoratorDepth = 0;
+      continue;
+    }
+    if (pendingDecorators.length > 0 && pendingDecoratorDepth > 0) {
+      pendingDecoratorDepth += countDecoratorParens(trimmed);
       continue;
     }
     if (!trimmed.startsWith("//")) {
       pendingDecorators = [];
+      pendingDecoratorDepth = 0;
     }
   }
 
@@ -234,6 +354,32 @@ function parseApiClientScopes(decorators) {
   return matches.map((match) => match[1]).filter(Boolean);
 }
 
+function countDecoratorParens(line) {
+  const openCount = (line.match(/\(/g) ?? []).length;
+  const closeCount = (line.match(/\)/g) ?? []).length;
+  return openCount - closeCount;
+}
+
+function parseAdminBoundaryConfig(decorators) {
+  const line = decorators.find((entry) => entry.includes("@AdminBoundaryAccess("));
+  if (!line) {
+    return null;
+  }
+  const capability = captureQuotedValue(line, "capability");
+  const allowLegacyAdminFallbackMatch = line.match(/allowLegacyAdminFallback\s*:\s*(true|false)/);
+  const allowedRolesSection = line.match(/allowedRoles\s*:\s*\[([^\]]*)\]/);
+  const allowedRoles = allowedRolesSection
+    ? [...allowedRolesSection[1].matchAll(/["']([^"']+)["']/g)].map((match) => match[1])
+    : [];
+  return {
+    capability,
+    allowedRoles,
+    allowLegacyAdminFallback: allowLegacyAdminFallbackMatch
+      ? allowLegacyAdminFallbackMatch[1] === "true"
+      : null,
+  };
+}
+
 function captureQuotedValue(line, property) {
   const regex = new RegExp(`${property}\\s*:\\s*(?:"([^"]+)"|'([^']+)')`);
   const match = line.match(regex);
@@ -259,6 +405,7 @@ function analyzeRoutes() {
   const publicRoutes = [];
   const classificationCounts = new Map();
   const apiPolicyCounts = new Map();
+  const adminBoundaryCoverage = new Map();
   const errors = [];
 
   for (const absoluteFile of controllerFiles) {
@@ -269,6 +416,7 @@ function analyzeRoutes() {
     const classReadPolicyId = parseReadAccessPolicyId(classDecorators);
     const classApiClientPolicy = parseApiClientPolicy(classDecorators);
     const classApiClientScopes = parseApiClientScopes(classDecorators);
+    const classAdminBoundaryConfig = parseAdminBoundaryConfig(classDecorators);
 
     for (const methodEntry of methods) {
       const http = parseHttpDecorator(methodEntry.decorators);
@@ -289,18 +437,21 @@ function analyzeRoutes() {
       const readPolicyConfig = readPolicyId ? READ_POLICY_CONFIG[readPolicyId] ?? null : null;
       const methodReadConfig = parseAuthenticatedReadConfig(methodEntry.decorators);
       const readConfig = methodReadConfig ?? classReadConfig ?? readPolicyConfig;
+      const methodApiClientPolicy = parseApiClientPolicy(methodEntry.decorators);
       const apiClientPolicy =
-        parseApiClientPolicy(methodEntry.decorators) ??
-        classApiClientPolicy ??
+        methodApiClientPolicy ??
         methodReadConfig?.apiClientPolicy ??
-        classReadConfig?.apiClientPolicy ??
         readPolicyConfig?.apiClientPolicy ??
+        classApiClientPolicy ??
+        classReadConfig?.apiClientPolicy ??
         null;
       const apiClientScopes = parseApiClientScopes(methodEntry.decorators).length
         ? parseApiClientScopes(methodEntry.decorators)
         : classApiClientScopes;
+      const adminBoundaryConfig = parseAdminBoundaryConfig(methodEntry.decorators) ?? classAdminBoundaryConfig;
 
       authenticatedRoutes.push(descriptor);
+      adminBoundaryCoverage.set(`${http.method} ${routePath}`, adminBoundaryConfig);
 
       if (!apiClientPolicy || !API_CLIENT_POLICIES.has(apiClientPolicy)) {
         errors.push(`${descriptor} is missing explicit API-client policy coverage`);
@@ -338,12 +489,36 @@ function analyzeRoutes() {
     }
   }
 
+  for (const [routeKey, expectation] of Object.entries(ADMIN_BOUNDARY_EXPECTATIONS)) {
+    const actual = adminBoundaryCoverage.get(routeKey);
+    if (!actual) {
+      errors.push(`${routeKey} is missing AdminBoundaryAccess coverage`);
+      continue;
+    }
+    if (expectation.capability && actual.capability !== expectation.capability) {
+      errors.push(`${routeKey} expected admin-boundary capability '${expectation.capability}', got '${String(actual.capability)}'`);
+    }
+    if (expectation.allowedRoles) {
+      const actualRoles = Array.isArray(actual.allowedRoles) ? actual.allowedRoles : [];
+      if (actualRoles.join(",") !== expectation.allowedRoles.join(",")) {
+        errors.push(`${routeKey} expected admin-boundary roles [${expectation.allowedRoles.join(", ")}], got [${actualRoles.join(", ")}]`);
+      }
+    }
+    if (typeof expectation.allowLegacyAdminFallback === "boolean" &&
+      actual.allowLegacyAdminFallback !== expectation.allowLegacyAdminFallback) {
+      errors.push(
+        `${routeKey} expected allowLegacyAdminFallback=${String(expectation.allowLegacyAdminFallback)}, got ${String(actual.allowLegacyAdminFallback)}`,
+      );
+    }
+  }
+
   return {
     authenticatedReads,
     authenticatedRoutes,
     publicRoutes,
     classificationCounts,
     apiPolicyCounts,
+    adminBoundaryCoverage,
     errors,
   };
 }
@@ -376,6 +551,7 @@ function main() {
         publicRoutes: routeAnalysis.publicRoutes.length,
         classificationCoverage: Object.fromEntries(routeAnalysis.classificationCounts),
         apiClientPolicyCoverage: Object.fromEntries(routeAnalysis.apiPolicyCounts),
+        adminBoundaryCheckedRoutes: Object.keys(ADMIN_BOUNDARY_EXPECTATIONS).length,
         checkedAt: new Date().toISOString(),
       },
       null,

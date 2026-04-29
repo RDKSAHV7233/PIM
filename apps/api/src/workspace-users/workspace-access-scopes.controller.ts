@@ -1,8 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException } from "@nestjs/common";
 import { FastifyRequest } from "fastify";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateAccessScopeAssignmentDto } from "./dto/create-access-scope-assignment.dto";
 
@@ -19,7 +20,8 @@ type AuthenticatedRequest = FastifyRequest & {
 
 @Controller("admin/workspace/access-scopes")
 @DisallowApiClient()
-@AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+@ReadAccessPolicy("workspace_access_scopes_governance_redacted")
+@AdminBoundaryAccess({ capability: "manage_security" })
 @Roles("admin")
 export class WorkspaceAccessScopesController {
   constructor(private readonly accessPolicyService: AccessPolicyService) {}
@@ -31,6 +33,7 @@ export class WorkspaceAccessScopesController {
   }
 
   @Post()
+  @AdminBoundaryAccess({ allowedRoles: ["super_admin"], allowLegacyAdminFallback: true })
   createAccessScope(@Body() dto: CreateAccessScopeAssignmentDto, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.accessPolicyService.createScopeAssignment(actor.tenantId, {
@@ -41,6 +44,7 @@ export class WorkspaceAccessScopesController {
   }
 
   @Delete(":assignmentId")
+  @AdminBoundaryAccess({ allowedRoles: ["super_admin"], allowLegacyAdminFallback: true })
   deleteAccessScope(@Param("assignmentId") assignmentId: string, @Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.accessPolicyService.deleteScopeAssignment(actor.tenantId, assignmentId, {

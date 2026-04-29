@@ -12,8 +12,9 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { Roles, type AppRole } from "../common/rbac/roles";
 import { CreateOutboundWebhookDto } from "./dto/create-outbound-webhook.dto";
 import { ListOutboundWebhookDeliveriesDto } from "./dto/list-outbound-webhook-deliveries.dto";
@@ -34,17 +35,20 @@ type AuthenticatedRequest = FastifyRequest & {
 @Controller("admin/webhooks")
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+@AdminBoundaryAccess({ capability: "manage_security" })
 @Roles("admin")
 export class OutboundWebhooksController {
   constructor(private readonly outboundWebhooksService: OutboundWebhooksService) {}
 
   @Get()
+  @ReadAccessPolicy("outbound_webhooks_governance_redacted")
   listEndpoints(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.outboundWebhooksService.listEndpoints(actor.tenantId);
   }
 
   @Get("deliveries")
+  @ReadAccessPolicy("outbound_webhook_deliveries_governance_redacted")
   listDeliveries(@Req() request: AuthenticatedRequest, @Query() query: ListOutboundWebhookDeliveriesDto) {
     const actor = this.requireActor(request);
     return this.outboundWebhooksService.listDeliveries(actor.tenantId, query);

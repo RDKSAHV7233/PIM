@@ -14,7 +14,8 @@ import {
   type ApiClientRoutePolicy,
   type ApiClientScope,
 } from "../rbac/api-client-policy.decorator";
-import { AppRole, APP_ROLES } from "../rbac/roles";
+import { hasAdminBoundaryCapability, hasAdminBoundaryRole, type AdminBoundaryCapability } from "../rbac/role-utils";
+import { AppRole, type AdminBoundaryRole, APP_ROLES, type BlockedFoundationRole } from "../rbac/roles";
 
 export type PolicyActor = {
   actorId?: string | null;
@@ -22,6 +23,7 @@ export type PolicyActor = {
   tenantId?: string | null;
   actorType?: PolicyActorType | null;
   apiScopes?: string[] | null;
+  effectiveRoles?: string[] | null;
 };
 
 export type PolicyActorType = "human" | "api_client" | "system";
@@ -83,6 +85,11 @@ export type AccessPolicyDecisionContext = {
   method?: string | null;
   path?: string | null;
   requiredRoles?: readonly AppRole[] | null;
+  requiredAdminCapability?: AdminBoundaryCapability | null;
+  requiredAdminBoundaryRoles?: readonly AdminBoundaryRole[] | null;
+  allowLegacyAdminFallback?: boolean;
+  effectiveRoles?: readonly string[] | null;
+  allowedFoundationRoles?: readonly BlockedFoundationRole[] | null;
   defaultReadAllowed?: boolean;
   defaultWriteRoles?: readonly AppRole[] | null;
   disallowApiClient?: boolean;
@@ -124,6 +131,7 @@ type CreateScopeAssignmentInput = {
 type ProductScopeCandidate = {
   categoryId?: string | null;
   brand?: string | null;
+  vendorScopeKey?: string | null;
 };
 
 type ConnectorScopeCandidate = {
@@ -131,6 +139,11 @@ type ConnectorScopeCandidate = {
   channel?: string | null;
   connectorSlug?: string | null;
   accountAlias?: string | null;
+};
+
+type PublicationTargetScopeCandidate = {
+  id?: string | null;
+  catalogId?: string | null;
 };
 
 type DashboardHealthSnapshotPayload = {
@@ -210,14 +223,19 @@ const SCOPE_ACTIONS: readonly ScopeAction[] = [
   "manage_settings",
   "view_audit_logs",
 ] as const;
-const SUPPORTED_SCOPE_ASSIGNMENT_TYPES: readonly ScopeAssignmentType[] = ["category", "brand", "channel", "connector_account"] as const;
+const SUPPORTED_SCOPE_ASSIGNMENT_TYPES: readonly ScopeAssignmentType[] = [
+  "category",
+  "brand",
+  "channel",
+  "connector_account",
+  "catalog",
+] as const;
 const FOUNDATION_SCOPE_ASSIGNMENT_TYPES: readonly ScopeAssignmentType[] = [
   "vendor",
   "owner",
   "supplier",
   "locale",
   "market",
-  "catalog",
   "team",
   "assignee",
 ] as const;
@@ -231,6 +249,27 @@ const NOTIFICATION_METADATA_ALLOWLIST = new Set([
   "deadLetterRows",
   "totalRows",
 ]);
+const GOVERNANCE_PROVENANCE_REDACTED_FIELDS = ["createdBy"] as const;
+const AUDIT_LOG_REDACTED_FIELDS = ["metadata"] as const;
+const WEBHOOK_DELIVERY_REDACTED_FIELDS = ["errorMessage"] as const;
+const BILLING_PLAN_PROFILE_REDACTED_FIELDS = ["billingContactEmail", "updatedBy"] as const;
+const BILLING_UPGRADE_REQUEST_REDACTED_FIELDS = ["requestedBy", "notes", "resolvedBy"] as const;
+const BULK_IMPORT_ROW_REDACTED_FIELDS = [
+  "payload.status",
+  "payload.attributes.pricing.mrp",
+  "payload.attributes.pricing.sellingPrice",
+  "payload.attributes.pricing.cost",
+  "payload.attributes.pricing.margin",
+  "payload.attributes.pricing.inventoryQty",
+  "payload.attributes.mrp",
+  "payload.attributes.sellingPrice",
+  "payload.attributes.selling_price",
+  "payload.attributes.price",
+  "payload.attributes.cost",
+  "payload.attributes.margin",
+  "payload.attributes.inventoryQty",
+  "payload.attributes.sku",
+] as const;
 
 function normalizeSubjectType(value: string | null | undefined): ScopeAssignmentSubjectType {
   return String(value ?? "").trim().toLowerCase() === "role" ? "role" : "user";
@@ -300,6 +339,10 @@ function normalizeBrand(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeScopeKey(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function normalizeChannel(value: string | null | undefined): MarketplaceChannel {
   return parseMarketplaceChannel(String(value ?? "").trim());
 }
@@ -339,6 +382,13 @@ export class AccessPolicyService {
     const actorRole = normalizeRole(actor.actorRole);
     const actorType = normalizeActorType(actor.actorType);
     const requiredRoles = Array.isArray(context.requiredRoles) ? context.requiredRoles : [];
+    const requiredAdminCapability = context.requiredAdminCapability ?? null;
+    const requiredAdminBoundaryRoles = Array.isArray(context.requiredAdminBoundaryRoles)
+      ? context.requiredAdminBoundaryRoles
+      : [];
+    const allowLegacyAdminFallback = context.allowLegacyAdminFallback !== false;
+    const effectiveRoles = Array.isArray(context.effectiveRoles) ? context.effectiveRoles : [];
+    const allowedFoundationRoles = Array.isArray(context.allowedFoundationRoles) ? context.allowedFoundationRoles : [];
     const method = String(context.method ?? "").trim().toUpperCase();
     const defaultReadAllowed = context.defaultReadAllowed === true;
     const defaultWriteRoles = Array.isArray(context.defaultWriteRoles) ? context.defaultWriteRoles : [];
@@ -367,6 +417,50 @@ export class AccessPolicyService {
         return this.buildDecision(false, "API_CLIENT_SCOPE_NOT_APPLICABLE", actor, actorType, action, resource, context);
       } else if (context.disallowApiClient || apiClientPolicy === "denied_human_only" || apiClientPolicy === null) {
         return this.buildDecision(false, "API_CLIENT_FORBIDDEN", actor, actorType, action, resource, context);
+      }
+    }
+
+    if (effectiveRoles.some((role) => role === "category_manager" || role === "vendor")) {
+      const blockedFoundationRoles = effectiveRoles.filter(
+        (role): role is BlockedFoundationRole => role === "category_manager" || role === "vendor",
+      );
+      const explicitFoundationAllow = blockedFoundationRoles.some((role) => allowedFoundationRoles.includes(role));
+      if (!explicitFoundationAllow) {
+        return this.buildDecision(false, "FOUNDATION_ROLE_BLOCKED", actor, actorType, action, resource, context);
+      }
+    }
+
+    if (requiredAdminCapability || requiredAdminBoundaryRoles.length > 0) {
+      const explicitAdminBoundaryRoles = effectiveRoles.filter((role) =>
+        role === "product_admin" || role === "system_admin" || role === "super_admin"
+      );
+      const explicitAllowed = requiredAdminBoundaryRoles.length > 0
+        ? hasAdminBoundaryRole(explicitAdminBoundaryRoles, requiredAdminBoundaryRoles)
+        : requiredAdminCapability
+          ? hasAdminBoundaryCapability(explicitAdminBoundaryRoles, requiredAdminCapability)
+          : false;
+      if (explicitAdminBoundaryRoles.length > 0) {
+        return this.buildDecision(
+          explicitAllowed,
+          explicitAllowed ? "ADMIN_BOUNDARY_ALLOWED" : "ADMIN_BOUNDARY_FORBIDDEN",
+          actor,
+          actorType,
+          action,
+          resource,
+          context,
+        );
+      }
+      if (actorRole === "admin") {
+        const legacyAllowed = allowLegacyAdminFallback;
+        return this.buildDecision(
+          legacyAllowed,
+          legacyAllowed ? "ADMIN_BOUNDARY_ALLOWED" : "ADMIN_BOUNDARY_FORBIDDEN",
+          actor,
+          actorType,
+          action,
+          resource,
+          context,
+        );
       }
     }
 
@@ -565,7 +659,7 @@ export class AccessPolicyService {
     let connectorInstallationId: string | null = null;
     let scopeValue: string | null = null;
 
-    if (FOUNDATION_SCOPE_ASSIGNMENT_TYPES.includes(scopeType)) {
+    if (FOUNDATION_SCOPE_ASSIGNMENT_TYPES.includes(scopeType) && scopeType !== "owner" && scopeType !== "vendor") {
       throw new ForbiddenException({
         error: "ACCESS_SCOPE_DIMENSION_REQUIRES_ENFORCEMENT",
         scopeType,
@@ -591,6 +685,11 @@ export class AccessPolicyService {
       if (!scopeValue) {
         throw new ForbiddenException({ error: "ACCESS_SCOPE_BRAND_REQUIRED" });
       }
+    } else if (scopeType === "vendor") {
+      scopeValue = normalizeScopeKey(input.scopeValue);
+      if (!scopeValue) {
+        throw new ForbiddenException({ error: "ACCESS_SCOPE_VENDOR_REQUIRED" });
+      }
     } else if (scopeType === "channel") {
       scopeValue = normalizeChannel(input.scopeValue);
     } else if (scopeType === "connector_account") {
@@ -609,6 +708,11 @@ export class AccessPolicyService {
         throw new NotFoundException("Connector account not found for scope assignment.");
       }
       scopeValue = installation.accountAlias;
+    } else if (scopeType === "catalog") {
+      scopeValue = String(input.scopeValue ?? "").trim();
+      if (!scopeValue) {
+        throw new ForbiddenException({ error: "ACCESS_SCOPE_CATALOG_REQUIRED" });
+      }
     }
 
     const created = await this.prisma.tenant(normalizedTenantId).accessScopeAssignment.create({
@@ -700,7 +804,12 @@ export class AccessPolicyService {
     if (this.isAdmin(actor)) {
       return undefined;
     }
-    const activeScopeTypes = await this.getActiveScopeTypes(actor, ["category", "brand"]);
+    const supportedScopeTypes: ScopeAssignmentType[] = action === "view" ? ["category", "brand", "vendor"] : ["category", "brand"];
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: "Product",
+      supportedScopeTypes,
+    });
+    const activeScopeTypes = await this.getActiveScopeTypes(actor, supportedScopeTypes);
     if (activeScopeTypes.length === 0) {
       return undefined;
     }
@@ -735,10 +844,53 @@ export class AccessPolicyService {
       and.push(this.buildBrandScopeWhere(brands));
     }
 
+    if (activeScopeTypes.includes("vendor")) {
+      const vendorScopeKeys = Array.from(
+        new Set(
+          assignments
+            .filter((assignment) => assignment.scopeType === "vendor" && assignment.scopeValue)
+            .map((assignment) => normalizeScopeKey(assignment.scopeValue as string))
+            .filter((value) => value.length > 0),
+        ),
+      );
+      if (vendorScopeKeys.length === 0) {
+        return { id: { in: [] } };
+      }
+      and.push({ vendorScopeKey: { in: vendorScopeKeys } });
+    }
+
     if (and.length === 0) {
       return { id: { in: [] } };
     }
     return and.length === 1 ? and[0] : { AND: and };
+  }
+
+  async buildCategoryScopeWhere(
+    actor: PolicyActor,
+    action: ScopeAction,
+  ): Promise<Prisma.CategoryWhereInput | undefined> {
+    if (this.isAdmin(actor)) {
+      return undefined;
+    }
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: "Category",
+      supportedScopeTypes: ["category"],
+    });
+    if (!(await this.isScopeEnforced(actor, ["category"]))) {
+      return undefined;
+    }
+    const assignments = await this.getAssignmentsForActor(actor, action, ["category"]);
+    const categoryIds = Array.from(
+      new Set(
+        assignments
+          .filter((assignment) => assignment.scopeType === "category" && assignment.categoryId)
+          .map((assignment) => assignment.categoryId as string),
+      ),
+    );
+    if (categoryIds.length === 0) {
+      return { id: { in: [] } };
+    }
+    return { id: { in: categoryIds } };
   }
 
   async buildMediaScopeWhere(
@@ -748,7 +900,12 @@ export class AccessPolicyService {
     if (this.isAdmin(actor)) {
       return undefined;
     }
-    if (!(await this.isScopeEnforced(actor, ["category", "brand"]))) {
+    const supportedScopeTypes: ScopeAssignmentType[] = action === "view" ? ["category", "brand", "vendor"] : ["category", "brand"];
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: "MediaAsset",
+      supportedScopeTypes,
+    });
+    if (!(await this.isScopeEnforced(actor, supportedScopeTypes))) {
       return undefined;
     }
     const productWhere = await this.buildProductScopeWhere(actor, action);
@@ -772,7 +929,18 @@ export class AccessPolicyService {
     if (this.isAdmin(actor)) {
       return;
     }
-    const activeScopeTypes = await this.getActiveScopeTypes(actor, ["category", "brand"]);
+    const supportedScopeTypes: ScopeAssignmentType[] = action === "view" ? ["category", "brand", "vendor"] : ["category", "brand"];
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource,
+      resourceId: product.id ?? null,
+      supportedScopeTypes,
+      metadata: {
+        categoryId: product.categoryId ?? null,
+        brand: product.brand ?? null,
+        vendorScopeKey: product.vendorScopeKey ?? null,
+      },
+    });
+    const activeScopeTypes = await this.getActiveScopeTypes(actor, supportedScopeTypes);
     if (activeScopeTypes.length === 0) {
       return;
     }
@@ -790,6 +958,7 @@ export class AccessPolicyService {
         scopeType: "product",
         categoryId: product.categoryId ?? null,
         brand: product.brand ?? null,
+        vendorScopeKey: product.vendorScopeKey ?? null,
       },
     });
   }
@@ -802,6 +971,15 @@ export class AccessPolicyService {
     if (this.isAdmin(actor)) {
       return;
     }
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: input.resource ?? "Product",
+      resourceId: input.resourceId ?? null,
+      supportedScopeTypes: ["category", "brand"],
+      metadata: {
+        categoryId: input.categoryId ?? null,
+        brand: input.brand ?? null,
+      },
+    });
     const activeScopeTypes = await this.getActiveScopeTypes(actor, ["category", "brand"]);
     if (activeScopeTypes.length === 0) {
       return;
@@ -890,11 +1068,26 @@ export class AccessPolicyService {
   async assertConnectorInstallationAccess(
     actor: PolicyActor,
     action: ScopeAction,
-    connector: ConnectorScopeCandidate & { resource?: string; resourceId?: string | null },
+    connector: ConnectorScopeCandidate & {
+      resource?: string;
+      resourceId?: string | null;
+      supportedScopeTypes?: ScopeAssignmentType[];
+    },
   ): Promise<void> {
     if (this.isAdmin(actor)) {
       return;
     }
+    const supportedScopeTypes = connector.supportedScopeTypes ?? ["connector_account", "channel"];
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: connector.resource ?? "ConnectorInstallation",
+      resourceId: connector.resourceId ?? connector.installationId ?? null,
+      supportedScopeTypes,
+      metadata: {
+        connectorInstallationId: connector.installationId ?? null,
+        channel: connector.channel ?? channelFromConnectorSlug(connector.connectorSlug),
+        accountAlias: connector.accountAlias ?? null,
+      },
+    });
     const activeScopeTypes = await this.getActiveScopeTypes(actor, ["connector_account", "channel"]);
     if (activeScopeTypes.length === 0) {
       return;
@@ -926,6 +1119,10 @@ export class AccessPolicyService {
     if (this.isAdmin(actor)) {
       return items;
     }
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: "ConnectorInstallation",
+      supportedScopeTypes: ["connector_account", "channel"],
+    });
     const activeScopeTypes = await this.getActiveScopeTypes(actor, ["connector_account", "channel"]);
     if (activeScopeTypes.length === 0) {
       return items;
@@ -1064,10 +1261,11 @@ export class AccessPolicyService {
   }
 
   redactProductReadPayload<T extends Record<string, unknown>>(actor: PolicyActor, product: T): T {
-    if (this.canReadSensitiveProductFields(actor)) {
-      return product;
-    }
     const redacted = { ...product } as Record<string, unknown>;
+    delete redacted.vendorScopeKey;
+    if (this.canReadSensitiveProductFields(actor)) {
+      return redacted as T;
+    }
     if ("attributes" in redacted) {
       redacted.attributes = this.redactSensitiveAttributeFields(redacted.attributes);
     }
@@ -1171,6 +1369,78 @@ export class AccessPolicyService {
     return this.redactNotificationItem(payload) as T;
   }
 
+  redactGovernanceProvenanceResponse<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadGovernanceProvenance(actor)) {
+      return payload;
+    }
+    if (Array.isArray(payload)) {
+      return payload.map((item) => this.redactGovernanceProvenanceItem(item)) as T;
+    }
+    const record = this.asRecord(payload);
+    if (Array.isArray(record.items)) {
+      return {
+        ...(record as Record<string, unknown>),
+        items: record.items.map((item) => this.redactGovernanceProvenanceItem(item)),
+      } as T;
+    }
+    return this.redactGovernanceProvenanceItem(payload) as T;
+  }
+
+  redactAuditLogResponse<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadGovernanceProvenance(actor)) {
+      return payload;
+    }
+    if (Array.isArray(payload)) {
+      return payload.map((item) => this.redactAuditLogItem(item)) as T;
+    }
+    const record = this.asRecord(payload);
+    if (Array.isArray(record.items)) {
+      return {
+        ...(record as Record<string, unknown>),
+        items: record.items.map((item) => this.redactAuditLogItem(item)),
+      } as T;
+    }
+    return this.redactAuditLogItem(payload) as T;
+  }
+
+  redactWebhookDeliveryResponse<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadGovernanceProvenance(actor)) {
+      return payload;
+    }
+    if (Array.isArray(payload)) {
+      return payload.map((item) => this.redactWebhookDeliveryItem(item)) as T;
+    }
+    const record = this.asRecord(payload);
+    if (Array.isArray(record.items)) {
+      return {
+        ...(record as Record<string, unknown>),
+        items: record.items.map((item) => this.redactWebhookDeliveryItem(item)),
+      } as T;
+    }
+    return this.redactWebhookDeliveryItem(payload) as T;
+  }
+
+  redactBillingPlanProfileResponse<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadGovernanceProvenance(actor)) {
+      return payload;
+    }
+    return this.redactBillingPlanProfileItem(payload) as T;
+  }
+
+  redactBillingUpgradeRequestResponse<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadGovernanceProvenance(actor)) {
+      return payload;
+    }
+    const record = this.asRecord(payload);
+    if (!Object.prototype.hasOwnProperty.call(record, "item")) {
+      return this.redactBillingUpgradeRequestItem(payload) as T;
+    }
+    return {
+      ...(record as Record<string, unknown>),
+      item: this.redactBillingUpgradeRequestItem(record.item),
+    } as T;
+  }
+
   applyReadResponsePolicy<T>(actor: PolicyActor, policy: ReadAccessPolicyId, payload: T): T {
     switch (policy) {
       case "catalog_stats_redacted":
@@ -1209,28 +1479,238 @@ export class AccessPolicyService {
         return this.redactDashboardHealthResponse(actor, payload as DashboardHealthPayload) as T;
       case "notification_self_service":
         return this.redactNotificationResponse(actor, payload as { items?: unknown[]; metadata?: unknown }) as T;
+      case "workspace_users_governance_redacted":
+      case "workspace_access_scopes_governance_redacted":
+      case "api_keys_governance_redacted":
+      case "connector_permissions_governance_redacted":
+      case "outbound_webhooks_governance_redacted":
+        return this.redactGovernanceProvenanceResponse(actor, payload) as T;
+      case "billing_plan_profile_governance_redacted":
+        return this.redactBillingPlanProfileResponse(actor, payload) as T;
+      case "billing_upgrade_request_governance_redacted":
+        return this.redactBillingUpgradeRequestResponse(actor, payload) as T;
+      case "audit_events_governance_redacted":
+      case "audit_logs_governance_redacted":
+        return this.redactAuditLogResponse(actor, payload) as T;
+      case "outbound_webhook_deliveries_governance_redacted":
+        return this.redactWebhookDeliveryResponse(actor, payload) as T;
       default:
         return payload;
     }
   }
 
+  applyBulkImportRowVisibility<T>(actor: PolicyActor, payload: T): T {
+    if (this.canReadFullBulkImportSourcePayload(actor)) {
+      return payload;
+    }
+    if (Array.isArray(payload)) {
+      return payload.map((item) => this.redactBulkImportRowItem(item)) as T;
+    }
+    const record = this.asRecord(payload);
+    if (Array.isArray(record.items)) {
+      return {
+        ...(record as Record<string, unknown>),
+        items: record.items.map((item) => this.redactBulkImportRowItem(item)),
+      } as T;
+    }
+    if (Array.isArray(record.rows)) {
+      return {
+        ...(record as Record<string, unknown>),
+        rows: record.rows.map((item) => this.redactBulkImportRowItem(item)),
+      } as T;
+    }
+    return this.redactBulkImportRowItem(payload);
+  }
+
   private isAdmin(actor: PolicyActor): boolean {
-    return normalizeRole(actor.actorRole) === "admin";
+    if (normalizeRole(actor.actorRole) !== "admin") {
+      return false;
+    }
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
+    return true;
   }
 
   private canReadSensitiveProductFields(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
     const role = normalizeRole(actor.actorRole);
     return role === "admin" || role === "editor";
   }
 
   private canReadConnectorBreakdown(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
     const role = normalizeRole(actor.actorRole);
     return role === "admin" || role === "editor";
   }
 
   private canReadApprovalQueue(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
     const role = normalizeRole(actor.actorRole);
     return role === "admin" || role === "editor" || role === "reviewer";
+  }
+
+  private canReadGovernanceProvenance(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
+    const effectiveRoles = Array.isArray(actor.effectiveRoles)
+      ? actor.effectiveRoles.map((role) => String(role ?? "").trim().toLowerCase()).filter((role) => role.length > 0)
+      : [];
+    if (hasAdminBoundaryRole(effectiveRoles, ["super_admin"])) {
+      return true;
+    }
+    const hasExplicitNonSuperAdminBoundaryRole = hasAdminBoundaryRole(effectiveRoles, ["product_admin", "system_admin"]);
+    if (hasExplicitNonSuperAdminBoundaryRole) {
+      return false;
+    }
+    return normalizeRole(actor.actorRole) === "admin";
+  }
+
+  private canReadFullBulkImportSourcePayload(actor: PolicyActor): boolean {
+    if (this.hasBlockedFoundationRole(actor)) {
+      return false;
+    }
+    return normalizeRole(actor.actorRole) === "admin";
+  }
+
+  private hasBlockedFoundationRole(actor: PolicyActor): boolean {
+    const effectiveRoles = Array.isArray(actor.effectiveRoles)
+      ? actor.effectiveRoles.map((role) => String(role ?? "").trim().toLowerCase()).filter((role) => role.length > 0)
+      : [];
+    return effectiveRoles.includes("category_manager") || effectiveRoles.includes("vendor");
+  }
+
+  private redactGovernanceProvenanceItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    let touched = false;
+    if ("createdBy" in record) {
+      record.createdBy = null;
+      touched = true;
+    }
+    if (!touched) {
+      return value;
+    }
+    const existingRedactedFields = Array.isArray(record.redactedFields)
+      ? record.redactedFields.map((field) => String(field ?? "").trim()).filter((field) => field.length > 0)
+      : [];
+    record.redactedFields = Array.from(new Set([...existingRedactedFields, ...GOVERNANCE_PROVENANCE_REDACTED_FIELDS]));
+    return record as T;
+  }
+
+  private redactAuditLogItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    let touched = false;
+    if ("metadata" in record) {
+      record.metadata = null;
+      touched = true;
+    }
+    if (!touched) {
+      return value;
+    }
+    const existingRedactedFields = Array.isArray(record.redactedFields)
+      ? record.redactedFields.map((field) => String(field ?? "").trim()).filter((field) => field.length > 0)
+      : [];
+    record.redactedFields = Array.from(new Set([...existingRedactedFields, ...AUDIT_LOG_REDACTED_FIELDS]));
+    return record as T;
+  }
+
+  private redactWebhookDeliveryItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    let touched = false;
+    if ("errorMessage" in record) {
+      record.errorMessage = null;
+      touched = true;
+    }
+    if (!touched) {
+      return value;
+    }
+    const existingRedactedFields = Array.isArray(record.redactedFields)
+      ? record.redactedFields.map((field) => String(field ?? "").trim()).filter((field) => field.length > 0)
+      : [];
+    record.redactedFields = Array.from(new Set([...existingRedactedFields, ...WEBHOOK_DELIVERY_REDACTED_FIELDS]));
+    return record as T;
+  }
+
+  private redactBillingPlanProfileItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    record.billingContactEmail = null;
+    record.updatedBy = null;
+    record.redactedFields = this.appendRedactedFields(record.redactedFields, BILLING_PLAN_PROFILE_REDACTED_FIELDS);
+    return record as T;
+  }
+
+  private redactBillingUpgradeRequestItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    record.requestedBy = null;
+    record.notes = null;
+    record.resolvedBy = null;
+    record.redactedFields = this.appendRedactedFields(record.redactedFields, BILLING_UPGRADE_REQUEST_REDACTED_FIELDS);
+    return record as T;
+  }
+
+  private redactBulkImportRowItem<T>(value: T): T {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const record = { ...(value as Record<string, unknown>) };
+    let touched = false;
+    if ("payload" in record) {
+      const payload = this.asRecord(record.payload);
+      const nextPayload = { ...payload };
+      if ("status" in nextPayload) {
+        delete nextPayload.status;
+        touched = true;
+      }
+      if ("attributes" in nextPayload) {
+        const originalAttributes = JSON.stringify(this.asRecord(nextPayload.attributes));
+        const redactedAttributes = this.redactSensitiveAttributeFields(nextPayload.attributes);
+        delete redactedAttributes.sku;
+        if (JSON.stringify(redactedAttributes) !== originalAttributes) {
+          touched = true;
+        }
+        nextPayload.attributes = redactedAttributes;
+      }
+      if (touched) {
+        record.payload = nextPayload;
+      }
+    }
+    if (!touched) {
+      return value;
+    }
+    record.redactedFields = this.appendRedactedFields(record.redactedFields, BULK_IMPORT_ROW_REDACTED_FIELDS);
+    return record as T;
+  }
+
+  private appendRedactedFields(
+    existing: unknown,
+    additions: readonly string[],
+  ): string[] {
+    const existingRedactedFields = Array.isArray(existing)
+      ? existing.map((field) => String(field ?? "").trim()).filter((field) => field.length > 0)
+      : [];
+    return Array.from(new Set([...existingRedactedFields, ...additions]));
   }
 
   private redactSensitiveAttributeFields(input: unknown): Record<string, unknown> {
@@ -1300,12 +1780,14 @@ export class AccessPolicyService {
     product: ProductScopeCandidate,
     activeScopeTypes?: ScopeAssignmentType[],
   ): Promise<boolean> {
-    const resolvedActiveScopeTypes = activeScopeTypes ?? (await this.getActiveScopeTypes(actor, ["category", "brand"]));
+    const supportedScopeTypes: ScopeAssignmentType[] = action === "view" ? ["category", "brand", "vendor"] : ["category", "brand"];
+    const resolvedActiveScopeTypes = activeScopeTypes ?? (await this.getActiveScopeTypes(actor, supportedScopeTypes));
     if (resolvedActiveScopeTypes.length === 0) {
       return true;
     }
     const assignments = await this.getAssignmentsForActor(actor, action, resolvedActiveScopeTypes);
     const normalizedBrand = normalizeBrand(product.brand);
+    const normalizedVendorScopeKey = normalizeScopeKey(product.vendorScopeKey);
     if (resolvedActiveScopeTypes.includes("category")) {
       const categoryIds = new Set(
         assignments
@@ -1323,6 +1805,16 @@ export class AccessPolicyService {
           .map((assignment) => assignment.scopeValue as string),
       );
       if (brands.size === 0 || !brands.has(normalizedBrand)) {
+        return false;
+      }
+    }
+    if (resolvedActiveScopeTypes.includes("vendor")) {
+      const vendorScopeKeys = new Set(
+        assignments
+          .filter((assignment) => assignment.scopeType === "vendor" && assignment.scopeValue)
+          .map((assignment) => normalizeScopeKey(assignment.scopeValue as string)),
+      );
+      if (vendorScopeKeys.size === 0 || !normalizedVendorScopeKey || !vendorScopeKeys.has(normalizedVendorScopeKey)) {
         return false;
       }
     }
@@ -1367,6 +1859,206 @@ export class AccessPolicyService {
     return true;
   }
 
+  private async assertSupportedScopeDimensionsForResource(
+    actor: PolicyActor,
+    action: ScopeAction,
+    input: {
+      resource: string;
+      resourceId?: string | null;
+      supportedScopeTypes: ScopeAssignmentType[];
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    const assignments = await this.getAssignmentsForActor(actor, action);
+    if (assignments.length === 0) {
+      return;
+    }
+    const unsupportedAssignments = assignments.filter(
+      (assignment) => !input.supportedScopeTypes.includes(assignment.scopeType as ScopeAssignmentType),
+    );
+    if (unsupportedAssignments.length === 0) {
+      return;
+    }
+    await this.deny({
+      actor,
+      reasonCode: "SCOPE_DIMENSION_ENFORCEMENT_UNAVAILABLE",
+      action,
+      resource: input.resource,
+      resourceId: input.resourceId ?? null,
+      metadata: {
+        supportedScopeTypes: input.supportedScopeTypes,
+        unsupportedScopeTypes: Array.from(new Set(unsupportedAssignments.map((assignment) => assignment.scopeType))),
+        unsupportedAssignments: unsupportedAssignments.map((assignment) => ({
+          scopeType: assignment.scopeType,
+          categoryId: assignment.categoryId ?? null,
+          connectorInstallationId: assignment.connectorInstallationId ?? null,
+          scopeValue: assignment.scopeValue ?? null,
+        })),
+        ...(input.metadata ?? {}),
+      },
+    });
+  }
+
+  async filterPublicationTargets<T extends PublicationTargetScopeCandidate>(
+    actor: PolicyActor,
+    action: ScopeAction,
+    items: T[],
+    options: {
+      resource?: string;
+      resourceId?: string | null;
+    } = {},
+  ): Promise<T[]> {
+    if (this.isAdmin(actor)) {
+      return items;
+    }
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: options.resource ?? "ConnectorPublicationTarget",
+      resourceId: options.resourceId ?? null,
+      supportedScopeTypes: ["connector_account", "channel", "catalog"],
+    });
+    const activeScopeTypes = await this.getActiveScopeTypes(actor, ["catalog"]);
+    if (!activeScopeTypes.includes("catalog")) {
+      return items;
+    }
+    const assignments = await this.getAssignmentsForActor(actor, action, ["catalog"]);
+    const allowedCatalogIds = new Set(
+      assignments
+        .filter((assignment) => assignment.scopeType === "catalog" && assignment.scopeValue)
+        .map((assignment) => String(assignment.scopeValue ?? "").trim())
+        .filter((value) => value.length > 0),
+    );
+    if (allowedCatalogIds.size === 0) {
+      return [];
+    }
+    return items.filter((item) => {
+      const catalogId = String(item.catalogId ?? "").trim();
+      return catalogId.length > 0 && allowedCatalogIds.has(catalogId);
+    });
+  }
+
+  async assertPublicationTargetsAccess(
+    actor: PolicyActor,
+    action: ScopeAction,
+    items: PublicationTargetScopeCandidate[],
+    options: {
+      resource?: string;
+      resourceId?: string | null;
+    } = {},
+  ): Promise<void> {
+    if (this.isAdmin(actor)) {
+      return;
+    }
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: options.resource ?? "ConnectorPublicationTarget",
+      resourceId: options.resourceId ?? null,
+      supportedScopeTypes: ["connector_account", "channel", "catalog"],
+    });
+    const activeScopeTypes = await this.getActiveScopeTypes(actor, ["catalog"]);
+    if (!activeScopeTypes.includes("catalog")) {
+      return;
+    }
+    const assignments = await this.getAssignmentsForActor(actor, action, ["catalog"]);
+    const allowedCatalogIds = new Set(
+      assignments
+        .filter((assignment) => assignment.scopeType === "catalog" && assignment.scopeValue)
+        .map((assignment) => String(assignment.scopeValue ?? "").trim())
+        .filter((value) => value.length > 0),
+    );
+    const deniedTargets = items.filter((item) => {
+      const catalogId = String(item.catalogId ?? "").trim();
+      return !catalogId || !allowedCatalogIds.has(catalogId);
+    });
+    if (deniedTargets.length === 0) {
+      return;
+    }
+    await this.deny({
+      actor,
+      reasonCode: "CATALOG_SCOPE_DENIED",
+      action,
+      resource: options.resource ?? "ConnectorPublicationTarget",
+      resourceId: options.resourceId ?? null,
+      metadata: {
+        scopeType: "catalog",
+        allowedCatalogIds: Array.from(allowedCatalogIds),
+        deniedPublicationTargets: deniedTargets.map((target) => ({
+          id: target.id ?? null,
+          catalogId: target.catalogId ?? null,
+        })),
+      },
+    });
+  }
+
+  async buildOwnerScopeWhere(
+    actor: PolicyActor,
+    action: ScopeAction,
+    input: {
+      resource: string;
+      resourceId?: string | null;
+      supportedScopeTypes?: ScopeAssignmentType[];
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<{ createdBy: string } | undefined> {
+    const supportedScopeTypes = input.supportedScopeTypes ?? ["owner"];
+    await this.assertSupportedScopeDimensionsForResource(actor, action, {
+      resource: input.resource,
+      resourceId: input.resourceId ?? null,
+      supportedScopeTypes,
+      metadata: input.metadata,
+    });
+    const activeScopeTypes = await this.getActiveScopeTypes(actor, ["owner"]);
+    if (!activeScopeTypes.includes("owner")) {
+      return undefined;
+    }
+    const actorId = normalizeUserId(actor.actorId);
+    if (!actorId) {
+      await this.deny({
+        actor,
+        reasonCode: "OWNER_SCOPE_UNRESOLVABLE",
+        action,
+        resource: input.resource,
+        resourceId: input.resourceId ?? null,
+        metadata: {
+          scopeType: "owner",
+          ...(input.metadata ?? {}),
+        },
+      });
+    }
+    return { createdBy: actorId };
+  }
+
+  async assertOwnerResourceAccess(
+    actor: PolicyActor,
+    action: ScopeAction,
+    input: {
+      resource: string;
+      resourceId?: string | null;
+      createdBy?: string | null;
+      supportedScopeTypes?: ScopeAssignmentType[];
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    const ownerWhere = await this.buildOwnerScopeWhere(actor, action, input);
+    if (!ownerWhere) {
+      return;
+    }
+    if (normalizeUserId(input.createdBy) === ownerWhere.createdBy) {
+      return;
+    }
+    await this.deny({
+      actor,
+      reasonCode: input.createdBy ? "OWNER_SCOPE_DENIED" : "OWNER_SCOPE_UNRESOLVABLE",
+      action,
+      resource: input.resource,
+      resourceId: input.resourceId ?? null,
+      metadata: {
+        scopeType: "owner",
+        createdBy: input.createdBy ?? null,
+        requiredOwner: ownerWhere.createdBy,
+        ...(input.metadata ?? {}),
+      },
+    });
+  }
+
   private async getAssignmentsForActor(
     actor: PolicyActor,
     action: ScopeAction,
@@ -1405,7 +2097,9 @@ export class AccessPolicyService {
 
   private async getActiveScopeTypes(actor: PolicyActor, scopeTypes: ScopeAssignmentType[]) {
     const tenantId = String(actor.tenantId ?? "").trim();
-    if (!tenantId) {
+    const actorId = normalizeUserId(actor.actorId);
+    const actorRole = normalizeRole(actor.actorRole);
+    if (!tenantId || !actorId) {
       return [];
     }
     const rows = await this.prisma.tenant(tenantId).accessScopeAssignment.findMany({
@@ -1414,6 +2108,16 @@ export class AccessPolicyService {
         scopeType: {
           in: scopeTypes,
         },
+        OR: [
+          {
+            subjectType: "user",
+            subjectId: actorId,
+          },
+          {
+            subjectType: "role",
+            subjectId: actorRole,
+          },
+        ],
       },
       select: {
         scopeType: true,
@@ -1478,6 +2182,7 @@ export class AccessPolicyService {
         method: context.method ?? null,
         path: context.path ?? null,
         requiredRoles: Array.isArray(context.requiredRoles) ? [...context.requiredRoles] : [],
+        allowedFoundationRoles: Array.isArray(context.allowedFoundationRoles) ? [...context.allowedFoundationRoles] : [],
         defaultReadAllowed: context.defaultReadAllowed === true,
         defaultWriteRoles: Array.isArray(context.defaultWriteRoles) ? [...context.defaultWriteRoles] : [],
         readAccessPolicy: this.normalizeReadAccessPolicy(context.readAccessPolicy),

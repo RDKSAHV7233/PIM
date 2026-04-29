@@ -126,6 +126,7 @@ async function run() {
   const apiPort = 6600 + Math.floor(Math.random() * 200);
   const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const tenantId = `mapping-manager-${runId}`;
+  const workspaceSlug = `mapping-${runId}`.slice(0, 24);
   const userId = `mapping-user-${runId}`;
   const env = {
     ...process.env,
@@ -133,8 +134,12 @@ async function run() {
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
     PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin" },
+      [userId]: { tenantId, role: "admin", workspaceSlug },
     }),
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Mapping Manager" },
+    }),
+    PIM_AUTH_PASSWORD: "vexa-pim-demo-password",
   };
 
   const stdoutBuffer = [];
@@ -161,6 +166,7 @@ async function run() {
     await waitForHealth(baseUrl, 60_000);
 
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId,
       password: "vexa-pim-demo-password",
       expiresInMinutes: 30,

@@ -23,6 +23,7 @@ type ActorContext = {
   id: string;
   role: "admin" | "editor" | "reviewer" | "viewer";
   tenantId?: string;
+  effectiveRoles?: string[];
 };
 
 type WorkflowStatus = "draft" | "in_review" | "approved" | "rejected" | "archived";
@@ -150,14 +151,7 @@ export class CatalogService {
   }
 
   private async listProductsSlim(pagination?: CursorPaginationQuery, actor?: ActorContext) {
-    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "view",
-    );
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(this.toPolicyActor(actor), "view");
     const limit = resolveCursorLimit(pagination?.limit ?? 50);
     const token = decodeCursorToken(pagination?.cursor);
     if (pagination?.cursor && !token) {
@@ -290,14 +284,7 @@ export class CatalogService {
       return [];
     }
 
-    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "view",
-    );
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(this.toPolicyActor(actor), "view");
 
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.trunc(limit as number))) : 8;
     const loweredQuery = normalizedQuery.toLowerCase();
@@ -425,11 +412,7 @@ export class CatalogService {
       .slice(0, safeLimit)
       .map(({ score: _score, ...product }) => product);
     return this.accessPolicy.applyReadResponsePolicy(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
+      this.toPolicyActor(actor),
       "catalog_search_redacted",
       results,
     );
@@ -452,6 +435,7 @@ export class CatalogService {
       id: product.id,
       categoryId: product.categoryId,
       brand: product.brand,
+      vendorScopeKey: product.vendorScopeKey,
     });
     const [withScore] = await this.attachCompletenessScores([product]);
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_product_detail_redacted", withScore);
@@ -459,19 +443,12 @@ export class CatalogService {
 
   async createProduct(dto: CreateProductDto, actor?: ActorContext) {
     await this.requireCategory(dto.categoryId);
-    await this.accessPolicy.assertRequestedProductScopeAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "create",
-      {
+    await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "create", {
         categoryId: dto.categoryId,
         brand: dto.brand,
+        vendorScopeKey: this.normalizeVendorScopeKey(dto.vendorScopeKey),
         resource: "Product",
-      },
-    );
+      });
     const requestedStatus = (dto.status ?? RecordStatus.draft) as RecordStatus;
     this.assertDraftWorkflowEntry(requestedStatus, "create_product");
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
@@ -481,6 +458,7 @@ export class CatalogService {
         description: dto.description.trim(),
         brand: dto.brand.trim(),
         categoryId: dto.categoryId,
+        vendorScopeKey: this.normalizeVendorScopeKey(dto.vendorScopeKey),
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
         attributes: attributes as Prisma.JsonObject,
@@ -495,53 +473,36 @@ export class CatalogService {
 
   async updateProduct(productId: string, dto: UpdateProductDto, actor?: ActorContext) {
     const current = await this.requireProduct(productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "edit",
-      {
+    const requestedVendorScopeKey =
+      dto.vendorScopeKey === undefined
+        ? this.normalizeVendorScopeKey(current.vendorScopeKey)
+        : this.normalizeVendorScopeKey(dto.vendorScopeKey);
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "edit", {
         id: current.id,
         categoryId: current.categoryId,
         brand: current.brand,
-      },
-    );
+        vendorScopeKey: current.vendorScopeKey,
+      });
     if (dto.expectedVersion !== current.version) {
       this.throwVersionConflict(dto.expectedVersion, current.version);
     }
     await this.requireCategory(dto.categoryId);
-    await this.accessPolicy.assertRequestedProductScopeAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "edit",
-      {
+    await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "edit", {
         resource: "Product",
         resourceId: productId,
         categoryId: dto.categoryId,
         brand: dto.brand,
-      },
-    );
+        vendorScopeKey: requestedVendorScopeKey,
+      });
     const nextStatus = dto.status as RecordStatus;
     if (!this.isValidWorkflowTransition(current.status, nextStatus)) {
       throw new BadRequestException(`Invalid workflow transition from ${current.status} to ${nextStatus}.`);
     }
     this.assertProductContentMutationAllowed(current, dto);
-    await this.accessPolicy.assertProductAttributeWriteAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      {
+    await this.accessPolicy.assertProductAttributeWriteAllowed(this.toPolicyActor(actor), {
         resourceId: productId,
         changedAttributePaths: this.collectChangedRestrictedProductAttributeFields(current.attributes, dto.attributes ?? {}),
-      },
-    );
+      });
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
     const updateResult = await this.prisma.tenant().product.updateMany({
       where: {
@@ -553,6 +514,7 @@ export class CatalogService {
         description: dto.description.trim(),
         brand: dto.brand.trim(),
         categoryId: dto.categoryId,
+        vendorScopeKey: requestedVendorScopeKey,
         hsnCode: dto.hsnCode?.trim() || null,
         gstRate: dto.gstRate ?? null,
         attributes: attributes as Prisma.JsonObject,
@@ -593,16 +555,13 @@ export class CatalogService {
   ) {
     const current = await this.requireProduct(productId);
     await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor.id,
-        actorRole: actor.role,
-        tenantId: actor.tenantId,
-      },
+      this.toPolicyActor(actor),
       dto.status === "approved" ? "approve" : "reject",
       {
         id: current.id,
         categoryId: current.categoryId,
         brand: current.brand,
+        vendorScopeKey: current.vendorScopeKey,
       },
     );
     if (current.status !== RecordStatus.in_review) {
@@ -658,19 +617,12 @@ export class CatalogService {
 
   async deleteProduct(productId: string, actor?: ActorContext) {
     const product = await this.requireProduct(productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "delete",
-      {
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "delete", {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
-      },
-    );
+        vendorScopeKey: product.vendorScopeKey,
+      });
     await this.prisma.tenant().product.update({
       where: { id: productId },
       data: {
@@ -682,19 +634,12 @@ export class CatalogService {
 
   async purgeProduct(productId: string, actor: ActorContext) {
     const product = await this.requireProductIncludingDeleted(productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor.id,
-        actorRole: actor.role,
-        tenantId: actor.tenantId,
-      },
-      "delete",
-      {
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "delete", {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
-      },
-    );
+        vendorScopeKey: product.vendorScopeKey,
+      });
     if (!product.deletedAt) {
       throw new BadRequestException("Product must be soft-deleted before purge.");
     }
@@ -727,6 +672,7 @@ export class CatalogService {
       id: product.id,
       categoryId: product.categoryId,
       brand: product.brand,
+      vendorScopeKey: product.vendorScopeKey,
     });
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
@@ -784,30 +730,16 @@ export class CatalogService {
 
   async createVariant(productId: string, dto: CreateVariantDto, actor?: ActorContext) {
     const product = await this.requireProduct(productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "edit",
-      {
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "edit", {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
-      },
-    );
+        vendorScopeKey: product.vendorScopeKey,
+      });
     this.assertWorkflowStateAllowsContentMutation(product.status, "create_variant");
-    await this.accessPolicy.assertVariantWriteAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      {
+    await this.accessPolicy.assertVariantWriteAllowed(this.toPolicyActor(actor), {
         changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
-      },
-    );
+      });
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
       return await this.prisma.tenant().variant.create({
@@ -832,31 +764,17 @@ export class CatalogService {
   async updateVariant(variantId: string, dto: UpdateVariantDto, actor?: ActorContext) {
     const variant = await this.requireVariant(variantId);
     const product = await this.requireProduct(variant.productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "edit",
-      {
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "edit", {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
-      },
-    );
+        vendorScopeKey: product.vendorScopeKey,
+      });
     this.assertWorkflowStateAllowsContentMutation(product.status, "update_variant");
-    await this.accessPolicy.assertVariantWriteAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      {
+    await this.accessPolicy.assertVariantWriteAllowed(this.toPolicyActor(actor), {
         resourceId: variantId,
         changedFields: this.collectChangedVariantFields(variant, dto),
-      },
-    );
+      });
     this.validatePricing(dto.mrp, dto.sellingPrice);
     try {
       return await this.prisma.tenant().variant.update({
@@ -881,31 +799,17 @@ export class CatalogService {
   async deleteVariant(variantId: string, actor?: ActorContext) {
     const variant = await this.requireVariant(variantId);
     const product = await this.requireProduct(variant.productId);
-    await this.accessPolicy.assertProductAccess(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      "delete",
-      {
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "delete", {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
-      },
-    );
+        vendorScopeKey: product.vendorScopeKey,
+      });
     this.assertWorkflowStateAllowsContentMutation(product.status, "delete_variant");
-    await this.accessPolicy.assertVariantWriteAllowed(
-      {
-        actorId: actor?.id,
-        actorRole: actor?.role,
-        tenantId: actor?.tenantId,
-      },
-      {
+    await this.accessPolicy.assertVariantWriteAllowed(this.toPolicyActor(actor), {
         resourceId: variantId,
         changedFields: ["sku", "mrp", "sellingPrice", "inventoryQty", "status"],
-      },
-    );
+      });
     await this.prisma.tenant().variant.delete({ where: { id: variantId } });
   }
 
@@ -1040,6 +944,7 @@ export class CatalogService {
       description: string;
       brand: string;
       categoryId: string;
+      vendorScopeKey?: string | null;
       hsnCode: string | null;
       gstRate: number | null;
       attributes: unknown;
@@ -1052,11 +957,16 @@ export class CatalogService {
 
     const nextAttributes = this.normalizeProductAttributes(dto.attributes ?? {});
     const currentAttributes = this.normalizeProductAttributes(this.asRecord(current.attributes));
+    const nextVendorScopeKey =
+      dto.vendorScopeKey === undefined
+        ? this.normalizeVendorScopeKey(current.vendorScopeKey)
+        : this.normalizeVendorScopeKey(dto.vendorScopeKey);
     const contentChanged =
       current.title !== dto.title.trim() ||
       current.description !== dto.description.trim() ||
       current.brand !== dto.brand.trim() ||
       current.categoryId !== dto.categoryId ||
+      this.normalizeVendorScopeKey(current.vendorScopeKey) !== nextVendorScopeKey ||
       (current.hsnCode ?? null) !== (dto.hsnCode?.trim() || null) ||
       (current.gstRate ?? null) !== (dto.gstRate ?? null) ||
       !this.recordsEqual(currentAttributes, nextAttributes);
@@ -1093,6 +1003,11 @@ export class CatalogService {
 
   private recordsEqual(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  private normalizeVendorScopeKey(value: string | null | undefined): string | null {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
   }
 
   private assertDraftWorkflowEntry(status: RecordStatus, source: "create_product") {
@@ -1188,6 +1103,7 @@ export class CatalogService {
       actorId: actor?.id,
       actorRole: actor?.role,
       tenantId: actor?.tenantId,
+      effectiveRoles: actor?.effectiveRoles,
     };
   }
 

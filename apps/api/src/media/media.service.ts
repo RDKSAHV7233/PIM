@@ -196,7 +196,7 @@ export class MediaService {
         }
         const product = await this.prisma.tenant().product.findUnique({
           where: { id: variant.productId },
-          select: { id: true, categoryId: true, brand: true },
+          select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
         });
         if (!product) {
           throw new NotFoundException("Product not found for media association.");
@@ -256,7 +256,7 @@ export class MediaService {
     if (productId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: productId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
@@ -273,7 +273,7 @@ export class MediaService {
       }
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
@@ -493,7 +493,7 @@ export class MediaService {
       }
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
@@ -508,7 +508,7 @@ export class MediaService {
     if (normalizedProductId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: normalizedProductId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
@@ -531,7 +531,7 @@ export class MediaService {
     if (productId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: productId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");
@@ -549,7 +549,7 @@ export class MediaService {
       }
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true },
+        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
         throw new NotFoundException("Product not found");

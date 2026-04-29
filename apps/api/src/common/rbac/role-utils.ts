@@ -66,6 +66,17 @@ export function normalizeAppRole(value: unknown): AppRole | null {
   return null;
 }
 
+export function normalizeAdminBoundaryRole(value: unknown): AdminBoundaryRole | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (ADMIN_BOUNDARY_ROLES.includes(normalized as AdminBoundaryRole)) {
+    return normalized as AdminBoundaryRole;
+  }
+  return null;
+}
+
 export function normalizeFoundationRole(value: unknown): FoundationRole | null {
   if (typeof value !== "string") {
     return null;
@@ -139,9 +150,21 @@ export function hasAdminBoundaryCapability(
   capability: AdminBoundaryCapability,
 ): boolean {
   const normalized = Array.from(roles)
-    .map((role) => normalizeFoundationRole(role))
-    .filter((role): role is AdminBoundaryRole => Boolean(role) && ADMIN_BOUNDARY_ROLES.includes(role as AdminBoundaryRole));
+    .map((role) => normalizeAdminBoundaryRole(role))
+    .filter((role): role is AdminBoundaryRole => Boolean(role));
   return normalized.some((role) => ADMIN_BOUNDARY_MATRIX[role][capability] === true);
+}
+
+export function hasAdminBoundaryRole(
+  roles: Iterable<unknown>,
+  allowedRoles: readonly AdminBoundaryRole[],
+): boolean {
+  const normalized = new Set(
+    Array.from(roles)
+      .map((role) => normalizeAdminBoundaryRole(role))
+      .filter((role): role is AdminBoundaryRole => Boolean(role)),
+  );
+  return allowedRoles.some((role) => normalized.has(role));
 }
 
 export function resolveDefaultRole(): AppRole {

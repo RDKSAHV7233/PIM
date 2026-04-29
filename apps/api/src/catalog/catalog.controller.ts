@@ -3,8 +3,10 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
@@ -20,11 +22,19 @@ import { UpdateVariantDto } from "./dto/update-variant.dto";
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 
-  private resolveActor(request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+  private resolveActor(
+    request: FastifyRequest & {
+      pimUserId?: string;
+      pimRole?: AppRole;
+      pimTenant?: string;
+      pimEffectiveRoles?: string[];
+    },
+  ) {
     return {
       id: request.pimUserId ?? "system",
       role: request.pimRole ?? "viewer",
       tenantId: request.pimTenant,
+      effectiveRoles: request.pimEffectiveRoles,
     } as const;
   }
 
@@ -36,13 +46,14 @@ export class CatalogController {
   }
 
   @Get("products")
+  @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_products_redacted")
   @ApiOperation({ summary: "List products" })
   @ApiResponse({ status: 200, description: "Products fetched" })
   listProducts(
     @Query() pagination: CursorPaginationDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
     @Query("slim") slim?: string,
   ) {
     // Full list payload remains available for legacy callers; prefer ?slim=true for list surfaces.
@@ -50,12 +61,13 @@ export class CatalogController {
   }
 
   @Get("products/search")
+  @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_search_redacted")
   @ApiOperation({ summary: "Search products by title or SKU" })
   @ApiResponse({ status: 200, description: "Product search results fetched" })
   searchProducts(
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
     @Query("q") query?: string,
     @Query("limit") limit?: string,
   ) {
@@ -64,18 +76,20 @@ export class CatalogController {
   }
 
   @Get("products/:id")
+  @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_product_detail_redacted")
   @ApiOperation({ summary: "Get product by id" })
   @ApiResponse({ status: 200, description: "Product fetched" })
   getProduct(
     @Param("id") id: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.getProduct(id, this.resolveActor(request));
   }
 
   @Post("products")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   @UseGuards(PlanGuard)
@@ -85,12 +99,13 @@ export class CatalogController {
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
   createProduct(
     @Body() dto: CreateProductDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.createProduct(dto, this.resolveActor(request));
   }
 
   @Patch("products/:id")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Update product" })
@@ -98,7 +113,7 @@ export class CatalogController {
   updateProduct(
     @Param("id") id: string,
     @Body() dto: UpdateProductDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.updateProduct(id, dto, this.resolveActor(request));
   }
@@ -117,16 +132,18 @@ export class CatalogController {
   }
 
   @Delete("products/:id")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   deleteProduct(
     @Param("id") id: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.deleteProduct(id, this.resolveActor(request));
   }
 
   @Delete("products/:id/purge")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @ApiClientScopes("catalog.write")
   @Roles("admin")
   purgeProduct(
@@ -137,44 +154,48 @@ export class CatalogController {
   }
 
   @Get("products/:id/variants")
+  @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_variants_redacted")
   listVariants(
     @Param("id") productId: string,
     @Query() pagination: CursorPaginationDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.listVariants(productId, pagination, this.resolveActor(request));
   }
 
   @Post("products/:id/variants")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   createVariant(
     @Param("id") productId: string,
     @Body() dto: CreateVariantDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.createVariant(productId, dto, this.resolveActor(request));
   }
 
   @Patch("variants/:id")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   updateVariant(
     @Param("id") variantId: string,
     @Body() dto: UpdateVariantDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.updateVariant(variantId, dto, this.resolveActor(request));
   }
 
   @Delete("variants/:id")
+  @FoundationRoleAccess("category_manager")
   @ApiClientScopes("catalog.write")
   @Roles("admin", "editor")
   deleteVariant(
     @Param("id") variantId: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.deleteVariant(variantId, this.resolveActor(request));
   }

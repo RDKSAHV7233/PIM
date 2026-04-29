@@ -281,6 +281,10 @@ export class AuditService {
       limit: query.limit && String(query.limit).trim() ? query.limit : "1000",
     };
     const result = await this.listEvents(exportQuery);
+    return this.renderEventsCsv(result.items);
+  }
+
+  renderEventsCsv(items: AuditExplorerRow[]) {
     const lines = [
       [
         "timestamp",
@@ -295,7 +299,7 @@ export class AuditService {
         .map((value) => this.escapeCsv(value))
         .join(","),
     ];
-    for (const row of result.items) {
+    for (const row of items) {
       lines.push(
         [
           row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),

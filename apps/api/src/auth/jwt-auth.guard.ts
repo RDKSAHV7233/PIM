@@ -27,6 +27,7 @@ interface AuthenticatedRequest extends FastifyRequest {
   pimResolvedApiKey?: ResolvedApiKeyIdentity | null;
   pimAuthType?: "user_jwt" | "api_key";
   pimEffectiveRoles?: string[];
+  pimAdminBoundaryRoles?: string[];
   pimApiScopes?: string[];
 }
 
@@ -75,12 +76,14 @@ export class JwtAuthGuard implements CanActivate {
       await this.assertUserAccessActive(tenantId, claims.sub);
       const resolvedRoles = resolveEffectiveRoles({
         legacyRole: claims.role ?? resolveDefaultRole(),
+        assignedRoles: claims.assignedRoles,
         principalType: "human",
       });
       request.pimUserId = claims.sub;
       request.pimTenant = tenantId;
       request.pimRole = resolvedRoles.primaryAppRole;
       request.pimEffectiveRoles = resolvedRoles.foundationRoles;
+      request.pimAdminBoundaryRoles = resolvedRoles.adminBoundaryRoles;
       request.pimJwtClaims = claims;
       request.pimAuthType = "user_jwt";
       return true;
@@ -102,6 +105,7 @@ export class JwtAuthGuard implements CanActivate {
       request.pimTenant = tenantId;
       request.pimRole = resolvedRoles.primaryAppRole;
       request.pimEffectiveRoles = resolvedRoles.foundationRoles;
+      request.pimAdminBoundaryRoles = resolvedRoles.adminBoundaryRoles;
       request.pimAuthType = "api_key";
       request.pimApiScopes = resolved.scopes;
       void this.apiKeysService.touchLastUsed(resolved.keyId);

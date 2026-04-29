@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
-import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole } from "../common/rbac/roles";
 import { DEFAULT_MARKETPLACE_CHANNEL } from "../marketplace/marketplace-channels";
@@ -10,16 +12,24 @@ import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
 
+type AuthenticatedRequest = {
+  pimUserId?: string;
+  pimRole?: AppRole;
+  pimTenant?: string;
+  pimEffectiveRoles?: string[];
+};
+
 @Controller("media")
 @DisallowApiClient()
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
-  private resolveActor(request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+  private resolveActor(request: AuthenticatedRequest) {
     return {
       actorId: request.pimUserId,
       actorRole: request.pimRole,
       tenantId: request.pimTenant,
+      effectiveRoles: request.pimEffectiveRoles,
     };
   }
 
@@ -34,31 +44,37 @@ export class MediaController {
   }
 
   @Get("assets")
+  @FoundationRoleAccess("vendor")
   @ReadAccessPolicy("media_assets_scoped")
+  @ApiClientScopes("media.read")
   listAssets(
     @Query("productId") productId?: string,
     @Query("variantId") variantId?: string,
     @Query() pagination?: CursorPaginationDto,
-    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.listAssets(productId, variantId, pagination, this.resolveActor(request ?? {}));
   }
 
   @Get("assets/:id")
+  @FoundationRoleAccess("vendor")
   @ReadAccessPolicy("media_assets_scoped")
+  @ApiClientScopes("media.read")
   getAsset(
     @Param("id") id: string,
-    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.getAsset(id, this.resolveActor(request));
   }
 
   @Get("assets/:id/validation")
+  @FoundationRoleAccess("vendor")
   @ReadAccessPolicy("media_assets_scoped")
+  @ApiClientScopes("media.read")
   validateAsset(
     @Param("id") id: string,
     @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
-    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.validateAsset(id, channel, this.resolveActor(request));
   }

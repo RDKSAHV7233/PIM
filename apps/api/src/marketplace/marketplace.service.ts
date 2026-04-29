@@ -284,10 +284,19 @@ export class MarketplaceService implements OnModuleInit {
     }
     await this.requireCategory(categoryId);
     const channel = channelInput ? this.parseChannel(channelInput) : undefined;
+    const ownerWhere = await this.accessPolicy.buildOwnerScopeWhere(actor ?? {}, "view", {
+      resource: "ChannelMappingTemplate",
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId,
+        channel: channel ?? null,
+      },
+    });
     return this.prisma.tenant().channelMappingTemplate.findMany({
       where: {
         categoryId,
         channel,
+        ...(ownerWhere ?? {}),
       },
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
     });
@@ -300,10 +309,18 @@ export class MarketplaceService implements OnModuleInit {
     const channel = this.parseChannel(dto.channel);
     const requiredFields = this.normalizeRequiredFields(dto.requiredFields);
     const fieldMap = this.normalizeFieldMap(dto.fieldMap);
+    const ownerWhere = await this.accessPolicy.buildOwnerScopeWhere(actor ?? {}, "create", {
+      resource: "ChannelMappingTemplate",
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId,
+        channel,
+      },
+    });
 
     if (dto.isDefault) {
       await this.prisma.tenant().channelMappingTemplate.updateMany({
-        where: { categoryId, channel },
+        where: { categoryId, channel, ...(ownerWhere ?? {}) },
         data: { isDefault: false },
       });
     }
@@ -317,6 +334,7 @@ export class MarketplaceService implements OnModuleInit {
           requiredFields: requiredFields as unknown as Prisma.JsonArray,
           fieldMap: fieldMap as unknown as Prisma.JsonObject,
           isDefault: dto.isDefault ?? false,
+          createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
         },
       });
     } catch (error: unknown) {
@@ -331,6 +349,16 @@ export class MarketplaceService implements OnModuleInit {
     const template = await this.requireTemplate(templateId);
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "view", template.categoryId, "ChannelMappingTemplate", templateId);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "view", template.channel, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertOwnerResourceAccess(actor ?? {}, "view", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      createdBy: template.createdBy,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: template.categoryId,
+        channel: template.channel,
+      },
+    });
     return template;
   }
 
@@ -338,6 +366,16 @@ export class MarketplaceService implements OnModuleInit {
     const existing = await this.requireTemplate(templateId);
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "edit", existing.categoryId, "ChannelMappingTemplate", templateId);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "edit", dto.channel ?? existing.channel, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertOwnerResourceAccess(actor ?? {}, "edit", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      createdBy: existing.createdBy,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: existing.categoryId,
+        channel: existing.channel,
+      },
+    });
     if (existing.isSystemPack) {
       throw new BadRequestException("System mapping packs are read-only.");
     }
@@ -360,6 +398,15 @@ export class MarketplaceService implements OnModuleInit {
       ? this.normalizeFieldMap(dto.fieldMap)
       : this.asStringMap(existing.fieldMap);
     const updatedDefault = dto.isDefault ?? existing.isDefault;
+    const ownerWhere = await this.accessPolicy.buildOwnerScopeWhere(actor ?? {}, "edit", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: existing.categoryId,
+        channel: updatedChannel,
+      },
+    });
 
     if (updatedDefault) {
       await this.prisma.tenant().channelMappingTemplate.updateMany({
@@ -367,6 +414,7 @@ export class MarketplaceService implements OnModuleInit {
           categoryId: existing.categoryId,
           channel: updatedChannel,
           id: { not: existing.id },
+          ...(ownerWhere ?? {}),
         },
         data: { isDefault: false },
       });
@@ -396,6 +444,16 @@ export class MarketplaceService implements OnModuleInit {
     const template = await this.requireTemplate(templateId);
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "delete", template.categoryId, "ChannelMappingTemplate", templateId);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "delete", template.channel, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertOwnerResourceAccess(actor ?? {}, "delete", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      createdBy: template.createdBy,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: template.categoryId,
+        channel: template.channel,
+      },
+    });
     if (template.isSystemPack) {
       throw new BadRequestException("System mapping packs cannot be deleted.");
     }
@@ -412,6 +470,16 @@ export class MarketplaceService implements OnModuleInit {
     const source = await this.requireTemplate(templateId);
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "create", source.categoryId, "ChannelMappingTemplate", templateId);
     await this.accessPolicy.assertChannelAccess(actor ?? {}, "create", source.channel, "ChannelMappingTemplate", templateId);
+    await this.accessPolicy.assertOwnerResourceAccess(actor ?? {}, "create", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      createdBy: source.createdBy,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: source.categoryId,
+        channel: source.channel,
+      },
+    });
     const sourceChannel = this.parseChannel(source.channel);
     const cloneNameInput = dto.name ? dto.name.trim() : "";
     const cloneName =
@@ -419,11 +487,21 @@ export class MarketplaceService implements OnModuleInit {
         ? cloneNameInput
         : await this.generateCloneTemplateName(source.categoryId, sourceChannel, source.name);
     const cloneIsDefault = dto.isDefault ?? false;
+    const ownerWhere = await this.accessPolicy.buildOwnerScopeWhere(actor ?? {}, "create", {
+      resource: "ChannelMappingTemplate",
+      resourceId: templateId,
+      supportedScopeTypes: ["category", "channel", "owner"],
+      metadata: {
+        categoryId: source.categoryId,
+        channel: sourceChannel,
+      },
+    });
     if (cloneIsDefault) {
       await this.prisma.tenant().channelMappingTemplate.updateMany({
         where: {
           categoryId: source.categoryId,
           channel: sourceChannel,
+          ...(ownerWhere ?? {}),
         },
         data: { isDefault: false },
       });
@@ -441,7 +519,7 @@ export class MarketplaceService implements OnModuleInit {
           isSystemPack: false,
           parentTemplateId: source.id,
           version: source.version + 1,
-          createdBy: source.createdBy,
+          createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
         },
       });
     } catch (error: unknown) {

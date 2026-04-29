@@ -2,6 +2,7 @@ import { Controller, Get, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole } from "../common/rbac/roles";
@@ -35,6 +36,7 @@ export class DashboardController {
 
   @Get("readiness")
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Per-connector readiness summary for current tenant" })
   @ApiResponse({ status: 200, description: "Readiness summary fetched" })
@@ -44,6 +46,7 @@ export class DashboardController {
 
   @Get("catalog-health")
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Catalog health and completeness summary for current tenant" })
   @ApiResponse({ status: 200, description: "Catalog health fetched" })
@@ -53,6 +56,7 @@ export class DashboardController {
 
   @Get("health")
   @ReadAccessPolicy("dashboard_health_redacted")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @ApiOperation({ summary: "Catalog health snapshot with 30-day trend" })
   @ApiResponse({ status: 200, description: "Dashboard health snapshot fetched" })
   async getHealth(
@@ -74,6 +78,7 @@ export class DashboardController {
 
   @Get("operations-summary")
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Dashboard operations summary for current tenant" })
   @ApiResponse({ status: 200, description: "Dashboard operations summary fetched" })

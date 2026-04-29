@@ -3,10 +3,11 @@ import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/
 import { FastifyReply, FastifyRequest } from "fastify";
 import { AuditService } from "../audit/audit.service";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { Public } from "../auth/public.decorator";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { CommercialRequestsService } from "./commercial-requests.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
 import { PlanUsageService } from "./plan-usage.service";
@@ -52,7 +53,8 @@ export class BillingController {
   }
 
   @Get("plan-profile")
-  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @ReadAccessPolicy("billing_plan_profile_governance_redacted")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
   @Roles("admin")
   @ApiOperation({ summary: "Get current tenant plan profile" })
   @ApiResponse({ status: 200, description: "Tenant plan profile fetched", type: PlanProfileSummaryDto })
@@ -61,6 +63,7 @@ export class BillingController {
   }
 
   @Post("billing-contact")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
   @Roles("admin")
   @HttpCode(200)
   @ApiOperation({ summary: "Update the billing notice recipient for this tenant" })
@@ -97,7 +100,8 @@ export class BillingController {
   }
 
   @Get("upgrade-request")
-  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @ReadAccessPolicy("billing_upgrade_request_governance_redacted")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
   @Roles("admin")
   @ApiOperation({ summary: "Get current open upgrade request for this tenant" })
   @ApiResponse({ status: 200, description: "Current open upgrade request fetched", type: PlanUpgradeRequestLookupDto })
@@ -109,6 +113,7 @@ export class BillingController {
   }
 
   @Post("upgrade-request")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
   @Roles("admin")
   @HttpCode(200)
   @ApiOperation({ summary: "Create or reuse an upgrade request for this tenant" })
@@ -156,6 +161,7 @@ export class BillingController {
   }
 
   @Post("plan-tier")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
   @Roles("admin")
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: "Set tenant plan tier" })

@@ -4,6 +4,14 @@ import { FastifyRequest } from "fastify";
 import { AuditService } from "../../audit/audit.service";
 import { AccessPolicyService, type AccessPolicyDecisionContext, type PolicyActor } from "../access-policy/access-policy.service";
 import {
+  ADMIN_BOUNDARY_ACCESS_KEY,
+  type AdminBoundaryAccessConfig,
+} from "./admin-boundary.decorator";
+import {
+  FOUNDATION_ROLE_ACCESS_KEY,
+  type FoundationRoleAccessConfig,
+} from "./foundation-role-access.decorator";
+import {
   API_CLIENT_ROUTE_POLICY_KEY,
   API_CLIENT_REQUIRED_SCOPES_KEY,
   DISALLOW_API_CLIENT_KEY,
@@ -19,7 +27,7 @@ import {
   readAccessPolicyReasonCode,
 } from "./read-access-policy.decorator";
 import { APP_ROLES, AppRole, DEFAULT_WRITE_ROLES, ROLES_KEY } from "./roles";
-import { resolveDefaultRole } from "./role-utils";
+import { hasAdminBoundaryCapability, hasAdminBoundaryRole, resolveDefaultRole } from "./role-utils";
 import { IS_PUBLIC_KEY } from "../../auth/public.decorator";
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -29,6 +37,7 @@ type AuthenticatedRequest = FastifyRequest & {
   pimUserId?: string;
   pimAuthType?: "user_jwt" | "api_key";
   pimEffectiveRoles?: string[];
+  pimAdminBoundaryRoles?: string[];
   pimApiScopes?: string[];
 };
 
@@ -59,6 +68,14 @@ export class RbacGuard implements CanActivate {
       context.getClass(),
     ]);
     const readRouteConfig = this.reflector.getAllAndOverride<AuthenticatedReadRouteConfig>(AUTHENTICATED_READ_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const adminBoundaryAccess = this.reflector.getAllAndOverride<AdminBoundaryAccessConfig>(ADMIN_BOUNDARY_ACCESS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const foundationRoleAccess = this.reflector.getAllAndOverride<FoundationRoleAccessConfig>(FOUNDATION_ROLE_ACCESS_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -106,10 +123,67 @@ export class RbacGuard implements CanActivate {
       }
     }
 
+    const foundationRoleDenial = this.resolveFoundationRoleDenialReason(request, foundationRoleAccess);
+    if (foundationRoleDenial) {
+      await this.recordShadowDecision(request, false, foundationRoleDenial, {
+        requiredRoles: handlerRoles,
+        requiredAdminCapability: adminBoundaryAccess?.capability ?? null,
+        requiredAdminBoundaryRoles: adminBoundaryAccess?.allowedRoles ?? null,
+        allowLegacyAdminFallback: adminBoundaryAccess?.allowLegacyAdminFallback !== false,
+        effectiveRoles: request.pimEffectiveRoles ?? [],
+        allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
+        apiClientPolicy,
+        requiredApiClientScopes,
+        readClassification: readRouteConfig?.classification ?? null,
+      });
+      await this.recordDeniedAttempt(request, {
+        reasonCode: foundationRoleDenial,
+        requiredRoles: handlerRoles,
+      });
+      throw new ForbiddenException({
+        error: "ACCESS_POLICY_DENIED",
+        reason: foundationRoleDenial,
+        action: `${method} ${request.url ?? "unknown"}`,
+        resource: request.url ?? "unknown",
+      });
+    }
+
+    if (adminBoundaryAccess) {
+      const deniedReason = this.resolveAdminBoundaryDenialReason(request, adminBoundaryAccess);
+      if (deniedReason) {
+        await this.recordShadowDecision(request, false, deniedReason, {
+          requiredRoles: handlerRoles,
+          requiredAdminCapability: adminBoundaryAccess.capability ?? null,
+          requiredAdminBoundaryRoles: adminBoundaryAccess.allowedRoles ?? null,
+          allowLegacyAdminFallback: adminBoundaryAccess.allowLegacyAdminFallback !== false,
+          effectiveRoles: request.pimEffectiveRoles ?? [],
+          allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
+          apiClientPolicy,
+          requiredApiClientScopes,
+          readClassification: readRouteConfig?.classification ?? null,
+        });
+        await this.recordDeniedAttempt(request, {
+          reasonCode: deniedReason,
+          requiredRoles: handlerRoles,
+        });
+        throw new ForbiddenException({
+          error: "ACCESS_POLICY_DENIED",
+          reason: deniedReason,
+          action: `${method} ${request.url ?? "unknown"}`,
+          resource: request.url ?? "unknown",
+        });
+      }
+    }
+
     if (handlerRoles && handlerRoles.length > 0) {
       if (!handlerRoles.includes(actorRole)) {
         await this.recordShadowDecision(request, false, "ROLE_FORBIDDEN", {
           requiredRoles: handlerRoles,
+          requiredAdminCapability: adminBoundaryAccess?.capability ?? null,
+          requiredAdminBoundaryRoles: adminBoundaryAccess?.allowedRoles ?? null,
+          allowLegacyAdminFallback: adminBoundaryAccess?.allowLegacyAdminFallback !== false,
+          effectiveRoles: request.pimEffectiveRoles ?? [],
+          allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
           apiClientPolicy,
           requiredApiClientScopes,
           readClassification: readRouteConfig?.classification ?? null,
@@ -120,8 +194,13 @@ export class RbacGuard implements CanActivate {
         });
         throw new ForbiddenException(`Role ${actorRole} cannot access this endpoint.`);
       }
-      await this.recordShadowDecision(request, true, "ROLE_ALLOWED", {
+      await this.recordShadowDecision(request, true, this.resolveAdminBoundaryAllowedReason(request, adminBoundaryAccess), {
         requiredRoles: handlerRoles,
+        requiredAdminCapability: adminBoundaryAccess?.capability ?? null,
+        requiredAdminBoundaryRoles: adminBoundaryAccess?.allowedRoles ?? null,
+        allowLegacyAdminFallback: adminBoundaryAccess?.allowLegacyAdminFallback !== false,
+        effectiveRoles: request.pimEffectiveRoles ?? [],
+        allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
         apiClientPolicy,
         requiredApiClientScopes,
         readClassification: readRouteConfig?.classification ?? null,
@@ -143,6 +222,7 @@ export class RbacGuard implements CanActivate {
           defaultReadAllowed: true,
           readAccessPolicy,
           readClassification: null,
+          allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
           apiClientPolicy,
           requiredApiClientScopes,
         });
@@ -164,6 +244,7 @@ export class RbacGuard implements CanActivate {
           defaultReadAllowed: !readAccessPolicy && !readRouteConfig,
           readAccessPolicy,
           readClassification: readRouteConfig?.classification ?? null,
+          allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
           apiClientPolicy,
           requiredApiClientScopes,
         },
@@ -173,6 +254,7 @@ export class RbacGuard implements CanActivate {
     if (!DEFAULT_WRITE_ROLES.includes(actorRole as (typeof APP_ROLES)[number])) {
       await this.recordShadowDecision(request, false, "WRITE_ROLE_REQUIRED", {
         defaultWriteRoles: DEFAULT_WRITE_ROLES,
+        allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
         apiClientPolicy,
         requiredApiClientScopes,
       });
@@ -184,6 +266,7 @@ export class RbacGuard implements CanActivate {
     }
     await this.recordShadowDecision(request, true, "DEFAULT_WRITE_ALLOWED", {
       defaultWriteRoles: DEFAULT_WRITE_ROLES,
+      allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
       apiClientPolicy,
       requiredApiClientScopes,
     });
@@ -221,6 +304,11 @@ export class RbacGuard implements CanActivate {
     context: Pick<
       AccessPolicyDecisionContext,
       | "requiredRoles"
+      | "requiredAdminCapability"
+      | "requiredAdminBoundaryRoles"
+      | "allowLegacyAdminFallback"
+      | "effectiveRoles"
+      | "allowedFoundationRoles"
       | "defaultReadAllowed"
       | "defaultWriteRoles"
       | "disallowApiClient"
@@ -342,5 +430,61 @@ export class RbacGuard implements CanActivate {
       return "API_CLIENT_FORBIDDEN";
     }
     return null;
+  }
+
+  private resolveAdminBoundaryDenialReason(
+    request: AuthenticatedRequest,
+    access: AdminBoundaryAccessConfig,
+  ): string | null {
+    const explicitBoundaryRoles = Array.isArray(request.pimAdminBoundaryRoles)
+      ? request.pimAdminBoundaryRoles
+      : [];
+    if (explicitBoundaryRoles.length > 0) {
+      if (access.allowedRoles && access.allowedRoles.length > 0) {
+        return hasAdminBoundaryRole(explicitBoundaryRoles, access.allowedRoles) ? null : "ADMIN_BOUNDARY_FORBIDDEN";
+      }
+      if (access.capability) {
+        return hasAdminBoundaryCapability(explicitBoundaryRoles, access.capability) ? null : "ADMIN_BOUNDARY_FORBIDDEN";
+      }
+      return "ADMIN_BOUNDARY_FORBIDDEN";
+    }
+    if (access.allowLegacyAdminFallback === false) {
+      return "ADMIN_BOUNDARY_FORBIDDEN";
+    }
+    if (request.pimRole !== "admin") {
+      return null;
+    }
+    return request.pimRole === "admin" ? null : "ADMIN_BOUNDARY_FORBIDDEN";
+  }
+
+  private resolveAdminBoundaryAllowedReason(
+    request: AuthenticatedRequest,
+    access: AdminBoundaryAccessConfig | null | undefined,
+  ): string {
+    if (!access) {
+      return "ROLE_ALLOWED";
+    }
+    const explicitBoundaryRoles = Array.isArray(request.pimAdminBoundaryRoles)
+      ? request.pimAdminBoundaryRoles
+      : [];
+    if (explicitBoundaryRoles.length > 0 || request.pimRole === "admin") {
+      return "ADMIN_BOUNDARY_ALLOWED";
+    }
+    return "ROLE_ALLOWED";
+  }
+
+  private resolveFoundationRoleDenialReason(
+    request: AuthenticatedRequest,
+    access: FoundationRoleAccessConfig | null | undefined,
+  ): string | null {
+    const effectiveRoles = Array.isArray(request.pimEffectiveRoles) ? request.pimEffectiveRoles : [];
+    const blockedRoles = effectiveRoles.filter((role) => role === "category_manager" || role === "vendor");
+    if (blockedRoles.length === 0) {
+      return null;
+    }
+    const allowedRoles = Array.isArray(access?.allowedRoles) ? access.allowedRoles : [];
+    return blockedRoles.some((role) => allowedRoles.includes(role as "category_manager" | "vendor"))
+      ? null
+      : "FOUNDATION_ROLE_BLOCKED";
   }
 }

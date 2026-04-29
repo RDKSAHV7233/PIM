@@ -17,6 +17,7 @@ type AuthenticatedRequest = {
   pimRole?: AppRole;
   pimTenant?: string;
   pimAuthType?: "user_jwt" | "api_key";
+  pimEffectiveRoles?: string[];
 };
 
 @Injectable()
@@ -53,6 +54,7 @@ export class ReadAccessPolicyInterceptor implements NestInterceptor {
       actorRole: request?.pimRole ?? "viewer",
       tenantId: request?.pimTenant ?? null,
       actorType: request?.pimAuthType === "api_key" ? "api_client" : "human",
+      effectiveRoles: request?.pimEffectiveRoles ?? [],
     };
 
     return next.handle().pipe(

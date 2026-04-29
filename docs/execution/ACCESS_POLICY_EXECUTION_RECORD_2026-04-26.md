@@ -312,6 +312,2044 @@ Lock update:
 
 - no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
 
+## 2026-04-30 Consolidation: Parallel Access-Policy Lanes Merged
+
+Scope:
+
+- consolidated the currently validated access-policy lanes into one checked full-validation pass
+- verified there were no unresolved textual merge conflicts in `apps/api`, `docs`, `packages`, or `scripts`
+- kept the current merged lane state intact and updated execution evidence once rather than reopening individual slices
+
+Merged lanes in this consolidation pass:
+
+- bounded vendor/object ownership enforcement on proven product-backed reads
+- bounded API-client scope vocabulary on covered catalog, media, compliance, rejection-intelligence, auto-suggestions, and taxonomy families
+- shared governance redaction on covered governance reads and audit explorer/export outputs
+- bounded admin-boundary enforcement on the covered governance route families
+- additive persisted multi-role read-path, bounded rollout runbook semantics, and bounded workspace-user managed-write semantics
+
+Conflict resolution:
+
+- no textual conflict markers were present
+- no code-level merge rollback was required
+- one runtime seam was explicitly kept safe in the merged state: workspace-user role updates now preserve omitted `assignedRoles` only when the preserved set stays compatible with the next scalar role, so old admin-boundary assignments cannot silently ride through a scalar-role downgrade
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled successfully on the merged lane state |
+| `npm run test:integration:access-policy-remediation` | Passed | Full remediation suite stayed green on the merged lane state |
+| `npm run test:integration:delegated-access-scopes` | Passed | Full delegated-scope suite stayed green on the merged lane state |
+| `npm run guard:sensitive-gets` | Passed | Merged coverage now reports `authenticatedReadRoutes=71`, `adminBoundaryCheckedRoutes=49`, and `allowed_with_api_scope=29` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation invariants stayed green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification authz and redaction stayed green |
+| `npm run build --workspace @pim1/web` | Passed | Web build stayed healthy on the merged lane state |
+| `npm run gate:run:increment` | Passed | Increment gate passed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Failed once, then passed | First run hit the known transient Next export cleanup wobble: `ENOTEMPTY ... apps\\web\\.next\\export`; sequential rerun passed without source changes |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging deploy workflow contract stayed green |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy checks stayed green |
+| `git diff --check` | Passed | Only existing CRLF warnings remained |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | No real credentials introduced |
+
+PO/CTO validation:
+
+- accepted for the consolidation pass: the validated access-policy lanes now coexist as one green merged state with one updated evidence point instead of separate unverified branches of truth
+- not accepted as complete: this consolidation does not expand the authorization surface beyond what each bounded slice already proved
+- product claim wording remains: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this consolidation pass because `ST-ACCESS-POLICY-BACKLOG-001` still represents an in-progress backlog stream rather than an accepted final completion
+
+## 2026-04-30 Bounded Follow-Up: Workspace-User Managed Assigned-Role Semantics
+
+Scope:
+
+- tightened workspace-user create and role-update flows so managed `assignedRoles` follow one bounded write contract
+- preserved scalar-role fallback, explicit clear semantics, and legacy read compatibility for already-persisted rows
+- kept the changes inside the workspace-user management path rather than widening runtime auth or policy evaluation
+- updated execution docs and checkpoint from the passing integration evidence
+
+Files changed in this follow-up:
+
+- `apps/api/src/workspace-users/workspace-users.service.ts`
+- `apps/api/test/integration/workspace-user-crud.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Bounded managed-write contract:
+
+- workspace-user create and update accept at most one managed assigned role
+- supported managed assigned roles are:
+  - `reviewer`
+  - `editor`
+  - `product_admin`
+  - `system_admin`
+- `product_admin` and `system_admin` require scalar `role = admin`
+- unsupported managed-write roles such as `super_admin`, `category_manager`, and `vendor` are rejected
+- duplicates remain rejected
+- `assignedRoles: []` still clears the persisted role set
+- omitting `assignedRoles` on update still preserves the existing role set only when that preserved set remains compatible with the next scalar role
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the bounded workspace-user role-set contract |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Failed once, then passed | First run collided with the known shared `apps/api/dist` artifact race and could not resolve `../billing/plan-usage.service` from `apps/api/dist/auth/auth.service.js`; sequential rerun passed without source changes |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Failed once, then passed | Initial run hit the same shared `dist` race; sequential rerun proved DB-auth compatibility remained green |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Failed once, then passed | Initial run hit the same shared `dist` race; sequential rerun proved local-auth compatibility remained green |
+| `npm run test:integration:access-policy-remediation` | Passed | Broader access-policy remediation remained green after the managed-write contract change |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated-scope suite remained green |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET guard coverage stayed unchanged |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: workspace-user managed assigned-role semantics are now explicit and tested
+- accepted proofs now include:
+  - bounded single-role managed writes
+  - unsupported managed-write roles rejected
+  - admin-boundary assigned roles require scalar admin
+  - `system_admin` can be managed and read back through workspace-user flows
+  - omitted `assignedRoles` preserves compatible role sets but rejects incompatible scalar-role downgrades
+  - explicit clear behavior still removes the persisted role set and falls back safely to scalar-only compatibility
+- not accepted as complete: this is still not broader multi-role policy completion, not allowed-combination completion across the whole product, and not scalar-role removal
+- product claim wording remains: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the workspace-user managed-write contract if a proven legitimate admin workflow depends on multi-value or unsupported assigned-role sets
+- keep the read-path compatibility proofs and explicit clear behavior unless a later validated rollout replaces them with equivalent or stronger evidence
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-29 Bounded Follow-Up: AuthIdentity Assigned-Roles Rollout Runbook and Proof
+
+Scope:
+
+- added an operator-safe rollout script at `scripts/auth-identity-assigned-roles-rollout.cjs`
+- added a checked-in runbook at [docs/runbooks/auth-identity-assigned-roles-rollout.md](../runbooks/auth-identity-assigned-roles-rollout.md)
+- added a dist-backed integration harness at `apps/api/test/integration/auth-assigned-roles-rollout-runbook.test.cjs`
+- kept scalar `role` as the compatibility field and did not widen runtime authorization behavior
+- proved additive backfill, dry-run reporting, and rollback-safe compatibility without destructive migration
+
+Files changed in this follow-up:
+
+- `scripts/auth-identity-assigned-roles-rollout.cjs`
+- `apps/api/test/integration/auth-assigned-roles-rollout-runbook.test.cjs`
+- `docs/runbooks/auth-identity-assigned-roles-rollout.md`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Bounded rollout contract:
+
+- backfill only touches `AuthIdentity` rows whose `assigned_roles` is `NULL` or `[]`
+- backfill only writes normalized scalar app-role singletons:
+  - `viewer` -> `["viewer"]`
+  - `reviewer` -> `["reviewer"]`
+  - `editor` -> `["editor"]`
+  - `admin` -> `["admin"]`
+- invalid scalar roles are skipped, not guessed
+- pre-existing non-empty `assigned_roles` rows are preserved
+- rollback only clears rows whose `assigned_roles` exactly equals the scalar singleton that this rollout would have written
+- rollback does not clear true multi-role rows
+
+Observed dry-run evidence from the checked-in operator script:
+
+- `node scripts/auth-identity-assigned-roles-rollout.cjs --dry-run`
+  - `scannedCount: 2313`
+  - `eligibleCount: 2274`
+  - `invalidScalarRoleCount: 2`
+  - `skippedExistingAssignedRolesCount: 37`
+  - `updatedCount: 0`
+- `node scripts/auth-identity-assigned-roles-rollout.cjs --rollback --dry-run`
+  - `scannedCount: 2313`
+  - `eligibleCount: 0`
+  - `invalidScalarRoleCount: 2`
+  - `skippedUnsafeRollbackCount: 2311`
+  - `updatedCount: 0`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API build remained green with the operator-only rollout slice |
+| `node apps/api/test/integration/auth-assigned-roles-rollout-runbook.test.cjs` | Failed once, then passed | First failure was a real proof mismatch: the tenant bootstrap admin made the eligible backfill count `5`, not `4`. Updated the proof to match the live tenant fixture, then reran successfully |
+| `node scripts/auth-identity-assigned-roles-rollout.cjs --dry-run` | Passed | Reported additive all-tenant backfill candidates without mutating rows |
+| `node scripts/auth-identity-assigned-roles-rollout.cjs --rollback --dry-run` | Passed | Reported rollback-safe scope without mutating rows |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Passed | Existing DB-auth assigned-role compatibility proofs remained green |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Passed | Existing local-auth assigned-role compatibility proofs remained green |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Passed | Workspace-user managed assigned-role semantics remained green |
+| `npm run test:integration:access-policy-remediation` | Passed | Broader access-policy remediation suite stayed green after the rollout script addition |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated-scope suite stayed green after the rollout script addition |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET coverage stayed unchanged at `authenticatedReadRoutes=71`, `adminBoundaryCheckedRoutes=49` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation invariants remained green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification authz and redaction behavior remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy; no frontend changes were needed |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green with the rollout proof slice |
+| `npm run gate:run:sprint` | Failed once, then passed | First failure was the known transient Next build artifact wobble: `ENOENT ... .next\\types\\routes.d.ts`. Sequential rerun passed without source changes |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging deploy workflow contract stayed intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness stayed green |
+| `git diff --check` | Passed | Only existing CRLF warnings remained |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local dummy credentials and role-fixture values matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: Vexa PIM now has an operator-safe checked-in runbook and proof harness for additive `assigned_roles` backfill and rollback behavior
+- accepted proofs now include:
+  - additive backfill only targets `NULL` or empty `assigned_roles`
+  - invalid scalar roles are skipped
+  - pre-existing true multi-role rows are preserved
+  - rollback only clears scalar-singleton rows written by the bounded rollout contract
+  - scalar-role fallback still preserves legacy access after rollback
+- not accepted as complete: this is still not a full multi-role migration, not live operator execution evidence, not scalar-role removal, and not wider role-set management policy completion
+- product claim wording remains: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, and bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the rollout script, runbook, and dedicated rollout-proof harness if a proven operator-contract regression appears in this bounded multi-role slice
+- keep scalar-role fallback and the existing auth compatibility proofs in place unless a later separately validated rollout replaces them with equivalent evidence
+- do not treat the transient sprint-gate `.next/types/routes.d.ts` failure as rollback evidence; the sequential rerun passed without source changes
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-29 Bounded Follow-Up: Multi-Role Backfill, Fallback, and Rollback Semantics
+
+Scope:
+
+- hardened the bounded multi-role rollout contract with explicit proof for additive backfill, scalar fallback, rollback-safe compatibility, and managed role-set validation
+- expanded the DB-auth assigned-role harness to cover duplicate persisted role arrays and `NULL assigned_roles` fallback behavior
+- expanded the local-auth assigned-role harness to cover duplicate local role arrays and `assignedRoles: null` compatibility
+- expanded the workspace-user CRUD harness to prove:
+  - duplicate assigned-role sets are rejected on managed writes
+  - omitted `assignedRoles` still preserves existing values
+  - explicit `assignedRoles: []` clears the persisted role set
+  - later login after that clear falls back to scalar-only compatibility
+
+Files changed in this follow-up:
+
+- `apps/api/test/integration/auth-assigned-roles-read-path.test.cjs`
+- `apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs`
+- `apps/api/test/integration/workspace-user-crud.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API build stayed green; no runtime auth patch was required for this bounded slice |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Failed once, then passed | First failure was a real proof bug: the raw SQL rollback step used snake_case `AuthIdentity` column names that do not exist. Fixed the test to use `tenantKey` and `userId`, then reran successfully |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Passed | Proved duplicate local role arrays normalize safely and `assignedRoles: null` falls back to scalar-only compatibility |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Failed once, then passed | First failure exposed the live DTO contract: duplicate `assignedRoles` are rejected on managed writes. Adjusted the proof to assert rejection instead of silent dedupe, then reran successfully |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing access-policy coverage remained green after the multi-role durability proof expansion |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated-scope coverage remained green |
+| `npm run guard:sensitive-gets` | Passed | Guardrail counts remained stable: `authenticatedReadRoutes=71`, `authenticatedRoutes=158`, `publicRoutes=19`, `adminBoundaryCheckedRoutes=49` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Existing policy foundation coverage remained green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notifications regression coverage remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-test-only slice |
+| `npm run gate:run:increment` | Passed | Increment gate remained green |
+| `npm run gate:run:sprint` | Passed | Sprint gate remained green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging deploy workflow contract remained green |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy validation remained green |
+| `git diff --check` | Passed | No new patch-format or whitespace errors beyond existing CRLF warnings |
+| touched-file secret scan with `rg` | Passed with expected local test-only matches | Only local dummy passwords, JWT secrets, and DB fallback strings matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - additive backfill remains non-destructive because scalar `role` is preserved and empty or missing `assigned_roles` still behave like scalar-only identities
+  - duplicate persisted or local assigned-role arrays normalize safely on the auth read path
+  - duplicate assigned-role arrays are rejected on managed workspace-user writes
+  - explicit `assignedRoles: []` clears the persisted role set and the next login falls back to scalar-only compatibility
+  - `NULL assigned_roles` remains rollback-safe for DB-auth and does not escalate privilege
+- not accepted as complete:
+  - this is still not a backfill-complete or rollback-complete migration
+  - scalar `role` removal was not attempted
+  - broader workspace-user multi-role management semantics and allowed-combination policy are still not complete
+- product claim wording now becomes: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, and bounded non-destructive backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the added test proofs if a later product decision intentionally changes the bounded multi-role contract around duplicate-role rejection, explicit clear semantics, or scalar-only rollback compatibility
+- keep scalar fallback, null-safe compatibility, and no-escalation proof in place so future multi-role rollout work remains explicit and regression-tested
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching completed story record
+
+## 2026-04-29 Bounded Follow-Up: Assigned-Roles Admin-Boundary Durability Proof
+
+Scope:
+
+- defined and validated one small PO contract for durable multi-role persistence:
+  - persisted assigned roles are additive inputs to governance-boundary evaluation
+  - scalar `admin` remains the compatibility app-role field
+  - normalized assigned roles, not the scalar field alone, decide whether a user crosses `manage_security` boundaries
+- proved that contract on both DB-auth and local-auth paths without changing runtime authorization code
+
+Files changed in this follow-up:
+
+- `apps/api/test/integration/auth-assigned-roles-read-path.test.cjs`
+- `apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled cleanly before the proof-only slice |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Failed, then passed | First parallel run hit the known shared `apps/api/dist` race (`Cannot find module '../billing/plan-usage.service'` from `apps/api/dist/auth/auth.service.js`); sequential rerun passed and proved DB-auth governance-boundary durability |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Failed, then passed | First parallel run hit the same shared `dist` race; sequential rerun passed and proved local-auth governance-boundary durability |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | The first parallel run failed only because `apps/api/dist/main.js` was unavailable during the shared build-artifact race; sequential rerun passed |
+| `npm run test:integration:delegated-access-scopes` | Failed, then passed | The first parallel run failed only because `apps/api/dist/main.js` was unavailable during the shared build-artifact race; sequential rerun passed |
+| `npm run guard:sensitive-gets` | Passed | Sensitive-GET policy counts stayed unchanged during the proof-only slice |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation suite remained green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notifications auth behavior remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build unchanged by the auth-only slice |
+| `npm run gate:run:increment` | Passed | `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deployment workflow contract unchanged |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy checks remained green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-format regressions |
+| touched-file secret scan with `rg` | Passed with expected test-only matches | Only local dummy tokens/passwords appeared in test fixtures |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: persisted assigned roles now have explicit durability proof on governance-boundary reads for both DB-auth and local-auth paths; `system_admin` assigned roles survive login and are honored on `manage_security` reads, while `product_admin` assigned roles do not escalate into that boundary
+- not accepted as complete: this is still not a full multi-role rollout, not broader role-set management semantics, and not backfill/rollback-complete migration behavior
+- product claim wording remains: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins and password-reset-confirm auth resolution. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the added auth durability assertions if a later product decision intentionally narrows how assigned roles participate in governance-boundary reads
+- keep the DB-auth and local-auth governance-boundary proofs so future multi-role changes must stay explicit and regression-tested
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-29 Bounded Follow-Up: Durable Assigned-Roles Auth Lifecycle Proof
+
+Scope:
+
+- strengthened the bounded multi-role durability proof without changing the runtime role model
+- extended the DB-auth per-user password integration harness so a workspace-user-created identity with scalar `viewer` plus persisted `assignedRoles: ["editor"]` is exercised across:
+  - direct login
+  - issued step-up token
+  - password-reset confirm
+- preserved the already-proven additive behavior:
+  - scalar `role` remains in the JWT claim as compatibility state
+  - normalized `assignedRoles` still drive the later editor-capable route decision
+  - invalid or missing assigned roles are still handled by the existing read-path tests
+
+Files changed in this follow-up:
+
+- `apps/api/test/integration/auth-per-user-password.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API build stayed green; the later auth test race was from concurrent `dist` access, not a code regression |
+| `node apps/api/test/integration/auth-per-user-password.test.cjs` | Failed, then passed | First run was started in parallel with the API build and hit the known `apps/api/dist` race (`Cannot find module '../billing/plan-usage.service'` from `apps/api/dist/auth/auth.service.js`); sequential rerun passed and proved assigned-role durability through login, step-up, and password-reset confirm |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Passed | Proved DB-backed `assigned_roles` read path, scalar fallback, invalid-role normalization, and workspace-user governance read compatibility |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Passed | Proved local identity-directory `assignedRoles` bridge, scalar fallback, and no escalation from invalid local roles |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Passed | Proved workspace-user assigned-role write durability through later logins plus preserved role-update semantics |
+| `npm run test:integration:access-policy-remediation` | Passed | No regression to the broader bounded access-policy rollout |
+| `npm run test:integration:delegated-access-scopes` | Passed | No delegated-scope regression from the auth-durability proof slice |
+| `npm run guard:sensitive-gets` | Passed | Guard counts stayed stable during the auth-only slice |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation suite remained green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notifications auth behavior remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build unchanged by the auth-only slice |
+| `npm run gate:run:increment` | Passed | `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deployment workflow contract unchanged |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy checks remained green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-format regressions |
+| touched-file secret scan with `rg` | Passed with expected test-only matches | Only local dummy tokens/passwords appeared in test fixtures |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: durable assigned-role behavior is now proven across one more real auth lifecycle, including direct DB-auth login, step-up token issuance, and password-reset-confirm relogin, while preserving scalar-role fallback and the existing no-escalation behavior
+- not accepted as complete: this is still not a full multi-role migration, not a backfill-complete rollout, not a rollback-complete rollout, and not scalar-role removal
+- product claim wording remains: Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins and password-reset-confirm auth resolution. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the new per-user-password durability assertions if a later product decision intentionally narrows the current password-reset or step-up compatibility contract for persisted assigned roles
+- keep the bounded login, step-up, and password-reset durability proofs so any future multi-role auth changes remain explicit and regression-tested
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-29 Bounded Follow-Up: Marketplace Readiness and Preflight Admin-Boundary Mapping
+
+Scope:
+
+- added explicit `manage_product_data` admin-boundary coverage to the live marketplace readiness and mapping-preflight governance family
+- covered:
+  - `POST /marketplace/connectors/:connectorSlug/mappings/preflight`
+  - `POST /marketplace/connectors/:connectorSlug/publish-readiness`
+  - `POST /marketplace/readiness/batch`
+- extended the sensitive policy guard so these routes are now part of the checked admin-boundary surface
+- expanded remediation proof so `product_admin` allow and `system_admin` deny are both exercised on the new route family
+
+Files changed in this follow-up:
+
+- `apps/api/src/marketplace/marketplace.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new marketplace governance boundary decorators |
+| `npm run test:integration:access-policy-remediation` | Passed after fixture fixes | First failed on a proof mismatch (`preflight` returns `201`, not `200`) and then on an incorrect publish-readiness route path; final rerun passed |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated-scope behavior remained green after the governance-only slice |
+| `npm run guard:sensitive-gets` | Passed | Guardrail now validates 49 admin-boundary checked routes |
+| `node apps/api/test/integration/marketplace-readiness-batch.test.cjs` | Passed | Existing marketplace batch-readiness contract still holds under the new boundary |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: the marketplace readiness and mapping-preflight governance family now uses explicit `manage_product_data` admin-boundary enforcement, `product_admin` is proven allowed on those routes, and `system_admin` is proven denied
+- not accepted as complete: this still does not finish all remaining admin-boundary mapping, and it does not widen vendor, owner, API-client, or redaction claims
+- product claim wording remains aligned with the bounded governance model and should include the newly covered marketplace readiness and preflight family
+
+Rollback notes:
+
+- revert only the new marketplace readiness or preflight boundary decorators if a proven product requirement restores non-admin governance access to those routes
+- keep the remediation assertions and sensitive-route guard entries so any future widening of this family remains explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation within `ST-ACCESS-POLICY-BACKLOG-001`
+
+## 2026-04-29 Bounded Follow-Up: Audit Log Governance Redaction
+
+Scope:
+
+- added a central read policy for `GET /audit/logs`
+- kept the existing `manage_security` admin-boundary and human-only route contract intact
+- redacted raw audit `metadata` for `system_admin`
+- preserved full audit-log metadata visibility for `super_admin` and legacy `admin`
+- left `GET /audit/events` and `GET /audit/events/export` unchanged because they still need a broader explorer/export redaction design
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/audit/audit.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with audit-log read policy wiring |
+| `npm run test:integration:access-policy-remediation` | Passed after sequential rerun | Parallel first run hit shared `apps/api/dist` artifact timing; sequential rerun proved `system_admin` metadata redaction and `super_admin` metadata retention |
+| `npm run test:integration:delegated-access-scopes` | Passed after sequential rerun | Parallel first run hit the same shared build-artifact timing; no policy regression |
+| `npm run guard:sensitive-gets` | Passed | Guardrail recognized the new audit-log central redaction policy |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: `GET /audit/logs` now has central field-level redaction for lower admin-boundary roles, with `system_admin` still allowed but metadata-redacted and `super_admin` plus legacy `admin` retaining full detail
+- not accepted as complete: this does not complete broader audit explorer/export redaction, universal response redaction, or the remaining access-policy backlog
+- export and explorer payloads remain deliberately unchanged until a wider role-aware field contract is proven
+
+Rollback notes:
+
+- revert only the new `audit_logs_governance_redacted` read policy and the audit-log metadata redaction helper if a proven product requirement restores raw audit metadata to `system_admin`
+- keep the remediation assertions so any future widening of audit-log detail stays explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation within `ST-ACCESS-POLICY-BACKLOG-001`
+
+## 2026-04-29 Bounded Foundation Follow-Up: Additive AuthIdentity Assigned-Roles Read Path
+
+Scope:
+
+- added additive `assigned_roles` persistence on `AuthIdentity` without removing the legacy scalar `role`
+- updated DB-backed auth resolution and password-reset identity resolution to read persisted `assigned_roles`
+- kept scalar `role` as the compatibility fallback when `assigned_roles` is empty or missing
+- added a dedicated DB-auth integration proof for persisted multi-role reads without widening workspace-user CRUD into a multi-role write rollout
+
+Files changed in this follow-up:
+
+- `packages/db/prisma/schema.prisma`
+- `packages/db/prisma/migrations/20260429113000_add_auth_identity_assigned_roles/migration.sql`
+- `apps/api/src/auth/auth.service.ts`
+- `apps/api/test/integration/auth-assigned-roles-read-path.test.cjs`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `apps/api/test/integration/api-keys.test.cjs`
+- `apps/api/test/integration/shopify-publication-targets-api.test.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run prisma:generate` | Passed | Prisma client regenerated with additive `assigned_roles` field |
+| `npm run build --workspace @pim1/api` | Passed | API compiled with persisted assigned-role reads |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Failed, then passed | First proof incorrectly expected boundary-role access to bypass scalar app-role checks on `GET /compliance/rules`; switched to `GET /marketplace/channels`, which truthfully proves assigned editor role activation while invalid-only roles stay denied |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing access-policy coverage stayed green with the additive auth change |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated scope behavior remained intact |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET coverage remained stable after the auth persistence slice |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Existing role-resolution and API-client foundation checks stayed green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification redaction behavior remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy |
+| `npm run gate:run:increment` | Passed | Increment gates remained green after a sequential long-timeout run |
+| `npm run gate:run:sprint` | Passed | Sprint gates remained green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness still passed |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No whitespace or patch-shape errors |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local dummy passwords, token helper names, and new `assigned_roles` references matched |
+
+What is now proven:
+
+- DB-backed auth can persist and read `assigned_roles`
+- when `assigned_roles` is present, valid entries are normalized and emitted into JWT claims
+- scalar `role` remains the fallback when `assigned_roles` is empty
+- invalid persisted assigned-role strings are dropped and do not escalate privilege
+- legacy scalar-role workspace-user CRUD behavior remains unchanged in this slice
+
+What remains out of scope:
+
+- multi-role write APIs and workspace-user CRUD rollout
+- destructive backfill or scalar-role removal
+- broad admin hierarchy redesign
+- broader ABAC dimension rollout
+
+Rollback notes:
+
+- revert only the additive `assigned_roles` field, its migration, and the DB-auth read-path wiring if a proven DB-auth regression appears
+- keep the dedicated DB-auth proof so any future multi-role rollout or rollback still has runtime evidence for persisted-role reads
+- do not remove scalar `role` until a later, separately validated write-path and migration slice is complete
+
+## 2026-04-29 Bounded Follow-Up: Workspace-User Governance Read Compatibility For Assigned Roles
+
+Scope:
+
+- extended workspace-user governance reads to include normalized persisted `assigned_roles`
+- preserved the legacy scalar `role` field as the primary app-role contract
+- kept workspace-user writes unchanged: no multi-role create or update contract was introduced in this follow-up
+- extended the existing DB-auth assigned-roles integration proof to validate workspace-user governance read compatibility
+
+Files changed in this follow-up:
+
+- `apps/api/src/workspace-users/workspace-users.service.ts`
+- `apps/api/test/integration/auth-assigned-roles-read-path.test.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with workspace-user assigned-role read compatibility |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Passed | Workspace-user listing now surfaces normalized persisted assigned roles while scalar fallback remains intact |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing access-policy remediation coverage remained green |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated scope behavior remained green |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET coverage remained stable |
+
+What is now proven:
+
+- `GET /admin/workspace/users` includes normalized `assignedRoles` from persisted `AuthIdentity.assigned_roles`
+- invalid persisted assigned-role strings are filtered out of governance read output
+- scalar `role` remains unchanged as the compatibility field
+- no workspace-user multi-role write contract was introduced by accident
+
+Why the queue stops here:
+
+- the next multi-role step is no longer a read-compatibility extension
+- it requires explicit write-contract design for create/update APIs, validation rules, fallback behavior, and audit semantics
+- that is a separate rollout slice, not another zero-design continuation of the current pattern
+
+## 2026-04-29 Bounded Follow-Up: Workspace-User Assigned-Roles Additive Write Contract
+
+Scope:
+
+- extended workspace-user create and role-update DTOs to accept optional `assignedRoles`
+- persisted normalized `assignedRoles` on workspace-user create and update
+- preserved scalar `role` as the compatibility field and primary app-role contract
+- preserved existing behavior when `assignedRoles` is omitted on role update
+- rejected invalid assigned-role values at the DTO/service boundary instead of silently storing them
+- extended audit metadata for workspace-user create and role-change events to capture assigned-role changes
+
+Files changed in this follow-up:
+
+- `apps/api/src/workspace-users/dto/create-workspace-user.dto.ts`
+- `apps/api/src/workspace-users/dto/update-workspace-user-role.dto.ts`
+- `apps/api/src/workspace-users/workspace-users.service.ts`
+- `apps/api/test/integration/workspace-user-crud.test.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with additive workspace-user assigned-role writes |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Passed | Admin can create/update persisted assigned roles, omitted `assignedRoles` preserves existing values, invalid assigned roles are rejected, and audit metadata captures the change |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Passed | DB-auth read-path proof remained green after the write-contract slice |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing access-policy remediation coverage stayed green |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated scope behavior remained green |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET coverage remained stable |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation checks stayed green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notifications suite remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy |
+| `npm run gate:run:increment` | Passed | Increment gates remained green |
+| `npm run gate:run:sprint` | Passed | Sprint gates remained green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness remained green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-shape or whitespace regressions |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local dummy passwords, token helper names, and assigned-role references matched |
+
+What is now proven:
+
+- workspace-user create can persist additive `assignedRoles`
+- workspace-user role update can persist additive `assignedRoles`
+- omitting `assignedRoles` on role update preserves the existing stored values
+- invalid assigned-role values are rejected instead of being stored
+- workspace-user audit rows now record assigned-role additions and changes
+
+Why the queue stops here:
+
+- the next multi-role step is no longer a narrow compatibility or additive write-contract slice
+- remaining work needs explicit rollout decisions for:
+  - backfill behavior
+  - broader API/UI management flows
+  - rollback semantics beyond the current additive contract
+  - eventual scalar-role deprecation planning
+
+## 2026-04-29 Continuous Queue: API-Client `taxonomy.read` Scope Foundation
+
+Scope:
+
+- added one bounded machine-principal scope family for taxonomy metadata reads
+- kept taxonomy write routes unchanged and API clients still blocked from taxonomy governance mutations
+- preserved existing human behavior on taxonomy metadata routes while allowing API clients only with the exact new scope
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/api-client-policy.decorator.ts`
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/taxonomy/taxonomy.controller.ts`
+- `apps/api/test/integration/access-policy-foundation.test.cjs`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the additive `taxonomy.read` scope vocabulary and controller metadata |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | First proof incorrectly assumed `GET /taxonomy/categories?all=true` returned a paginated `{ items }` envelope. The live route returns an array for `all=true`, so the assertion was corrected in `apps/api/test/integration/access-policy-remediation.test.cjs` without changing product behavior. |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated scope and vendor/category-manager proofs remained green |
+| `npm run guard:sensitive-gets` | Passed | Guard now recognizes taxonomy metadata as `scope_filtered` with explicit API-client scope allowance |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation vocabulary proof now includes `taxonomy.read` |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification coverage remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy |
+| `npm run gate:run:increment` | Passed after long-timeout rerun | First run hit a shell timeout only; sequential rerun passed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | Sprint gates remained green with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness remained green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-shape or whitespace regressions |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local dummy tokens, passwords, and new scope strings matched |
+
+What is now proven:
+
+- API-client scope vocabulary now includes `taxonomy.read`
+- API keys with exact `taxonomy.read` can read:
+  - `GET /taxonomy/categories`
+  - `GET /taxonomy/categories/:id`
+  - `GET /taxonomy/categories/:id/attributes`
+- API keys with unrelated scopes are denied on those taxonomy metadata routes
+- API keys with no scopes are denied on those taxonomy metadata routes
+- human editor behavior on taxonomy metadata reads remains valid
+- taxonomy writes remain blocked for API clients
+
+Why the queue stops here:
+
+- the next obvious API-client candidate is `GET /issues/inbox`
+- that route mixes aggregate summary behavior with optional connector-installation filtering and scope-derived product filtering
+- expanding machine-principal access there needs a broader route-family contract than this clean metadata foundation slice
+
+## 2026-04-29 Continuous Queue: Outbound Webhook Delivery Redaction Foundation
+
+Scope:
+
+- added one bounded field-level redaction foundation for outbound webhook delivery governance reads
+- kept existing webhook governance route protection and provenance redaction intact
+- redacted `errorMessage` for lower admin boundary readers while preserving full visibility for `super_admin` and legacy `admin`
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/outbound-webhooks/outbound-webhooks.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new outbound webhook delivery read policy |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved `system_admin` delivery reads redact `errorMessage` while `super_admin` retains it |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated-scope behavior stayed green |
+| `npm run guard:sensitive-gets` | Passed | Guard now recognizes the delivery read policy as centrally redacted |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: shared governance field-level redaction now covers outbound webhook delivery reads, and the proof uses a real failed-delivery fixture rather than a mocked payload shape
+- not accepted as complete: this is still not universal response redaction, and broader mixed-payload governance families still need a larger field-level policy design
+- product claim wording remains: Vexa PIM has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered read routes, bounded vendor/object ownership on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, and shared governance redaction on covered governance payload families. It is not yet a complete enterprise authorization model across all fields, scopes, machine principals, role persistence, or governance surfaces.
+
+Rollback notes:
+
+- revert only the delivery read policy and the `errorMessage`-redaction helper if a validated incident-response requirement proves `system_admin` must see raw delivery failure text
+- keep the remediation proof and guardrail entry so any future visibility widening remains explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without full story completion
+
+## 2026-04-29 Continuous Queue: Billing Governance Read Redaction
+
+Scope:
+
+- added one bounded field-level redaction slice for the live billing governance read family
+- kept the existing `system_admin` / `super_admin` admin-boundary contract intact
+- redacted plan-profile and upgrade-request sensitive commercial fields for `system_admin` while preserving the full view for `super_admin` and legacy `admin`
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/billing/billing.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new billing governance read policies |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved `system_admin` redaction and `super_admin` full visibility on `plan-profile` and `upgrade-request` |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated-scope behavior stayed green |
+| `npm run guard:sensitive-gets` | Passed | Guard now recognizes both billing governance read policies as centrally redacted |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: shared governance field-level redaction now covers the live billing governance read family without widening access or changing the write routes
+- not accepted as complete: this is still not universal response redaction, and broader commercial internal/export payloads still need a larger visibility contract before safe rollout
+- product claim wording remains: Vexa PIM has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered read routes, bounded vendor/object ownership on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, additive multi-role persistence foundations, and shared governance redaction on covered governance payload families. It is not yet a complete enterprise authorization model across all fields, scopes, machine principals, durable role rollout, or governance surfaces.
+
+Rollback notes:
+
+- revert only the two billing read policies and the bounded billing redaction helpers if a validated commercial requirement proves `system_admin` must retain raw contact or request-detail visibility
+- keep the remediation proofs and guardrail entries so any future widening of billing governance visibility remains explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without full story completion
+
+## 2026-04-29 Foundation Plan: Multi-Role Persistence Rollout
+
+Scope:
+
+- inspected the current persisted auth model after the webhook-delivery redaction slice
+- converted the multi-role blocker from a vague backlog item into a concrete migration and rollout plan
+- did not execute destructive persistence changes in this pass
+
+Current blocker proof:
+
+- `packages/db/prisma/schema.prisma` still defines `AuthIdentity` with only a scalar `role` field and no persisted `assignedRoles`
+- `apps/api/src/auth/auth.service.ts` DB-backed identity resolution still returns `assignedRoles: []`
+- `apps/api/src/workspace-users/workspace-users.service.ts` still reads and writes only the scalar `role`
+- JWT and local-auth bridging already support `assignedRoles`, so the missing piece is durable DB storage rather than token vocabulary
+
+Smallest safe rollout plan:
+
+1. additive schema only
+   - add `assignedRoles String[] @default([]) @map("assigned_roles")` to `AuthIdentity`
+   - keep the legacy scalar `role` field as the primary app-role fallback during rollout
+2. read-path first
+   - update DB auth resolution to select `assignedRoles`
+   - normalize persisted roles through the existing `normalizeFoundationRole` pipeline
+   - keep null or missing arrays equivalent to `[]`
+3. backward-compatible write path
+   - leave existing user-create and role-change flows valid for single-role callers
+   - add optional assigned-role updates only after read-path rollout is proven
+   - keep deterministic primary-role resolution through the existing role-utils helper
+4. backfill
+   - set `assigned_roles = []` for existing rows
+   - do not infer admin-boundary roles from historical scalar `role` values automatically
+5. rollback
+   - stop writing `assigned_roles`
+   - continue honoring the scalar `role`
+   - leave the additive column in place; no destructive rollback required
+6. required proof before execution
+   - DB-auth login preserves assigned roles in JWT claims
+   - legacy single-role rows still authenticate unchanged
+   - API clients do not inherit persisted human assigned roles
+   - workspace user CRUD remains deterministic and does not widen access through ordering bugs
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: the multi-role blocker is now reduced to a concrete additive migration and rollout plan grounded in the actual repo state
+- not accepted as complete: persistence is still not implemented, backfilled, or validated in DB-auth mode
+- product claim wording remains: Vexa PIM has bounded authorization foundations across covered machine-principal scopes, vendor/object reads, admin-boundary routes, and governance redaction, plus a concrete multi-role persistence rollout plan. It is not yet a complete enterprise authorization model across durable multi-role storage, broad ABAC dimensions, or universal response redaction.
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without full story completion
+
+## 2026-04-29 Foundation Slice: API-Client Scope Vocabulary Expansion for Media Reads
+
+Scope:
+
+- added one new machine-principal scope family beyond catalog: `media.read`
+- applied that scope only to the bounded read-only media route family:
+  - `GET /media/assets`
+  - `GET /media/assets/:id`
+  - `GET /media/assets/:id/validation`
+- preserved class-level API-client deny for media writes and left all non-media machine-principal families unchanged
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/api-client-policy.decorator.ts`
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/media/media.controller.ts`
+- `apps/api/test/integration/access-policy-foundation.test.cjs`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new `media.read` scope vocabulary and media-route scope metadata |
+| `npm run test:integration:access-policy-remediation` | Passed | Added proof that API keys with `media.read` can access media reads, while catalog-only and no-scope keys are denied |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated human and vendor scope behavior stayed green after the machine-principal foundation addition |
+| `npm run guard:sensitive-gets` | Failed, then passed | First failure was a real guardrail precedence bug: class-level `@DisallowApiClient()` still beat method-level read-policy API metadata for media routes. Fixed in `scripts/validate-sensitive-get-policy.cjs` to mirror runtime precedence, then reran successfully. |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation suite now proves the API-client vocabulary includes `media.read` |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notifications redaction baseline remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-only slice |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green with the added API-client scope family |
+| `npm run gate:run:sprint` | Passed | Sprint gate stayed green with the media scope addition |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness remained intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state JSON still valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting errors |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local test DB URL, demo-password strings, and API-key test fixtures matched; no real secrets were introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded foundation slice:
+  - `media.read` now exists as a real API-client scope vocabulary item
+  - the media read family now requires explicit `media.read` scope for API-key access
+  - API keys with unrelated catalog scopes or no scopes are denied on media reads
+  - human editor access remained valid and media writes remain blocked to API clients
+- not accepted as complete:
+  - this is not a full API-client redesign
+  - only the bounded media read family is now proven beyond the covered catalog API family
+  - broader machine-principal resource coverage, vendor breadth, owner breadth, remaining admin-boundary mapping, persistent multi-role rollout, and universal response redaction all remain incomplete
+- exact product claim wording:
+  - `Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus a bounded media.read API-client scope family for the media read routes, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the proven catalog, compliance issue, auto-suggestion, rejection-intelligence, and media read paths, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the `media.read` scope vocabulary and method-level media route scope requirements if a proven machine-principal regression shows the family cannot be safely scoped this way
+- keep the guardrail precedence fix in `scripts/validate-sensitive-get-policy.cjs` because it aligns the validator with the live runtime metadata resolution order
+- keep media writes API-client denied unless a separate validated write-scope slice proves safe semantics
+
+Lock update:
+
+- no `INCREMENT_STATE.json` lock update was made because `ST-ACCESS-POLICY-BACKLOG-001` remains in progress and this slice does not complete the full story
+
+## 2026-04-29 Continuous Queue: API-Client Scope Expansion Batch
+
+Scope:
+
+- continued queue 1 past the already-validated `media.read` slice
+- added three more bounded machine-principal read-scope families:
+  - `compliance.read`
+  - `rejection_intelligence.read`
+  - `auto_suggestions.read`
+- enforced them only on the matching read-only families:
+  - `GET /compliance/products/:id/issues`
+  - `GET /rejection-intelligence/products/:id/score`
+  - `GET /auto-suggestions/products/:id/title-suggestion`
+  - `GET /auto-suggestions/products/:id/attribute-enrichment`
+  - `GET /auto-suggestions/products/:id/category-suggestion`
+- preserved API-client deny on writes and on all remaining non-proven machine-principal surfaces
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/api-client-policy.decorator.ts`
+- `apps/api/src/compliance/compliance.controller.ts`
+- `apps/api/src/rejection-intelligence/rejection-intelligence.controller.ts`
+- `apps/api/src/auto-suggestions/auto-suggestions.controller.ts`
+- `apps/api/test/integration/access-policy-foundation.test.cjs`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the added API-client scope vocabulary and route-family metadata |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | First failure was an outdated expectation in the remediation suite: catalog-scoped API keys on newly scope-backed AI-helper routes now fail with `API_CLIENT_SCOPE_FORBIDDEN`, not `API_CLIENT_FORBIDDEN`. Fixed in `apps/api/test/integration/access-policy-remediation.test.cjs`, then reran successfully. |
+| `npm run test:integration:delegated-access-scopes` | Passed | Existing delegated human and vendor scope behavior remained intact |
+| `npm run guard:sensitive-gets` | Passed | Guard coverage now counts `allowed_with_api_scope=25` after the new scope-backed route families |
+
+Queue review after the new batch:
+
+- queue 1 safe additions are now exhausted for the currently clean read-only pattern
+- skipped as not safe for this queue:
+  - connector preview and connector account surfaces because they trend into payload preview, credentials, and installation lifecycle semantics
+  - marketplace export, simulation, and submission surfaces because they are tied to export or write lifecycle semantics rather than clean machine-principal reads
+  - issue inbox aggregate paths because they are scoped aggregate/filter surfaces rather than one narrow direct read family
+- queue 2 was inspected next, but no equally safe provenance-only redaction target remained:
+  - `GET /admin/webhooks/deliveries` carries request and response payload fields, which needs broader field-level redaction design rather than the current lightweight provenance pattern
+  - audit explorer reads carry mixed metadata and explorer semantics, which also needs a broader policy shape instead of another small provenance-only extension
+
+PO/CTO validation:
+
+- accepted for the current continuous queue batch:
+  - API-client scope vocabulary now includes `compliance.read`, `rejection_intelligence.read`, and `auto_suggestions.read`
+  - those scopes are proven only on their matching bounded read families
+  - API keys with exact scope are allowed
+  - API keys with no scope or unrelated scope are denied
+  - human reviewer, editor, and admin behavior remained intact
+  - writes remained blocked
+- not accepted as complete:
+  - this is still not a full API-client model
+  - broader machine-principal scope coverage still remains incomplete outside the currently covered catalog, media, compliance issue, rejection score, and auto-suggestions read families
+  - queue 2 onward still needs broader redaction or design work before safe continuation
+- exact product claim wording:
+  - `Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded media.read, compliance.read, rejection_intelligence.read, and auto_suggestions.read API-client scope families for their matching read routes, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the proven catalog, compliance issue, auto-suggestion, rejection-intelligence, and media read paths, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Lock update:
+
+- no `INCREMENT_STATE.json` lock update was made because `ST-ACCESS-POLICY-BACKLOG-001` remains in progress and this batch does not complete the full story
+
+## 2026-04-29 Continuous Queue: Shared Governance Provenance Redaction Expansion
+
+Scope:
+
+- extended central governance provenance redaction from the already-covered workspace user, workspace access-scope, and API-key reads into:
+  - `GET /connectors/permissions`
+  - `GET /admin/webhooks`
+- kept the existing security admin-boundary rules intact and changed only read-policy metadata plus central response-policy coverage
+- validated the queue stop condition for further admin-boundary work instead of forcing a dead or unsafe route family:
+  - `ONDC` looked like a candidate on paper, but the route family is feature-flagged off in `apps/api/src/app.module.ts`, so it is not a live admin-boundary backlog surface in this environment
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/connector-installer/connector-installer.controller.ts`
+- `apps/api/src/outbound-webhooks/outbound-webhooks.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new governance redaction policies |
+| `npm run test:integration:access-policy-remediation` | Passed after two fixture corrections | First failure used an invalid webhook `eventType`; second failure used a connector-permission `principalType=user` without a matching DB-auth identity. Final passing run proved system-admin redaction and super-admin visibility on both new governance reads. |
+| `npm run test:integration:delegated-access-scopes` | Passed | No delegated-scope regression from the governance-only slice |
+| `npm run guard:sensitive-gets` | Passed | Guard still reports `authenticatedReadRoutes=71`, `authenticatedRoutes=158`, `publicRoutes=19`, `adminBoundaryCheckedRoutes=46` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation enforcement remains intact |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing shared redaction coverage remains intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build unaffected by backend-only slice |
+| `npm run gate:run:increment` | Passed | `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract unchanged |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness still green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state JSON remains valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-format regression |
+| touched-file secret scan with `rg` | Passed with expected test-only matches | No real secrets introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded queue slice:
+  - central governance provenance redaction now covers connector-permission reads and outbound-webhook endpoint reads
+  - `system_admin` stays allowed on those routes but receives `createdBy` redacted
+  - `super_admin` and legacy `admin` retain full provenance visibility
+  - queue 2 is now complete for the currently covered governance read families
+- not accepted as complete:
+  - this is still not universal response redaction
+  - no additional safe live admin-boundary route family was validated after this slice because the remaining obvious `ONDC` candidate is feature-flagged off, and the next owner-scope candidate would require a different resource model instead of another clean governance read extension
+  - broader API-client coverage, persistent multi-role rollout, broad vendor enforcement, and broader owner-scope expansion remain incomplete
+- product claim wording:
+  - Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title, attribute-enrichment, and category-suggestion reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the route-level `ReadAccessPolicy(...)` metadata on `GET /connectors/permissions` or `GET /admin/webhooks` if PO later decides `system_admin` should regain raw provenance visibility
+- keep the central redaction cases and remediation assertions so any visibility widening remains explicit and tested
+- do not use the discarded `ONDC` trial as evidence for admin-boundary completion while the feature flag keeps that route family out of the live app surface
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `INC-24 / ST-ACCESS-POLICY-BACKLOG-001` remains an in-progress queue rather than a completed access-policy story
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Expansion To Auto-Suggestion Title Reads
+
+Scope:
+
+- expanded the previously validated vendor/object ownership boundary from the canonical catalog family, compliance product-issue reads, rejection-intelligence score reads, and media asset reads into one additional adjacent product-backed read path
+- opted only `GET /auto-suggestions/products/:id/title-suggestion` into bounded vendor access
+- preserved reviewer denial, editor allow, API-client denial, and blocked vendor write behavior on the rest of the AI-helper surface
+
+Files changed in this follow-up:
+
+- `apps/api/src/auto-suggestions/auto-suggestions.controller.ts`
+- `apps/api/src/auto-suggestions/auto-suggestions.service.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled after the controller-level vendor opt-in and service ownership propagation |
+| `npm run test:integration:delegated-access-scopes` | Passed | Proved `vendor_scope_extends_to_owned_auto_suggestion_reads` |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved `vendor_allowed_owned_auto_suggestion_reads_on_proven_path_only` while preserving reviewer denial and editor allow |
+| `npm run guard:sensitive-gets` | Passed | Classification coverage now reports `scope_filtered=7` and `admin_editor=14` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime authenticated-read and API-client foundation checks stayed green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared redaction coverage stayed green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-only slice |
+| `npm run gate:run:increment` | Timed out once, then passed | First failure was shell timeout only during the long sequential gate run; reran with a longer timeout and got `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | Final log reported `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Checked-in staging postdeploy harness still validated auth and non-admin denial smoke coverage |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remains valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting errors introduced |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local DB URLs, dummy JWT secrets, bearer-header helpers, and existing credential-variable names matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: vendor/object ownership is now proven on one more adjacent product-backed read path by reusing the trusted `Product.vendorScopeKey` boundary through auto-suggestion title reads
+- not accepted as complete: this does not broaden vendor writes, vendor taxonomy access, vendor governance access, supplier or locale or market or team or assignee enforcement, broader machine-principal coverage, persistent multi-role rollout, full admin-boundary mapping, or universal response redaction
+- product claim wording remains:
+  - `Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the `FoundationRoleAccess("vendor")` opt-in on `GET /auto-suggestions/products/:id/title-suggestion` and the service-level `vendorScopeKey` propagation if a proven regression shows title-suggestion reads should not inherit the same trusted product boundary as the already validated vendor-safe catalog family
+- keep the focused delegated-scope and remediation assertions so any future role broadening on the remaining AI-helper routes stays explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `INC-24 / ST-ACCESS-POLICY-BACKLOG-001` remains in progress and this slice does not complete the story
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Expansion To Remaining Auto-Suggestion Reads
+
+Scope:
+
+- stayed within the same already-proven auto-suggestions product-backed family and continued the safe bounded queue instead of hopping to a new resource model
+- opted `GET /auto-suggestions/products/:id/attribute-enrichment` into bounded vendor access
+- opted `GET /auto-suggestions/products/:id/category-suggestion` into bounded vendor access
+- kept `POST /auto-suggestions/products/:id/repair` blocked for vendor and preserved API-client denial on the full family
+
+Files changed in this follow-up:
+
+- `apps/api/src/auto-suggestions/auto-suggestions.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the two additional scope-filtered vendor-safe auto-suggestion reads |
+| `npm run test:integration:delegated-access-scopes` | Passed | Proved `vendor_scope_extends_to_owned_auto_suggestion_attribute_reads` and `vendor_scope_extends_to_owned_auto_suggestion_category_reads` |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved vendor owned/unowned allow-deny behavior for the two new routes while preserving reviewer denial and editor allow |
+| `npm run guard:sensitive-gets` | Passed | Classification coverage moved to `scope_filtered=9` and `admin_editor=12` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime authenticated-read and API-client foundation checks stayed green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared redaction coverage stayed green |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-only slice |
+| `npm run gate:run:increment` | Passed | Final log reported `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint` | Passed | Final log reported `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Checked-in staging postdeploy harness still validated auth and non-admin denial smoke coverage |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remains valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting errors introduced |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local DB URLs, dummy JWT secrets, bearer-header helpers, and existing credential-variable names matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: the remaining read-only auto-suggestion siblings now reuse the same trusted `Product.vendorScopeKey` boundary, so the covered vendor-safe auto-suggestion family is now title suggestion plus attribute enrichment plus category suggestion
+- not accepted as complete: this still does not broaden vendor writes, vendor taxonomy access, vendor governance access, supplier or locale or market or team or assignee enforcement, broader machine-principal coverage, persistent multi-role rollout, full admin-boundary mapping, or universal response redaction
+- product claim wording remains:
+  - `Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title, attribute-enrichment, and category-suggestion reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `INC-24 / ST-ACCESS-POLICY-BACKLOG-001` remains in progress and this slice does not complete the story
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Expansion To Media Asset Reads
+
+Scope:
+
+- expanded bounded vendor/object ownership enforcement from canonical catalog reads and compliance product-issue reads into the adjacent media asset read family
+- opted the media asset read routes into `vendor` foundation-role access while keeping media writes fail-closed
+- passed `effectiveRoles` through the media controller so vendor scope can reach the shared policy engine
+- expanded central media scope enforcement so `vendor` is treated as a supported read dimension on media assets
+- preserved admin and existing scoped-role behavior while proving vendor allow and deny behavior on owned versus unowned assets
+
+Scope expansion:
+
+- expanded from the initially planned controller and integration-test surface into `apps/api/src/common/access-policy/access-policy.service.ts` and `apps/api/src/media/media.service.ts` because the media read family depended on the shared media scope builder and product access assertions carrying `vendorScopeKey`; without that central ownership signal the new vendor route opt-in would have failed closed for the wrong reason
+
+Files changed in this follow-up:
+
+- `apps/api/src/media/media.controller.ts`
+- `apps/api/src/media/media.service.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed after one compile fix | Initial failure came from over-typing `resolveActor()` against full `FastifyRequest`; fixed in `apps/api/src/media/media.controller.ts` without weakening route behavior |
+| `npm run test:integration:delegated-access-scopes` | Passed after one real policy fix | Initial failure showed owned vendor media reads were denied because `MediaService` product selects omitted `vendorScopeKey`; fixed by carrying the ownership field through media product access assertions |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved vendor allow on owned media list/detail/validation and deny on unowned media detail while keeping vendor writes blocked |
+| `npm run guard:sensitive-gets` | Passed | Guard coverage remained stable with authenticated-read and admin-boundary counts unchanged |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime classification and API-client foundation behavior remain intact |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared notification redaction remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-only slice |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green with the media vendor expansion |
+| `npm run gate:run:sprint` | Passed | Sprint gate stayed green with the media vendor expansion |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remains intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy harness remained green |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting regressions |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | No real secrets introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: vendor/object ownership is now proven on one additional product-backed read family by reusing the trusted `Product.vendorScopeKey` boundary through media assets
+- vendors can now read owned media asset lists, asset details, and asset validation results
+- vendors remain denied on unowned media assets
+- vendor writes, taxonomy, governance, and all other non-proven vendor surfaces remain fail-closed
+- not accepted as complete: this is still not broad vendor rollout; `supplier`, `locale`, `market`, `team`, and `assignee` remain unenforced; broader API-client resources, persistent multi-role rollout, full admin-boundary mapping, and universal redaction remain incomplete
+- exact product claim wording:
+  - `Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the `FoundationRoleAccess("vendor")` opt-in on the media read routes and the supporting media read-scope changes if a proven regression shows those routes do not actually derive ownership through `Product.vendorScopeKey`
+- keep the delegated-scope and remediation assertions so future vendor widening on media must remain explicit and reviewed
+- do not widen vendor media writes from this slice; that would require separate object-safe edit proof
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains an in-progress unlocked backlog stream rather than a completed bounded story
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Expansion To Rejection Score Reads
+
+Scope:
+
+- expanded bounded vendor/object ownership enforcement from the canonical catalog family, compliance product-issue reads, and media asset reads into the adjacent rejection-intelligence score read family
+- opted `GET /rejection-intelligence/products/:id/score` into `vendor` foundation-role access
+- passed `effectiveRoles` through the rejection-intelligence controller so vendor scope can reach the shared policy engine
+- preserved reviewer access and existing human-only API-client behavior while proving vendor allow and deny behavior through the same trusted product boundary
+
+Scope expansion:
+
+- expanded from the initially planned controller and integration-test surface into `apps/api/src/rejection-intelligence/rejection-intelligence.service.ts` because the service-level `assertProductAccess()` call needed to carry `vendorScopeKey`; without that persisted ownership field the new vendor route opt-in would have failed closed even for owned resources
+
+Files changed in this follow-up:
+
+- `apps/api/src/rejection-intelligence/rejection-intelligence.controller.ts`
+- `apps/api/src/rejection-intelligence/rejection-intelligence.service.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with vendor-safe rejection-score route updates |
+| `npm run test:integration:delegated-access-scopes` | Passed after sequential rerun | One false failure came from the known shared `apps/api/dist` artifact race when commands were launched together; sequential rerun proved the real behavior |
+| `npm run test:integration:access-policy-remediation` | Passed after sequential rerun | Proved vendor allow on owned rejection-score reads and deny on unowned rejection-score reads |
+| `npm run guard:sensitive-gets` | Passed | Guard coverage remained stable after changing the route classification to `scope_filtered` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime classification and API-client foundation behavior remained intact |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared notification redaction remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy after the backend-only slice |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green with the rejection-score vendor expansion |
+| `npm run gate:run:sprint` | Passed | Sprint gate stayed green with the rejection-score vendor expansion |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy harness remained green |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting regressions |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | No real secrets introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: vendor/object ownership is now proven on one more adjacent product-backed read family by reusing the trusted `Product.vendorScopeKey` boundary through rejection-intelligence score reads
+- vendors can now read owned rejection-intelligence scores
+- vendors remain denied on unowned rejection-intelligence scores
+- vendor writes, taxonomy, governance, and all other non-proven vendor surfaces remain fail-closed
+- not accepted as complete: this is still not broad vendor rollout; `supplier`, `locale`, `market`, `team`, and `assignee` remain unenforced; broader API-client resources, persistent multi-role rollout, full admin-boundary mapping, and universal redaction remain incomplete
+- exact product claim wording:
+  - `Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the `FoundationRoleAccess("vendor")` opt-in on `GET /rejection-intelligence/products/:id/score` and the service-level ownership propagation if a proven regression shows that rejection-score reads should not inherit the same trusted product boundary as the canonical catalog family
+- keep the delegated-scope and remediation assertions so future vendor widening on AI or score-based read families remains explicit and reviewed
+- do not widen vendor writes or AI repair behavior from this slice; those would require separate edit-safe proof
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains an in-progress unlocked backlog stream rather than a completed bounded story
+
+## 2026-04-28 Bounded Follow-Up: Shared Governance Provenance Redaction
+
+Scope:
+
+- expanded shared read-response redaction beyond catalog, dashboard, and notifications into security-governance reads
+- converted the following admin governance read families to explicit shared read policies with central redaction:
+  - `GET /admin/workspace/users`
+  - `GET /admin/workspace/access-scopes`
+  - `GET /admin/api-keys`
+- preserved existing admin-boundary enforcement and API-client denial behavior
+- kept the redaction bounded to provenance fields only: `createdBy` is now redacted for `system_admin` while retained for `super_admin` and legacy `admin`
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/src/common/rbac/read-access-policy.interceptor.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/api-keys/api-keys.controller.ts`
+- `apps/api/src/workspace-users/workspace-users.controller.ts`
+- `apps/api/src/workspace-users/workspace-access-scopes.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new governance redaction policies and interceptor actor-role propagation |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | First failure was a real regression: `super admin allowed scope mutation failed: expected 201, got 500`; root cause was a duplicate brand-scope fixture introduced by this slice in `apps/api/test/integration/access-policy-remediation.test.cjs`; fixed by using a unique scope value for the earlier boundary read-redaction proof and reran successfully |
+| `npm run guard:sensitive-gets` | Passed | Guard now validates the added governance redaction policies; coverage remained `authenticatedReadRoutes=71`, `authenticatedRoutes=158`, `publicRoutes=19`, `adminBoundaryCheckedRoutes=46` |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime read-classification and API-client baseline behavior remained intact |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated ownership, category, brand, and vendor scope behavior remained intact after the shared-redaction slice |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing shared notification redaction still behaves correctly |
+| `npm run build --workspace @pim1/web` | Passed | No web regression from the backend-only governance redaction slice |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green with the governance redaction expansion |
+| `npm run gate:run:sprint` | Passed | Sprint gate stayed green with the governance redaction expansion |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy validation remained green |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-format errors |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local DB URL and API-key variable-name matches were found; no real credentials were introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - shared response redaction is now real on API-key governance, workspace-user governance, and workspace access-scope governance reads
+  - `system_admin` is still allowed to manage the covered security-governance routes, but provenance fields such as `createdBy` are centrally redacted
+  - `super_admin` and legacy `admin` retain the full provenance fields on the covered routes
+  - existing admin-boundary, delegated-scope, vendor-foundation, and API-client guardrails remained intact
+- not accepted as complete:
+  - this is a partial shared-redaction expansion, not universal response redaction
+  - broader vendor rollout, future scope enforcement, multi-role persistence, broader API-client scope coverage, and full admin-boundary mapping remain open
+- product claim wording:
+  - `Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the canonical catalog read family, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the three governance read policies and the central provenance-redaction helper if a proven operational requirement shows `system_admin` must retain `createdBy` on those exact payloads
+- keep the remediation assertions that distinguish `system_admin` from `super_admin` so any future governance-visibility broadening remains explicit and reviewed
+- do not loosen the admin-boundary or API-client denial behavior while rolling back provenance redaction
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains an in-progress backlog stream
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Expansion To Compliance Product-Issue Reads
+
+Scope:
+
+- expanded the previously validated vendor/object ownership boundary from canonical catalog reads into one adjacent product-backed read family
+- opted `GET /compliance/products/:id/issues` into bounded vendor access
+- preserved vendor write denial, vendor taxonomy denial, and all other non-proven vendor surfaces as fail-closed
+- preserved category-manager partial unblocking, admin-boundary work, API-client coverage, and shared governance provenance redaction
+
+Files changed in this follow-up:
+
+- `apps/api/src/compliance/compliance.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the bounded vendor opt-in on compliance product-issue reads |
+| `npm run test:integration:delegated-access-scopes` | Passed | Proved `vendor_scope_extends_to_owned_compliance_issue_reads` while preserving existing scope-intersection behavior |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | First failure was a real test-assumption mismatch: `expected vendor owned compliance issues payload, got []`; root cause was the remediation fixture not guaranteeing open issues on the owned product; fixed by asserting the correct route contract (`200` plus array payload) rather than forcing issue count; reran successfully |
+| `npm run guard:sensitive-gets` | Passed | No classification or API-client coverage regression |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime classification and machine-principal baseline behavior remained intact |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing centralized notification redaction remained intact |
+| `npm run build --workspace @pim1/web` | Passed | No web regression from the backend-only vendor slice |
+| `npm run gate:run:increment` | Passed | Increment gate remained green |
+| `npm run gate:run:sprint` | Passed | Sprint gate remained green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy contract remained intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking JSON remained valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-format errors |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local DB URL and API-key variable-name matches were found; no real credentials introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - vendor/object ownership is now proven on one additional product-backed read family: compliance product-issue reads
+  - vendor can read owned product issues
+  - vendor is denied unowned product issues
+  - mixed delegated-scope intersections remain enforced through the existing product access assertion
+  - vendor writes, taxonomy access, governance routes, and other non-proven vendor surfaces remain fail-closed
+- not accepted as complete:
+  - this is still not broad vendor rollout
+  - it does not complete supplier, locale, market, team, or assignee enforcement
+  - it does not complete broader API-client resource coverage, persistent multi-role authorization, full admin-boundary mapping, or universal response redaction
+- product claim wording:
+  - `Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.`
+
+Rollback notes:
+
+- revert only the compliance route foundation-role opt-in if a proven vendor workflow regression appears there
+- keep the delegated-scope and remediation proofs so any future widening of vendor access continues to require explicit evidence
+- do not widen vendor write or taxonomy access as part of any rollback; those surfaces should remain fail-closed until separately proven
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains an in-progress backlog stream
+
+## 2026-04-28 Bounded Follow-Up: Vendor/Object Ownership Foundation On Canonical Catalog Reads
+
+Scope:
+
+- added a minimal persisted vendor ownership field to `Product` with additive migration safety
+- allowed `vendor` delegated-scope assignments to be stored as a real foundation dimension
+- enforced vendor/object ownership on the canonical catalog product read family only:
+  - `GET /catalog/products`
+  - `GET /catalog/products/search`
+  - `GET /catalog/products/:id`
+  - `GET /catalog/products/:id/variants`
+- preserved fail-closed behavior for vendor writes and non-proven vendor surfaces
+- kept vendor ownership data redacted from read payloads
+
+Files changed in this follow-up:
+
+- `packages/db/prisma/schema.prisma`
+- `packages/db/prisma/migrations/20260428131500_add_product_vendor_scope_key/migration.sql`
+- `apps/api/src/catalog/dto/create-product.dto.ts`
+- `apps/api/src/catalog/dto/update-product.dto.ts`
+- `apps/api/src/catalog/catalog.controller.ts`
+- `apps/api/src/catalog/catalog.service.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run prisma:generate` | Passed | Prisma client regenerated with `Product.vendorScopeKey` |
+| `npm run build --workspace @pim1/api` | Failed once, then passed | First failure was a tooling race because Prisma generate and API build were started together; sequential rerun succeeded |
+| `npm run test:integration:delegated-access-scopes` | Failed twice, then passed | First failure was a stale test expecting vendor assignments to remain rejected. Second failure found a real bug: product updates were silently clearing `vendorScopeKey` when omitted. Fix preserved existing ownership on update and final run proved owned-read enforcement plus category/brand/vendor intersection |
+| `npm run test:integration:access-policy-remediation` | Failed twice, then passed | First failure found missing vendor foundation-role opt-in on `GET /catalog/products/:id/variants`. Second failure found `POST /catalog/products` had been accidentally widened to vendor during route patching. Both controller metadata issues were corrected |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation coverage remains intact |
+| `npm run guard:sensitive-gets` | Passed | Classification and API-client coverage remain intact while vendor path stays bounded to catalog reads |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification redaction coverage remains intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy with backend-only vendor slice |
+| `npm run gate:run:increment` | Passed | Increment core gates remained green |
+| `npm run gate:run:sprint` | Passed | Sprint core gates remained green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remains intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy harness remains green |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting regressions |
+| touched-file secret scan with `rg` | Passed with expected test-only matches | Only local DB URLs, demo passwords, and existing test-token patterns matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: one trustworthy vendor/object ownership source now exists on `Product`, vendor scope is enforced on the canonical catalog read family, vendors can read owned resources, vendors are denied unowned resources, category plus vendor intersection is proven in delegated access, and vendor stays blocked on writes and non-proven paths
+- not accepted as complete: this is not broad vendor rollout, taxonomy and other non-catalog vendor surfaces remain blocked, supplier or locale or market or team or assignee enforcement remain incomplete, persistent multi-role rollout remains incomplete, full admin-boundary mapping remains incomplete, broader API-client resources remain incomplete, and universal response redaction remains incomplete
+- product claim wording:
+  - Vexa PIM now has bounded vendor/object ownership enforcement on one proven product-backed catalog read path, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, and owner-scope enforcement on marketplace mapping templates. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the vendor additions on canonical catalog read routes and `Product.vendorScopeKey` persistence if regression proof shows the ownership source is untrustworthy
+- preserve the fail-closed behavior for vendor writes and non-proven routes even if this bounded read path is revisited
+- preserve the update-path fix that keeps existing `vendorScopeKey` values when updates omit the field, because clearing ownership implicitly would reintroduce false denials and unsafe drift
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains in progress and the broader authorization backlog is not complete yet
+
+## 2026-04-28 Bounded Follow-Up: Owner-Scoped Marketplace Mapping Templates
+
+Scope:
+
+- reviewed the remaining blockers as PO and selected the next critical-path ownership slice instead of another generic route pass
+- turned `owner` from “representable only” into real bounded enforcement on marketplace mapping-template resources that already persist trustworthy `createdBy`
+- preserved the category-scoped foundation work and kept `vendor` blocked because the product data model still does not prove a vendor boundary
+- fixed the mapping-manager integration harness so it logs in with a workspace slug and checked-in test password, matching the current auth contract
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/marketplace/marketplace.service.ts`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `apps/api/test/integration/mapping-manager.test.cjs`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with owner-scope storage and marketplace-template ownership enforcement |
+| `npm run test:integration:delegated-access-scopes` | Passed | New proof: owner-scoped mapping templates require ownership plus category/channel intersection |
+| `node apps/api/test/integration/mapping-manager.test.cjs` | Failed first, then passed | First failure was stale auth-harness drift (`WORKSPACE_NOT_FOUND` then `INVALID_CREDENTIALS`); fixed by adding workspace slug and `PIM_AUTH_PASSWORD` to the harness |
+| `npm run guard:sensitive-gets` | Passed | Sensitive GET guard remained green; no weakening of runtime classification |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation behavior unchanged |
+| `npm run test:integration:access-policy-remediation` | Passed | Broader access-policy regression suite remained green |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing centralized notification redaction remained intact |
+| `npm run build --workspace @pim1/web` | Passed | No web regression from backend-only slice |
+| `npm run gate:run:increment` | Passed | Increment gate stayed green after the owner-scope slice |
+| `npm run gate:run:sprint` | Passed after longer sequential rerun | First run hit shell timeout only; no product regression was indicated in the log |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remains intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy harness still validates login, revocation, and non-admin denials |
+| `git diff --check` | Passed | CRLF warnings only |
+| touched-file secret scan with `rg` | Passed with expected local test-only matches | Only local DB URL, local dev secrets, and bearer-header test strings matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - `owner` scope assignments are now storable instead of universally blocked
+  - marketplace mapping-template list, get, update, clone, and delete now enforce owned-resource access when `owner` scope is active
+  - template creation and default-template switching now preserve owner boundaries instead of mutating unrelated templates
+  - delegated-access coverage proves allow/deny behavior under owner plus category/channel intersection
+- not accepted as complete:
+  - this is not broad ownership enforcement across all resources
+  - `vendor` is still blocked because the product model still has no trustworthy vendor/object boundary
+  - `supplier`, `locale`, `market`, `team`, and `assignee` remain representable but unenforced
+  - multi-role persistence, broader machine-principal resources, full admin-boundary mapping, and shared redaction are still pending
+- product claim wording now is:
+  - Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded live admin-boundary enforcement on covered governance routes, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, Shopify publication-target catalog scope enforcement, partial safe unblocking of `category_manager` on proven category-scoped catalog and taxonomy surfaces, and bounded owner-scope enforcement on marketplace mapping templates that persist trustworthy ownership. It is not yet enterprise-complete across vendor/object ownership enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert only the owner-scope storage allowance and marketplace-template ownership checks if a proven business requirement needs shared template visibility for owner-scoped actors
+- keep the delegated-access proof and mapping-manager harness fixes so future ownership changes remain explicit and regression-tested
+- do not relax `vendor` blocking based on this slice; it did not add vendor/object enforcement
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains in progress and this slice does not complete the overall backlog
+
+## 2026-04-28 Bounded Follow-Up: Category-Scoped Foundation Role Enforcement
+
+Scope:
+
+- enforced blocked foundation roles by default across normal RBAC routes, not only admin-boundary routes
+- explicitly opted `category_manager` into the catalog and taxonomy surfaces that can already prove category scope safely
+- fixed policy-actor propagation so scoped foundation roles no longer inherit legacy-admin global bypass inside catalog and taxonomy enforcement
+- fixed a deeper scope-engine blocker where active scope dimensions were resolved tenant-wide instead of actor-specific
+- expanded remediation and delegated-access integration coverage to prove:
+  - `category_manager` is allowed only on scoped catalog and taxonomy surfaces
+  - `category_manager` is denied out of scope and denied hierarchy mutation
+  - `vendor` remains blocked until real vendor/object enforcement exists
+  - actor-specific scope activation replaces the old cross-user scope-coupling bug
+
+Scope expansion:
+
+- expanded from the original test-only proof plan into:
+  - `apps/api/src/common/access-policy/access-policy.service.ts`
+  - `apps/api/src/catalog/catalog.controller.ts`
+  - `apps/api/src/catalog/catalog.service.ts`
+  - `apps/api/src/taxonomy/taxonomy.controller.ts`
+  - `apps/api/src/taxonomy/taxonomy.module.ts`
+  - `apps/api/src/taxonomy/taxonomy.service.ts`
+- reason: focused remediation exposed two real regressions that had to be fixed in source, not hidden in tests:
+  - missing `AccessPolicyModule` wiring in `TaxonomyModule`
+  - tenant-global scope activation causing one user’s assignments to constrain unrelated users
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/foundation-role-access.decorator.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/catalog/catalog.controller.ts`
+- `apps/api/src/catalog/catalog.service.ts`
+- `apps/api/src/taxonomy/taxonomy.controller.ts`
+- `apps/api/src/taxonomy/taxonomy.module.ts`
+- `apps/api/src/taxonomy/taxonomy.service.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled after scoped foundation-role enforcement and taxonomy module wiring |
+| `npm run test:integration:access-policy-remediation` | Failed, then passed | First failure: Nest DI boot regression because `TaxonomyModule` did not import `AccessPolicyModule`; fixed in `apps/api/src/taxonomy/taxonomy.module.ts`. Second failure: `category_manager` still inherited admin payload visibility because redaction keyed off legacy app role only; fixed centrally in `AccessPolicyService`. Final run proved scoped allow/deny behavior |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime authenticated-read enforcement and API-client route policy still intact |
+| `npm run guard:sensitive-gets` | Passed | Guardrail remained green with `authenticatedReadRoutes=71`, `authenticatedRoutes=158`, `publicRoutes=19`, `adminBoundaryCheckedRoutes=46` |
+| `npm run test:integration:delegated-access-scopes` | Failed, then passed | First failure exposed the actor-specific scope activation change: old test assumptions depended on tenant-global scope activation. Updated the suite to assert the new actor-specific semantics and preserved fail-closed behavior where connector preview still needs explicit connector permission grants |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared notification redaction and notification workflows remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build stayed green; no frontend changes required |
+| `npm run gate:run:increment` | Timed out once, then passed | First failure was shell timeout only; reran sequentially with a longer timeout and the gate completed green |
+| `npm run gate:run:sprint` | Passed | Sprint gate completed green |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy harness remained intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment-state JSON still valid |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting errors |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local Postgres URLs, local env defaults, and bearer-header test strings matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - the access-policy engine no longer activates scope dimensions tenant-wide for unrelated users
+  - `category_manager` is now partially and safely unblocked on provable category-scoped catalog and taxonomy surfaces
+  - `category_manager` remains denied on hierarchy mutation and non-opted-in routes
+  - `vendor` remains fail-closed and blocked until true vendor/object enforcement exists
+- not accepted as complete:
+  - this does not complete ownership enforcement for `vendor`, `owner`, `supplier`, `locale`, `market`, `team`, or `assignee`
+  - this does not complete persistent multi-role storage rollout
+  - this does not complete broader API-client resource coverage beyond the covered catalog family
+  - this does not complete universal shared payload redaction
+  - this does not complete full admin-boundary mapping
+- product claim wording remains:
+  - Vexa PIM now has runtime-enforced authenticated-read classification, explicit catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded live admin-boundary enforcement on covered governance routes, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, Shopify publication-target catalog scope enforcement, and partial safe unblocking of `category_manager` on proven category-scoped catalog and taxonomy surfaces. It is not yet enterprise-complete across vendor/object ownership enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+Rollback notes:
+
+- revert the new `FoundationRoleAccess` use only if a proven category-scoped workflow is blocked unexpectedly on the catalog or taxonomy routes covered here
+- keep the actor-specific scope activation fix; reverting that would restore a tenant-global scope coupling bug where one user’s assignments can alter another user’s authorization behavior
+- keep `vendor` blocked until the product model exposes a trustworthy vendor/object boundary and tests prove it
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because `ST-ACCESS-POLICY-BACKLOG-001` remains in progress and its acceptance is broader than this bounded slice
+
+## 2026-04-28 Governance Follow-Up: Remove Execution-Policy Barriers
+
+Scope:
+
+- removed the governance barrier where the remaining access-policy backlog had no unlocked story record in `INCREMENT_STATE.json`
+- removed the checked-in PO prompt bias that kept defaulting to another narrow admin-boundary slice even after ownership and object-scope enforcement became the real critical path
+- preserved the actual security policies that must remain fail-closed, including blocked `category_manager` and `vendor` introduction until enforcement is proven
+
+Files changed in this follow-up:
+
+- `docs/execution/INCREMENT_STATE.json`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | New increment and story record are valid JSON |
+| `git diff --check` | Passed | No patch-format or whitespace errors introduced by the governance change |
+| `git status --short` | Passed | Worktree remains intentionally dirty from the broader validated access-policy stream; this pass added only governance docs |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: the access-policy backlog now has a real unlocked story record (`INC-24` / `ST-ACCESS-POLICY-BACKLOG-001`) and the checked-in execution prompt no longer forces repeated admin-boundary micro-slices when ownership or object-scope enforcement is the true blocker
+- not accepted as complete: this does not itself implement ownership enforcement, broader machine-principal coverage, persistent multi-role storage, or universal redaction; it removes the process barrier so those code slices can now be executed as the default critical path
+- product claim wording remains:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, marketplace export-governance, and taxonomy product-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+Rollback notes:
+
+- do not roll back the new unlocked story record unless a replacement tracking mechanism is introduced in the same change
+- do not restore the old prompt default that preferred another admin-boundary slice once ownership and object-scope enforcement are the true critical path
+
+Lock update:
+
+- created unlocked tracking for the remaining access-policy stream in `INC-24` / `ST-ACCESS-POLICY-BACKLOG-001`
+
+## 2026-04-28 Bounded Follow-Up: Taxonomy Product-Governance Admin-Boundary Mapping
+
+Scope:
+
+- mapped taxonomy category governance writes to explicit `manage_product_data` admin-boundary enforcement
+- mapped taxonomy attribute-definition governance writes to explicit `manage_product_data` admin-boundary enforcement
+- extended the sensitive policy guardrail to validate the taxonomy write-governance routes as admin-boundary controlled surfaces
+- added focused remediation proof that `product_admin` can perform taxonomy governance while `system_admin` is denied
+
+Files changed in this follow-up:
+
+- `apps/api/src/taxonomy/taxonomy.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with taxonomy admin-boundary write enforcement |
+| `npm run guard:sensitive-gets` | Passed | Guardrail now validates `adminBoundaryCheckedRoutes=46` |
+| `npm run test:integration:access-policy-remediation` | Passed after sequential rerun | First failure was the known shared `apps/api/dist` artifact race (`API build output not found at ... apps/api/dist/main.js`); no product-code regression and sequential rerun passed |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Runtime classification, future-scope foundation, and admin-boundary capability proofs remain intact |
+| `npm run test:integration:delegated-access-scopes` | Passed | Scope enforcement and fail-closed future-dimension behavior remain intact |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared notification redaction remained healthy |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy with the backend-only taxonomy slice |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Passed | Increment gate stayed green with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Sprint gate stayed green with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Checked-in postdeploy harness remained healthy |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state file is still valid JSON |
+| `git diff --check` | Passed with CRLF warnings only | No whitespace or patch-format regressions |
+| touched-file secret scan with `rg`/`Select-String` | Passed with expected local test-only matches | Only local DB URLs, fixture secrets, and token variable names matched; no real credentials were introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: taxonomy category and attribute governance writes now enforce `manage_product_data`, `product_admin` is proven allowed, `system_admin` is proven denied, and the admin-boundary guardrail coverage expanded without reopening already passing governance slices
+- not accepted as complete: this is still not full admin-boundary mapping across every remaining settings, connector-governance, operational-governance, and marketplace-governance route; persistent multi-role storage, broader machine-principal resource coverage, ownership enforcement, and broader shared redaction remain incomplete
+- product claim wording remains:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, marketplace export-governance, and taxonomy product-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+Rollback notes:
+
+- revert only the taxonomy write-route `AdminBoundaryAccess` decorators if a proven product requirement shows taxonomy governance must move to another boundary capability
+- keep the remediation proofs and guardrail entries so future taxonomy-governance boundary changes remain explicit and reviewed
+- if later ownership work narrows taxonomy governance further for `category_manager`, add that as an explicit capability or scope proof rather than widening the current boundary silently
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-28 Bounded Follow-Up: Remaining Connector and Marketplace Admin-Boundary Mapping
+
+Scope:
+
+- mapped the remaining admin-only marketplace mapping-archive governance route to `manage_product_data`
+- mapped the remaining admin-only connector installation record deletion route to `manage_security`
+- expanded remediation proof and guardrail coverage for the new boundary-decorated routes
+- updated the checked-in pending-backlog PO prompt to make this connector-and-marketplace governance pattern the next default continuation inside the admin-boundary backlog
+
+Files changed in this follow-up:
+
+- `apps/api/src/connector-installer/connector-installer.controller.ts`
+- `apps/api/src/marketplace/marketplace.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the new connector and marketplace admin-boundary decorators |
+| `npm run guard:sensitive-gets` | Passed | Guardrail now checks `adminBoundaryCheckedRoutes=40`, including mapping archive and connector installation record deletion |
+| `npm run test:integration:access-policy-remediation` | Failed first, then passed | First failure was a known shared-`dist` race from parallel execution; sequential rerun exposed a real mapping fixture issue (`target_category_required`), which was fixed by adding the required category mapping data to the archive proof payload |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation enforcement remains intact, including admin-boundary capability separation |
+| `npm run test:integration:delegated-access-scopes` | Passed | Scope-enforcement slice stayed green after the new admin-boundary mapping |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing central redaction proof remained green |
+| `npm run build --workspace @pim1/web` | Passed | Web build stayed healthy; no frontend changes were required |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Timed out once, then passed | Only the shell timeout was hit; the sequential rerun completed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Sprint gate completed with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging deploy workflow contract remained valid |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy smoke harness remained valid |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state JSON still parses cleanly |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting failures |
+| touched-file secret scan with `rg` | Passed with expected local/test-only matches | Only local DB fallback and token/helper strings matched; no real secrets were introduced |
+
+PO/CTO validation:
+
+- accepted for this bounded slice:
+  - marketplace mapping archive governance now enforces `manage_product_data`
+  - connector installation record deletion now enforces `manage_security`
+  - `product_admin` allow and `system_admin` deny are proven for the new marketplace archive governance route
+  - `product_admin` deny and `system_admin` allow are proven for connector installation record deletion
+- not accepted as complete:
+  - this is still not the full admin-boundary mapping across every remaining settings, connector, operational, and marketplace governance route
+  - persistent multi-role rollout, broader API-client resources, ownership enforcement, and universal shared redaction remain incomplete
+- product claim wording remains:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, and marketplace export-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+Rollback notes:
+
+- if a legitimate system-level integration support workflow is blocked on connector installation record deletion, revisit only that route with direct failing evidence before widening the capability
+- do not remove the new admin-boundary decorators without equivalent policy replacement and the same remediation proof
+- keep the guardrail expectations and added remediation assertions so these two routes cannot silently drift back to legacy-admin-only behavior
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-28 Bounded Follow-Up: Product-Governance Admin-Boundary Mapping
+
+Scope:
+
+- updated the checked-in pending-blocker PO policy so the next default admin-boundary sub-slice explicitly targets unmapped admin-only product-governance routes before broader redesign work
+- mapped compliance-rule governance to explicit `manage_product_data` admin-boundary capability
+- mapped marketplace export-job and marketplace simulation governance to explicit `manage_product_data` admin-boundary capability
+- extended remediation and guardrail coverage so these routes now prove `product_admin` allow, `system_admin` deny, and continued low-privilege denial behavior
+
+Files changed in this follow-up:
+
+- `apps/api/src/compliance/compliance.controller.ts`
+- `apps/api/src/marketplace/marketplace.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with product-governance boundary decorators |
+| `npm run guard:sensitive-gets` | Passed | Guardrail now checks 38 admin-boundary route expectations |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation behavior stayed intact |
+| `npm run test:integration:access-policy-remediation` | Passed | Added proof for product-admin allow and system-admin deny on compliance-rule and export-governance routes |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated scope behavior unchanged |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification redaction behavior unchanged |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy without UI changes |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Passed | Final log reports `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Final log reports `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Workflow contract remains intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy verification remains intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state file remains valid |
+| `git diff --check` | Passed with warnings | CRLF warnings only |
+| touched-file secret scan with `rg` | Passed with expected local matches | Only the local Postgres integration URL matched; no real secrets introduced |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: the pending-blocker policy now explicitly drives unmapped admin-only product-governance routes toward `manage_product_data`; compliance-rule governance is now product-admin scoped instead of plain legacy admin; and marketplace export-job and simulation governance now enforce product-admin versus system-admin boundaries with validated route proof
+- not accepted as complete: this does not finish all remaining admin-boundary mapping across settings, billing, connector, dashboard, and operational governance routes; persistent multi-role storage rollout remains pending; broader machine-principal coverage remains partial; ownership-scoped blocked roles remain blocked; and shared payload redaction remains partial
+- product claim wording remains: Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, and marketplace export-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+Rollback notes:
+
+- revert only the new `@AdminBoundaryAccess({ capability: "manage_product_data" })` annotations on compliance-rule or marketplace export-governance routes if a proven operator or product-admin workflow is blocked unexpectedly
+- keep the guardrail additions and remediation proofs so future changes to these routes remain explicit and reviewable
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-27 Bounded Follow-Up: Broader Admin-Boundary Route Mapping
+
+Scope:
+
+- expanded live admin-boundary enforcement from the representative governance routes into broader high-risk billing, dashboard, metrics, audit, outbound-webhook, and connector-permission governance surfaces
+- preserved existing authenticated-read classification and covered catalog API-client scope enforcement
+- added explicit blocked-foundation-role denial proof for `category_manager` and `vendor` on boundary-decorated routes
+- tightened the sensitive-GET guard so broader admin-boundary coverage is mechanically checked instead of implied
+- fixed a real guardrail parser defect where multi-line decorators caused `AdminBoundaryAccess` coverage to be dropped from validation for otherwise-correct routes
+
+Scope expansion:
+
+- expanded from the prior representative admin-boundary scope into additional governance controllers because the remaining blocker was not another new policy primitive; it was proving the broader route mapping with real guardrail and remediation coverage
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/common/rbac/rbac.guard.ts`
+- `apps/api/src/billing/billing.controller.ts`
+- `apps/api/src/dashboard/dashboard.controller.ts`
+- `apps/api/src/metrics/metrics.controller.ts`
+- `apps/api/src/audit/audit.controller.ts`
+- `apps/api/src/outbound-webhooks/outbound-webhooks.controller.ts`
+- `apps/api/src/connector-installer/connector-installer.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+First failures and fixes:
+
+- `npm run guard:sensitive-gets` first failed with `GET /metrics/kpi-trends is missing AdminBoundaryAccess coverage`
+  - root cause: `scripts/validate-sensitive-get-policy.cjs` dropped decorator metadata when a route used multi-line decorators such as `@ApiQuery({ ... })`
+  - fix: updated the controller parser to preserve pending decorators across multi-line decorator bodies
+- `npm run test:integration:access-policy-remediation` first failed with `API build output not found at ... apps/api/dist/main.js`
+  - root cause: accidental parallel execution against the shared `apps/api/dist` artifact
+  - fix: reran sequentially and kept the rest of the bundle sequential for the slice
+- `npm run test:integration:access-policy-remediation` then failed on `POLICY_SHADOW_MISMATCH`
+  - root cause 1: the shadow policy engine denied boundary-decorated routes too early for plain editor, reviewer, and viewer actors instead of deferring to the route role or read-policy path
+  - fix 1: aligned `AccessPolicyService.can(...)` with runtime guard behavior so admin-boundary checks only short-circuit when explicit boundary roles or legacy admin fallback are actually relevant
+  - root cause 2: the guard shadow bookkeeping labeled some editor-allowed dashboard reads as `ADMIN_BOUNDARY_ALLOWED` even though they were allowed via `@Roles(...)`
+  - fix 2: added `resolveAdminBoundaryAllowedReason(...)` so shadow reasons mirror the actual enforcement path
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with broader admin-boundary route mapping and shadow-policy alignment |
+| `npm run guard:sensitive-gets` | Passed | Guardrail now validates 71 authenticated read routes, 158 authenticated routes total, and 28 admin-boundary route expectations |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation assertions stayed green after the broader admin-boundary slice |
+| `npm run test:integration:access-policy-remediation` | Passed | Added proofs for product vs system admin splits, blocked foundation roles, billing governance, webhook governance, and connector-permission governance |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated scope behavior remained stable after the guard and policy-service changes |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Notification redaction behavior remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build stayed healthy without UI changes |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Passed | First attempt only hit shell timeout; sequential rerun passed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Sprint gate passed with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Deploy workflow contract remains intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Staging postdeploy verification remains intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state file remains valid |
+| `git diff --check` | Passed with warnings | CRLF conversion warnings only; no diff formatting errors |
+| touched-file secret scan with `rg` | Passed with expected local matches | Only local Postgres test URL and a bearer-token error string matched; no real secrets introduced |
+| `git status --short` | Passed for inspection | Worktree remains intentionally dirty because earlier validated access-policy backlog files are still in flight |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: broader live admin-boundary enforcement now covers billing governance, dashboard governance, metrics governance, audit governance, outbound-webhook governance, and connector-permission governance in addition to the previously validated representative routes; blocked foundation roles are now explicitly denied on boundary-decorated routes; and the sensitive-GET guard mechanically checks 28 admin-boundary expectations
+- not accepted as complete: this is still not full route-by-route admin-boundary mapping across every settings, billing, connector, dashboard, and operational governance surface; persistent multi-role storage rollout remains incomplete; machine-principal scope modeling remains partial beyond the covered catalog API family; broader ownership-scope enforcement remains incomplete; and shared payload redaction remains partial
+- product claim wording remains: Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, and connector-permission governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+Rollback notes:
+
+- revert only the newly added `@AdminBoundaryAccess(...)` annotations on the broader governance routes if a proven setup flow or legitimate operator workflow is blocked unexpectedly
+- keep the guardrail parser fix in `scripts/validate-sensitive-get-policy.cjs`; it closes a real validation blind spot and should not be rolled back with route-policy changes
+- keep the new remediation assertions for blocked foundation roles and product-vs-system admin boundaries so future route relaxations stay explicit and reviewed
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-27 Foundation Follow-Up: Admin-Boundary Route Enforcement
+
+Scope:
+
+- carried explicit admin-boundary role assignments through local auth and JWT claims so bounded live enforcement can be exercised without a full persistence migration
+- added shared `AdminBoundaryAccess` metadata and guard enforcement for representative sensitive governance routes
+- enforced bounded live distinctions on:
+  - `GET /admin/workspace/users` -> `manage_users`
+  - `GET /admin/api-keys` -> `manage_security`
+  - `GET /admin/workspace/access-scopes` -> `manage_security`
+  - `POST` and `DELETE /admin/workspace/access-scopes` -> explicit `super_admin`, while preserving legacy `admin` fallback for the existing delegated-scope rollout path
+- expanded validation so the sensitive-GET guard now checks boundary metadata on those representative routes
+- proved end-to-end route behavior for `product_admin`, `system_admin`, and `super_admin`
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/rbac/admin-boundary.decorator.ts`
+- `apps/api/src/common/rbac/role-utils.ts`
+- `apps/api/src/common/rbac/rbac.guard.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/auth/auth.service.ts`
+- `apps/api/src/auth/jwt.ts`
+- `apps/api/src/auth/jwt-auth.guard.ts`
+- `apps/api/src/workspace-users/workspace-users.controller.ts`
+- `apps/api/src/workspace-users/workspace-access-scopes.controller.ts`
+- `apps/api/src/api-keys/api-keys.controller.ts`
+- `apps/api/test/integration/access-policy-foundation.test.cjs`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Failed, then passed | First failure was a real compile spillover after adding `assignedRoles` to `ResolvedLoginIdentity`; one password-reset DB auth path still built the old shape. Fixed by adding `assignedRoles: []` in that path, then reran successfully. |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation proof still covers deterministic role resolution, runtime read classification, and explicit API-client scope requirements. |
+| `npm run guard:sensitive-gets` | Passed | Guard now validates authenticated-read classification, API-client policy coverage, and boundary coverage for 5 representative governance routes. |
+| `npm run test:integration:access-policy-remediation` | Failed twice, then passed | First failure showed a real regression in the test flow: moving a live super-admin scope mutation too early caused downstream viewer product reads to trip scope checks. Fixed by moving that mutation proof later so the established catalog assertions stay isolated. Second failure showed policy shadow mismatches because legacy allow was still recorded as `ROLE_ALLOWED` while policy now returns `ADMIN_BOUNDARY_ALLOWED`; fixed by aligning guard shadow bookkeeping with the new boundary semantics. Final rerun passed. |
+| `npm run test:integration:delegated-access-scopes` | Failed, then passed | First failure proved a rollout compatibility break: delegated-scope setup still relies on legacy `admin` for scope mutations. Fixed by restoring legacy-admin fallback on `POST`/`DELETE /admin/workspace/access-scopes` while still denying explicit `system_admin` and allowing explicit `super_admin`. Final rerun passed. |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Existing central redaction proof remained intact. |
+| `npm run prisma:generate` | Passed | Prisma client stayed in sync after the auth and guard changes. |
+| `npm run build --workspace @pim1/web` | Passed | Web build remained healthy; this slice was backend and validation only. |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Passed | `INCREMENT_CORE_GATES totalSteps=16`. |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | `SPRINT_CORE_GATES totalSteps=14`. |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Checked-in deploy workflow contract remained valid. |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Checked-in staging postdeploy harness still validates workspace login, revocation, admin render, non-admin denials, and stale-token rejection. |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment tracking file remains valid JSON. |
+| `git diff --check` | Passed with CRLF warnings only | No patch-formatting or whitespace errors. |
+| touched-file secret scan with `rg` | Passed with expected test-only matches | Matches were JWT helper names, local dummy password/defaults in the integration harness, and existing auth/token variable references; no real secrets were introduced. |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice:
+  - representative live admin-boundary enforcement now exists on workspace user governance, access-scope governance, and API-key governance routes
+  - explicit boundary principals are now testable end to end through local auth plus JWT claims
+  - `product_admin` is denied on system-admin governance routes
+  - `system_admin` is allowed on user and security reads but denied on the representative `super_admin`-only access-scope mutation path
+  - `super_admin` is allowed on the representative `super_admin`-only access-scope mutation path
+  - guardrail coverage now protects these representative routes from silently drifting back to plain `@Roles("admin")` behavior
+- not accepted as complete:
+  - this is not a full route-by-route admin-boundary rollout across all admin, settings, dashboard, connector, billing, and operational governance surfaces
+  - multi-role persistence is still not rolled out beyond local-auth/JWT bridge behavior
+  - full machine-principal permission modeling beyond the covered catalog API family remains pending
+  - future scope dimensions beyond the already-proven catalog publication-target surface and fail-closed paths remain incomplete
+  - broader shared payload redaction remains partial
+  - `category_manager` and `vendor` remain blocked
+- product claim wording:
+  - Vexa PIM now has runtime-enforced authenticated-read classification, explicit API-client scope enforcement on the covered catalog API family, fail-closed protection for unsupported future scope dimensions on covered product-backed resources, real `catalog` scope enforcement on Shopify connector publication targets, and bounded live admin-boundary enforcement on representative governance routes for workspace users, workspace access scopes, and API-key management. It still does not have full enterprise authorization maturity across broad admin-boundary route mapping, machine-principal resources, persistent multi-role rollout, ownership-scope enforcement for blocked roles, or universal payload redaction.
+
+Rollback notes:
+
+- revert only the new `AdminBoundaryAccess` mappings and JWT/local-auth `assignedRoles` propagation if a proven legitimate governance workflow is blocked and cannot be remapped safely
+- keep the guardrail coverage and remediation assertions even if route ownership changes, so future boundary relaxations remain explicit and reviewed
+- do not roll back the earlier catalog scope and fail-closed foundation work as part of any admin-boundary follow-up unless direct regression evidence points there
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-27 Foundation Follow-Up: Catalog Scope Enforcement For Connector Publication Targets
+
+Scope:
+
+- promoted `catalog` from representable-only to genuinely enforced on the Shopify connector publication-target surface
+- allowed `catalog` scope assignment storage through the admin access-scope API while leaving other future dimensions in the fail-closed foundation bucket
+- extended connector publication-target reads and writes so catalog-scoped actors only see targets whose `catalogId` matches an assigned scope value
+- denied publication-target updates when the requested target is outside the assigned catalog scope or has no provable `catalogId`
+- kept other connector routes fail-closed unless they explicitly support the `catalog` dimension
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/connector-installer/connector-installer.service.ts`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `apps/api/test/integration/shopify-publication-targets-api.test.cjs`
+- `packages/db/prisma/migrations/20260427153000_expand_access_scope_dimensions/migration.sql`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run prisma:generate` | Passed | Prisma client remained healthy after the additive migration and bounded catalog-scope rollout |
+| `npm run build --workspace @pim1/api` | Passed | API compiled with catalog-scope enforcement on connector publication targets |
+| `npm run guard:sensitive-gets` | Passed | Authenticated-read and API-client coverage remained intact |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation enforcement and machine-principal scope proofs remained intact |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing remediation behavior did not regress |
+| `npm run test:integration:delegated-access-scopes` | Failed once, then passed | First failure was a repeated shared-`dist` artifact race from running build and test in parallel; rerun sequentially passed after excluding `catalog` from the still-rejected pending-scope list |
+| `node apps/api/test/integration/shopify-publication-targets-api.test.cjs` | Failed once, then passed | First failure was a local DB env fallback bug still pointing to `HOST:5432`; patched the harness to use the same safe local fallback and reran successfully |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared notification redaction remained intact |
+| `npm run build --workspace @pim1/web` | Passed | No frontend regression from the bounded backend-only rollout |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Passed | Increment gate completed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Sprint gate completed with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy access-policy smoke remained intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state file remained valid JSON |
+| `git diff --check` | Passed with CRLF warnings only | No whitespace or patch-format regressions |
+| touched-file secret scan with `rg` | Passed with expected local test-only matches | Only local DB fallback strings, dummy JWT secret values, header helpers, and existing credential-variable names matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: `catalog` scope is now truly enforced on Shopify publication-target reads and writes, out-of-scope or catalogless publication targets deny safely, and unsupported future dimensions remain fail-closed elsewhere
+- not accepted as complete: this does not make `catalog` a universally enforced scope dimension. It is proven only on connector publication targets today. `vendor`, `owner`, `supplier`, `locale`, `market`, `team`, and `assignee` still remain representable but not broadly enforced, and most connector routes still do not support `catalog`
+- product claim wording now becomes: Vexa PIM now enforces authenticated-read classification at runtime, explicit API-client scopes on the catalog API family, fail-closed denial for unsupported or mixed future scope dimensions on product-backed resources, and real `catalog` scope enforcement on Shopify connector publication-target reads and writes. It still does not have full enterprise authorization maturity across broad enforcement of future scope dimensions, multi-role persistence rollout, admin-boundary route mapping, or universal payload redaction.
+
+Rollback notes:
+
+- revert only the catalog-scope handling in connector publication-target routes and the additive enum migration if a proven regression blocks legitimate connector publication workflows
+- keep the new focused Shopify publication-target integration proof and delegated-access scope proof so future changes cannot silently relax catalog-scope enforcement
+- if broader connector surfaces later claim `catalog` support, require explicit tests per route family rather than inheriting support by assumption
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-27 Foundation Follow-Up: Fail-Closed Unsupported Scope Dimensions On Product Resources
+
+Scope:
+
+- kept the previously validated category and brand product-scope enforcement intact
+- added shared fail-closed handling for product-backed resources when an actor carries scope dimensions that the current resource model cannot prove or enforce
+- applied that fail-closed check to catalog product list, detail, create or update request validation, and media list or detail paths that derive scope from products
+- added the missing additive database migration so the expanded `AccessScopeType` enum is representable in Postgres storage as well as Prisma schema and TypeScript
+- extended the delegated-access integration harness to apply the new enum migration and prove unsupported-only and mixed-scope runtime denial on product resources
+
+Files changed in this follow-up:
+
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/test/integration/delegated-access-scopes.test.cjs`
+- `packages/db/prisma/migrations/20260427153000_expand_access_scope_dimensions/migration.sql`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run prisma:generate` | Passed | Prisma client remained healthy with the additive access-scope enum migration present |
+| `npm run build --workspace @pim1/api` | Passed | API compiled with fail-closed unsupported-scope checks on product-backed resources |
+| `npm run guard:sensitive-gets` | Passed | Authenticated-read and API-client coverage remained intact; classification coverage unchanged by the scope slice |
+| `node apps/api/test/integration/access-policy-foundation.test.cjs` | Passed | Foundation runtime and machine-principal guard proofs remained intact |
+| `npm run test:integration:access-policy-remediation` | Passed | Existing remediation behavior did not regress |
+| `npm run test:integration:delegated-access-scopes` | Failed first, then passed | First failure was a validation artifact race from running build and test in parallel against `apps/api/dist`; sequential rerun exposed the real issue that Postgres enum `AccessScopeType` still lacked `vendor`; added additive enum migration and delegated-access test migration runner, then reran successfully |
+| `node apps/api/test/integration/notifications-center.test.cjs` | Passed | Shared redaction behavior outside catalog remained intact |
+| `npm run build --workspace @pim1/web` | Passed | Web build stayed healthy with no frontend changes required |
+| `npm run gate:run:increment *> .tmp-gate-increment.log` | Timed out once, then passed | First failure was shell timeout only; longer sequential rerun passed with `INCREMENT_CORE_GATES totalSteps=16` |
+| `npm run gate:run:sprint *> .tmp-gate-sprint.log` | Passed | Sprint gate passed with `SPRINT_CORE_GATES totalSteps=14` |
+| `node scripts/validate-deploy-staging-workflow.cjs` | Passed | Staging deploy workflow contract remained intact |
+| `node scripts/staging-postdeploy-check.test.cjs` | Passed | Postdeploy authz smoke remained intact |
+| `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"` | Passed | Increment state file remained valid JSON |
+| `git diff --check` | Passed with CRLF warnings only | No whitespace or patch-format regressions |
+| touched-file secret scan with `rg` | Passed with expected local test-only matches | Only local database URL fallback, dummy JWT secret, bearer-header helper, and commercial test header literals matched |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: unsupported and mixed foundation scope dimensions now fail closed on product-backed resources instead of being silently ignored, the missing Postgres enum rollout for expanded `AccessScopeType` is now checked in, and delegated-access tests prove safe denial for unsupported-only, mixed-scope, and unprovable request cases on catalog resources
+- not accepted as complete: this does not mean `vendor`, `owner`, `supplier`, `locale`, `market`, `catalog`, `team`, or `assignee` are generally enforced; it means product-backed resources now deny safely when those dimensions are present and cannot be proven. Real enforcement for those dimensions still needs resource fields, ownership resolution, and route-by-route support
+- product claim wording now becomes: Vexa PIM now enforces authenticated-read classification at runtime, requires explicit API-client scopes on the catalog API family, and fail-closes product-backed resource access when unsupported or mixed foundation scope dimensions are present without provable enforcement context. It still does not have full enterprise authorization maturity across real enforcement for future scope dimensions, multi-role persistence rollout, admin-boundary route mapping, or universal payload redaction.
+
+Rollback notes:
+
+- revert only the new product-backed unsupported-scope denial helper and the enum-expansion migration if a proven regression shows legitimate scoped product workflows are being blocked unexpectedly
+- keep the delegated-access integration proofs and migration runner so future work cannot regress into silently ignoring unsupported dimensions
+- if later resource modeling adds real vendor, owner, supplier, locale, market, catalog, team, or assignee fields, replace fail-closed denial with actual enforcement only after explicit tests prove allow and deny behavior
+
+Lock update:
+
+- no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
 ## 2026-04-27 Foundation Pass: Policy-Foundation Enforcement Baseline
 
 Scope:
@@ -1240,6 +3278,130 @@ Rollback notes:
 Lock update:
 
 - no `INCREMENT_STATE.json` story was updated in this follow-up because this remains a bounded access-policy backlog continuation without a matching unlocked story record
+
+## 2026-04-29 Continuous Queue: Audit Explorer and Export Visibility Contract
+
+Scope:
+
+- added one shared visibility contract for:
+  - `GET /audit/events`
+  - `GET /audit/events/export`
+- routed both JSON and CSV audit explorer responses through the same governance redaction decision
+- preserved full explorer metadata for `super_admin` and legacy `admin`
+- redacted explorer metadata for `system_admin`
+
+Scope expansion:
+
+- expanded from the audit controller and remediation suite into:
+  - `apps/api/src/audit/audit.module.ts`
+  - `apps/api/src/common/access-policy/access-policy.module.ts`
+- this expansion was required because the new controller-level `AccessPolicyService` dependency created a real module-availability regression that needed explicit `forwardRef` wiring
+
+Files changed in this follow-up:
+
+- `apps/api/src/audit/audit.controller.ts`
+- `apps/api/src/audit/audit.module.ts`
+- `apps/api/src/audit/audit.service.ts`
+- `apps/api/src/common/access-policy/access-policy.module.ts`
+- `apps/api/src/common/access-policy/access-policy.service.ts`
+- `apps/api/src/common/rbac/read-access-policy.decorator.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `scripts/validate-sensitive-get-policy.cjs`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled after adding the shared audit explorer visibility contract and module wiring |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved `system_admin` JSON and CSV metadata redaction plus `super_admin` metadata retention on the audit explorer family |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated-scope coverage stayed green after the audit-only slice |
+| `npm run guard:sensitive-gets` | Passed | Sensitive-GET guard now validates the new `audit_events_governance_redacted` read policy |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: audit explorer JSON and CSV outputs now share one visibility contract, `system_admin` gets redacted metadata, `super_admin` and legacy `admin` retain full metadata, and CSV no longer bypasses JSON redaction
+- not accepted as complete: this is not universal redaction, and other explorer/export or mixed governance payload families still need their own narrower field-visibility contracts
+
+Rollback notes:
+
+- revert only the audit explorer read-policy annotations and shared CSV rendering path if a proven product requirement later restores broader lower-admin metadata visibility
+- keep the focused remediation assertions so any future change to audit explorer visibility remains explicit and reviewed
+- if later audit work introduces field-by-field explorer metadata visibility instead of full metadata nulling, keep JSON and CSV tied to the same contract until both outputs are proven together
+
+## 2026-04-29 Continuous Queue: Durable Multi-Role Compatibility Proofs
+
+Scope:
+
+- extended the current bounded multi-role rollout from additive storage and payload compatibility into durable login proof
+- proved DB-backed `assigned_roles` survive through later login after workspace-user create and update flows
+- proved local identity-directory auth uses the same normalized `assignedRoles` bridge semantics
+- preserved scalar-role fallback and no-escalation behavior
+
+Files changed in this follow-up:
+
+- `apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs`
+- `apps/api/test/integration/workspace-user-crud.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled without changing the existing auth or workspace-user implementation |
+| `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs` | Passed after sequential rerun | Initial parallel run collided with the shared `apps/api/dist` tree while the API build was still writing files; the sequential rerun proved DB-backed `assigned_roles` login behavior remained correct |
+| `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs` | Passed after sequential rerun | Proved local identity-directory `assignedRoles` bridge, scalar fallback, and invalid-role normalization |
+| `node apps/api/test/integration/workspace-user-crud.test.cjs` | Passed after sequential rerun | Proved assigned-role writes persist into later logins and remove former editor-capable access when the stored role set changes |
+| `npm run test:integration:access-policy-remediation` | Passed | Broad access-policy regression suite remained green |
+| `npm run test:integration:delegated-access-scopes` | Passed | Delegated-scope enforcement remained green after the durability proofs |
+| `npm run guard:sensitive-gets` | Passed | Sensitive-GET guard remained unchanged at `authenticatedReadRoutes=71`, `authenticatedRoutes=158`, `publicRoutes=19`, and `adminBoundaryCheckedRoutes=49` |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: durable multi-role compatibility is now proven beyond additive storage alone, including local identity bridge compatibility, persisted assigned-role write durability through later logins, scalar fallback preservation, and no-escalation behavior
+- not accepted as complete: this is still not a destructive migration, not a backfill-complete rollout, not scalar-role removal, and not the full multi-role admin UX/API surface
+
+Rollback notes:
+
+- revert only the added durability proofs if a later product decision intentionally narrows the current multi-role compatibility contract
+- keep the bounded login and workspace-user persistence assertions so future multi-role changes remain explicit and regression-tested
+- do not remove scalar-role fallback until a later validated rollout proves backfill, rollback, and wider API semantics
+
+## 2026-04-29 Continuous Queue: Billing Plan-Tier Governance Boundary
+
+Scope:
+
+- extended the already-proven billing governance boundary to `POST /billing/plan-tier`
+- kept the existing internal-only commercial block for allowed security admins
+- made the `product_admin` denial explicit at the admin-boundary layer instead of via the downstream commercial-only fallback
+
+Files changed in this follow-up:
+
+- `apps/api/src/billing/billing.controller.ts`
+- `apps/api/test/integration/access-policy-remediation.test.cjs`
+- `docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
+- `docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md`
+
+Validation results:
+
+| Command | Result | Notes |
+|---|---|---|
+| `npm run build --workspace @pim1/api` | Passed | API compiled with the bounded billing plan-tier admin boundary |
+| `npm run test:integration:access-policy-remediation` | Passed | Proved `product_admin` boundary denial plus preserved `COMMERCIAL_MUTATION_INTERNAL_ONLY` behavior for `system_admin` and `super_admin` |
+| `npm run test:integration:delegated-access-scopes` | Passed | No delegated-scope regression from the governance-only slice |
+| `npm run guard:sensitive-gets` | Passed | Sensitive-GET guard remained unchanged because this slice is POST-only governance enforcement |
+
+PO/CTO validation:
+
+- accepted for the current bounded slice: billing plan-tier now has an explicit governance boundary aligned with the adjacent billing-governance routes, while the internal commercial-ops mutation block remains intact for the allowed higher-privilege roles
+- not accepted as complete: this does not widen or redesign `billing/internal/*` commercial token flows and is not full billing authorization completion
+
+Rollback notes:
+
+- revert only the `@AdminBoundaryAccess(...)` addition on `POST /billing/plan-tier` if a proven product decision restores broader product-admin reach to that route
+- keep the remediation assertions so any future widening of the plan-tier route remains explicit and reviewed
 
 ## 2026-04-27 Bounded Follow-Up: Billing Usage Sensitive Read Hardening
 

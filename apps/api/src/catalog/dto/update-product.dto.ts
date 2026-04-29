@@ -33,6 +33,11 @@ export class UpdateProductDto {
   @MaxLength(120)
   brand!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  vendorScopeKey?: string;
+
   @IsString()
   categoryId!: string;
 

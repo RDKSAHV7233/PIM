@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-04-16",
+    "lastUpdated": "2026-04-28",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -2264,6 +2264,54 @@
           "reopened_by": "",
           "reopened_reason": "",
           "regression_evidence": ""
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-24",
+      "name": "Access Policy Authorization Maturity",
+      "status": "in_progress",
+      "deliveryStatus": "in_progress",
+      "pendingReleaseItems": [
+        "Complete ownership and object-scope enforcement needed to safely evaluate `category_manager` and `vendor`.",
+        "Finish broader machine-principal coverage, multi-role persistence rollout, residual admin-boundary mapping, and shared response redaction."
+      ],
+      "evidence": [
+        "docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md",
+        "docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md",
+        "docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-ACCESS-POLICY-BACKLOG-001",
+          "title": "Execute remaining access-policy maturity blockers to role-safe completion",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "scope": [
+            "apps/api/src/common/access-policy/**",
+            "apps/api/src/common/rbac/**",
+            "apps/api/src/catalog/**",
+            "apps/api/src/taxonomy/**",
+            "apps/api/src/marketplace/**",
+            "apps/api/src/connector-installer/**",
+            "apps/api/src/workspace-users/**",
+            "apps/api/src/api-keys/**",
+            "apps/api/test/integration/**",
+            "packages/db/prisma/**",
+            "scripts/validate-sensitive-get-policy.cjs",
+            "docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md",
+            "docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md",
+            "docs/execution/ACCESS_POLICY_PENDING_BACKLOG_PO_PROMPT_2026-04-27.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "The remaining access-policy backlog is tracked under an unlocked story instead of continuing as untracked follow-up slices.",
+            "Execution order is dependency-driven so ownership and object-scope enforcement can preempt further narrow route-mapping when they are the critical path.",
+            "`category_manager` and `vendor` remain blocked until ownership and object-scope enforcement is proven by code and tests.",
+            "Validated access-policy slices continue to update execution evidence and, once complete, this story can be locked with commit and test evidence."
+          ],
+          "tests_passed": []
         }
       ]
     }

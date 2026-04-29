@@ -71,17 +71,77 @@ export const READ_ACCESS_POLICY_CONFIG = {
     responseHandling: "redact",
     apiClientPolicy: "denied_human_only",
   },
+  workspace_users_governance_redacted: {
+    reasonCode: "READ_POLICY_WORKSPACE_USERS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  workspace_access_scopes_governance_redacted: {
+    reasonCode: "READ_POLICY_WORKSPACE_ACCESS_SCOPES_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  api_keys_governance_redacted: {
+    reasonCode: "READ_POLICY_API_KEYS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  connector_permissions_governance_redacted: {
+    reasonCode: "READ_POLICY_CONNECTOR_PERMISSIONS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  billing_plan_profile_governance_redacted: {
+    reasonCode: "READ_POLICY_BILLING_PLAN_PROFILE_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  billing_upgrade_request_governance_redacted: {
+    reasonCode: "READ_POLICY_BILLING_UPGRADE_REQUEST_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  audit_events_governance_redacted: {
+    reasonCode: "READ_POLICY_AUDIT_EVENTS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  audit_logs_governance_redacted: {
+    reasonCode: "READ_POLICY_AUDIT_LOGS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  outbound_webhooks_governance_redacted: {
+    reasonCode: "READ_POLICY_OUTBOUND_WEBHOOKS_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
+  outbound_webhook_deliveries_governance_redacted: {
+    reasonCode: "READ_POLICY_OUTBOUND_WEBHOOK_DELIVERIES_GOVERNANCE_REDACTED",
+    classification: "role_redacted",
+    responseHandling: "redact",
+    apiClientPolicy: "denied_human_only",
+  },
   issue_inbox_scoped: {
     reasonCode: "READ_POLICY_ISSUE_INBOX_SCOPED",
     classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
   media_assets_scoped: {
     reasonCode: "READ_POLICY_MEDIA_ASSETS_SCOPED",
     classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
   notification_self_service: {
     reasonCode: "READ_POLICY_NOTIFICATION_SELF_SERVICE",
@@ -91,9 +151,9 @@ export const READ_ACCESS_POLICY_CONFIG = {
   },
   taxonomy_safe_metadata: {
     reasonCode: "READ_POLICY_TAXONOMY_SAFE_METADATA",
-    classification: "human_only",
+    classification: "scope_filtered",
     responseHandling: "none",
-    apiClientPolicy: "denied_human_only",
+    apiClientPolicy: "allowed_with_api_scope",
   },
 } as const;
 

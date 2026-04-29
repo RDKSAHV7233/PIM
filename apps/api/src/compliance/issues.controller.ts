@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { FastifyRequest } from "fastify";
 import type { PolicyActor } from "../common/access-policy/access-policy.service";
-import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { type AppRole, Roles } from "../common/rbac/roles";
 import { ComplianceService } from "./compliance.service";
@@ -24,6 +24,7 @@ export class IssuesController {
 
   @Get("inbox")
   @ReadAccessPolicy("issue_inbox_scoped")
+  @ApiClientScopes("issues.read")
   @ApiOperation({ summary: "List tenant-wide open compliance issues" })
   @ApiResponse({ status: 200, description: "Issue inbox fetched" })
   listInbox(@Query() query: IssueInboxQueryDto, @Req() request: AuthenticatedRequest) {

@@ -3,8 +3,9 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { FastifyRequest } from "fastify";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
@@ -66,6 +67,7 @@ export class ConnectorInstallerController {
   }
 
   @Delete(":slug/install/:id")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   @ApiOperation({ summary: "Delete connector installation record by slug + installation id" })
   @ApiResponse({ status: 200, description: "Connector installation deleted" })
@@ -166,12 +168,15 @@ export class ConnectorInstallerController {
   }
 
   @Get("permissions")
+  @ReadAccessPolicy("connector_permissions_governance_redacted")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   listPermissions(@Query() query: ListConnectorPermissionsDto) {
     return this.connectorInstallerService.listPermissions(query.connectorSlug);
   }
 
   @Post("permissions")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   grantPermission(
     @Body() dto: GrantConnectorPermissionDto,
@@ -181,6 +186,7 @@ export class ConnectorInstallerController {
   }
 
   @Delete("permissions/:id")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   revokePermission(@Param("id") permissionId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.revokePermission(permissionId, this.resolveActor(request));

@@ -60,9 +60,38 @@ function main() {
   const roles = require(ROLES_ENTRY);
   const { RbacGuard } = require(RBAC_GUARD_ENTRY);
   const { AUTHENTICATED_READ_ROUTE_KEY } = require(READ_POLICY_ENTRY);
-  const { API_CLIENT_ROUTE_POLICY_KEY, API_CLIENT_REQUIRED_SCOPES_KEY } = require(API_CLIENT_POLICY_ENTRY);
+  const { API_CLIENT_ROUTE_POLICY_KEY, API_CLIENT_REQUIRED_SCOPES_KEY, API_CLIENT_SCOPE_VALUES } = require(API_CLIENT_POLICY_ENTRY);
   const { IS_PUBLIC_KEY } = require(PUBLIC_DECORATOR_ENTRY);
   const schema = fs.readFileSync(SCHEMA_PATH, "utf8");
+
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("bulk_import.read"),
+    "expected api-client scope vocabulary to include bulk_import.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("media.read"),
+    "expected api-client scope vocabulary to include media.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("issues.read"),
+    "expected api-client scope vocabulary to include issues.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("compliance.read"),
+    "expected api-client scope vocabulary to include compliance.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("rejection_intelligence.read"),
+    "expected api-client scope vocabulary to include rejection_intelligence.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("auto_suggestions.read"),
+    "expected api-client scope vocabulary to include auto_suggestions.read",
+  );
+  assert(
+    Array.isArray(API_CLIENT_SCOPE_VALUES) && API_CLIENT_SCOPE_VALUES.includes("taxonomy.read"),
+    "expected api-client scope vocabulary to include taxonomy.read",
+  );
 
   const singleRole = roleUtils.resolveEffectiveRoles({
     legacyRole: "viewer",
@@ -78,6 +107,14 @@ function main() {
   assert(multiRole.primaryAppRole === "editor", `expected highest app role to resolve to editor, got ${multiRole.primaryAppRole}`);
   assert(multiRole.appRoles.includes("viewer") && multiRole.appRoles.includes("editor"), "expected multi-role app role union");
   assert(multiRole.adminBoundaryRoles.includes("product_admin"), "expected product_admin boundary role to be retained for human principal");
+
+  const explicitBoundaryOnly = roleUtils.resolveEffectiveRoles({
+    legacyRole: "admin",
+    assignedRoles: ["product_admin"],
+    principalType: "human",
+  });
+  assert(explicitBoundaryOnly.primaryAppRole === "admin", "expected boundary user to preserve legacy admin app role");
+  assert(explicitBoundaryOnly.adminBoundaryRoles.includes("product_admin"), "expected boundary user to retain explicit admin boundary role");
 
   const apiClientRole = roleUtils.resolveEffectiveRoles({
     legacyRole: "viewer",
@@ -263,9 +300,16 @@ function main() {
               "classified_authenticated_reads_continue_to_pass_under_runtime_enforcement",
               "unclassified_authenticated_reads_fail_closed_at_runtime",
               "public_routes_bypass_authenticated_read_runtime_enforcement",
-              "api_clients_remain_default_deny_without_explicit_route_allow",
-              "api_clients_require_matching_declared_route_scopes",
-            ],
+            "api_clients_remain_default_deny_without_explicit_route_allow",
+            "api_clients_require_matching_declared_route_scopes",
+            "api_client_scope_vocabulary_includes_bulk_import_read",
+            "api_client_scope_vocabulary_includes_media_read",
+            "api_client_scope_vocabulary_includes_compliance_read",
+            "api_client_scope_vocabulary_includes_issues_read",
+            "api_client_scope_vocabulary_includes_rejection_intelligence_read",
+            "api_client_scope_vocabulary_includes_auto_suggestions_read",
+            "api_client_scope_vocabulary_includes_taxonomy_read",
+          ],
             checkedAt: new Date().toISOString(),
           },
           null,

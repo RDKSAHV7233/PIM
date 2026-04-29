@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
@@ -15,6 +16,7 @@ export class MetricsController {
   constructor(private readonly metricsService: MetricsService) {}
 
   @Get("kpi-trends")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   @ApiOperation({ summary: "KPI trends by tenant and connector" })
   @ApiQuery({

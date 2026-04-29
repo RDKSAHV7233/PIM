@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
-import { APP_ROLES, AppRole } from "../common/rbac/roles";
+import { FOUNDATION_ROLES, type FoundationRole, APP_ROLES, AppRole } from "../common/rbac/roles";
 
 const DEFAULT_EXPIRY_SECONDS = 4 * 60 * 60;
 export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
@@ -17,6 +17,7 @@ export interface PimJwtClaims {
   tenantId: string;
   jti: string;
   role?: AppRole;
+  assignedRoles?: FoundationRole[];
   tokenType?: PimJwtTokenType;
   stepUpScope?: StepUpScope;
   parentJti?: string;
@@ -28,6 +29,7 @@ interface SignJwtInput {
   sub: string;
   tenantId: string;
   role?: AppRole;
+  assignedRoles?: FoundationRole[];
   jti?: string;
   expiresInSeconds?: number;
   tokenType?: PimJwtTokenType;
@@ -68,6 +70,10 @@ function isAppRole(value: unknown): value is AppRole {
   return APP_ROLES.includes(value as AppRole);
 }
 
+function isFoundationRole(value: unknown): value is FoundationRole {
+  return FOUNDATION_ROLES.includes(value as FoundationRole);
+}
+
 function isTokenType(value: unknown): value is PimJwtTokenType {
   return value === "access" || value === "step_up";
 }
@@ -91,6 +97,9 @@ export function signPimJwt(input: SignJwtInput): string {
     tenantId: input.tenantId,
     jti: input.jti?.trim() || randomUUID(),
     role: input.role,
+    assignedRoles: Array.isArray(input.assignedRoles)
+      ? Array.from(new Set(input.assignedRoles.filter((role) => isFoundationRole(role))))
+      : undefined,
     tokenType,
     stepUpScope: tokenType === "step_up" ? input.stepUpScope : undefined,
     parentJti: tokenType === "step_up" ? input.parentJti?.trim() : undefined,
@@ -114,6 +123,9 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     const iat = typeof payload.iat === "number" ? payload.iat : Number.NaN;
     const exp = typeof payload.exp === "number" ? payload.exp : Number.NaN;
     const role = isAppRole(payload.role) ? payload.role : undefined;
+    const assignedRoles = Array.isArray(payload.assignedRoles)
+      ? payload.assignedRoles.filter((value) => isFoundationRole(value))
+      : undefined;
     const tokenType = isTokenType(payload.tokenType) ? payload.tokenType : "access";
     const stepUpScope = isStepUpScope(payload.stepUpScope) ? payload.stepUpScope : undefined;
     const parentJti = typeof payload.parentJti === "string" ? payload.parentJti.trim() : undefined;
@@ -124,7 +136,7 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     if (tokenType === "step_up" && (!stepUpScope || !parentJti)) {
       return null;
     }
-    return { sub, tenantId, jti, role, tokenType, stepUpScope, parentJti, iat, exp };
+    return { sub, tenantId, jti, role, assignedRoles, tokenType, stepUpScope, parentJti, iat, exp };
   } catch {
     return null;
   }

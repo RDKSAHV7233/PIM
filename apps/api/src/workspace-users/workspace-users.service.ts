@@ -8,8 +8,8 @@ import {
 import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
-import { type AppRole } from "../common/rbac/roles";
-import { normalizeAppRole } from "../common/rbac/role-utils";
+import { type AppRole, type FoundationRole } from "../common/rbac/roles";
+import { normalizeAppRole, normalizeFoundationRole } from "../common/rbac/role-utils";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
@@ -20,6 +20,7 @@ type AuthIdentityRecord = {
   id: string;
   userId: string;
   role: string;
+  assignedRoles?: string[] | null;
   isActive: boolean;
   lockedUntil: Date | null;
   createdBy: string | null;
@@ -31,6 +32,7 @@ export interface WorkspaceUserRow {
   id: string;
   userId: string;
   role: AppRole;
+  assignedRoles: FoundationRole[];
   isActive: boolean;
   lockedUntil: string | null;
   isLocked: boolean;
@@ -64,6 +66,7 @@ export class WorkspaceUsersService {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -84,6 +87,7 @@ export class WorkspaceUsersService {
     const normalizedActorId = this.normalizeUserId(actorId);
     const userId = this.normalizeUserId(dto.userId);
     const role = this.normalizeRoleOrThrow(dto.role);
+    const assignedRoles = this.normalizeManagedAssignedRolesOrThrow(role, dto.assignedRoles);
 
     if (!userId) {
       throw new BadRequestException({ error: "USER_ID_REQUIRED" });
@@ -109,6 +113,7 @@ export class WorkspaceUsersService {
           tenantKey: normalizedTenantId,
           userId,
           role,
+          assignedRoles,
           passwordHash: await this.resolveInitialPasswordHash(),
           createdBy: normalizedActorId,
         },
@@ -116,6 +121,7 @@ export class WorkspaceUsersService {
           id: true,
           userId: true,
           role: true,
+          assignedRoles: true,
           isActive: true,
           lockedUntil: true,
           createdBy: true,
@@ -133,6 +139,7 @@ export class WorkspaceUsersService {
         metadata: {
           targetUserId: created.userId,
           role,
+          assignedRoles,
         },
       });
 
@@ -165,17 +172,22 @@ export class WorkspaceUsersService {
     }
 
     const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
+    const nextAssignedRoles = dto.assignedRoles === undefined
+      ? this.normalizeManagedAssignedRolesOrThrow(nextRole, existing.assignedRoles)
+      : this.normalizeManagedAssignedRolesOrThrow(nextRole, dto.assignedRoles);
     const updated = await this.prisma.tenant(normalizedTenantId).authIdentity.update({
       where: {
         id: existing.id,
       },
       data: {
         role: nextRole,
+        assignedRoles: nextAssignedRoles,
       },
       select: {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -194,6 +206,8 @@ export class WorkspaceUsersService {
         targetUserId: updated.userId,
         fromRole: this.normalizeRoleOrThrow(existing.role),
         toRole: nextRole,
+        fromAssignedRoles: this.normalizeAssignedRolesOrThrow(existing.assignedRoles),
+        toAssignedRoles: nextAssignedRoles,
       },
     });
 
@@ -230,6 +244,7 @@ export class WorkspaceUsersService {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -277,6 +292,7 @@ export class WorkspaceUsersService {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -325,6 +341,7 @@ export class WorkspaceUsersService {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -399,6 +416,7 @@ export class WorkspaceUsersService {
         id: true,
         userId: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         createdBy: true,
@@ -424,6 +442,59 @@ export class WorkspaceUsersService {
     return normalized;
   }
 
+  private normalizeAssignedRolesOrThrow(value: unknown): FoundationRole[] {
+    if (value === undefined || value === null) {
+      return [];
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException({ error: "INVALID_ASSIGNED_ROLES" });
+    }
+    const normalized = value
+      .map((entry) => normalizeFoundationRole(entry))
+      .filter(Boolean) as FoundationRole[];
+    if (normalized.length !== value.length) {
+      throw new BadRequestException({ error: "INVALID_ASSIGNED_ROLES" });
+    }
+    return Array.from(new Set(normalized));
+  }
+
+  private normalizeManagedAssignedRolesOrThrow(baseRole: AppRole, value: unknown): FoundationRole[] {
+    const normalized = this.normalizeAssignedRolesOrThrow(value);
+    if (normalized.length === 0) {
+      return normalized;
+    }
+    if (normalized.length > 1) {
+      throw new BadRequestException({ error: "MULTI_ASSIGNED_ROLE_SET_NOT_SUPPORTED" });
+    }
+    const [assignedRole] = normalized;
+    if (assignedRole === "reviewer" || assignedRole === "editor") {
+      if (this.isSupportedAppRoleBridge(baseRole, assignedRole)) {
+        return normalized;
+      }
+      throw new BadRequestException({ error: "ASSIGNED_ROLE_DOES_NOT_WIDEN_BASE_ROLE" });
+    }
+    if (assignedRole === "product_admin" || assignedRole === "system_admin") {
+      if (baseRole !== "admin") {
+        throw new BadRequestException({ error: "ADMIN_BOUNDARY_ASSIGNED_ROLE_REQUIRES_ADMIN_BASE_ROLE" });
+      }
+      return normalized;
+    }
+    throw new BadRequestException({ error: "MANAGED_ASSIGNED_ROLE_NOT_SUPPORTED" });
+  }
+
+  private isSupportedAppRoleBridge(baseRole: AppRole, assignedRole: FoundationRole): boolean {
+    if (assignedRole !== "reviewer" && assignedRole !== "editor") {
+      return false;
+    }
+    if (baseRole === "viewer") {
+      return assignedRole === "reviewer" || assignedRole === "editor";
+    }
+    if (baseRole === "reviewer") {
+      return assignedRole === "editor";
+    }
+    return false;
+  }
+
   private clampDurationMinutes(value: number | undefined): number {
     if (!Number.isFinite(value)) {
       return 60;
@@ -444,10 +515,16 @@ export class WorkspaceUsersService {
 
   private mapWorkspaceUserRow(row: AuthIdentityRecord): WorkspaceUserRow {
     const lockedUntil = row.lockedUntil ? new Date(row.lockedUntil) : null;
+    const assignedRoles = Array.isArray(row.assignedRoles)
+      ? row.assignedRoles
+          .map((entry) => normalizeFoundationRole(entry))
+          .filter(Boolean) as FoundationRole[]
+      : [];
     return {
       id: row.id,
       userId: this.normalizeUserId(row.userId),
       role: this.normalizeRoleOrThrow(row.role),
+      assignedRoles: Array.from(new Set(assignedRoles)),
       isActive: row.isActive,
       lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
       isLocked: Boolean(lockedUntil && lockedUntil.getTime() > Date.now()),

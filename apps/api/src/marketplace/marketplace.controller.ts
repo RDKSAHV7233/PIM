@@ -6,6 +6,7 @@ import { STEP_UP_SCOPE_MAPPING_HIGH_RISK } from "../auth/jwt";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
@@ -141,6 +142,7 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/archive")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   @UseGuards(StepUpGuard)
   @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.archive")
@@ -171,6 +173,8 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/preflight")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin")
   preflightConnectorMapping(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: ConnectorMappingPreflightDto,
@@ -206,6 +210,8 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/publish-readiness")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin")
   evaluateConnectorPublishReadiness(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: ConnectorPublishReadinessDto,
@@ -286,6 +292,7 @@ export class MarketplaceController {
   }
 
   @Get("products/:id/simulate")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   simulateProductQuery(
     @Param("id") productId: string,
@@ -296,6 +303,7 @@ export class MarketplaceController {
   }
 
   @Post("products/:id/simulate")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   simulateProductBody(@Param("id") productId: string, @Body() dto: SimulateMarketplaceDto) {
     return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId);
@@ -303,6 +311,8 @@ export class MarketplaceController {
 
   @Post("readiness/batch")
   @HttpCode(200)
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin")
   batchReadiness(@Body() dto: BatchMarketplaceReadinessDto) {
     return this.marketplaceService.getBatchReadiness(dto.productIds, dto.channels);
   }
@@ -327,6 +337,7 @@ export class MarketplaceController {
   }
 
   @Get("export-jobs")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   @ApiOperation({ summary: "List export jobs" })
   @ApiResponse({ status: 200, description: "Export jobs fetched" })
@@ -360,18 +371,21 @@ export class MarketplaceController {
   }
 
   @Get("export-jobs/:id")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   getExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.getExportJob(jobId);
   }
 
   @Post("export-jobs/:id/process")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   processExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.processExportJob(jobId);
   }
 
   @Post("export-jobs/:id/requeue")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   requeueExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.requeueExportJob(jobId);

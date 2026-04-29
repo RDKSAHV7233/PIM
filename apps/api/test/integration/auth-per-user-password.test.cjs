@@ -8,6 +8,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const JWT_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "auth", "jwt.js");
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -155,6 +156,15 @@ async function waitForOutboxEmail(outboxDir, recipient, timeoutMs) {
   throw new Error(`Timed out waiting for auth email for ${recipient}`);
 }
 
+function extractResetToken(emailPayload) {
+  const source = `${String(emailPayload.text ?? "")}\n${String(emailPayload.html ?? "")}`;
+  const match = source.match(/\/login\/reset\?token=([^&\s\"]+)/i);
+  if (!match) {
+    throw new Error(`Unable to locate reset token in email payload=${JSON.stringify(emailPayload)}`);
+  }
+  return decodeURIComponent(match[1]);
+}
+
 function createPrisma() {
   const url = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
   if (!url) {
@@ -168,6 +178,11 @@ async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
   }
+  if (!fs.existsSync(JWT_ENTRY)) {
+    throw new Error(`JWT build output not found at ${JWT_ENTRY}. Run: npm run build --workspace @pim1/api`);
+  }
+
+  const { verifyPimJwt } = require(JWT_ENTRY);
 
   const runId = Date.now().toString();
   const port = 7150 + Math.floor(Math.random() * 120);
@@ -180,6 +195,7 @@ async function run() {
   const targetUserId = `auth-target-${runId}@example.com`;
   const viewerUserId = `auth-viewer-${runId}@example.com`;
   const perUserPassword = "RadheAuth#2026";
+  const resetPassword = "RadheAuth#2027";
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pim1-auth-email-"));
 
   const env = {
@@ -233,9 +249,15 @@ async function run() {
 
     const createTarget = await apiRequest(baseUrl, "POST", "/admin/workspace/users", adminToken, {
       userId: targetUserId,
-      role: "editor",
+      role: "viewer",
+      assignedRoles: ["editor"],
     });
     assertStatus(createTarget, 201, "create target user");
+    assert(
+      Array.isArray(createTarget.payload?.assignedRoles) &&
+        createTarget.payload.assignedRoles.includes("editor"),
+      `expected target user create payload to retain assigned editor role, got ${JSON.stringify(createTarget.payload)}`,
+    );
 
     const createViewer = await apiRequest(baseUrl, "POST", "/admin/workspace/users", adminToken, {
       userId: viewerUserId,
@@ -274,6 +296,16 @@ async function run() {
     assertStatus(targetLogin, 201, "target login with per-user password");
     const targetToken = String(targetLogin.payload?.accessToken ?? "");
     assert(targetToken.length > 10, "missing target access token");
+    const targetClaims = verifyPimJwt(targetToken);
+    assert(targetClaims, "expected target login token to verify");
+    assert(targetClaims.role === "viewer", `expected scalar role viewer to remain in JWT, got ${targetClaims.role}`);
+    assert(
+      Array.isArray(targetClaims.assignedRoles) &&
+        targetClaims.assignedRoles.includes("editor"),
+      `expected target login JWT assignedRoles to include editor, got ${JSON.stringify(targetClaims.assignedRoles)}`,
+    );
+    const targetEditorRead = await apiRequest(baseUrl, "GET", "/marketplace/channels", targetToken);
+    assertStatus(targetEditorRead, 200, "target assigned editor role allows marketplace channel read");
 
     const oldPasswordLogin = await login(baseUrl, workspaceSlug, targetUserId, process.env.PIM_AUTH_PASSWORD);
     assertStatus(oldPasswordLogin, 401, "legacy shared password rejected for hashed identity");
@@ -285,6 +317,16 @@ async function run() {
     });
     assertStatus(stepUpSuccess, 201, "step-up with per-user password");
     assert(String(stepUpSuccess.payload?.stepUpToken ?? "").length > 10, "missing step-up token");
+    const stepUpClaims = verifyPimJwt(String(stepUpSuccess.payload?.stepUpToken ?? ""));
+    assert(stepUpClaims, "expected step-up token to verify");
+    assert(stepUpClaims.tokenType === "step_up", `expected step-up tokenType, got ${stepUpClaims.tokenType}`);
+    assert(stepUpClaims.stepUpScope === "mapping_high_risk", `expected mapping_high_risk step-up scope, got ${stepUpClaims.stepUpScope}`);
+    assert(stepUpClaims.parentJti === targetClaims.jti, "expected step-up token parentJti to match access token jti");
+    assert(
+      Array.isArray(stepUpClaims.assignedRoles) &&
+        stepUpClaims.assignedRoles.includes("editor"),
+      `expected step-up token assignedRoles to retain editor, got ${JSON.stringify(stepUpClaims.assignedRoles)}`,
+    );
 
     const stepUpDenied = await apiRequest(baseUrl, "POST", "/auth/step-up", targetToken, {
       password: "WrongPassword#2026",
@@ -301,7 +343,39 @@ async function run() {
       JSON.stringify(passwordReset.payload) === JSON.stringify({ ok: true, retryAfterSeconds: 0 }),
       `password reset response shape mismatch. payload=${JSON.stringify(passwordReset.payload)}`,
     );
-    await waitForOutboxEmail(outboxDir, targetUserId, 10_000);
+    const resetEmail = await waitForOutboxEmail(outboxDir, targetUserId, 10_000);
+    const resetToken = extractResetToken(resetEmail);
+    const confirmReset = await apiRequest(baseUrl, "POST", "/auth/password-reset/confirm", null, {
+      token: resetToken,
+      password: resetPassword,
+    });
+    assertStatus(confirmReset, 200, "password reset confirm for target user");
+    assert(confirmReset.payload?.reset === true, "password reset confirm must return reset=true");
+
+    const oldPerUserPasswordLogin = await login(baseUrl, workspaceSlug, targetUserId, perUserPassword);
+    assertStatus(oldPerUserPasswordLogin, 401, "old per-user password rejected after reset");
+    assert(
+      String(oldPerUserPasswordLogin.payload?.error ?? "") === "INVALID_CREDENTIALS",
+      "old per-user password after reset must return INVALID_CREDENTIALS",
+    );
+
+    const resetPasswordLogin = await login(baseUrl, workspaceSlug, targetUserId, resetPassword);
+    assertStatus(resetPasswordLogin, 201, "target login succeeds after password reset");
+    const resetTokenClaims = verifyPimJwt(String(resetPasswordLogin.payload?.accessToken ?? ""));
+    assert(resetTokenClaims, "expected post-reset login token to verify");
+    assert(resetTokenClaims.role === "viewer", `expected scalar role viewer after reset, got ${resetTokenClaims.role}`);
+    assert(
+      Array.isArray(resetTokenClaims.assignedRoles) &&
+        resetTokenClaims.assignedRoles.includes("editor"),
+      `expected post-reset JWT assignedRoles to retain editor, got ${JSON.stringify(resetTokenClaims.assignedRoles)}`,
+    );
+    const resetEditorRead = await apiRequest(
+      baseUrl,
+      "GET",
+      "/marketplace/channels",
+      resetPasswordLogin.payload.accessToken,
+    );
+    assertStatus(resetEditorRead, 200, "target assigned editor role still works after password reset");
 
     const lockViewer = await apiRequest(
       baseUrl,
@@ -364,9 +438,12 @@ async function run() {
         "admin_can_set_user_password",
         "hashed_user_can_login_with_new_password",
         "hashed_user_cannot_use_legacy_shared_password",
+        "jwt_assigned_roles_survive_per_user_password_login",
+        "jwt_assigned_roles_survive_step_up_bridge",
         "step_up_uses_per_user_password",
         "step_up_rejects_wrong_password",
         "password_reset_response_is_honest",
+        "assigned_roles_survive_password_reset_confirm",
         "resend_unlock_response_is_honest",
         "viewer_forbidden_from_setting_passwords",
         "short_password_rejected",

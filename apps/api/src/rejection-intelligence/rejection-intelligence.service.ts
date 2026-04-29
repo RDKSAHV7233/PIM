@@ -33,6 +33,7 @@ export class RejectionIntelligenceService {
         id: product.id,
         categoryId: product.categoryId,
         brand: product.brand,
+        vendorScopeKey: product.vendorScopeKey,
       },
       "RejectionIntelligenceScore",
     );

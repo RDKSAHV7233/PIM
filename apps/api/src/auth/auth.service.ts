@@ -10,8 +10,8 @@ import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "redis";
 import { AuditService } from "../audit/audit.service";
-import { AppRole } from "../common/rbac/roles";
-import { normalizeAppRole, resolveDefaultRole } from "../common/rbac/role-utils";
+import { type FoundationRole, AppRole } from "../common/rbac/roles";
+import { normalizeAppRole, normalizeFoundationRole, resolveDefaultRole } from "../common/rbac/role-utils";
 import { TenantDirectoryService } from "../common/tenant/tenant-directory.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import {
@@ -89,6 +89,7 @@ interface ResolvedLoginIdentity {
   userId: string;
   tenantId: string;
   role: AppRole;
+  assignedRoles: FoundationRole[];
   lockedUntil: Date | null;
   passwordHash: string | null;
 }
@@ -97,6 +98,7 @@ interface AuthIdentityRow {
   userId: string;
   tenantKey: string;
   role: string;
+  assignedRoles?: string[] | null;
   isActive: boolean;
   lockedUntil: Date | null;
   passwordHash: string | null;
@@ -445,6 +447,7 @@ export class AuthService implements OnModuleDestroy {
       sub: identity.userId,
       tenantId: identity.tenantId,
       role: identity.role,
+      assignedRoles: identity.assignedRoles,
       expiresInSeconds,
     });
 
@@ -500,6 +503,7 @@ export class AuthService implements OnModuleDestroy {
       sub: input.claims.sub,
       tenantId: input.claims.tenantId,
       role: input.claims.role,
+      assignedRoles: input.claims.assignedRoles,
       tokenType: "step_up",
       stepUpScope: input.scope,
       parentJti: input.claims.jti,
@@ -612,6 +616,7 @@ export class AuthService implements OnModuleDestroy {
           userId: true,
           tenantKey: true,
           role: true,
+          assignedRoles: true,
           isActive: true,
           lockedUntil: true,
           passwordHash: true,
@@ -623,6 +628,7 @@ export class AuthService implements OnModuleDestroy {
           userId: this.normalizeUserKey(identity.userId),
           tenantId: normalizeTenantKey(identity.tenantKey),
           role: normalizeAppRole(identity.role) ?? "viewer",
+          assignedRoles: this.resolvePersistedAssignedRoles(identity),
           lockedUntil: identity.lockedUntil ?? null,
           passwordHash: identity.passwordHash ?? null,
         };
@@ -1200,6 +1206,7 @@ export class AuthService implements OnModuleDestroy {
         userId: normalizedUserId,
         tenantId,
         role: defaultRole,
+        assignedRoles: [],
         lockedUntil: null,
         passwordHash: null,
       };
@@ -1218,6 +1225,7 @@ export class AuthService implements OnModuleDestroy {
         userId: true,
         tenantKey: true,
         role: true,
+        assignedRoles: true,
         isActive: true,
         lockedUntil: true,
         passwordHash: true,
@@ -1231,9 +1239,19 @@ export class AuthService implements OnModuleDestroy {
       userId: this.normalizeUserKey(row.userId),
       tenantId: normalizeTenantKey(row.tenantKey),
       role: normalizeAppRole(row.role) ?? "viewer",
+      assignedRoles: this.resolvePersistedAssignedRoles(row),
       lockedUntil: row.lockedUntil,
       passwordHash: row.passwordHash ?? null,
     };
+  }
+
+  private resolvePersistedAssignedRoles(row: Pick<AuthIdentityRow, "assignedRoles">): FoundationRole[] {
+    if (!Array.isArray(row.assignedRoles) || row.assignedRoles.length === 0) {
+      return [];
+    }
+    return row.assignedRoles
+      .map((entry) => normalizeFoundationRole(entry))
+      .filter(Boolean) as FoundationRole[];
   }
 
   private loadIdentityDirectory(): Map<string, ResolvedLoginIdentity> {
@@ -1256,10 +1274,16 @@ export class AuthService implements OnModuleDestroy {
         const candidate = value as Record<string, unknown>;
         const tenantId = normalizeTenantKey(candidate.tenantId ?? process.env.PIM_DEFAULT_TENANT_KEY);
         const role = normalizeAppRole(candidate.role) ?? resolveDefaultRole();
+        const assignedRoles = Array.isArray(candidate.assignedRoles)
+          ? candidate.assignedRoles
+              .map((entry) => normalizeFoundationRole(entry))
+              .filter((entry): entry is FoundationRole => Boolean(entry))
+          : [];
         directory.set(normalizedUserId, {
           userId: normalizedUserId,
           tenantId,
           role,
+          assignedRoles,
           lockedUntil: null,
           passwordHash: typeof candidate.passwordHash === "string" ? candidate.passwordHash : null,
         });

@@ -402,7 +402,7 @@ export class BulkImportService {
       return job;
     });
 
-    return this.getJob(created.id);
+    return this.getJob(created.id, actor);
   }
 
   async listJobs(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
@@ -485,7 +485,7 @@ export class BulkImportService {
       throw new NotFoundException("Bulk import job not found");
     }
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
-    return (await this.attachMetrics([job]))[0];
+    return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, (await this.attachMetrics([job]))[0]);
   }
 
   async listJobRows(jobId: string, status?: string, limit = 100, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
@@ -523,7 +523,7 @@ export class BulkImportService {
       const hasNext = rows.length > safeLimit;
       const items = hasNext ? rows.slice(0, safeLimit) : rows;
       const last = items[items.length - 1];
-      return {
+      return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, {
         items,
         limit: safeLimit,
         nextCursor: hasNext && last
@@ -532,17 +532,17 @@ export class BulkImportService {
               id: last.id,
             })
           : null,
-      };
+      });
     }
     const boundedLimit = Math.max(1, Math.min(5000, Number(limit) || 100));
-    return this.prisma.tenant().bulkImportRow.findMany({
+    return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         jobId,
         status: status ? this.parseRowStatus(status) : undefined,
       },
       orderBy: [{ rowNumber: "asc" }],
       take: boundedLimit,
-    });
+    }));
   }
 
   async processJob(jobId: string, chunkSize?: number, actor?: PolicyActor) {
@@ -584,12 +584,12 @@ export class BulkImportService {
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
     const row = await this.requireRow(jobId, rowId);
     if (row.status === BulkImportRowStatus.success) {
-      return row;
+      return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, row);
     }
 
     await this.processRow(job, row);
     await this.refreshJobCounters(jobId);
-    return this.requireRow(jobId, rowId);
+    return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, await this.requireRow(jobId, rowId));
   }
 
   async repairRow(jobId: string, rowId: string, dto: RepairBulkImportRowDto, actor?: PolicyActor) {
@@ -612,7 +612,7 @@ export class BulkImportService {
     });
 
     await this.refreshJobCounters(jobId);
-    return this.requireRow(jobId, rowId);
+    return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, await this.requireRow(jobId, rowId));
   }
 
   async requeueDlq(jobId: string, limit = 100, actor?: PolicyActor) {
@@ -645,7 +645,7 @@ export class BulkImportService {
     }
 
     await this.refreshJobCounters(jobId);
-    return this.getJob(jobId);
+    return this.getJob(jobId, actor);
   }
 
   async buildErrorReportCsv(jobId: string, actor?: PolicyActor) {
@@ -675,13 +675,14 @@ export class BulkImportService {
     const header = ["row_number", "status", "retry_count", "error_message", "payload_json"];
     const lines = [header.map((value) => this.toCsvCell(value)).join(",")];
     for (const row of rows) {
+      const visibleRow = this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, row) as typeof row;
       lines.push(
         [
-          String(row.rowNumber),
-          row.status,
-          String(row.retryCount),
-          row.errorMessage ?? "",
-          JSON.stringify(this.asRowPayload(row.payload)),
+          String(visibleRow.rowNumber),
+          visibleRow.status,
+          String(visibleRow.retryCount),
+          visibleRow.errorMessage ?? "",
+          JSON.stringify(this.asRowPayload(visibleRow.payload)),
         ]
           .map((value) => this.toCsvCell(value))
           .join(","),

@@ -886,6 +886,7 @@ export class ConnectorInstallerService {
         installationId: installation.id,
         connectorSlug: installation.slug,
         accountAlias: installation.accountAlias,
+        supportedScopeTypes: ["connector_account", "channel", "catalog"],
       },
     );
 
@@ -903,7 +904,20 @@ export class ConnectorInstallerService {
       });
     }
 
-    return connector.listPublications(this.buildConnectorContext(installation));
+    const targets = await connector.listPublications(this.buildConnectorContext(installation));
+    return this.accessPolicy.filterPublicationTargets(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "manage_connector",
+      targets,
+      {
+        resource: "ConnectorPublicationTarget",
+        resourceId: installationId,
+      },
+    );
   }
 
   async updatePublicationTargets(
@@ -928,6 +942,7 @@ export class ConnectorInstallerService {
         installationId: installation.id,
         connectorSlug: installation.slug,
         accountAlias: installation.accountAlias,
+        supportedScopeTypes: ["connector_account", "channel", "catalog"],
       },
     );
 
@@ -970,6 +985,22 @@ export class ConnectorInstallerService {
         message: "One or more selected publication targets are not available for this installation.",
       });
     }
+    await this.accessPolicy.assertPublicationTargetsAccess(
+      {
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        tenantId: tenantKey,
+      },
+      "manage_connector",
+      selectedTargets.map((target) => ({
+        id: String(target.id ?? "").trim() || null,
+        catalogId: target.catalogId ?? null,
+      })),
+      {
+        resource: "ConnectorPublicationTarget",
+        resourceId: installationId,
+      },
+    );
 
     const updatedAt = new Date();
     await this.prisma.tenant(tenantKey).connectorInstallation.updateMany({

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -13,18 +14,31 @@ import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateAttributeDefinitionDto } from "./dto/update-attribute-definition.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 
+type ActorContext = {
+  id?: string;
+  role?: "admin" | "editor" | "reviewer" | "viewer";
+  tenantId?: string;
+  effectiveRoles?: string[];
+};
+
 @Injectable()
 export class TaxonomyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
 
   async listCategories(
     pagination?: CursorPaginationQuery,
     options?: {
       all?: boolean;
     },
+    actor?: ActorContext,
   ) {
+    const scopeWhere = await this.accessPolicy.buildCategoryScopeWhere(this.toPolicyActor(actor), "view");
     if (options?.all) {
       return this.prisma.tenant().category.findMany({
+        where: scopeWhere,
         orderBy: [{ path: "asc" }],
       });
     }
@@ -37,15 +51,20 @@ export class TaxonomyService {
     const categories = await this.prisma.tenant().category.findMany({
       where: token
         ? {
-            OR: [
-              { path: { gt: token.sort } },
+            AND: [
+              scopeWhere ?? {},
               {
-                path: token.sort,
-                id: { gt: token.id },
+                OR: [
+                  { path: { gt: token.sort } },
+                  {
+                    path: token.sort,
+                    id: { gt: token.id },
+                  },
+                ],
               },
             ],
           }
-        : undefined,
+        : scopeWhere,
       orderBy: [{ path: "asc" }],
       take: limit + 1,
     });
@@ -64,11 +83,12 @@ export class TaxonomyService {
     };
   }
 
-  async getCategory(id: string) {
+  async getCategory(id: string, actor?: ActorContext) {
     const category = await this.prisma.tenant().category.findUnique({ where: { id } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }
+    await this.accessPolicy.assertCategoryAccess(this.toPolicyActor(actor), "view", category.id);
     return category;
   }
 
@@ -182,16 +202,17 @@ export class TaxonomyService {
     await this.prisma.tenant().category.delete({ where: { id } });
   }
 
-  async listAttributeDefinitions(categoryId: string) {
-    await this.getCategory(categoryId);
+  async listAttributeDefinitions(categoryId: string, actor?: ActorContext) {
+    await this.getCategory(categoryId, actor);
     return this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
       orderBy: [{ appliesTo: "asc" }, { key: "asc" }],
     });
   }
 
-  async createAttributeDefinition(categoryId: string, dto: CreateAttributeDefinitionDto) {
-    await this.getCategory(categoryId);
+  async createAttributeDefinition(categoryId: string, dto: CreateAttributeDefinitionDto, actor?: ActorContext) {
+    await this.getCategory(categoryId, actor);
+    await this.accessPolicy.assertCategoryAccess(this.toPolicyActor(actor), "edit", categoryId, "AttributeDefinition");
     try {
       return await this.prisma.tenant().attributeDefinition.create({
         data: {
@@ -212,8 +233,15 @@ export class TaxonomyService {
     }
   }
 
-  async updateAttributeDefinition(attributeId: string, dto: UpdateAttributeDefinitionDto) {
-    await this.requireAttributeDefinition(attributeId);
+  async updateAttributeDefinition(attributeId: string, dto: UpdateAttributeDefinitionDto, actor?: ActorContext) {
+    const attribute = await this.requireAttributeDefinition(attributeId);
+    await this.accessPolicy.assertCategoryAccess(
+      this.toPolicyActor(actor),
+      "edit",
+      attribute.categoryId,
+      "AttributeDefinition",
+      attributeId,
+    );
     try {
       return await this.prisma.tenant().attributeDefinition.update({
         where: { id: attributeId },
@@ -234,8 +262,15 @@ export class TaxonomyService {
     }
   }
 
-  async deleteAttributeDefinition(attributeId: string) {
-    await this.requireAttributeDefinition(attributeId);
+  async deleteAttributeDefinition(attributeId: string, actor?: ActorContext) {
+    const attribute = await this.requireAttributeDefinition(attributeId);
+    await this.accessPolicy.assertCategoryAccess(
+      this.toPolicyActor(actor),
+      "delete",
+      attribute.categoryId,
+      "AttributeDefinition",
+      attributeId,
+    );
     await this.prisma.tenant().attributeDefinition.delete({ where: { id: attributeId } });
   }
 
@@ -290,5 +325,14 @@ export class TaxonomyService {
       }
       index += 1;
     }
+  }
+
+  private toPolicyActor(actor?: ActorContext) {
+    return {
+      actorId: actor?.id,
+      actorRole: actor?.role,
+      tenantId: actor?.tenantId,
+      effectiveRoles: actor?.effectiveRoles,
+    };
   }
 }

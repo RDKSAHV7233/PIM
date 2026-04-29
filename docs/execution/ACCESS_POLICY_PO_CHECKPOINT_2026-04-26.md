@@ -687,3 +687,996 @@ Still not accepted as complete:
 Updated claim wording:
 
 > Vexa PIM now enforces explicit machine-principal scopes for the catalog API family, persists API-key scopes through a migration-backed additive rollout, denies missing or unrelated API-client scopes safely, and preserves default-deny behavior for human-only routes. It still does not have full enterprise authorization maturity across all machine-principal resources, future scope-dimension enforcement, multi-role persistence, admin-boundary route mapping, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Fail-Closed Unsupported Scope Dimensions On Product Resources
+
+Decision: **Conditionally accepted for the bounded scope-enforcement safety follow-up.**
+
+Accepted in this follow-up:
+
+- product-backed resources no longer silently proceed when a user carries unsupported future scope dimensions such as `vendor`
+- unsupported-only and mixed-scope combinations now fail closed on covered catalog and media flows until the resource can actually prove those dimensions
+- the expanded `AccessScopeType` values are now backed by an additive Postgres enum migration, not just Prisma schema and TypeScript definitions
+- delegated-access integration coverage now proves three real cases on covered product resources:
+  - unsupported-only dimension denial
+  - mixed supported-plus-unsupported dimension denial
+  - request-time denial when the route cannot prove the unsupported dimension
+
+Still not accepted as complete:
+
+- this is not full enforcement for `vendor`, `owner`, `supplier`, `locale`, `market`, `catalog`, `team`, or `assignee`
+- only fail-closed behavior is proven on covered product-backed resources today
+- resource models still lack the ownership or object fields needed to safely allow these dimensions in general
+- `category_manager` and `vendor` remain blocked because the repo still does not prove their allowed-resource boundaries end to end
+- multi-role persistence rollout, admin-boundary route enforcement, and broader shared redaction remain pending
+
+Updated claim wording:
+
+> Vexa PIM now enforces authenticated-read classification at runtime, requires explicit API-client scopes on the catalog API family, and fail-closes product-backed resource access when unsupported or mixed foundation scope dimensions are present without provable enforcement context. It still does not have full enterprise authorization maturity across real enforcement for future scope dimensions, multi-role persistence rollout, admin-boundary route mapping, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Catalog Scope Enforcement On Connector Publication Targets
+
+Decision: **Conditionally accepted for the bounded real-enforcement scope follow-up.**
+
+Accepted in this follow-up:
+
+- `catalog` is no longer only representable or denied everywhere; it is now genuinely enforced on Shopify connector publication-target reads and writes
+- admins can store `catalog` scope assignments through the existing access-scope admin API
+- a catalog-scoped connector user only sees publication targets whose `catalogId` matches an assigned catalog scope
+- publication-target updates deny safely when the selected target is out of scope or has no provable `catalogId`
+- other future dimensions remain fail-closed and are not overclaimed as supported
+
+Still not accepted as complete:
+
+- `catalog` is not yet a generally enforced scope dimension across every route family; it is proven only on the connector publication-target surface
+- `vendor`, `owner`, `supplier`, `locale`, `market`, `team`, and `assignee` still remain representable but not broadly enforced
+- `category_manager` remains blocked because category-scoped role boundaries are not yet proven end to end
+- `vendor` remains blocked because vendor/object ownership enforcement is still not proven
+- multi-role persistence rollout, admin-boundary route enforcement, and broader shared redaction remain pending
+
+Updated claim wording:
+
+> Vexa PIM now enforces authenticated-read classification at runtime, explicit API-client scopes on the catalog API family, fail-closed denial for unsupported or mixed future scope dimensions on product-backed resources, and real `catalog` scope enforcement on Shopify connector publication-target reads and writes. It still does not have full enterprise authorization maturity across broad enforcement of future scope dimensions, multi-role persistence rollout, admin-boundary route mapping, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Representative Admin-Boundary Route Enforcement
+
+Decision: **Conditionally accepted for the bounded admin-boundary follow-up.**
+
+Accepted in this follow-up:
+
+- representative governance routes no longer rely only on plain `@Roles("admin")`
+- explicit `product_admin`, `system_admin`, and `super_admin` identities can now be exercised end to end through local auth and JWT claims
+- `product_admin` is denied on system-governance user and security routes
+- `system_admin` is allowed on representative user and security reads
+- `system_admin` is denied on the representative `super_admin`-only access-scope mutation path
+- `super_admin` is allowed on the representative `super_admin`-only access-scope mutation path
+- legacy `admin` compatibility was preserved for the existing delegated-scope mutation path so the current rollout does not regress while boundary work is still partial
+
+Still not accepted as complete:
+
+- this is not yet a full route-by-route mapping of Product Admin, System Admin, and Super Admin across every sensitive admin or operational route
+- the live rollout still depends on a local-auth/JWT bridge for explicit boundary roles rather than full persistent multi-role storage
+- broader machine-principal scope modeling, future scope-dimension enforcement, and shared payload redaction are still incomplete
+- `category_manager` remains blocked because category/object ownership boundaries are still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, explicit API-client scope enforcement on the covered catalog API family, fail-closed protection for unsupported future scope dimensions on covered product-backed resources, real `catalog` scope enforcement on Shopify connector publication targets, and bounded live admin-boundary enforcement on representative governance routes for workspace users, workspace access scopes, and API-key management. It still does not have full enterprise authorization maturity across broad admin-boundary route mapping, machine-principal resources, persistent multi-role rollout, ownership-scope enforcement for blocked roles, or universal payload redaction.
+
+## 2026-04-27 PO Checkpoint: Broader Admin-Boundary Route Mapping
+
+Decision: **Conditionally accepted for the bounded broader governance follow-up.**
+
+Accepted in this follow-up:
+
+- explicit admin-boundary enforcement now extends beyond the earlier representative governance routes into:
+  - billing governance (`plan-profile`, `billing-contact`, `upgrade-request`)
+  - dashboard governance (`readiness`, `catalog-health`, `operations-summary`)
+  - metrics governance (`kpi-trends`)
+  - audit governance
+  - outbound-webhook governance
+  - connector-permission governance
+- `product_admin` is now proven allowed on product-data governance reads while still denied on security and billing governance surfaces
+- `system_admin` is now proven denied on product-data governance reads while allowed on billing, audit, webhook, connector-permission, workspace-user, and API-key governance reads
+- `category_manager` and `vendor` are now explicitly denied with `FOUNDATION_ROLE_BLOCKED` on boundary-decorated governance routes instead of being able to drift through legacy admin fallback
+- guardrail coverage now checks 28 admin-boundary routes and no longer misses coverage when a controller method uses multi-line decorators
+
+Still not accepted as complete:
+
+- this is still not full admin-boundary mapping across every remaining settings, billing, connector, dashboard, and operational governance route
+- the rollout still uses the current local-auth and JWT bridge rather than persistent multi-role storage
+- broader machine-principal resource coverage, ownership-scope enforcement, and universal shared redaction remain incomplete
+- `category_manager` remains blocked because category/object ownership enforcement is still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven end to end
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, and connector-permission governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Product-Governance Admin-Boundary Mapping
+
+Decision: **Conditionally accepted for the bounded product-governance follow-up.**
+
+Accepted in this follow-up:
+
+- the checked-in pending-blocker PO policy now explicitly treats still-unmapped admin-only product-governance routes as the next default admin-boundary target
+- compliance-rule governance now enforces `manage_product_data` instead of relying only on plain legacy admin
+- marketplace export-job governance and marketplace simulation governance now enforce `manage_product_data`
+- `product_admin` is now proven allowed on:
+  - compliance-rule creation and reads
+  - marketplace export-job reads
+  - marketplace simulation reads
+- `system_admin` is now proven denied on those product-governance routes
+- low-privilege and blocked-foundation-role denial behavior remains intact
+
+Still not accepted as complete:
+
+- this is still not the full admin-boundary mapping across every remaining settings, billing, connector, dashboard, and operational governance route
+- the rollout still depends on the existing local-auth and JWT bridge rather than persistent multi-role storage
+- broader machine-principal scope coverage, ownership-scope enforcement, and universal shared redaction remain incomplete
+- `category_manager` remains blocked because category/object ownership enforcement is still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven end to end
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, and marketplace export-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+## 2026-04-30 PO Checkpoint: Workspace-User Managed Assigned-Role Rules
+
+Decision: **Accepted for the bounded workspace-user multi-role management semantics slice. Not accepted as full multi-role rollout or full access-policy completion.**
+
+Accepted in this follow-up:
+
+- managed workspace-user writes now have one explicit role-set rule:
+  - at most one assigned role can be written through workspace-user create or update
+  - supported managed-write roles are `reviewer`, `editor`, `product_admin`, and `system_admin`
+  - `product_admin` and `system_admin` require scalar `role = admin`
+  - unsupported managed-write roles such as `super_admin`, `category_manager`, and `vendor` are rejected
+- duplicate role arrays remain rejected
+- `assignedRoles: []` still clears the persisted role set
+- update requests that omit `assignedRoles` now preserve the stored role set only when the preserved set is still compatible with the next scalar role
+- the checked-in CRUD harness now proves:
+  - bounded single-role managed writes
+  - unsupported-role rejection
+  - admin-boundary-role base-role enforcement
+  - system-admin managed-write success and readback
+  - incompatible preserved-role rejection on scalar downgrade
+  - explicit clear behavior still falls back safely to scalar-only compatibility
+
+Still not accepted as complete:
+
+- this is still not full allowed-combination policy across every future multi-role use case
+- this is still not scalar-role removal
+- this is still not a live production multi-role rollout
+- broader role-set management semantics and product decisions on future combinations still need dedicated work
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-30 PO Checkpoint: Consolidated Access-Policy Lane State
+
+Decision: **Accepted as a consolidation pass. Not accepted as full access-policy completion.**
+
+Accepted in this consolidation:
+
+- the currently validated access-policy lanes were exercised together under one full validation bundle
+- no unresolved textual merge conflicts remained in the checked surfaces
+- the merged state preserved the latest bounded workspace-user safety rule:
+  - omitted `assignedRoles` only preserves the stored set when it remains compatible with the next scalar role
+- the merged state stayed green across remediation, delegated scopes, sensitive-GET policy, foundation, notifications, web build, increment gate, sprint gate, and staging validation
+
+Still not accepted as complete:
+
+- this is a consolidation of already-proven bounded slices, not new enterprise-wide authorization completion
+- broad vendor rollout, unsupported ABAC dimensions, durable multi-role rollout completion, full API-client coverage, full admin-boundary mapping, and universal response redaction still remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Multi-Role Rollout Runbook and Rollback Proof
+
+Decision: **Accepted for the bounded operator-safe multi-role rollout slice. Not accepted as full multi-role migration or full access-policy completion.**
+
+Accepted in this follow-up:
+
+- a checked-in operator script now defines the bounded rollout behavior for `AuthIdentity.assigned_roles`
+- a checked-in runbook now documents dry-run, confirm, rollback, and verification commands
+- additive backfill is now proven to:
+  - target only rows whose `assigned_roles` is `NULL` or `[]`
+  - copy only normalized scalar app-role singletons
+  - skip invalid scalar roles instead of guessing
+  - preserve pre-existing non-empty multi-role rows
+- rollback is now proven to:
+  - clear only scalar-singleton `assigned_roles` rows written by this bounded rollout contract
+  - preserve true multi-role rows
+  - fall back safely to scalar-only compatibility after clearing persisted role arrays
+- real dry-run evidence was captured from the checked-in script:
+  - backfill dry-run: `scannedCount=2313`, `eligibleCount=2274`, `invalidScalarRoleCount=2`, `skippedExistingAssignedRolesCount=37`, `updatedCount=0`
+  - rollback dry-run: `scannedCount=2313`, `eligibleCount=0`, `invalidScalarRoleCount=2`, `skippedUnsafeRollbackCount=2311`, `updatedCount=0`
+
+Still not accepted as complete:
+
+- this is still not a live production backfill execution
+- this is still not a rollback-complete multi-role rollout
+- scalar `role` remains the compatibility field
+- broader workspace-user role-set management policy and allowed-combination decisions still need dedicated product work
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, and bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Multi-Role Backfill, Fallback, and Rollback Semantics
+
+Decision: **Accepted for the bounded multi-role semantics follow-up. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- additive backfill semantics are now explicit and proven:
+  - legacy scalar-only users still work when `assigned_roles` is empty
+  - DB-auth treats `NULL assigned_roles` as scalar-only compatibility rather than as an escalation path
+- duplicate-role handling is now explicit and proven:
+  - duplicate persisted or local assigned-role arrays normalize safely on auth resolution
+  - duplicate assigned-role arrays are rejected on managed workspace-user create and update writes
+- rollback-safe compatibility is now explicit and proven:
+  - explicit `assignedRoles: []` clears the persisted role set
+  - the next login after that clear falls back to scalar-only compatibility
+  - former editor-capable access is removed after the clear
+- invalid-role normalization and no-escalation behavior remained green
+
+Still not accepted as complete:
+
+- this is still not a destructive migration
+- this is still not a backfill-complete rollout
+- this is still not a rollback-complete rollout
+- scalar `role` removal was not attempted
+- broader workspace-user multi-role management semantics and allowed-combination policy are still not complete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, and bounded non-destructive backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Durable Assigned-Roles Auth Lifecycle Proof
+
+Decision: **Accepted for the bounded multi-role durability continuation. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- persisted `assigned_roles` are now proven durable across one more real DB-auth lifecycle, not just direct login
+- a workspace-user-created identity with scalar `viewer` plus persisted `assignedRoles: ["editor"]` now proves:
+  - login JWT keeps scalar `role: "viewer"` for compatibility
+  - normalized `assignedRoles` still unlock the later editor-capable route decision
+  - issued step-up JWTs retain the normalized assigned-role set
+  - password-reset confirm does not strip the persisted assigned-role set
+  - later login after password reset still resolves the same assigned-role bridge and route access
+- the already-proven local-auth bridge, DB-auth read path, workspace-user write durability, scalar fallback, and invalid-role no-escalation behavior all remained green
+
+Still not accepted as complete:
+
+- this is still not a full multi-role migration
+- no destructive backfill, no rollback-complete rollout, and no scalar-role removal were attempted
+- broader workspace-user multi-role UX/API semantics and allowed-combination policy are still not complete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins and password-reset-confirm auth resolution. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Assigned-Roles Admin-Boundary Durability
+
+Decision: **Accepted for the bounded multi-role durability continuation. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- one small PO contract is now explicit and proven:
+  - scalar `admin` stays the compatibility app-role field
+  - persisted assigned roles are additive inputs to governance-boundary evaluation
+  - normalized assigned roles, not the scalar field alone, decide whether a user crosses `manage_security` boundaries
+- DB-auth now has proof that:
+  - a persisted `system_admin` assigned role survives login and is honored on security-governance reads
+  - a persisted `product_admin` assigned role does not escalate into security-governance access
+- local-auth now has the same bounded proof:
+  - local identities with `assignedRoles: ["system_admin"]` can cross the same security-governance read boundary
+  - local identities with `assignedRoles: ["product_admin"]` cannot
+
+Still not accepted as complete:
+
+- this is still not a full multi-role rollout
+- no backfill-complete migration, rollback-complete migration, or scalar-role removal were attempted
+- broader role-set management semantics and allowed-combination policy are still pending
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins and password-reset-confirm auth resolution. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Marketplace Readiness and Preflight Governance Mapping
+
+Decision: **Accepted for the bounded marketplace-governance follow-up. Not accepted as full admin-boundary completion.**
+
+Accepted in this follow-up:
+
+- `POST /marketplace/connectors/:connectorSlug/mappings/preflight` now enforces `manage_product_data`
+- `POST /marketplace/connectors/:connectorSlug/publish-readiness` now enforces `manage_product_data`
+- `POST /marketplace/readiness/batch` now enforces `manage_product_data`
+- `product_admin` is now proven allowed on the covered readiness and preflight governance routes
+- `system_admin` is now proven denied on the covered readiness and preflight governance routes
+- the sensitive policy guardrail now validates those three routes as part of the explicit admin-boundary-controlled surface
+
+Still not accepted as complete:
+
+- this is still not full admin-boundary mapping across every remaining settings, connector-governance, operational-governance, and marketplace-governance route
+- broader machine-principal coverage, ownership enforcement, durable multi-role rollout, and universal shared redaction remain incomplete
+- `category_manager` and `vendor` remain only partially proven on their already-covered bounded surfaces
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, marketplace export-governance, and marketplace readiness-and-preflight governance routes, authenticated-read classification, covered catalog API-client scope enforcement plus bounded media.read, compliance.read, rejection_intelligence.read, auto_suggestions.read, and taxonomy.read API-client scope families, bounded vendor/object ownership enforcement on proven product-backed reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Audit Log Governance Redaction
+
+Decision: **Accepted for the bounded audit-log redaction follow-up. Not accepted as broader audit explorer or universal redaction completion.**
+
+Accepted in this follow-up:
+
+- `GET /audit/logs` now uses explicit central read redaction
+- `system_admin` remains allowed on audit-log reads but receives `metadata: null`
+- `system_admin` audit-log rows now surface `redactedFields: ["metadata"]`
+- `super_admin` and legacy `admin` retain full audit-log metadata visibility
+
+Still not accepted as complete:
+
+- `GET /audit/events` and `GET /audit/events/export` still need a broader role-aware field contract before safe redaction rollout
+- this does not complete universal response redaction
+- broader admin-boundary mapping, broader API-client coverage, durable multi-role rollout, and unsupported ABAC dimensions remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded media.read, compliance.read, rejection_intelligence.read, auto_suggestions.read, and taxonomy.read API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, and audit-log reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Additive Multi-Role Persistence Read Path
+
+Decision: **Accepted for the bounded persistence-read follow-up. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- `AuthIdentity` now has additive `assigned_roles` storage without removing legacy scalar `role`
+- DB-backed auth now reads persisted `assigned_roles` when present
+- DB-backed auth still falls back to scalar `role` when `assigned_roles` is empty
+- JWT/local bridging stayed compatible because the read path now feeds the already-existing `assignedRoles` claim support
+- dedicated DB-auth integration proof now validates:
+  - persisted assigned roles are read when present
+  - scalar fallback still works when assigned roles are empty
+  - invalid assigned-role values normalize away and do not escalate privilege
+
+Still not accepted as complete:
+
+- this is not a full multi-role write rollout
+- workspace-user CRUD still manages scalar `role` only
+- there is no destructive migration, no scalar-role removal, and no admin hierarchy redesign in this slice
+- broader vendor, owner, unsupported ABAC dimensions, full API-client coverage, and universal redaction work remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered catalog, media, compliance, rejection-intelligence, and auto-suggestion read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads, and additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role write rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Workspace-User Assigned-Roles Read Compatibility
+
+Decision: **Accepted for the bounded governance-read compatibility follow-up. Not accepted as multi-role write rollout.**
+
+Accepted in this follow-up:
+
+- workspace-user governance reads now include normalized persisted `assignedRoles`
+- persisted invalid assigned-role strings are filtered out before governance-read output
+- legacy scalar `role` remains the compatibility field for current callers
+- no multi-role create or update contract was introduced accidentally
+
+Still not accepted as complete:
+
+- workspace-user CRUD still does not support multi-role assignment writes
+- no additive multi-role DTO/API contract exists yet for create or update
+- rollback-complete migration, backfill behavior, and admin UX/API for managing multiple persisted roles still need a dedicated slice
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered catalog, media, compliance, rejection-intelligence, and auto-suggestion read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, and workspace-user governance read compatibility for normalized persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role write rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Workspace-User Assigned-Roles Additive Write Contract
+
+Decision: **Accepted for the bounded multi-role write-contract follow-up. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- workspace-user create now accepts optional additive `assignedRoles`
+- workspace-user role updates now accept optional additive `assignedRoles`
+- persisted `assignedRoles` are normalized before storage
+- omitting `assignedRoles` on role update preserves the existing stored values
+- invalid assigned-role values are rejected instead of being stored
+- workspace-user audit metadata now records assigned-role additions and changes
+
+Still not accepted as complete:
+
+- this is still not a full multi-role rollout
+- scalar `role` remains the primary compatibility field and was not removed
+- broader workspace-user multi-role UX/API, backfill sequencing, fallback verification, and rollback-complete rollout are still pending
+- broader vendor breadth, owner breadth, unsupported ABAC dimensions, full API-client coverage, and universal redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered catalog, media, compliance, rejection-intelligence, and auto-suggestion read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: API-Client `taxonomy.read` Scope Foundation
+
+Decision: **Accepted for the bounded machine-principal taxonomy metadata slice.**
+
+Accepted in this follow-up:
+
+- added a new API-client scope vocabulary item:
+  - `taxonomy.read`
+- enforced that scope only on the bounded taxonomy metadata family:
+  - `GET /taxonomy/categories`
+  - `GET /taxonomy/categories/:id`
+  - `GET /taxonomy/categories/:id/attributes`
+- proved:
+  - API key with `taxonomy.read` can read the taxonomy metadata family
+  - API key with unrelated scopes is denied
+  - API key with no scopes is denied
+  - human editor behavior remains valid
+  - taxonomy writes remain blocked
+
+Still not accepted as complete:
+
+- this is not full API-client resource coverage
+- the next obvious machine-principal candidate, `GET /issues/inbox`, mixes aggregate summaries with connector-installation filtering and needs a broader route-family contract
+- broader vendor breadth, owner breadth, unsupported ABAC dimensions, full admin-boundary mapping, durable multi-role rollout, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Billing Governance Read Redaction
+
+Decision: **Accepted for the bounded governance-redaction follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /billing/plan-profile` now uses a central read policy rather than relying only on route gating
+- `GET /billing/upgrade-request` now uses a central read policy rather than relying only on route gating
+- `system_admin` remains allowed on both routes but receives a bounded redacted view:
+  - plan profile redacts `billingContactEmail` and `updatedBy`
+  - upgrade request redacts `requestedBy`, `notes`, and `resolvedBy`
+- `super_admin` and legacy `admin` retain full visibility where valid
+
+Still not accepted as complete:
+
+- this is still not universal redaction across all commercial or governance payloads
+- internal commercial listing and export surfaces still need a broader field-level visibility design
+- broader machine-principal coverage, unsupported ABAC dimensions, durable multi-role rollout, and full admin-boundary mapping remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, and billing-governance reads, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Outbound Webhook Delivery Redaction Foundation
+
+Decision: **Accepted for the bounded governance-redaction follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /admin/webhooks/deliveries` now has an explicit central read policy instead of inheriting only route protection
+- the delivery payload family now redacts `errorMessage` for `system_admin`
+- `super_admin` and legacy `admin` retain the full delivery error text where valid
+- the proof uses a real failed delivery fixture and confirms that lower-admin redaction happens on live delivery rows
+
+Still not accepted as complete:
+
+- this is still not universal field-level redaction across all governance payload families
+- broader explorer-style audit payloads and other mixed metadata surfaces still need a larger field-level redaction design
+- broader machine-principal coverage, unsupported ABAC dimensions, and persistent multi-role storage remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered catalog, media, compliance, rejection-intelligence, and auto-suggestion read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, and shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Multi-Role Persistence Plan
+
+Decision: **Accepted as planning foundation only.**
+
+Accepted in this follow-up:
+
+- the persistence blocker is now specifically identified:
+  - `AuthIdentity` stores only scalar `role`
+  - DB-auth resolution still emits `assignedRoles: []`
+  - workspace-user CRUD still manages only scalar `role`
+- the smallest safe rollout path is now defined as an additive `assigned_roles` column with read-path-first adoption and non-destructive rollback
+
+Still not accepted as complete:
+
+- no DB migration has been executed yet
+- no backfill has been run
+- no DB-auth integration proof exists yet for persisted assigned roles
+- workspace-user write-path support for multi-role identities remains unimplemented
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, bounded machine-principal scope families on covered catalog, media, compliance, rejection-intelligence, and auto-suggestion read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, and outbound-webhook delivery reads, and a concrete additive plan for durable multi-role persistence. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, persistent multi-role authorization rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: API-Client `media.read` Scope Foundation
+
+Decision: **Accepted for the bounded machine-principal foundation slice.**
+
+Accepted in this follow-up:
+
+- added a new API-client scope vocabulary item:
+  - `media.read`
+- enforced that scope on one bounded read-only resource family:
+  - `GET /media/assets`
+  - `GET /media/assets/:id`
+  - `GET /media/assets/:id/validation`
+- proved:
+  - API key with `media.read` can read the media family
+  - API key with unrelated `catalog.*` scopes is denied
+  - API key with no scopes is denied
+  - human editor behavior remains valid
+  - media writes remain blocked
+
+Still not accepted as complete:
+
+- this is not full API-client resource coverage
+- broader machine-principal scope modeling is still incomplete outside the covered catalog and media read families
+- vendor breadth, owner breadth, remaining admin-boundary mapping, persistent multi-role storage, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus a bounded media.read API-client scope family for the media read routes, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the proven catalog, compliance issue, auto-suggestion, rejection-intelligence, and media read paths, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: API-Client Scope Expansion Queue Batch
+
+Decision: **Accepted for the bounded queue-1 machine-principal expansion batch.**
+
+Accepted in this follow-up:
+
+- added three more explicit API-client scope families:
+  - `compliance.read`
+  - `rejection_intelligence.read`
+  - `auto_suggestions.read`
+- enforced them only on:
+  - `GET /compliance/products/:id/issues`
+  - `GET /rejection-intelligence/products/:id/score`
+  - `GET /auto-suggestions/products/:id/title-suggestion`
+  - `GET /auto-suggestions/products/:id/attribute-enrichment`
+  - `GET /auto-suggestions/products/:id/category-suggestion`
+- proved:
+  - exact-scope API keys are allowed
+  - no-scope API keys are denied
+  - unrelated-scope API keys are denied
+  - human behavior remains valid
+  - writes remain blocked
+
+Still not accepted as complete:
+
+- this does not complete the full API-client resource model
+- queue 1 is exhausted only for the currently clean read-only pattern
+- queue 2 next targets require broader field-level redaction design, not another simple provenance-only slice
+- broader vendor breadth, owner breadth, admin-boundary breadth, multi-role persistence, and universal redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded media.read, compliance.read, rejection_intelligence.read, and auto_suggestions.read API-client scope families for their matching read routes, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the proven catalog, compliance issue, auto-suggestion, rejection-intelligence, and media read paths, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Shared Governance Provenance Redaction Expansion
+
+Decision: **Accepted for the bounded shared-redaction queue slice. Not accepted as universal redaction or full queue completion.**
+
+Accepted in this follow-up:
+
+- central governance provenance redaction now covers:
+  - `GET /connectors/permissions`
+  - `GET /admin/webhooks`
+- `system_admin` remains allowed on those governance reads but now receives `createdBy` redacted through the shared response-policy path
+- `super_admin` and legacy `admin` retain full provenance visibility on those reads
+- the access-policy remediation suite now proves the redaction behavior instead of relying only on policy metadata
+
+Still not accepted as complete:
+
+- this is still not universal response redaction across all API families
+- ONDC is disabled and explicitly out of scope for the current access-policy backlog. It is not an active blocker unless `FEATURE_ONDC_ENABLED` is enabled in a future release.
+- the next plausible owner-scope candidate would require a different resource model rather than another clean governance-read repetition
+- broad vendor enforcement, broader owner enforcement, broader API-client coverage, persistent multi-role storage rollout, and full admin-boundary mapping remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title, attribute-enrichment, and category-suggestion reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, access-scope, connector-permission, and outbound-webhook reads. It is not yet enterprise-complete across broad vendor enforcement, supplier, locale, market, team, or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: ONDC Backlog Classification
+
+Decision: **Accepted. ONDC removed from active blockers and moved to disabled/future-scope status.**
+
+ONDC status:
+
+- ONDC is disabled by default because `FEATURE_ONDC_ENABLED` defaults false.
+- `OndcModule` is only mounted when the feature flag is enabled.
+- ONDC is not part of the current access-policy execution backlog.
+- Do not treat ONDC routes as active blockers while the module remains disabled.
+- If ONDC is enabled later, open a separate ONDC access-policy slice before release.
+
+## 2026-04-29 PO Checkpoint: Audit Explorer and Export Visibility Contract
+
+Decision: **Accepted for the bounded audit explorer/export visibility follow-up. Not accepted as universal redaction.**
+
+Accepted in this follow-up:
+
+- `GET /audit/events` now uses a shared governance redaction policy for lower admin visibility
+- `GET /audit/events/export` now uses the same visibility decision before rendering CSV
+- `system_admin` remains allowed on audit explorer reads but receives `metadata: null` in JSON and redacted metadata in CSV
+- `super_admin` and legacy `admin` retain full metadata visibility on both JSON and CSV outputs
+- CSV export no longer bypasses the JSON redaction decision for audit explorer metadata
+
+Still not accepted as complete:
+
+- this is not universal response redaction
+- `GET /audit/events` and `GET /audit/events/export` are now aligned, but broader explorer/export payload families still need their own field-visibility contracts
+- mixed marketplace lifecycle governance, commercial-ops token flows, broader API-client scope coverage, and durable multi-role rollout all remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract for persisted assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Durable Multi-Role Compatibility Proofs
+
+Decision: **Accepted for the bounded durable multi-role follow-up. Not accepted as full multi-role rollout.**
+
+Accepted in this follow-up:
+
+- DB-backed `assigned_roles` persistence is now proven through later login, not just through create or update payload echoes
+- workspace-user assigned-role writes now prove:
+  - created users receive persisted assigned roles in later JWT claims
+  - later role and assigned-role updates change subsequent JWT claims
+  - omitting `assignedRoles` on update preserves the stored assigned-role set into later logins
+- local identity-directory auth now has explicit compatibility proof:
+  - normalized `assignedRoles` flow into local-mode JWT claims
+  - invalid local assigned-role strings normalize away
+  - scalar-only local identities remain legacy-compatible
+- no new role escalation path was introduced
+
+Still not accepted as complete:
+
+- this is still not a backfill-complete or rollback-complete multi-role migration
+- scalar `role` remains part of the durable compatibility model and has not been removed
+- broader multi-role UX/API management and full admin-hierarchy semantics remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-29 PO Checkpoint: Billing Plan-Tier Governance Boundary
+
+Decision: **Accepted for the bounded billing-governance follow-up. Not accepted as billing internal-flow completion.**
+
+Accepted in this follow-up:
+
+- `POST /billing/plan-tier` now participates in the same billing-governance admin boundary as the adjacent tenant billing routes
+- `product_admin` is now denied at the admin boundary instead of falling through to the internal-only commercial block
+- `system_admin` and `super_admin` preserve the existing `COMMERCIAL_MUTATION_INTERNAL_ONLY` behavior
+- this keeps the human governance boundary explicit without changing the internal commercial-ops design
+
+Still not accepted as complete:
+
+- this does not redesign or widen `billing/internal/*` commercial-ops token flows
+- this is one bounded governance mutation, not full billing authorization completion
+- broader admin-boundary mapping, multi-role rollout, broader API-client coverage, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, workspace-user governance read compatibility for normalized persisted assigned roles, and a bounded additive workspace-user write contract whose assigned-role changes are proven durable through later logins. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Expansion To Auto-Suggestion Title Reads
+
+Decision: **Accepted as a bounded vendor/object ownership expansion slice. Not accepted as broad vendor-role completion.**
+
+Accepted in this follow-up:
+
+- `GET /auto-suggestions/products/:id/title-suggestion` now participates in the already-proven vendor/object ownership model
+- vendor can read owned auto-suggestion title data
+- vendor is denied unowned auto-suggestion title data
+- reviewer denial and editor allow remain intact on the auto-suggestion surface
+- vendor writes and the other non-proven AI-helper routes remain fail-closed
+
+Still not accepted as complete:
+
+- this is still not broad vendor rollout
+- vendor writes, taxonomy access, and governance surfaces remain blocked
+- `supplier`, `locale`, `market`, `team`, and `assignee` enforcement remain pending
+- broader API-client / machine-principal coverage, persistent multi-role storage rollout, full admin-boundary mapping, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Expansion To Remaining Auto-Suggestion Reads
+
+Decision: **Accepted as a bounded vendor/object ownership expansion slice. Not accepted as broad vendor-role completion.**
+
+Accepted in this follow-up:
+
+- `GET /auto-suggestions/products/:id/attribute-enrichment` now participates in the already-proven vendor/object ownership model
+- `GET /auto-suggestions/products/:id/category-suggestion` now participates in the already-proven vendor/object ownership model
+- vendor can read owned resources on both routes
+- vendor is denied unowned resources on both routes
+- reviewer denial and editor allow remain intact
+- vendor writes and the repair route remain blocked
+
+Still not accepted as complete:
+
+- this is still not broad vendor rollout
+- vendor writes, taxonomy access, and governance surfaces remain blocked
+- `supplier`, `locale`, `market`, `team`, and `assignee` enforcement remain pending
+- broader API-client / machine-principal coverage, persistent multi-role storage rollout, full admin-boundary mapping, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, auto-suggestion title, attribute-enrichment, and category-suggestion reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Expansion To Media Asset Reads
+
+Decision: **Accepted as a bounded vendor/object ownership expansion slice. Not accepted as broad vendor-role completion.**
+
+Accepted in this follow-up:
+
+- the media asset read family now reuses the trusted `Product.vendorScopeKey` boundary for vendor-owned resource reads
+- the covered vendor-safe media routes are now:
+  - `GET /media/assets`
+  - `GET /media/assets/:id`
+  - `GET /media/assets/:id/validation`
+- delegated-scope and remediation suites now prove:
+  - vendor can read owned media asset lists
+  - vendor can read owned media asset detail
+  - vendor can read owned media validation output
+  - vendor is denied unowned media assets
+- vendor writes remain blocked and all non-proven vendor surfaces remain fail-closed
+
+Still not accepted as complete:
+
+- this is still not broad vendor rollout across all product-backed read families
+- vendor writes, vendor taxonomy access, and vendor governance access remain blocked
+- `supplier`, `locale`, `market`, `team`, and `assignee` remain representable but unenforced
+- broader machine-principal coverage, persistent multi-role storage rollout, full admin-boundary mapping, and universal redaction remain incomplete
+- `category_manager` remains only partially unblocked on the already proven category-scoped catalog and taxonomy surfaces
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Expansion To Rejection Score Reads
+
+Decision: **Accepted as a bounded vendor/object ownership expansion slice. Not accepted as broad vendor-role completion.**
+
+Accepted in this follow-up:
+
+- the rejection-intelligence score read now reuses the trusted `Product.vendorScopeKey` boundary for vendor-owned resource reads
+- the covered vendor-safe rejection-score route is now:
+  - `GET /rejection-intelligence/products/:id/score`
+- delegated-scope and remediation suites now prove:
+  - vendor can read owned rejection-intelligence score data
+  - vendor is denied unowned rejection-intelligence score data
+- reviewer access remains intact
+- vendor writes and all non-proven vendor surfaces remain fail-closed
+
+Still not accepted as complete:
+
+- this is still not broad vendor rollout across all product-backed read families
+- vendor writes, vendor taxonomy access, and vendor governance access remain blocked
+- `supplier`, `locale`, `market`, `team`, and `assignee` remain representable but unenforced
+- broader machine-principal coverage, persistent multi-role storage rollout, full admin-boundary mapping, and universal redaction remain incomplete
+- `category_manager` remains only partially unblocked on the already proven category-scoped catalog and taxonomy surfaces
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, rejection-intelligence score reads, and media asset reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Shared Governance Provenance Redaction
+
+Decision: **Accepted for the bounded shared-redaction follow-up.**
+
+Accepted in this follow-up:
+
+- API-key governance reads now use shared central redaction
+- workspace-user governance reads now use shared central redaction
+- workspace access-scope governance reads now use shared central redaction
+- `system_admin` allow remains intact on the covered routes
+- `super_admin` allow remains intact on the covered routes
+- provenance fields such as `createdBy` are now centrally redacted for `system_admin` but retained for `super_admin` and legacy `admin`
+
+Still not accepted as complete:
+
+- this is not universal response redaction
+- it does not complete broader vendor rollout, future-scope enforcement, persistent multi-role storage, broader API-client resource coverage, or full admin-boundary mapping
+- `category_manager` remains only partially unblocked on proven category-scoped catalog and taxonomy surfaces
+- `vendor` remains only partially unblocked on the proven canonical catalog read family and remains blocked elsewhere
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, bounded vendor/object ownership enforcement on the canonical catalog read family, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Expansion To Compliance Product-Issue Reads
+
+Decision: **Accepted for the bounded vendor-expansion follow-up.**
+
+Accepted in this follow-up:
+
+- `GET /compliance/products/:id/issues` now participates in the already-proven vendor/object ownership model
+- vendor is now allowed on owned compliance product-issue reads
+- vendor is denied on unowned compliance product-issue reads
+- the route still relies on the central product access assertion, so delegated category, brand, and vendor intersections remain consistent
+
+Still not accepted as complete:
+
+- this is not broad vendor rollout
+- vendor writes, taxonomy reads, governance routes, and other non-proven vendor surfaces remain blocked
+- supplier, locale, market, team, and assignee enforcement remain pending
+- broader API-client resources, persistent multi-role authorization, full admin-boundary mapping, and universal response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on the canonical catalog read family plus compliance product-issue reads, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, bounded owner-scope enforcement on marketplace mapping templates, and shared governance provenance redaction on covered API-key, workspace-user, and access-scope reads. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Vendor/Object Ownership Foundation On Canonical Catalog Reads
+
+Decision: **Conditionally accepted for the bounded vendor-ownership follow-up.**
+
+Accepted in this follow-up:
+
+- `Product.vendorScopeKey` now provides one trustworthy persisted vendor/object ownership source
+- vendor delegated-scope assignments are now storable as a real foundation dimension
+- vendor ownership is now enforced on the canonical catalog read family:
+  - product list
+  - product search
+  - product detail
+  - product variants
+- vendors are now proven allowed on owned catalog resources
+- vendors are now proven denied on unowned catalog resources
+- mixed category-plus-vendor delegated scope is now proven to intersect correctly on catalog product reads
+- vendor writes remain blocked
+- taxonomy and other non-proven vendor surfaces remain blocked
+
+Still not accepted as complete:
+
+- this is not broad vendor rollout across products, taxonomy, marketplace, or governance surfaces
+- `vendor` is only partially unblocked on one proven product-backed read path
+- `supplier`, `locale`, `market`, `team`, and `assignee` enforcement remain unimplemented
+- broader API-client or machine-principal resource coverage remains incomplete
+- persistent multi-role storage rollout remains incomplete
+- full admin-boundary mapping remains incomplete
+- shared response redaction remains partial
+
+Updated claim wording:
+
+> Vexa PIM now has bounded vendor/object ownership enforcement on one proven product-backed catalog read path, in addition to runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded admin-boundary enforcement on covered governance routes, category-scoped enforcement on proven catalog and taxonomy surfaces, Shopify publication-target catalog scope enforcement, and owner-scope enforcement on marketplace mapping templates. It is not yet enterprise-complete across broad vendor enforcement, supplier or locale or market or team or assignee scope enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Owner-Scoped Marketplace Mapping Templates
+
+Decision: **Accepted for the bounded ownership-enforcement follow-up.**
+
+Accepted in this follow-up:
+
+- `owner` scope assignments are now allowed into storage instead of being universally rejected
+- marketplace mapping-template list, get, update, clone, and delete now enforce owned-resource access when `owner` scope is active
+- template default-switch behavior now respects owner boundaries instead of mutating unrelated templates
+- delegated-access proof now covers owner + category + channel intersection on owned mapping-template resources
+- the mapping-manager integration harness was brought up to the current workspace-aware auth contract so this route family remains regression-tested
+
+Still not accepted as complete:
+
+- this is bounded `owner` enforcement on a single resource family, not broad ownership enforcement across the platform
+- `vendor` remains blocked because there is still no trustworthy vendor/object boundary on product resources
+- `supplier`, `locale`, `market`, `team`, and `assignee` remain representable but not enforced
+- persistent multi-role storage rollout, broader machine-principal scope coverage, full admin-boundary mapping, and shared response redaction remain incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded live admin-boundary enforcement on covered governance routes, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, Shopify publication-target catalog scope enforcement, partial safe unblocking of `category_manager` on proven category-scoped catalog and taxonomy surfaces, and bounded owner-scope enforcement on marketplace mapping templates that persist trustworthy ownership. It is not yet enterprise-complete across vendor/object ownership enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Category-Scoped Foundation Role Enforcement
+
+Decision: **Accepted for the bounded category-scoped follow-up. Not accepted as full access-policy completion.**
+
+Accepted in this follow-up:
+
+- blocked foundation roles are no longer only blocked on admin-boundary routes; the default block now applies on ordinary RBAC routes unless a route explicitly opts them in
+- `category_manager` is now explicitly allowed only on the catalog and taxonomy surfaces where category scope can be proven
+- catalog and taxonomy services now carry effective foundation-role context into the shared access-policy engine, so a legacy `admin` app role no longer bypasses category scope for `category_manager`
+- actor-specific scope activation is now proven and replaces the earlier tenant-global scope-coupling behavior
+- remediation and delegated-scope suites now prove:
+  - `category_manager` allowed on scoped catalog list/detail/create/update/delete and taxonomy metadata/attribute-definition paths
+  - `category_manager` denied on out-of-scope product and category reads
+  - `category_manager` denied on taxonomy hierarchy mutation
+  - `vendor` still denied with fail-closed behavior until real vendor enforcement exists
+
+Still not accepted as complete:
+
+- this is only a partial unblock for `category_manager`, not full ownership enforcement
+- `vendor` remains blocked because the current product and taxonomy model still lacks a provable vendor/object boundary
+- ownership enforcement for `owner`, `supplier`, `locale`, `market`, `team`, and `assignee` is still not implemented
+- persistent multi-role storage rollout remains incomplete
+- broader API-client resource coverage remains incomplete
+- universal shared response redaction remains incomplete
+- full admin-boundary mapping remains incomplete
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, explicit catalog API-client scope enforcement, actor-specific delegated-scope activation, bounded live admin-boundary enforcement on covered governance routes, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, Shopify publication-target catalog scope enforcement, and partial safe unblocking of `category_manager` on proven category-scoped catalog and taxonomy surfaces. It is not yet enterprise-complete across vendor/object ownership enforcement, persistent multi-role authorization, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Taxonomy Product-Governance Admin-Boundary Mapping
+
+Decision: **Conditionally accepted for the bounded taxonomy-governance follow-up.**
+
+Accepted in this follow-up:
+
+- taxonomy category create, update, and delete governance now enforces `manage_product_data`
+- taxonomy attribute-definition create, update, and delete governance now enforces `manage_product_data`
+- `product_admin` is now proven allowed on the covered taxonomy governance routes
+- `system_admin` is now proven denied on the covered taxonomy governance routes
+- the sensitive policy guardrail now validates those taxonomy governance routes as part of the admin-boundary-controlled surface
+
+Still not accepted as complete:
+
+- this is still not full admin-boundary mapping across every remaining settings, connector-governance, operational-governance, and marketplace-governance route
+- the rollout still depends on the current local-auth and JWT bridge rather than persistent multi-role storage
+- broader machine-principal resource coverage, ownership enforcement, and universal shared redaction remain incomplete
+- `category_manager` remains blocked because category/object ownership enforcement is still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven end to end
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, marketplace export-governance, and taxonomy product-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Governance Barrier Removal
+
+Decision: **Accepted for the bounded governance follow-up.**
+
+Accepted in this follow-up:
+
+- the remaining access-policy stream now has a real unlocked story record in `docs/execution/INCREMENT_STATE.json`
+- the checked-in PO execution prompt no longer defaults to another narrow admin-boundary route slice when ownership and object-scope enforcement are the true critical path
+- the security rules that must stay in place were preserved:
+  - fail-closed behavior on ambiguous ownership or scope
+  - no human-role fallback for API clients
+  - `category_manager` and `vendor` remain blocked until proof exists
+
+Still not accepted as complete:
+
+- this removes a process barrier, not a code-level authorization blocker
+- ownership and object-scope enforcement are still not implemented end to end
+- broader machine-principal scope coverage, persistent multi-role storage, and shared redaction remain incomplete
+- `category_manager` remains blocked because category/object ownership enforcement is still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven end to end
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, marketplace export-governance, and taxonomy product-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
+
+## 2026-04-28 PO Checkpoint: Remaining Connector and Marketplace Admin-Boundary Mapping
+
+Decision: **Conditionally accepted for the bounded connector-and-marketplace governance follow-up.**
+
+Accepted in this follow-up:
+
+- the checked-in pending-blocker PO policy now explicitly continues the admin-boundary backlog with remaining connector-governance and marketplace-governance routes
+- marketplace mapping archive governance now enforces `manage_product_data`
+- connector installation record deletion now enforces `manage_security`
+- `product_admin` is now proven allowed on marketplace mapping archive governance
+- `system_admin` is now proven denied on marketplace mapping archive governance
+- `product_admin` is now proven denied on connector installation record deletion
+- `system_admin` is now proven allowed on connector installation record deletion
+
+Still not accepted as complete:
+
+- this is still not full admin-boundary mapping across every remaining settings, connector governance, operational governance, and marketplace governance route
+- the rollout still depends on the current local-auth and JWT bridge rather than persistent multi-role storage
+- broader machine-principal resource coverage, ownership-scope enforcement, and universal shared redaction remain incomplete
+- `category_manager` remains blocked because category/object ownership enforcement is still not proven end to end
+- `vendor` remains blocked because vendor/object-scope enforcement is still not proven end to end
+
+Updated claim wording:
+
+> Vexa PIM now has bounded live admin-boundary enforcement on representative governance routes plus broader billing, dashboard, metrics, audit, outbound-webhook, connector-permission, compliance-rule, and marketplace export-governance routes, authenticated-read classification, covered catalog API-client scope enforcement, fail-closed handling for unsupported future scope dimensions on covered product-backed paths, and Shopify publication-target catalog scope enforcement. It is not yet enterprise-complete across full admin-boundary mapping, persistent multi-role authorization, ownership-scoped roles, full API-client resources, or universal response redaction.
