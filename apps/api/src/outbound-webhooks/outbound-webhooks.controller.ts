@@ -11,7 +11,7 @@ import {
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -21,7 +21,7 @@ import { ListOutboundWebhookDeliveriesDto } from "./dto/list-outbound-webhook-de
 import { UpdateOutboundWebhookDto } from "./dto/update-outbound-webhook.dto";
 import { OutboundWebhooksService } from "./outbound-webhooks.service";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimTenant?: string;
   pimRole?: AppRole;

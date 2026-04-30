@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query, Req } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
@@ -7,7 +7,7 @@ import { AppRole, Roles } from "../common/rbac/roles";
 import { DEFAULT_MARKETPLACE_CHANNEL } from "../marketplace/marketplace-channels";
 import { RejectionIntelligenceService } from "./rejection-intelligence.service";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
   pimTenant?: string;

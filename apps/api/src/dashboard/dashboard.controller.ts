@@ -1,6 +1,6 @@
 import { Controller, Get, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -19,7 +19,7 @@ export class DashboardController {
   ) {}
 
   private resolveActor(
-    request: FastifyRequest & {
+    request: Request & {
       pimUserId?: string;
       pimRole?: AppRole;
       pimTenant?: string;
@@ -61,7 +61,7 @@ export class DashboardController {
   @ApiResponse({ status: 200, description: "Dashboard health snapshot fetched" })
   async getHealth(
     @Req()
-    request: FastifyRequest & {
+    request: Request & {
       pimUserId?: string;
       pimRole?: AppRole;
       pimTenant?: string;

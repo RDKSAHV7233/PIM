@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -7,7 +7,7 @@ import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CreateAccessScopeAssignmentDto } from "./dto/create-access-scope-assignment.dto";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimJwtClaims?: {
     sub?: string;
     tenantId?: string;

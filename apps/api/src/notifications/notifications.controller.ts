@@ -1,12 +1,12 @@
 import { Controller, Get, Patch, Param, Query, Req, UnauthorizedException } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import type { AppRole } from "../common/rbac/roles";
 import { NotificationsService } from "./notifications.service";
 
-type NotificationRequest = FastifyRequest & {
+type NotificationRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
 };

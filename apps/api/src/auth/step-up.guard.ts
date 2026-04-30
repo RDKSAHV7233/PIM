@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
 import { PimJwtClaims, StepUpScope, extractBearerToken, verifyPimJwt } from "./jwt";
@@ -14,7 +14,7 @@ import { STEP_UP_REQUIRED_KEY, StepUpRequirement } from "./step-up.decorator";
 
 export const PIM_STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
 
-interface AuthenticatedRequest extends FastifyRequest {
+interface AuthenticatedRequest extends Request {
   pimRole?: AppRole;
   pimTenant?: string;
   pimUserId?: string;

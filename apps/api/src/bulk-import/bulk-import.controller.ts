@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Param, Post, Query, Req, Res } from "@nestjs/common";
-import { FastifyReply } from "fastify";
+import type { Response } from "express";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
@@ -139,7 +139,7 @@ export class BulkImportController {
   @Header("Content-Type", "text/csv; charset=utf-8")
   async getErrorReport(
     @Param("id") jobId: string,
-    @Res({ passthrough: true }) response: FastifyReply,
+    @Res({ passthrough: true }) response: Response,
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     response.header(

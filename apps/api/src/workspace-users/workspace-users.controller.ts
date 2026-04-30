@@ -9,7 +9,7 @@ import {
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -20,7 +20,7 @@ import { SetUserPasswordDto } from "./dto/set-user-password.dto";
 import { UpdateWorkspaceUserRoleDto } from "./dto/update-workspace-user-role.dto";
 import { WorkspaceUsersService } from "./workspace-users.service";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimJwtClaims?: {
     sub?: string;
     tenantId?: string;

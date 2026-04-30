@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -18,7 +18,7 @@ export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
 
   private resolveActor(
-    request: FastifyRequest & {
+    request: Request & {
       pimUserId?: string;
       pimRole?: AppRole;
       pimTenant?: string;
@@ -40,7 +40,7 @@ export class TaxonomyController {
   listCategories(
     @Query() pagination: CursorPaginationDto,
     @Query("all") all?: string,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     // Unbounded tree fetch is deprecated for default callers; pass ?all=true when the full tree is required.
     return this.taxonomyService.listCategories(pagination, { all: all === "true" }, this.resolveActor(request ?? {} as never));
@@ -52,7 +52,7 @@ export class TaxonomyController {
   @ApiClientScopes("taxonomy.read")
   getCategory(
     @Param("id") id: string,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.taxonomyService.getCategory(id, this.resolveActor(request ?? {} as never));
   }
@@ -84,7 +84,7 @@ export class TaxonomyController {
   @ApiClientScopes("taxonomy.read")
   listAttributeDefinitions(
     @Param("id") categoryId: string,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.taxonomyService.listAttributeDefinitions(categoryId, this.resolveActor(request ?? {} as never));
   }
@@ -96,7 +96,7 @@ export class TaxonomyController {
   createAttributeDefinition(
     @Param("id") categoryId: string,
     @Body() dto: CreateAttributeDefinitionDto,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.taxonomyService.createAttributeDefinition(categoryId, dto, this.resolveActor(request ?? {} as never));
   }
@@ -108,7 +108,7 @@ export class TaxonomyController {
   updateAttributeDefinition(
     @Param("attributeId") attributeId: string,
     @Body() dto: UpdateAttributeDefinitionDto,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.taxonomyService.updateAttributeDefinition(attributeId, dto, this.resolveActor(request ?? {} as never));
   }
@@ -119,7 +119,7 @@ export class TaxonomyController {
   @Roles("admin")
   deleteAttributeDefinition(
     @Param("attributeId") attributeId: string,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.taxonomyService.deleteAttributeDefinition(attributeId, this.resolveActor(request ?? {} as never));
   }

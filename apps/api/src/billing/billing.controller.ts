@@ -1,10 +1,11 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyReply, FastifyRequest } from "fastify";
+import type { Request, Response } from "express";
 import { AuditService } from "../audit/audit.service";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
+import { requireInternalToken } from "../common/security/internal-token";
 import { DEFAULT_TENANT_KEY, normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -27,7 +28,7 @@ import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
 import { UpdateBillingContactDto } from "./dto/update-billing-contact.dto";
 import { UpdatePlanUpgradeRequestStatusDto } from "./dto/update-plan-upgrade-request-status.dto";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
 };
@@ -193,11 +194,14 @@ export class BillingController {
     @Headers("x-pim-commercial-ops-token") commercialOpsToken: string | undefined,
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.overview",
     );
 
     const [tenantOverview, requestOverview] = await Promise.all([
@@ -232,11 +236,14 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Query() query: ListPlanUpgradeRequestsDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.upgrade_requests.list",
     );
 
     const items = await this.commercialRequestsService.listUpgradeRequestsInternal({
@@ -277,12 +284,15 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Query() query: ListPlanUpgradeRequestsDto,
-    @Res({ passthrough: true }) response: FastifyReply,
+    @Res({ passthrough: true }) response: Response,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.upgrade_requests.export",
     );
     const stamp = new Date().toISOString().slice(0, 10);
     response.header("Content-Disposition", `attachment; filename="vexa-pim-commercial-requests-${stamp}.csv"`);
@@ -320,11 +330,14 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Body() dto: UpdatePlanUpgradeRequestStatusDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.upgrade_requests.status",
     );
 
     let item;
@@ -370,11 +383,14 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Query() query: SearchCommercialTenantsDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.tenants.search",
     );
 
     let results;
@@ -415,12 +431,15 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Query() query: ExportCommercialTenantsDto,
-    @Res({ passthrough: true }) response: FastifyReply,
+    @Res({ passthrough: true }) response: Response,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.tenants.export",
     );
 
     const stamp = new Date().toISOString().slice(0, 10);
@@ -455,11 +474,14 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Body() dto: InternalSetTenantPlanTierDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.plan_tier",
     );
 
     const profile = await this.planUsageService.setTenantPlanTierForTenant(dto.tenantKey, dto.planTier, actorId);
@@ -494,11 +516,14 @@ export class BillingController {
     @Headers("x-pim-operator-id") operatorIdHeader: string | undefined,
     @Headers("x-pim-operator-role") operatorRoleHeader: string | undefined,
     @Body() dto: InternalUpdateTenantCommercialStateDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    const { actorId, actorRole } = this.requireCommercialOperator(
+    const { actorId, actorRole } = await this.requireCommercialOperator(
       commercialOpsToken,
       operatorIdHeader,
       operatorRoleHeader,
+      request,
+      "billing.internal.commercial_state",
     );
 
     const profile = await this.planUsageService.updateCommercialStateForTenant(
@@ -574,14 +599,42 @@ export class BillingController {
     return profile;
   }
 
-  private requireCommercialOperator(
+  private async requireCommercialOperator(
     commercialOpsToken: string | undefined,
     operatorIdHeader: string | undefined,
     operatorRoleHeader: string | undefined,
-  ): { actorId: string; actorRole: string } {
+    request: Request | undefined,
+    routeKey: string,
+  ): Promise<{ actorId: string; actorRole: string }> {
     const expectedToken = String(process.env.PIM_COMMERCIAL_OPS_TOKEN ?? "").trim();
-    if (!expectedToken || commercialOpsToken !== expectedToken) {
-      throw new UnauthorizedException({ error: "COMMERCIAL_OPS_TOKEN_REQUIRED" });
+    try {
+      await requireInternalToken({
+        routeKey,
+        expectedToken,
+        submittedToken: commercialOpsToken,
+        request,
+        onFailure: (event) =>
+          this.auditService.record({
+            actorId: "internal-token",
+            actorRole: "system",
+            action: "COMMERCIAL_INTERNAL_TOKEN_REJECTED",
+            resource: "INTERNAL_COMMERCIAL_ROUTE",
+            resourceId: routeKey,
+            tenantKey: this.resolveCommercialAuditTenantKey(),
+            metadata: {
+              event: "commercial_internal_token_rejected",
+              routeKey,
+              reason: event.reason,
+              remoteAddress: event.remoteAddress,
+              retryAfterSeconds: event.retryAfterSeconds ?? null,
+            },
+          }),
+      });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw new UnauthorizedException({ error: "COMMERCIAL_OPS_TOKEN_REQUIRED" });
+      }
+      throw error;
     }
 
     const actorId = String(operatorIdHeader ?? "").trim();

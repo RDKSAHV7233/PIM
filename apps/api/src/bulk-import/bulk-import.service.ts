@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
-import * as XLSX from "xlsx";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
@@ -67,7 +66,7 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
 };
 
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
-const TEMPLATE_SOURCE_FORMATS = new Set(["csv", "json", "xlsx", "xls"]);
+const TEMPLATE_SOURCE_FORMATS = new Set(["csv", "json"]);
 const TERMINAL_ROW_STATUSES = [
   BulkImportRowStatus.success,
   BulkImportRowStatus.failed,
@@ -341,14 +340,6 @@ export class BulkImportService {
           return this.parseDelimitedBase64(dto.fileContentBase64, "csv");
         }
         return this.parseCsv(dto.csvContent ?? "");
-      }
-      if (dto.sourceFormat === "xlsx" || dto.sourceFormat === "xls") {
-        if (!dto.fileContentBase64) {
-          throw new BadRequestException(
-            "fileContentBase64 is required for xlsx/xls source format.",
-          );
-        }
-        return this.parseSpreadsheetBase64(dto.fileContentBase64);
       }
       return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
     })();
@@ -914,55 +905,6 @@ export class BulkImportService {
     this.assertSourceSize(buffer.length);
     const raw = buffer.toString("utf8");
     return this.parseCsv(raw);
-  }
-
-  private parseSpreadsheetBase64(contentBase64: string) {
-    let buffer: Buffer;
-    try {
-      buffer = Buffer.from(contentBase64, "base64");
-    } catch {
-      throw new BadRequestException("Invalid spreadsheet payload.");
-    }
-    this.assertSourceSize(buffer.length);
-
-    let workbook: XLSX.WorkBook;
-    try {
-      workbook = XLSX.read(buffer, { type: "buffer" });
-    } catch {
-      throw new BadRequestException("Invalid spreadsheet payload.");
-    }
-
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) {
-      throw new BadRequestException("Spreadsheet contains no sheets.");
-    }
-    const sheet = workbook.Sheets[firstSheetName];
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: "",
-      blankrows: false,
-    });
-    if (matrix.length < 2) {
-      throw new BadRequestException(
-        "Spreadsheet must include header and at least one data row.",
-      );
-    }
-
-    const headers = matrix[0].map((value) => String(value ?? "").trim());
-    if (headers.some((header) => header.length === 0)) {
-      throw new BadRequestException("Spreadsheet header contains empty column names.");
-    }
-
-    const rows: Record<string, unknown>[] = [];
-    for (let i = 1; i < matrix.length; i += 1) {
-      const rowArray = matrix[i];
-      const row: Record<string, unknown> = {};
-      headers.forEach((header, index) => {
-        row[header] = rowArray[index] ?? "";
-      });
-      rows.push(row);
-    }
-    return { headers, rows };
   }
 
   private inferHeadersFromRows(rows: Record<string, unknown>[]) {

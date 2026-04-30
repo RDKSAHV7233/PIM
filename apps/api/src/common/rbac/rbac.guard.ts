@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { AuditService } from "../../audit/audit.service";
 import { AccessPolicyService, type AccessPolicyDecisionContext, type PolicyActor } from "../access-policy/access-policy.service";
 import {
@@ -31,7 +31,7 @@ import { hasAdminBoundaryCapability, hasAdminBoundaryRole, resolveDefaultRole } 
 import { IS_PUBLIC_KEY } from "../../auth/public.decorator";
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimRole?: AppRole;
   pimTenant?: string;
   pimUserId?: string;

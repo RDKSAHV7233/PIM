@@ -1,5 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from "@nestjs/common";
-import { FastifyReply, FastifyRequest } from "fastify";
+import type { Request, Response } from "express";
 import { Observable, tap } from "rxjs";
 import { AuditService } from "../../audit/audit.service";
 
@@ -39,8 +39,8 @@ export class AuditLogInterceptor implements NestInterceptor {
   constructor(private readonly auditService: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<FastifyRequest & { pimRole?: string; pimUserId?: string }>();
-    const response = context.switchToHttp().getResponse<FastifyReply>();
+    const request = context.switchToHttp().getRequest<Request & { pimRole?: string; pimUserId?: string }>();
+    const response = context.switchToHttp().getResponse<Response>();
     const method = (request.method ?? "GET").toUpperCase();
     if (READ_METHODS.has(method)) {
       return next.handle();

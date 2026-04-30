@@ -67,6 +67,7 @@ function prepareEnv() {
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
   setDefaultEnv("PIM_AUTH_REDIS_DISABLED", "true");
   setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_IP_ATTEMPT_LIMIT", "100");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");

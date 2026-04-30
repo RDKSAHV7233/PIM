@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
@@ -17,7 +17,7 @@ import { UpdateProductDto } from "./dto/update-product.dto";
 export class ProductsController {
   constructor(private readonly catalogService: CatalogService) {}
 
-  private resolveActor(request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
+  private resolveActor(request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string }) {
     return {
       id: request.pimUserId ?? "system",
       role: request.pimRole ?? "viewer",
@@ -32,7 +32,7 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: "Products fetched" })
   listProducts(
     @Query() pagination: CursorPaginationDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     return this.catalogService.listProducts(pagination, undefined, this.resolveActor(request));
   }
@@ -46,7 +46,7 @@ export class ProductsController {
   @ApiResponse({ status: 402, description: "Plan limit exceeded" })
   createProduct(
     @Body() dto: CreateProductDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     return this.catalogService.createProduct(dto, this.resolveActor(request));
   }
@@ -58,7 +58,7 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: "Product fetched" })
   getProduct(
     @Param("id") id: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     return this.catalogService.getProduct(id, this.resolveActor(request));
   }
@@ -70,7 +70,7 @@ export class ProductsController {
   updateProduct(
     @Param("id") id: string,
     @Body() dto: UpdateProductDto,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     return this.catalogService.updateProduct(id, dto, this.resolveActor(request));
   }

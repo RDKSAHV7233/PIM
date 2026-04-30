@@ -8,13 +8,18 @@ import {
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
+import type { Request } from "express";
+import { AuditService } from "../audit/audit.service";
 import { Public } from "../auth/public.decorator";
+import { requireInternalToken } from "../common/security/internal-token";
 import { ConnectorWebhookProcessingService } from "./connector-webhook-processing.service";
 
 @Controller("connector-webhooks")
 export class ConnectorWebhookRelayController {
-  constructor(private readonly processingService: ConnectorWebhookProcessingService) {}
+  constructor(
+    private readonly processingService: ConnectorWebhookProcessingService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Public()
   @Post("relay/:tenantKey/installations/:installationId")
@@ -24,25 +29,65 @@ export class ConnectorWebhookRelayController {
     @Param("installationId") installationId: string,
     @Headers("x-pim-connector-relay-token") relayToken: string | undefined,
     @Body() body: unknown,
-    @Req() request: FastifyRequest,
+    @Req() request: Request,
   ) {
     const expectedToken = String(process.env.PIM_CONNECTOR_WEBHOOK_RELAY_TOKEN ?? "").trim();
-    if (!expectedToken || relayToken !== expectedToken) {
-      throw new UnauthorizedException({ error: "CONNECTOR_WEBHOOK_RELAY_TOKEN_REQUIRED" });
+    const normalizedTenantKey = String(tenantKey ?? "").trim();
+    const normalizedInstallationId = String(installationId ?? "").trim();
+    try {
+      await requireInternalToken({
+        routeKey: "connector_webhooks.relay",
+        expectedToken,
+        submittedToken: relayToken,
+        request,
+        onFailure: (event) =>
+          this.auditService.record({
+            actorId: "internal-token",
+            actorRole: "system",
+            action: "CONNECTOR_WEBHOOK_RELAY_TOKEN_REJECTED",
+            resource: "CONNECTOR_WEBHOOK_RELAY",
+            resourceId: normalizedInstallationId || "unknown",
+            tenantKey: normalizedTenantKey || undefined,
+            metadata: {
+              event: "connector_webhook_relay_token_rejected",
+              routeKey: event.routeKey,
+              reason: event.reason,
+              remoteAddress: event.remoteAddress,
+              retryAfterSeconds: event.retryAfterSeconds ?? null,
+            },
+          }),
+      });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw new UnauthorizedException({ error: "CONNECTOR_WEBHOOK_RELAY_TOKEN_REQUIRED" });
+      }
+      throw error;
     }
 
     const canonicalBody = this.serialiseRelayBody(body);
     await this.processingService.enqueue({
-      tenantKey: String(tenantKey ?? "").trim(),
-      installationId: String(installationId ?? "").trim(),
+      tenantKey: normalizedTenantKey,
+      installationId: normalizedInstallationId,
       rawBodyBase64: canonicalBody.toString("base64"),
       headers: this.normalizeHeaders(request.headers as Record<string, string | string[] | undefined>),
+    });
+    await this.auditService.record({
+      actorId: "connector-webhook-relay",
+      actorRole: "system",
+      action: "CONNECTOR_WEBHOOK_RELAY_ACCEPTED",
+      resource: "CONNECTOR_WEBHOOK_RELAY",
+      resourceId: normalizedInstallationId,
+      tenantKey: normalizedTenantKey,
+      metadata: {
+        event: "connector_webhook_relay_accepted",
+        adapter: "relay_http",
+      },
     });
 
     return {
       queued: true,
-      tenantKey: String(tenantKey ?? "").trim(),
-      installationId: String(installationId ?? "").trim(),
+      tenantKey: normalizedTenantKey,
+      installationId: normalizedInstallationId,
       adapter: "relay_http",
     };
   }

@@ -1,23 +1,23 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
 import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 
-const FASTIFY_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
+const EXPRESS_BODY_LIMIT = "10mb";
 
 async function bootstrap() {
   const env = validateEnv();
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter({
-      bodyLimit: FASTIFY_BODY_LIMIT_BYTES,
-    }),
-  );
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
 
+  app.use(json({ limit: EXPRESS_BODY_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
   app.setGlobalPrefix("api/v1");
   const corsOrigin =
     env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : env.APP_ENV === "development" ? true : false;

@@ -17,7 +17,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyReply, FastifyRequest } from "fastify";
+import type { Request, Response } from "express";
 import { Public } from "../auth/public.decorator";
 import { CheckWorkspaceAvailabilityDto } from "./dto/check-workspace-availability.dto";
 import { CreatePublicSignupDto } from "./dto/create-public-signup.dto";
@@ -50,8 +50,8 @@ export class SignupController {
   @ApiResponse({ status: 200, description: "Signup request accepted and pending verification" })
   async createPublicSignup(
     @Body() dto: CreatePublicSignupDto,
-    @Req() request: FastifyRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Req() request: Request,
+    @Res({ passthrough: true }) reply: Response,
   ) {
     try {
       return await this.signupService.createPublicSignup(dto, this.getRequestIp(request));
@@ -80,8 +80,8 @@ export class SignupController {
   @ApiResponse({ status: 200, description: "Verification email resent when a pending signup exists" })
   async resendVerification(
     @Body() dto: ResendPublicSignupVerificationDto,
-    @Req() request: FastifyRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Req() request: Request,
+    @Res({ passthrough: true }) reply: Response,
   ) {
     try {
       return await this.signupService.resendVerification(dto.adminEmail, this.getRequestIp(request));
@@ -90,11 +90,11 @@ export class SignupController {
     }
   }
 
-  private getRequestIp(request: FastifyRequest): string {
+  private getRequestIp(request: Request): string {
     return String(request.ip ?? request.headers["x-forwarded-for"] ?? "unknown").trim() || "unknown";
   }
 
-  private rethrowMappedError(error: unknown, reply?: FastifyReply): never {
+  private rethrowMappedError(error: unknown, reply?: Response): never {
     if (error instanceof SignupRateLimitError) {
       reply?.header("X-RateLimit-Retry-After", String(error.retryAfterSeconds));
       throw new HttpException(

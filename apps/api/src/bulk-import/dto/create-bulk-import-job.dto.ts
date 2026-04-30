@@ -12,7 +12,7 @@ import {
   Min,
 } from "class-validator";
 
-const SOURCE_FORMATS = ["csv", "json", "xlsx", "xls"] as const;
+const SOURCE_FORMATS = ["csv", "json"] as const;
 
 export class CreateBulkImportJobDto {
   @IsString()

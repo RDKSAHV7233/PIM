@@ -6,11 +6,11 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { PLAN_RESOURCE_KEY, PlanResource } from "./require-plan-limit.decorator";
 import { PlanUsageService } from "./plan-usage.service";
 
-type GuardRequest = FastifyRequest & {
+type GuardRequest = Request & {
   pimTenant?: string;
   body?: Record<string, unknown>;
   params?: Record<string, unknown>;

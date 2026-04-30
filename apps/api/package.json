@@ -12,11 +12,10 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
     "@aws-sdk/s3-request-presigner": "^3.1012.0",
-    "@fastify/static": "^9.0.0",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",
-    "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.19",
     "@nestjs/swagger": "^11.2.6",
     "@prisma/client": "^6.16.3",
     "bcryptjs": "^3.0.3",
@@ -27,7 +26,6 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "swagger-ui-express": "^5.0.1",
-    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -35,6 +33,7 @@
     "@nestjs/schematics": "^11.0.7",
     "@nestjs/testing": "^11.1.6",
     "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"

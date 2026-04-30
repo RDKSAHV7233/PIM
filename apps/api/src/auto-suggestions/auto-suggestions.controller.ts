@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
@@ -14,7 +14,7 @@ export class AutoSuggestionsController {
   constructor(private readonly autoSuggestionsService: AutoSuggestionsService) {}
 
   private resolveActor(
-    request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return {
       actorId: request.pimUserId,
@@ -30,7 +30,7 @@ export class AutoSuggestionsController {
   @ApiClientScopes("auto_suggestions.read")
   getTitleSuggestion(
     @Param("id") productId: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.autoSuggestionsService.getTitleSuggestion(productId, this.resolveActor(request));
   }
@@ -41,7 +41,7 @@ export class AutoSuggestionsController {
   @ApiClientScopes("auto_suggestions.read")
   getAttributeEnrichment(
     @Param("id") productId: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.autoSuggestionsService.getAttributeEnrichment(productId, this.resolveActor(request));
   }
@@ -52,7 +52,7 @@ export class AutoSuggestionsController {
   @ApiClientScopes("auto_suggestions.read")
   getCategorySuggestion(
     @Param("id") productId: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.autoSuggestionsService.getCategorySuggestion(productId, this.resolveActor(request));
   }
@@ -61,7 +61,7 @@ export class AutoSuggestionsController {
   applyRepair(
     @Param("id") productId: string,
     @Body() body: { apply?: boolean },
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.autoSuggestionsService.applyRepair(productId, Boolean(body?.apply), this.resolveActor(request));
   }

@@ -1,7 +1,7 @@
 import { Type } from "class-transformer";
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
-const SOURCE_FORMATS = ["csv", "json", "xlsx", "xls"] as const;
+const SOURCE_FORMATS = ["csv", "json"] as const;
 
 export class CreateBulkImportTemplateDto {
   @IsOptional()

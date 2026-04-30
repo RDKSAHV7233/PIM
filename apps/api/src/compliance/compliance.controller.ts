@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
-import type { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import type { PolicyActor } from "../common/access-policy/access-policy.service";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -10,7 +10,7 @@ import { ComplianceService } from "./compliance.service";
 import { CreateComplianceRuleDto } from "./dto/create-compliance-rule.dto";
 import { UpdateComplianceRuleDto } from "./dto/update-compliance-rule.dto";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
   pimTenant?: string;

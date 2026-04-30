@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
 import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
@@ -19,7 +19,7 @@ import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, decodePimJwtFromAuthHeader } from "./jwt";
 import { IS_PUBLIC_KEY } from "./public.decorator";
 
-interface AuthenticatedRequest extends FastifyRequest {
+interface AuthenticatedRequest extends Request {
   pimRole?: AppRole;
   pimTenant?: string;
   pimUserId?: string;

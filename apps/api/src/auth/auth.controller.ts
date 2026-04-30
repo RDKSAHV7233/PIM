@@ -13,8 +13,8 @@ import {
   Res,
   UnauthorizedException,
 } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
-import { FastifyReply } from "fastify";
+import type { Request } from "express";
+import type { Response } from "express";
 import { AuthService, LoginResponse } from "./auth.service";
 import { AllowSuspendedTenant } from "./allow-suspended.decorator";
 import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
@@ -31,7 +31,7 @@ import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { APP_ROLES, AppRole, Roles } from "../common/rbac/roles";
 
-interface AuthenticatedRequest extends FastifyRequest {
+interface AuthenticatedRequest extends Request {
   pimJwtClaims?: PimJwtClaims;
   pimRole?: AppRole;
   pimTenant?: string;
@@ -48,9 +48,9 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Req() request: AuthenticatedRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Res({ passthrough: true }) reply: Response,
   ): Promise<LoginResponse> {
-    const result = await this.authService.login(dto, request.ip);
+    const result = await this.authService.login(dto, request.ip ?? "unknown");
 
     if (result.type === "rate_limited") {
       reply.header("X-RateLimit-Retry-After", String(result.retryAfterSeconds));
@@ -110,7 +110,7 @@ export class AuthController {
   @HttpCode(200)
   async resendUnlock(
     @Body() dto: ResendUnlockDto,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Res({ passthrough: true }) reply: Response,
   ) {
     const result = await this.authService.resendUnlock(dto.email, dto.workspaceSlug);
     if (result.retryAfterSeconds > 0) {
@@ -124,7 +124,7 @@ export class AuthController {
   @HttpCode(200)
   async requestPasswordReset(
     @Body() dto: RequestPasswordResetDto,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Res({ passthrough: true }) reply: Response,
   ) {
     const result = await this.authService.requestPasswordReset(dto.email);
     if (result.retryAfterSeconds > 0) {
@@ -188,7 +188,7 @@ export class AuthController {
   async downloadAccountExport(
     @Param("jobId") jobId: string,
     @Req() request: AuthenticatedRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
+    @Res({ passthrough: true }) reply: Response,
   ) {
     const actor = this.requireActor(request);
     const result = await this.authService.downloadAccountExport(jobId, actor.userId, actor.tenantId);
@@ -244,7 +244,7 @@ export class AuthController {
       claims,
       password: dto.password,
       scope: dto.scope,
-      ipAddress: request.ip,
+      ipAddress: request.ip ?? "unknown",
     });
   }
 

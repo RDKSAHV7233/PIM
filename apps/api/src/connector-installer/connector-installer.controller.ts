@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -15,7 +15,7 @@ import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto"
 import { UpdatePublicationTargetsDto } from "./dto/update-publication-targets.dto";
 import { ConnectorInstallerService } from "./connector-installer.service";
 
-type AuthenticatedRequest = FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
+type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string };
 
 @Controller("connectors")
 @DisallowApiClient()

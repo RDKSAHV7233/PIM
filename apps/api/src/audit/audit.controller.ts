@@ -1,5 +1,5 @@
 import { Controller, Get, Header, Query, Req, Res } from "@nestjs/common";
-import { FastifyReply, FastifyRequest } from "fastify";
+import type { Request, Response } from "express";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -20,7 +20,7 @@ export class AuditController {
   ) {}
 
   private resolveActor(
-    request: FastifyRequest & {
+    request: Request & {
       pimUserId?: string;
       pimRole?: AppRole;
       pimTenant?: string;
@@ -59,14 +59,14 @@ export class AuditController {
   async exportEvents(
     @Query() query: ListAuditEventsDto,
     @Req()
-    request: FastifyRequest & {
+    request: Request & {
       pimUserId?: string;
       pimRole?: AppRole;
       pimTenant?: string;
       pimAuthType?: "user_jwt" | "api_key";
       pimEffectiveRoles?: string[];
     },
-    @Res({ passthrough: true }) response: FastifyReply,
+    @Res({ passthrough: true }) response: Response,
   ) {
     const stamp = new Date().toISOString().slice(0, 10);
     response.header("Content-Disposition", `attachment; filename="vexa-pim-audit-events-${stamp}.csv"`);

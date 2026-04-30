@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Query, Req } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import type { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import type { PolicyActor } from "../common/access-policy/access-policy.service";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -9,7 +9,7 @@ import { ComplianceService } from "./compliance.service";
 import { IssueInboxQueryDto } from "./dto/issue-inbox-query.dto";
 import { ResolveIssueInboxDto } from "./dto/resolve-issue-inbox.dto";
 
-type AuthenticatedRequest = FastifyRequest & {
+type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
   pimTenant?: string;

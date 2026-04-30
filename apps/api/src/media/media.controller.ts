@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { FastifyRequest } from "fastify";
+import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -51,7 +51,7 @@ export class MediaController {
     @Query("productId") productId?: string,
     @Query("variantId") variantId?: string,
     @Query() pagination?: CursorPaginationDto,
-    @Req() request?: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.listAssets(productId, variantId, pagination, this.resolveActor(request ?? {}));
   }
@@ -62,7 +62,7 @@ export class MediaController {
   @ApiClientScopes("media.read")
   getAsset(
     @Param("id") id: string,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.getAsset(id, this.resolveActor(request));
   }
@@ -74,7 +74,7 @@ export class MediaController {
   validateAsset(
     @Param("id") id: string,
     @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
-    @Req() request: FastifyRequest & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.validateAsset(id, channel, this.resolveActor(request));
   }
