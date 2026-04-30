@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const LAYOUT = path.join(REPO_ROOT, "apps", "web", "src", "app", "layout.tsx");
+const AUTHENTICATED_SHELL = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "authenticated-shell.tsx");
 const SIDEBAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "app-sidebar.tsx");
 
 function assert(condition, message) {
@@ -14,17 +14,17 @@ function assert(condition, message) {
 }
 
 function run() {
-  const layout = fs.readFileSync(LAYOUT, "utf8");
+  const shell = fs.readFileSync(AUTHENTICATED_SHELL, "utf8");
   const sidebar = fs.readFileSync(SIDEBAR, "utf8");
 
-  assert(layout.includes("<GlobalSearch />"), "Authenticated shell must expose global search in the top bar.");
-  assert(layout.includes("<NotificationCenter />"), "Authenticated shell must expose notification center in the top bar.");
-  assert(layout.includes("<RoleBadge role={actorRole} />"), "Authenticated shell must expose the current role badge.");
+  assert(shell.includes("<GlobalSearch />"), "Authenticated shell must expose global search in the top bar.");
+  assert(shell.includes("<NotificationCenter />"), "Authenticated shell must expose notification center in the top bar.");
+  assert(shell.includes("<RoleBadge role={actorRole} />"), "Authenticated shell must expose the current role badge.");
   assert(
     sidebar.includes('badgeKey: "quality"') && sidebar.includes('badgeKey: "operations"'),
     "Sidebar must expose live quality and operations badges.",
   );
-  for (const title of ["Dashboard", "Products", "Catalog", "Channels", "Quality", "Operations", "Settings"]) {
+  for (const title of ["Workspace", "Catalog", "Connections", "Quality", "Operate", "Settings"]) {
     assert(sidebar.includes(`title: "${title}"`), `Sidebar must include ${title} section.`);
   }
   assert(

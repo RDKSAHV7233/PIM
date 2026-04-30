@@ -13,7 +13,12 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
     <Card hidden={!(data.activeTab === "content" || data.activeTab === "attributes")}>
       <CardTitle>Edit Product (Versioned)</CardTitle>
       {data.canWrite ? (
-        <form id="product-edit-form" action={updateProductAction} className="grid gap-3 md:grid-cols-2">
+        <form
+          id="product-edit-form"
+          action={updateProductAction}
+          data-product-dirty-form="true"
+          className="grid gap-3 md:grid-cols-2"
+        >
           <RoleHiddenInput role={data.actorRole} />
           <input type="hidden" name="productId" value={data.productId} />
           <input type="hidden" name="currentTab" value={data.activeTab} />

@@ -44,9 +44,9 @@ function run() {
     "Products table must expose a soft-delete action with confirmation intent.",
   );
   assert(
-    productOverviewSource.includes("deleteProductAction") &&
+      productOverviewSource.includes("ArchiveProductButton") &&
       productOverviewSource.includes("purgeProductAction") &&
-      productOverviewSource.includes("Archive product") &&
+      productOverviewSource.includes("Archive (soft delete)") &&
       productOverviewSource.includes("Confirm permanent delete") &&
       productOverviewSource.includes("Permanently delete"),
     "Product detail must expose soft delete and admin hard delete controls.",

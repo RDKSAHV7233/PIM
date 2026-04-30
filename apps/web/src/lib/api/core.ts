@@ -804,7 +804,7 @@ export interface BulkImportRow {
 export interface BulkImportJob {
   id: string;
   categoryId: string;
-  sourceFormat: "csv" | "json" | "xlsx" | "xls";
+  sourceFormat: "csv" | "json";
   sourceName: string | null;
   mapping: Record<string, string>;
   chunkSize: number;
@@ -844,7 +844,7 @@ export interface BulkImportTemplate {
   categoryId: string;
   name: string;
   version: number;
-  sourceFormat: "csv" | "json" | "xlsx" | "xls";
+  sourceFormat: "csv" | "json";
   mapping: Record<string, string>;
   schemaSnapshot?: {
     capturedAt: string;

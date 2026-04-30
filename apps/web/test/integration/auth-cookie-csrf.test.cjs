@@ -190,6 +190,7 @@ async function run() {
     ...process.env,
     PORT: String(webPort),
     PIM_API_BASE_URL: apiBaseUrl,
+    APP_ENV: "staging",
     NODE_ENV: "production",
   };
 
@@ -262,7 +263,7 @@ async function run() {
       throw new Error("Login response did not include pim_access_token and pim_csrf_token set-cookie headers.");
     }
     const appEnv = String(webEnv.APP_ENV ?? "").trim().toLowerCase();
-    const expectSecure = appEnv === "production";
+    const expectSecure = appEnv === "production" || appEnv === "staging";
     const accessSecure = /;\s*secure\b/i.test(accessCookieHeader);
     const csrfSecure = /;\s*secure\b/i.test(csrfCookieHeader);
     if (accessSecure !== expectSecure || csrfSecure !== expectSecure) {

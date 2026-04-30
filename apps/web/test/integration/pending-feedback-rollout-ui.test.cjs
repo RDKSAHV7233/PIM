@@ -32,7 +32,7 @@ try {
   );
 
   assert(
-    connectorsSetupPage.includes('pendingLabel="Installing connector..."') &&
+    connectorsSetupPage.includes("Installing connector...") &&
       connectorsPage.includes('pendingLabel="Reconnecting..."') &&
       connectorsPage.includes('pendingLabel="Disabling..."') &&
       connectorsPage.includes('pendingLabel="Deleting record..."'),

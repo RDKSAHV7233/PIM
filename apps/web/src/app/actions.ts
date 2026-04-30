@@ -219,12 +219,6 @@ function parseStringList(value: FormDataEntryValue | null): string[] {
 
 function detectSourceFormatFromFileName(fileName: string) {
   const normalized = fileName.trim().toLowerCase();
-  if (normalized.endsWith(".xlsx")) {
-    return "xlsx" as const;
-  }
-  if (normalized.endsWith(".xls")) {
-    return "xls" as const;
-  }
   if (normalized.endsWith(".csv")) {
     return "csv" as const;
   }
@@ -800,6 +794,43 @@ export async function createVariantAction(formData: FormData) {
   revalidatePath(`/products/${productId}`);
 }
 
+export async function updateVariantAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const variantId = String(formData.get("variantId") ?? "").trim();
+  const skuCode = String(formData.get("skuCode") ?? "").trim();
+  if (!productId || !variantId || !skuCode) {
+    throw new Error("Product, variant, and SKU are required.");
+  }
+  const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+
+  await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
+    skuCode,
+    attributes,
+    mrp: parseNumber(formData.get("mrp")),
+    sellingPrice: parseNumber(formData.get("sellingPrice")),
+    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+    status: String(formData.get("status") ?? "draft"),
+  });
+
+  revalidatePath(`/products/${productId}`);
+}
+
+export async function deleteVariantAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const variantId = String(formData.get("variantId") ?? "").trim();
+  const confirmed = String(formData.get("confirmRemove") ?? "") === "yes";
+  if (!productId || !variantId) {
+    throw new Error("Product and variant are required.");
+  }
+  if (!confirmed) {
+    throw new Error("Confirm variant removal before continuing.");
+  }
+
+  await deleteJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`);
+
+  revalidatePath(`/products/${productId}`);
+}
+
 export async function createMappingTemplateAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   const channel = String(formData.get("channel") ?? "").trim();
@@ -1331,7 +1362,7 @@ export async function createBulkImportJobAction(formData: FormData) {
   if (sourceFile) {
     const detectedFormat = detectSourceFormatFromFileName(sourceFile.name);
     if (!detectedFormat) {
-      throw new Error("Uploaded file must be .csv, .xlsx, .xls, or .json.");
+      throw new Error("Uploaded file must be .csv or .json. Spreadsheet imports are temporarily disabled.");
     }
     if (sourceFormat && sourceFormat !== detectedFormat) {
       throw new Error(`Selected source format does not match uploaded file (${detectedFormat}).`);
@@ -1370,10 +1401,8 @@ export async function createBulkImportJobAction(formData: FormData) {
     if (!csvContent.trim()) {
       throw new Error("csvContent is required when source format is csv and no file is uploaded.");
     }
-  } else if (sourceFormat === "xlsx" || sourceFormat === "xls") {
-    throw new Error("Upload a spreadsheet file for xlsx/xls source format.");
   } else {
-    throw new Error("Source format must be csv, json, xlsx, or xls.");
+    throw new Error("Source format must be csv or json.");
   }
 
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {
@@ -1405,8 +1434,8 @@ export async function createBulkImportTemplateAction(formData: FormData) {
   if (!categoryId || !name) {
     throw new Error("Template tenant, category, and name are required.");
   }
-  if (!["csv", "json", "xlsx", "xls"].includes(sourceFormat)) {
-    throw new Error("Template source format must be csv, json, xlsx, or xls.");
+  if (!["csv", "json"].includes(sourceFormat)) {
+    throw new Error("Template source format must be csv or json.");
   }
 
   const mapping: Record<string, string> = {};

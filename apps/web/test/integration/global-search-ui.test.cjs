@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const LAYOUT = path.join(REPO_ROOT, "apps", "web", "src", "app", "layout.tsx");
+const AUTHENTICATED_SHELL = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "authenticated-shell.tsx");
 const SEARCH_COMPONENT = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "global-search.tsx");
 const SEARCH_ROUTE = path.join(REPO_ROOT, "apps", "web", "src", "app", "api", "catalog", "search", "route.ts");
 
@@ -14,11 +15,14 @@ function assert(condition, message) {
 
 function run() {
   const layoutSource = fs.readFileSync(LAYOUT, "utf8");
+  const shellSource = fs.readFileSync(AUTHENTICATED_SHELL, "utf8");
   const componentSource = fs.readFileSync(SEARCH_COMPONENT, "utf8");
   const routeSource = fs.readFileSync(SEARCH_ROUTE, "utf8");
 
   assert(
-    layoutSource.includes("GlobalSearch") && layoutSource.includes("{hasAuthToken ? <GlobalSearch /> : null}"),
+    layoutSource.includes("<AuthenticatedShell actorRole={actorRole}") &&
+      shellSource.includes('import { GlobalSearch } from "@/components/nav/global-search";') &&
+      shellSource.includes("<GlobalSearch />"),
     "Authenticated shell must mount the global search in the header only when auth is present.",
   );
   assert(

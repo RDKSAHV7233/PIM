@@ -17,12 +17,14 @@ function assert(condition, message) {
 
 try {
   const layout = read("apps/web/src/app/layout.tsx");
+  const shell = read("apps/web/src/components/nav/authenticated-shell.tsx");
   const center = read("apps/web/src/components/nav/notification-center.tsx");
   const route = read("apps/web/src/app/api/notifications/route.ts");
   const readRoute = read("apps/web/src/app/api/notifications/[id]/read/route.ts");
 
-  assert(layout.includes('import { NotificationCenter } from "@/components/nav/notification-center";'), "layout must import NotificationCenter");
-  assert(layout.includes('{hasAuthToken ? <NotificationCenter /> : null}'), "layout must mount NotificationCenter only for authenticated shell");
+  assert(layout.includes("<AuthenticatedShell actorRole={actorRole}"), "layout must mount the authenticated shell when an auth token is present");
+  assert(shell.includes('import { NotificationCenter } from "@/components/nav/notification-center";'), "authenticated shell must import NotificationCenter");
+  assert(shell.includes("<NotificationCenter />"), "authenticated shell must mount NotificationCenter");
   assert(center.includes('/api/notifications?limit=12'), "notification center must query the notifications route");
   assert(center.includes("POLL_INTERVAL_MS = 30_000"), "notification center must poll every 30 seconds");
   assert(center.includes("Mark all read"), "notification center must expose mark all read");
@@ -41,7 +43,7 @@ try {
   console.log(JSON.stringify({
     status: "ok",
     validated: [
-      "layout_mounts_notification_center",
+      "authenticated_shell_mounts_notification_center",
       "notification_center_polls_local_route",
       "notification_center_exposes_mark_all_read",
       "notification_empty_state_copy_present",

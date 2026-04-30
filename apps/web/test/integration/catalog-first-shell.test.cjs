@@ -69,8 +69,8 @@ function run() {
     "Dashboard top metrics must prioritize catalog work and publish readiness over raw ops counters.",
   );
   assert(
-    dashboardSource.includes('href="/quality/issues?severity=BLOCKING"') &&
-      dashboardSource.includes('href="/catalog/products?view=ready"'),
+    dashboardSource.includes("/quality/issues?severity=BLOCKING") &&
+      dashboardSource.includes("/catalog/products?view=ready"),
     "Dashboard KPI cards must link directly to filtered drill-down views.",
   );
   assert(

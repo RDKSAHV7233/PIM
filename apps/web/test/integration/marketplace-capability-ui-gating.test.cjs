@@ -4,7 +4,28 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
+const DEFERRED_SECTION = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "products",
+  "[id]",
+  "_components",
+  "product-detail-deferred-section.tsx",
+);
+const CHANNELS_TAB = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "products",
+  "[id]",
+  "_components",
+  "channels-tab.tsx",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -13,17 +34,18 @@ function assert(condition, message) {
 }
 
 function run() {
-  const source = fs.readFileSync(PRODUCT_PAGE, "utf8");
+  const source = fs.readFileSync(DEFERRED_SECTION, "utf8");
+  const channelsTab = fs.readFileSync(CHANNELS_TAB, "utf8");
   assert(
     source.includes("const publishableChannels = channels.filter"),
     "Product page must derive publishable channels from installed connector capabilities.",
   );
   assert(
-    source.includes("{publishableChannels.map((channel) => ("),
+    channelsTab.includes("{data.publishableChannels.map((channel) => ("),
     "Export-job channel selector must render only publishable channels.",
   );
   assert(
-    source.includes("No installed connector with publish capability is available for this tenant."),
+    channelsTab.includes("No installed connector with publish capability is available for this tenant."),
     "UI must show a non-actionable message when no publish-capable connector exists.",
   );
 
@@ -50,4 +72,3 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-

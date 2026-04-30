@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const API_LIB = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api.ts");
+const API_LIB = path.join(REPO_ROOT, "apps", "web", "src", "lib", "api", "core.ts");
 
 function assert(condition, message) {
   if (!condition) {

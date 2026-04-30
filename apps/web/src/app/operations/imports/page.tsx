@@ -113,6 +113,17 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRows = selectedBulkJobId
       ? await getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
       : [];
+    const selectedJob = selectedBulkJobId
+      ? filteredByData.find((job) => job.id === selectedBulkJobId) ?? jobs.find((job) => job.id === selectedBulkJobId) ?? null
+      : null;
+    const selectedRowCounts = selectedRows.reduce<Record<string, number>>((accumulator, row) => {
+      const key = String(row.status ?? "").toLowerCase() || "unknown";
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const selectedRowsNeedingRepair = selectedRows.filter((row) => row.status !== "success");
+    const selectedSuccessfulRows = selectedRows.filter((row) => row.status === "success");
+    const selectedAttentionRows = (selectedRowCounts.failed ?? 0) + (selectedRowCounts.dead_letter ?? 0);
 
     const statusCounts = filteredByData.reduce<Record<string, number>>((accumulator, job) => {
       const key = String(job.status ?? "").toLowerCase() || "unknown";
@@ -207,7 +218,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                       type="file"
                       name="sourceFile"
                       required
-                      accept=".csv,.json,.xlsx,.xls"
+                      accept=".csv,.json"
                       className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </label>
@@ -278,7 +289,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 </Link>
               </div>
               <ul className="list-disc space-y-1 pl-5">
-                <li>CSV and spreadsheet uploads use the same canonical columns.</li>
+                <li>CSV uploads use the canonical columns below.</li>
                 <li>JSON imports should contain an array of row objects.</li>
                 <li>Start with one sample row, then add your own category-specific attributes.</li>
               </ul>
@@ -291,7 +302,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             <CardTitle>Import Format Guide</CardTitle>
             <div className="space-y-3 text-sm text-slate-600">
               <p>
-                CSV and Excel uploads should use the exact canonical column names below. JSON uploads should use the
+                CSV uploads should use the exact canonical column names below. JSON uploads should use the
                 same keys on each row object.
               </p>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -315,8 +326,8 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 </table>
               </div>
               <ul className="list-disc space-y-1 pl-5">
-                <li>Keep the first row as headers for CSV and spreadsheet uploads.</li>
-                <li>Use one product row per line in CSV/XLSX, or one object per item in JSON.</li>
+                <li>Keep the first row as headers for CSV uploads.</li>
+                <li>Use one product row per line in CSV, or one object per item in JSON.</li>
                 <li>Start with a single sample row first, then scale up after the mapping looks correct.</li>
               </ul>
             </div>
@@ -404,13 +415,89 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
         {selectedBulkJobId ? (
           <Card aria-live="polite" aria-atomic="true">
+            <CardTitle>Selected Import Result ({selectedBulkJobId})</CardTitle>
+            <div className="mt-3 space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <KpiCard label="Rows processed" value={selectedJob ? `${selectedJob.processedRows}/${selectedJob.totalRows}` : selectedRows.length} />
+                <KpiCard label="Successful rows" value={selectedJob?.successRows ?? selectedSuccessfulRows.length} tone={(selectedJob?.successRows ?? selectedSuccessfulRows.length) > 0 ? "success" : "default"} />
+                <KpiCard label="Failed rows" value={selectedJob?.failedRows ?? (selectedRowCounts.failed ?? 0)} tone={(selectedJob?.failedRows ?? (selectedRowCounts.failed ?? 0)) > 0 ? "danger" : "success"} />
+                <KpiCard label="Dead-letter rows" value={selectedJob?.deadLetterRows ?? (selectedRowCounts.dead_letter ?? 0)} tone={(selectedJob?.deadLetterRows ?? (selectedRowCounts.dead_letter ?? 0)) > 0 ? "warning" : "default"} />
+              </div>
+
+              {selectedSuccessfulRows.length > 0 && selectedAttentionRows > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Partial import: successful rows are available in the catalog, while failed rows remain visible below for repair.
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/api/bulk-import/jobs/${encodeURIComponent(selectedBulkJobId)}/error-report`}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Download error report
+                </Link>
+                <Link
+                  href="/catalog/products"
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Open catalog
+                </Link>
+              </div>
+
+              {selectedRows.length === 0 ? (
+                <p className="text-sm text-slate-600">No row-level result data is available for this import job yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[920px] text-left text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Row</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Catalog result</th>
+                        <th className="px-3 py-2">Error</th>
+                        <th className="px-3 py-2">Attempts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedRows.map((row) => {
+                        const translatedError = translateError(extractErrorCode(row.errorMessage));
+                        return (
+                          <tr key={row.id} className="border-t border-slate-200">
+                            <td className="px-3 py-2.5 font-mono text-xs">{row.rowNumber}</td>
+                            <td className="px-3 py-2.5">{translateJobStatus(row.status)}</td>
+                            <td className="px-3 py-2.5">
+                              {row.productId ? (
+                                <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
+                                  View product
+                                </Link>
+                              ) : (
+                                <span className="text-slate-500">No product created</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-600">
+                              {row.errorMessage ? `${translatedError.title}: ${translatedError.description}` : "None"}
+                            </td>
+                            <td className="px-3 py-2.5">{row.retryCount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </Card>
+        ) : null}
+
+        {selectedBulkJobId ? (
+          <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Row Repair Console ({selectedBulkJobId})</CardTitle>
-            {selectedRows.filter((row) => row.status !== "success").length === 0 ? (
+            {selectedRowsNeedingRepair.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">No rows require repair for this import job.</p>
             ) : (
               <div className="space-y-3">
-                {selectedRows
-                  .filter((row) => row.status !== "success")
+                {selectedRowsNeedingRepair
                   .map((row) => {
                     const translatedError = translateError(extractErrorCode(row.errorMessage));
                     return (

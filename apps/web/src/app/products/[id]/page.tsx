@@ -20,6 +20,7 @@ import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { ProductDetailDeferredSection } from "./_components/product-detail-deferred-section";
+import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigation-guard";
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
 import {
   DETAIL_TABS,
@@ -101,15 +102,16 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   return (
     <div className="space-y-5">
       <PlanLimitModal isOpen={showPlanLimitModal} resource={String(query.planResource ?? "").trim()} limit={Number(query.planLimitValue)} current={Number(query.planCurrent)} upgradeUrl={String(query.planUpgrade ?? "").trim()} dismissHref={dismissPlanLimitHref} />
+      <ProductDirtyNavigationGuard />
       <PageHeader
         className="sticky top-[4.5rem] z-20"
         title={product.title}
         description={`${sellerSku ? `SKU ${sellerSku}` : product.id.slice(0, 8)} | ${product.category?.path ?? product.categoryId}`}
         breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link> / <Link href="/catalog/products" className="hover:underline">Catalog</Link> / <span className="font-semibold text-slate-700">Product Detail</span></>}
-        actions={<>{returnTo ? <Link href={returnTo} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to inbox</Link> : null}<StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} /><StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />{canWrite ? <button type="submit" form="product-edit-form" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save</button> : null}{canWrite ? <button type="submit" form="product-validate-form" className={cn(buttonVariants({ variant: "dark" }))}>Validate</button> : null}{canWrite ? <Link href={tabHref("channels")} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Submit</Link> : null}</>}
+        actions={<>{returnTo ? <Link href={returnTo} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to inbox</Link> : null}<StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} /><StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />{canWrite ? <button type="submit" form="product-edit-form" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save</button> : null}{canWrite ? <button type="submit" form="product-validate-form" className={cn(buttonVariants({ variant: "dark" }))}>Validate</button> : null}{canWrite ? <Link href={tabHref("channels")} data-product-tab-link="true" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Submit</Link> : null}</>}
       />
       <div className="relative">
-        <nav aria-label="Product detail tabs" className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
+        <nav aria-label="Product detail tabs" className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} data-product-tab-link="true" className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
         <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-white/80 to-transparent sm:hidden" />
       </div>
       <StatusToastEffect updateStatus={updateStatus} />

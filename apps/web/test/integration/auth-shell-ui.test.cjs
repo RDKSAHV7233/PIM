@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const LAYOUT = path.join(REPO_ROOT, "apps", "web", "src", "app", "layout.tsx");
+const AUTHENTICATED_SHELL = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "authenticated-shell.tsx");
 const LOGIN = path.join(REPO_ROOT, "apps", "web", "src", "components", "auth", "login-page-client.tsx");
 const SERVER_AUTH = path.join(REPO_ROOT, "apps", "web", "src", "lib", "server-auth.ts");
 
@@ -16,13 +17,15 @@ function assert(condition, message) {
 
 function run() {
   const layoutSource = fs.readFileSync(LAYOUT, "utf8");
+  const shellSource = fs.readFileSync(AUTHENTICATED_SHELL, "utf8");
   const loginSource = fs.readFileSync(LOGIN, "utf8");
   const serverAuthSource = fs.readFileSync(SERVER_AUTH, "utf8");
 
   assert(
-    layoutSource.includes("hasServerAuthToken") &&
+      layoutSource.includes("hasServerAuthToken") &&
       layoutSource.includes("const hasAuthToken = await hasServerAuthToken();") &&
-      layoutSource.includes("{hasAuthToken ? <LogoutButton /> : null}") &&
+      layoutSource.includes("<AuthenticatedShell actorRole={actorRole}") &&
+      shellSource.includes("<LogoutButton />") &&
       layoutSource.includes("{hasAuthToken ? ("),
     "Root layout must render the authenticated shell from auth-token presence, not only session claims.",
   );

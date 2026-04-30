@@ -37,6 +37,44 @@ const rolePermissions = [
   { role: "Viewer", catalog: "read", channels: "read", ops: "read", quality: "read", admin: "none" },
 ];
 
+const pilotRoleAlignment = [
+  {
+    persona: "Product admin",
+    currentModel: "Admin",
+    pilotHandling: "Workspace governance, catalog write, operations write, connector governance, users, API keys, webhooks, and audit logs.",
+  },
+  {
+    persona: "System admin",
+    currentModel: "Admin plus internal operator routes outside this customer shell",
+    pilotHandling: "Customer shell keeps internal/developer routes hidden; full system-admin split remains future scope.",
+  },
+  {
+    persona: "Editor",
+    currentModel: "Editor",
+    pilotHandling: "Catalog, import, bulk edit, connector setup, and quality triage write access without machine credential or audit-log administration.",
+  },
+  {
+    persona: "Reviewer",
+    currentModel: "Reviewer",
+    pilotHandling: "Read-only catalog and operations review with explicit approval/rejection authority.",
+  },
+  {
+    persona: "Vendor",
+    currentModel: "Viewer plus delegated access scopes",
+    pilotHandling: "Read-only frontend access; vendor-specific scoped write journeys remain future scope.",
+  },
+  {
+    persona: "Category manager",
+    currentModel: "Editor or reviewer plus delegated category/brand scopes",
+    pilotHandling: "Scope assignments are visible here; dedicated category-manager navigation remains future scope.",
+  },
+  {
+    persona: "API/client operations",
+    currentModel: "Admin-issued API key with assigned role",
+    pilotHandling: "Machine-principal access is managed from API Keys; scoped machine-principal UX remains future scope.",
+  },
+];
+
 function toneForCapability(value: string) {
   if (value === "write") {
     return "success" as const;
@@ -412,6 +450,34 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
               </table>
             </div>
           )}
+        </Card>
+
+        <Card>
+          <CardTitle>Pilot Role Alignment</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            The web app currently uses four first-class roles. Enterprise persona names are handled through those roles
+            plus delegated access scopes until dedicated vendor, category-manager, and system-admin shells are released.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-2">Enterprise Persona</th>
+                  <th className="py-2">Current Web Model</th>
+                  <th className="py-2">Pilot Handling</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pilotRoleAlignment.map((entry) => (
+                  <tr key={entry.persona} className="border-t border-slate-200">
+                    <td className="py-2 font-medium text-slate-900">{entry.persona}</td>
+                    <td className="py-2 text-slate-700">{entry.currentModel}</td>
+                    <td className="py-2 text-slate-600">{entry.pilotHandling}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
 
         <Card>

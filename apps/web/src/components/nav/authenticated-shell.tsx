@@ -71,14 +71,14 @@ export function AuthenticatedShell({
             onClick={() => setMobileNavOpen(false)}
           />
           <div className="fixed inset-y-0 left-0 z-50 w-72 overflow-y-auto bg-white p-4 shadow-xl lg:hidden">
-            <AppSidebar actorRole={actorRole} showInternal={actorRole === "admin"} />
+            <AppSidebar actorRole={actorRole} showInternal={false} />
           </div>
         </>
       ) : null}
 
       <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="hidden lg:block">
-          <AppSidebar actorRole={actorRole} showInternal={actorRole === "admin"} />
+          <AppSidebar actorRole={actorRole} showInternal={false} />
         </div>
         <main id="main-content" className="min-w-0">{children}</main>
       </div>

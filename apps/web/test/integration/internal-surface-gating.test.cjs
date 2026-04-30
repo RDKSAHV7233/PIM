@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const HOME_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "page.tsx");
-const LAYOUT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "layout.tsx");
+const AUTHENTICATED_SHELL = path.join(REPO_ROOT, "apps", "web", "src", "components", "nav", "authenticated-shell.tsx");
 const INTERNAL_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "internal", "developer", "page.tsx");
 const AI_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "ai", "page.tsx");
 const ONDC_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "ondc", "page.tsx");
@@ -18,7 +18,7 @@ function assert(condition, message) {
 
 function run() {
   const homeSource = fs.readFileSync(HOME_PAGE, "utf8");
-  const layoutSource = fs.readFileSync(LAYOUT_PAGE, "utf8");
+  const shellSource = fs.readFileSync(AUTHENTICATED_SHELL, "utf8");
   const internalSource = fs.readFileSync(INTERNAL_PAGE, "utf8");
   const aiSource = fs.readFileSync(AI_PAGE, "utf8");
   const ondcSource = fs.readFileSync(ONDC_PAGE, "utf8");
@@ -28,7 +28,7 @@ function run() {
     "Root tab redirects must not expose internal developer routing.",
   );
   assert(
-    layoutSource.includes("<AppSidebar showInternal={false} />"),
+    shellSource.includes("showInternal={false}") && !shellSource.includes('showInternal={actorRole === "admin"}'),
     "Seller-facing app navigation must hide internal lab routes by default.",
   );
   assert(
