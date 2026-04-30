@@ -876,6 +876,89 @@ Updated claim wording:
 
 > Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
 
+## 2026-04-30 PO Release Closeout: Current Access-Policy Slice
+
+Decision: **Accepted and closed as the current bounded access-policy release slice.**
+
+This closeout is based on one green sequential validation bundle from the current repo state. The release is accepted because the bounded slice is now fully validated and the broader unfinished work is formally reclassified as future-scope follow-up rather than as a blocker for this specific release.
+
+Green validation evidence for this closeout:
+
+- `npm run build --workspace @pim1/api`
+- `npm run test:integration:access-policy-remediation`
+- `npm run test:integration:delegated-access-scopes`
+- `npm run guard:sensitive-gets`
+- `node apps/api/test/integration/access-policy-foundation.test.cjs`
+- `node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs`
+- `node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs`
+- `node apps/api/test/integration/auth-per-user-password.test.cjs`
+- `node apps/api/test/integration/auth-assigned-roles-rollout-runbook.test.cjs`
+- `node apps/api/test/integration/workspace-user-crud.test.cjs`
+- `node apps/api/test/integration/notifications-center.test.cjs`
+- `node apps/api/test/integration/mapping-manager.test.cjs`
+- `node apps/api/test/integration/shopify-publication-targets-api.test.cjs`
+- `node apps/api/test/integration/dashboard-aggregations.test.cjs`
+- `node apps/api/test/integration/dashboard-tenant-boundary.test.cjs`
+- `npm run test:integration:metrics-kpi-trends`
+- `node scripts/auth-identity-assigned-roles-rollout.cjs --dry-run`
+- `node scripts/auth-identity-assigned-roles-rollout.cjs --rollback --dry-run`
+- `npm run build --workspace @pim1/web`
+- `npm run gate:run:increment`
+- `npm run gate:run:sprint`
+- `node scripts/validate-deploy-staging-workflow.cjs`
+- `node scripts/staging-postdeploy-check.test.cjs`
+
+Accepted as complete for this bounded release:
+
+- authenticated-read classification
+- sensitive-GET guard coverage
+- bounded admin-boundary enforcement on the proven governance families
+- bounded API-client scope enforcement on the proven route families
+- bounded vendor/object ownership enforcement on the proven product-backed read families
+- bounded category and owner scope enforcement on the proven route families
+- bounded governance redaction including audit JSON and CSV visibility
+- bounded bulk-import JSON and CSV visibility alignment
+- additive persisted multi-role read-path support with scalar fallback preserved
+- bounded workspace-user `assignedRoles` create, update, clear, and read semantics
+- operator-safe rollout runbook dry-run and rollback proof
+- deploy and staging validation for the bounded slice
+
+Moved to future scope for later release planning, not active blockers for this closed slice:
+
+- broader vendor enforcement outside the already proven product-backed read routes
+- unsupported ABAC dimensions:
+  - `supplier`
+  - `locale`
+  - `market`
+  - `team`
+  - `assignee`
+- broader multi-role rollout beyond the bounded compatibility, managed-write, and operator-runbook slice
+- broader API-client resource coverage beyond the proven bounded scope families
+- remaining mixed-lifecycle admin-boundary mapping outside the already proven governance routes
+- universal response redaction beyond the bounded proven payload families
+- broader role-combination product policy beyond the current bounded workspace-user managed-write contract
+
+Disabled and out of scope, not an active blocker:
+
+- ONDC is disabled by default because `FEATURE_ONDC_ENABLED` defaults false.
+- `OndcModule` is only mounted when the feature flag is enabled.
+- ONDC is not part of the current access-policy execution backlog.
+- Do not treat ONDC routes as active blockers while the module remains disabled.
+- If ONDC is enabled later, open a separate ONDC access-policy slice before release.
+
+Still not accepted as a product claim:
+
+- full enterprise authorization completion
+- full vendor-role completion
+- full API-client authorization completion
+- full admin-boundary completion
+- full multi-role rollout completion
+- universal redaction completion
+
+Updated claim wording:
+
+> Vexa PIM now has runtime-enforced authenticated-read classification, covered catalog API-client scope enforcement plus bounded `media.read`, `compliance.read`, `rejection_intelligence.read`, `auto_suggestions.read`, and `taxonomy.read` API-client scope families for their matching read routes, bounded vendor/object ownership enforcement on proven product-backed reads, bounded admin-boundary enforcement on covered governance routes including marketplace readiness-and-preflight governance and billing plan-tier governance, shared governance redaction on covered API-key, workspace-user, access-scope, connector-permission, outbound-webhook endpoint, outbound-webhook delivery, audit-log, billing-governance, and audit-explorer/export reads with a shared JSON and CSV visibility contract, additive persisted multi-role read-path support on `AuthIdentity.assigned_roles` with scalar-role fallback preserved, durable local-auth and DB-auth compatibility proof for normalized assigned roles, explicit governance-boundary durability proof for persisted `system_admin` versus `product_admin` assigned roles, bounded operator-safe backfill, fallback, rollback, and managed role-set semantics for persisted assigned roles, and bounded workspace-user managed-write rules for assigned roles. It is not yet enterprise-complete across broad vendor enforcement, unsupported ABAC dimensions, durable multi-role rollout, full API-client resources, full admin-boundary mapping, or universal response redaction.
+
 ## 2026-04-29 PO Checkpoint: Multi-Role Rollout Runbook and Rollback Proof
 
 Decision: **Accepted for the bounded operator-safe multi-role rollout slice. Not accepted as full multi-role migration or full access-policy completion.**

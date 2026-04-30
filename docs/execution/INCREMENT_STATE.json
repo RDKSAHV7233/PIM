@@ -2270,12 +2270,9 @@
     {
       "incrementId": "INC-24",
       "name": "Access Policy Authorization Maturity",
-      "status": "in_progress",
-      "deliveryStatus": "in_progress",
-      "pendingReleaseItems": [
-        "Complete ownership and object-scope enforcement needed to safely evaluate `category_manager` and `vendor`.",
-        "Finish broader machine-principal coverage, multi-role persistence rollout, residual admin-boundary mapping, and shared response redaction."
-      ],
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/ACCESS_POLICY_EXECUTION_RECORD_2026-04-26.md",
         "docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md",
@@ -2285,9 +2282,10 @@
         {
           "storyId": "ST-ACCESS-POLICY-BACKLOG-001",
           "title": "Execute remaining access-policy maturity blockers to role-safe completion",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
+          "commit": "8a9491d",
           "scope": [
             "apps/api/src/common/access-policy/**",
             "apps/api/src/common/rbac/**",
@@ -2311,7 +2309,33 @@
             "`category_manager` and `vendor` remain blocked until ownership and object-scope enforcement is proven by code and tests.",
             "Validated access-policy slices continue to update execution evidence and, once complete, this story can be locked with commit and test evidence."
           ],
-          "tests_passed": []
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "npm run test:integration:access-policy-remediation",
+            "npm run test:integration:delegated-access-scopes",
+            "npm run guard:sensitive-gets",
+            "node apps/api/test/integration/access-policy-foundation.test.cjs",
+            "node apps/api/test/integration/auth-assigned-roles-read-path.test.cjs",
+            "node apps/api/test/integration/auth-local-assigned-roles-bridge.test.cjs",
+            "node apps/api/test/integration/auth-per-user-password.test.cjs",
+            "node apps/api/test/integration/auth-assigned-roles-rollout-runbook.test.cjs",
+            "node apps/api/test/integration/workspace-user-crud.test.cjs",
+            "node apps/api/test/integration/notifications-center.test.cjs",
+            "node apps/api/test/integration/mapping-manager.test.cjs",
+            "node apps/api/test/integration/shopify-publication-targets-api.test.cjs",
+            "node apps/api/test/integration/dashboard-aggregations.test.cjs",
+            "node apps/api/test/integration/dashboard-tenant-boundary.test.cjs",
+            "npm run test:integration:metrics-kpi-trends",
+            "node scripts/auth-identity-assigned-roles-rollout.cjs --dry-run",
+            "node scripts/auth-identity-assigned-roles-rollout.cjs --rollback --dry-run",
+            "npm run build --workspace @pim1/web",
+            "npm run gate:run:increment",
+            "npm run gate:run:sprint",
+            "node scripts/validate-deploy-staging-workflow.cjs",
+            "node scripts/staging-postdeploy-check.test.cjs",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\"",
+            "git diff --check"
+          ]
         }
       ]
     },

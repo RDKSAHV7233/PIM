@@ -1,5 +1,25 @@
 # Vexa PIM Access Policy Pending Backlog Single PO Prompt - 2026-04-27
 
+## 2026-04-30 Release Closeout Context
+
+The current bounded access-policy release slice is now fully validated and can be treated as complete for release closeout. The remaining items in this prompt are future-scope follow-up work, not active blockers for the closed bounded slice tracked under `INC-24`.
+
+Future-scope follow-up themes:
+
+- broader vendor enforcement outside the already proven product-backed read routes
+- unsupported ABAC dimensions:
+  - `supplier`
+  - `locale`
+  - `market`
+  - `team`
+  - `assignee`
+- broader multi-role rollout and role-combination policy beyond the bounded compatibility and managed-write contract
+- broader API-client resource coverage beyond the proven bounded scope families
+- remaining mixed-lifecycle admin-boundary mapping
+- universal response redaction
+
+Keep ONDC out of active blockers while disabled.
+
 Use this prompt when you want a coding agent to continue the remaining Vexa PIM access-policy backlog as a Product Owner, one item at a time, without overclaiming completion and without reopening already validated slices.
 
 ## PO Mission
