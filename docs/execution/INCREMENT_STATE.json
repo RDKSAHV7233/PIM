@@ -2314,6 +2314,75 @@
           "tests_passed": []
         }
       ]
+    },
+    {
+      "incrementId": "INC-25",
+      "name": "Dependency P0 Closure",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [
+        "Resolve nested Next/PostCSS moderate advisory before enterprise release.",
+        "Choose a maintained parser or isolated worker before restoring spreadsheet import support."
+      ],
+      "evidence": [
+        "docs/security/dependency-risk-register.md",
+        "docs/execution/VEXA_PIM_DEPENDENCY_RISK_REGISTER_2026-04-30.md",
+        "apps/api/test/integration/bulk-import-spreadsheet-disabled.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-DEP-P0-001",
+          "title": "Close production dependency audit P0 by removing xlsx and migrating API from Fastify to Express",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "326a325",
+          "scope": [
+            "apps/api/package.json",
+            "package-lock.json",
+            "apps/api/src/bulk-import/**",
+            "apps/api/src/main.ts",
+            "apps/api/src/media/media.service.ts",
+            "apps/api/src/**/*.controller.ts",
+            "apps/api/src/**/*.guard.ts",
+            "apps/api/src/common/**/*.ts",
+            "apps/api/test/integration/bulk-import-spreadsheet-disabled.test.cjs",
+            "apps/web/src/app/actions.ts",
+            "apps/web/src/app/operations/imports/page.tsx",
+            "apps/web/src/lib/api/core.ts",
+            "docs/security/dependency-risk-register.md",
+            "docs/execution/VEXA_PIM_DEPENDENCY_RISK_REGISTER_2026-04-30.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "`xlsx` is removed from the production dependency tree and no application runtime parser remains reachable.",
+            "CSV and JSON imports remain the supported production import formats.",
+            "The exact root Fastify 5.8.5 override is attempted before migration and proven insufficient when Nest still resolves fastify 5.8.4.",
+            "API runtime adapter is migrated from @nestjs/platform-fastify to @nestjs/platform-express and the production high audit gate passes.",
+            "API and web lint/build validation passes after dependency closure changes.",
+            "Adapter-risk regression checks pass for auth/RBAC, internal-token hardening, billing controls, tenant provisioning, webhook relay, bulk import, media listing/upload boundaries, and env/CORS validation."
+          ],
+          "tests_passed": [
+            "node apps/api/test/integration/bulk-import-spreadsheet-disabled.test.cjs",
+            "npm audit --omit=dev --audit-level=high",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "npm run lint --workspace @pim1/api",
+            "npm run build --workspace @pim1/api",
+            "npm run lint --workspace @pim1/web",
+            "npm run build --workspace @pim1/web",
+            "node apps/api/test/integration/auth-account-privacy-authz.test.cjs",
+            "node apps/api/test/integration/access-policy-remediation.test.cjs",
+            "node apps/api/test/integration/internal-token-hardening-static.test.cjs",
+            "node apps/api/test/integration/billing-commercial-control.test.cjs",
+            "node apps/api/test/integration/platform-tenant-provisioning.test.cjs",
+            "node apps/api/test/integration/amazon-webhook-relay-controller.test.cjs",
+            "node apps/api/test/integration/bulk-import-tenant-boundary.test.cjs",
+            "node apps/api/test/integration/media-tenant-boundary.test.cjs",
+            "node apps/api/test/integration/media-ssrf-guard.test.cjs",
+            "node apps/api/test/integration/env-validation.test.cjs"
+          ]
+        }
+      ]
     }
   ]
 }

@@ -253,13 +253,23 @@ export class MediaService {
 
   async listAssets(productId?: string, variantId?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
     const scopeWhere = await this.accessPolicy.buildMediaScopeWhere(actor ?? {}, "view");
+    const emptyResult = () => {
+      if (isCursorPagination(pagination)) {
+        return {
+          items: [],
+          limit: resolveCursorLimit(pagination?.limit),
+          nextCursor: null,
+        };
+      }
+      return [];
+    };
     if (productId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: productId },
         select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
       });
       if (!product) {
-        throw new NotFoundException("Product not found");
+        return emptyResult();
       }
       await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product);
     }
@@ -269,7 +279,7 @@ export class MediaService {
         select: { id: true, productId: true },
       });
       if (!variant) {
-        throw new NotFoundException("Variant not found");
+        return emptyResult();
       }
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: variant.productId },
