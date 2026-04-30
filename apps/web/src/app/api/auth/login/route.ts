@@ -24,15 +24,27 @@ export async function POST(request: NextRequest) {
   };
   const forwardedFor = request.headers.get("x-forwarded-for");
 
-  const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
-    },
-    body: JSON.stringify(loginPayload),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
+      },
+      body: JSON.stringify(loginPayload),
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        error: "AUTH_UPSTREAM_UNAVAILABLE",
+      },
+      {
+        status: 503,
+      },
+    );
+  }
 
   const retryAfter = response.headers.get("x-ratelimit-retry-after");
   const rawBody = await response.text();

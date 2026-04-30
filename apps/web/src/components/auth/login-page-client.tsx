@@ -154,6 +154,15 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
         }
       }
 
+      if (response.status === 503) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (payload.error === "AUTH_UPSTREAM_UNAVAILABLE") {
+          setAttemptsRemaining(null);
+          setErrorMessage(authCopy.loginServiceUnavailable);
+          return;
+        }
+      }
+
       setErrorMessage(authCopy.genericLoginFailure);
     } catch {
       setErrorMessage(authCopy.networkError);

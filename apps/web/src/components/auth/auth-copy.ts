@@ -48,6 +48,7 @@ export interface AuthCopy {
   signingIn: string;
   invalidCredentials: string;
   genericLoginFailure: string;
+  loginServiceUnavailable: string;
   networkError: string;
   forgotPasswordPrefix: string;
   forgotPasswordSuffix: string;
@@ -124,6 +125,7 @@ const EN_COPY: AuthCopy = {
   signingIn: "Signing in...",
   invalidCredentials: "Invalid user ID or password.",
   genericLoginFailure: "Unable to login right now. Please try again.",
+  loginServiceUnavailable: "Sign-in is temporarily unavailable. Please try again in a few minutes.",
   networkError: "Network error. Check your connection and try again.",
   forgotPasswordPrefix: "If you forgot your password, reset it",
   forgotPasswordSuffix: "here",
