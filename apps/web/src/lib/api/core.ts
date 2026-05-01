@@ -297,7 +297,19 @@ export interface CreatedApiAccessKey extends ApiAccessKey {
 export interface OutboundWebhookEndpoint {
   id: string;
   name: string;
-  eventType: "import_completed" | "import_failed" | "publish_succeeded" | "publish_failed" | "approval_decision";
+  eventType:
+    | "import_completed"
+    | "import_failed"
+    | "import_repair_required"
+    | "publish_succeeded"
+    | "publish_failed"
+    | "approval_decision"
+    | "connector_down"
+    | "connector_credentials_expired"
+    | "scheduled_export_failed"
+    | "readiness_blocker_detected"
+    | "mapping_validation_failed"
+    | "queue_dlq_threshold_exceeded";
   targetUrl: string;
   isActive: boolean;
   createdBy: string | null;
@@ -310,7 +322,19 @@ export interface OutboundWebhookDelivery {
   id: string;
   endpointId: string;
   endpointName: string | null;
-  eventType: "import_completed" | "import_failed" | "publish_succeeded" | "publish_failed" | "approval_decision";
+  eventType:
+    | "import_completed"
+    | "import_failed"
+    | "import_repair_required"
+    | "publish_succeeded"
+    | "publish_failed"
+    | "approval_decision"
+    | "connector_down"
+    | "connector_credentials_expired"
+    | "scheduled_export_failed"
+    | "readiness_blocker_detected"
+    | "mapping_validation_failed"
+    | "queue_dlq_threshold_exceeded";
   eventId: string;
   status: "queued" | "delivered" | "failed" | "skipped";
   attemptCount: number;
@@ -603,7 +627,14 @@ export type NotificationEventType =
   | "import_failed"
   | "publish_succeeded"
   | "publish_failed"
-  | "approval_decision";
+  | "approval_decision"
+  | "import_repair_required"
+  | "connector_down"
+  | "connector_credentials_expired"
+  | "scheduled_export_failed"
+  | "readiness_blocker_detected"
+  | "mapping_validation_failed"
+  | "queue_dlq_threshold_exceeded";
 
 export interface NotificationItem {
   id: string;

@@ -100,7 +100,7 @@ This gate must pass before broad production claims.
 | RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | completed on current branch | product page shows blocker summary and uses publish/export terms consistently |
 | RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | completed on current branch | default bulk-edit experience is structured and preview-first |
 | RG-B7 | Add first-class media governance | Catalog Operations Lead | completed on current branch | main image, order, alt text, and asset health are explicit |
-| RG-B8 | Expand operational notifications and alert coverage | Platform Operations Lead | open | critical failures raise in-app notifications with deep links |
+| RG-B8 | Expand operational notifications and alert coverage | Platform Operations Lead | completed on current branch | critical failures raise in-app notifications with deep links |
 
 ### Gate C - Enterprise SaaS positioning
 
@@ -446,6 +446,7 @@ Goal: reduce operator error and strengthen operational recovery.
 - Priority: P1
 - Owner: Platform Operations Lead
 - Release gate: RG-B8
+- Current status: completed on current branch
 - File scope:
   - `apps/api/src/notifications/*`
   - `apps/api/src/outbound-webhooks/*`
@@ -464,6 +465,8 @@ Goal: reduce operator error and strengthen operational recovery.
   - in-app notification exists for critical operator failures
   - notifications deep-link to exact job/product/connector
   - severity levels are clear
+- Current branch note:
+  - Notification event coverage now includes connector, scheduled-export, import-repair, readiness, mapping, and DLQ alerts, and the notification center renders severity-aware styling with direct recovery links.
 
 ### Ticket E3-T4 - Add duplicate and identifier governance
 

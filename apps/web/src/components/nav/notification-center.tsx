@@ -8,6 +8,40 @@ import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 30_000;
 
+function eventSeverity(eventType: NotificationItem["eventType"]): "info" | "warning" | "blocker" {
+  if (
+    eventType === "publish_failed" ||
+    eventType === "connector_down" ||
+    eventType === "connector_credentials_expired" ||
+    eventType === "scheduled_export_failed" ||
+    eventType === "queue_dlq_threshold_exceeded"
+  ) {
+    return "blocker";
+  }
+  if (
+    eventType === "import_failed" ||
+    eventType === "import_repair_required" ||
+    eventType === "readiness_blocker_detected" ||
+    eventType === "mapping_validation_failed"
+  ) {
+    return "warning";
+  }
+  return "info";
+}
+
+function severityClasses(severity: "info" | "warning" | "blocker", readAt: string | null) {
+  if (readAt) {
+    return "border-slate-200 bg-white";
+  }
+  if (severity === "blocker") {
+    return "border-red-200 bg-red-50/70";
+  }
+  if (severity === "warning") {
+    return "border-amber-200 bg-amber-50/70";
+  }
+  return "border-blue-200 bg-blue-50/60";
+}
+
 function readCookie(name: string): string {
   if (typeof document === "undefined") {
     return "";
@@ -264,33 +298,62 @@ export function NotificationCenter() {
           {!loading && !hasItems ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
               <p className="text-sm font-medium text-slate-700">You're up to date</p>
-              <p className="mt-1 text-sm text-slate-500">New import, publish, and approval updates will appear here.</p>
+              <p className="mt-1 text-sm text-slate-500">New import, publish, connector, mapping, and approval updates will appear here.</p>
             </div>
           ) : null}
           {!loading && hasItems ? (
             <ul className="space-y-3">
-              {items.map((item) => (
+              {items.map((item) => {
+                const severity = eventSeverity(item.eventType);
+                return (
                 <li key={item.id}>
                   <button
                     type="button"
                     onClick={() => void openNotification(item)}
                     className={cn(
                       "w-full rounded-xl border px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50",
-                      item.readAt ? "border-slate-200 bg-white" : "border-blue-200 bg-blue-50/60",
+                      severityClasses(severity, item.readAt),
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              severity === "blocker"
+                                ? "bg-red-100 text-red-700"
+                                : severity === "warning"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-blue-100 text-blue-700",
+                            )}
+                          >
+                            {severity}
+                          </span>
+                        </div>
                         <p className="mt-1 text-sm text-slate-600">{item.message}</p>
                         <p className="mt-2 text-xs text-slate-400">{formatTimestamp(item.createdAt)}</p>
                       </div>
                       {item.readAt ? null : <span className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-600" aria-hidden />}
                     </div>
-                    {item.actionLabel ? <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-blue-700">{item.actionLabel}</p> : null}
+                    {item.actionLabel ? (
+                      <p
+                        className={cn(
+                          "mt-3 text-xs font-semibold uppercase tracking-wide",
+                          severity === "blocker"
+                            ? "text-red-700"
+                            : severity === "warning"
+                              ? "text-amber-700"
+                              : "text-blue-700",
+                        )}
+                      >
+                        {item.actionLabel}
+                      </p>
+                    ) : null}
                   </button>
                 </li>
-              ))}
+              )})}
             </ul>
           ) : null}
         </div>

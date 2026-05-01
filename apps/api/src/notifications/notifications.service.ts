@@ -185,11 +185,11 @@ export class NotificationsService {
     await this.createNotification({
       tenantKey: job.tenantKey,
       userId: recipientId,
-      eventType: "import_failed",
-      title: "Import failed",
+      eventType: job.deadLetterRows || job.failedRows ? "import_repair_required" : "import_failed",
+      title: job.deadLetterRows || job.failedRows ? "Import repair required" : "Import failed",
       message: `${sourceName} needs attention. ${job.deadLetterRows || job.failedRows || 0} rows require repair.`,
       actionUrl: `/operations/imports?bulkJobId=${encodeURIComponent(job.id)}`,
-      actionLabel: "View import",
+      actionLabel: "Repair import",
       metadata: {
         bulkJobId: job.id,
         failedRows: job.failedRows,
@@ -288,6 +288,140 @@ export class NotificationsService {
       metadata: {
         productId: product.id,
         status,
+      },
+    });
+  }
+
+  async emitConnectorDown(
+    tenantKey: string,
+    userId: string,
+    installationId: string,
+    connectorLabel: string,
+    reason?: string | null,
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "connector_down",
+      title: "Connector health needs attention",
+      message: `${connectorLabel} is currently unhealthy.${reason ? ` ${reason.trim()}` : ""}`,
+      actionUrl: `/channels/connectors/${encodeURIComponent(installationId)}`,
+      actionLabel: "Open connector",
+      metadata: {
+        installationId,
+        connectorLabel,
+        reason: reason ?? null,
+      },
+    });
+  }
+
+  async emitConnectorCredentialsExpired(
+    tenantKey: string,
+    userId: string,
+    installationId: string,
+    connectorLabel: string,
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "connector_credentials_expired",
+      title: "Connector credentials expired",
+      message: `${connectorLabel} credentials expired. Reconnect the account before the next publish or export run.`,
+      actionUrl: `/channels/connectors/${encodeURIComponent(installationId)}`,
+      actionLabel: "Reconnect account",
+      metadata: {
+        installationId,
+        connectorLabel,
+      },
+    });
+  }
+
+  async emitScheduledExportFailed(
+    tenantKey: string,
+    userId: string,
+    exportJobId: string,
+    channel: string,
+    reason?: string | null,
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "scheduled_export_failed",
+      title: "Scheduled export failed",
+      message: `${channel} export job ${exportJobId} failed.${reason ? ` ${reason.trim()}` : ""}`,
+      actionUrl: `/operations/jobs`,
+      actionLabel: "Open jobs",
+      metadata: {
+        exportJobId,
+        channel,
+        reason: reason ?? null,
+      },
+    });
+  }
+
+  async emitReadinessBlockerDetected(
+    tenantKey: string,
+    userId: string,
+    productId: string,
+    channel: string,
+    blockers: string[],
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "readiness_blocker_detected",
+      title: "Publish readiness blocker detected",
+      message: `${blockers.length} blocker${blockers.length === 1 ? "" : "s"} need attention before ${channel} export can run.`,
+      actionUrl: `/products/${encodeURIComponent(productId)}?tab=channels`,
+      actionLabel: "Fix blockers",
+      metadata: {
+        productId,
+        channel,
+        blockers,
+      },
+    });
+  }
+
+  async emitMappingValidationFailed(
+    tenantKey: string,
+    userId: string,
+    channel: string,
+    categoryId: string,
+    blockers: string[],
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "mapping_validation_failed",
+      title: "Mapping validation failed",
+      message: `${channel} mapping still has ${blockers.length} blocker${blockers.length === 1 ? "" : "s"} to resolve.`,
+      actionUrl: `/channels/mappings?channel=${encodeURIComponent(channel)}&categoryId=${encodeURIComponent(categoryId)}`,
+      actionLabel: "Open mapping",
+      metadata: {
+        channel,
+        categoryId,
+        blockers,
+      },
+    });
+  }
+
+  async emitQueueDlqThresholdExceeded(
+    tenantKey: string,
+    userId: string,
+    queueName: string,
+    threshold: number,
+  ) {
+    await this.createNotification({
+      tenantKey,
+      userId,
+      eventType: "queue_dlq_threshold_exceeded",
+      title: "Dead-letter queue threshold exceeded",
+      message: `${queueName} exceeded the configured DLQ threshold of ${threshold}. Review operations before jobs back up further.`,
+      actionUrl: `/operations/jobs`,
+      actionLabel: "Review jobs",
+      metadata: {
+        queueName,
+        threshold,
       },
     });
   }
