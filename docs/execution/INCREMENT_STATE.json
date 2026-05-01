@@ -2417,7 +2417,6 @@
       "status": "completed",
       "deliveryStatus": "completed",
       "pendingReleaseItems": [
-        "Close RG-B5 product readiness header and terminology alignment.",
         "Close RG-B6 structured bulk-edit default flow.",
         "Close RG-B7 media governance upgrades.",
         "Close RG-B8 notification and alert coverage expansion."
@@ -2468,6 +2467,53 @@
             "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
             "node apps/web/test/integration/version-manager-component.test.cjs",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-27",
+      "name": "Product Detail Publish Clarity",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [
+        "Close RG-B6 structured bulk-edit default flow.",
+        "Close RG-B7 media governance upgrades.",
+        "Close RG-B8 notification and alert coverage expansion."
+      ],
+      "evidence": [
+        "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+        "apps/web/test/integration/product-detail-workflow-ui.test.cjs",
+        "apps/web/test/integration/product-detail-route-contract.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-PRODUCT-READINESS-001",
+          "title": "Expose product-level publish and export readiness at the top of the product detail workflow",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "7f2d278",
+          "scope": [
+            "apps/web/src/app/products/[id]/page.tsx",
+            "apps/web/src/app/products/[id]/_components/product-detail-deferred-section.tsx",
+            "apps/web/src/app/products/[id]/_components/product-detail-types.ts",
+            "apps/web/src/components/channel/product-readiness-summary-bar.tsx",
+            "apps/web/test/integration/product-detail-workflow-ui.test.cjs",
+            "apps/web/test/integration/product-detail-route-contract.test.cjs",
+            "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Product detail header uses publish/export terminology instead of generic submit wording.",
+            "Top-of-page readiness summary exposes product readiness, mapping readiness, media readiness, connector readiness, approval status, and last export attempt.",
+            "Operators can open exact fix paths for quality, channels, media, connector setup, and approval follow-up from the header blocker area.",
+            "Product detail route and workflow integration tests confirm the new header contract."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
+            "node apps/web/test/integration/product-detail-route-contract.test.cjs",
+            "npm run build --workspace @pim1/web"
           ]
         }
       ]
