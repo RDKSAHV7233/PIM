@@ -2416,10 +2416,7 @@
       "name": "Mapping Workbench Release Hardening",
       "status": "completed",
       "deliveryStatus": "completed",
-      "pendingReleaseItems": [
-        "Close RG-B7 media governance upgrades.",
-        "Close RG-B8 notification and alert coverage expansion."
-      ],
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
         "apps/api/test/integration/connector-mapping-installation-readiness.test.cjs",
@@ -2475,11 +2472,7 @@
       "name": "Product Detail Publish Clarity",
       "status": "completed",
       "deliveryStatus": "completed",
-      "pendingReleaseItems": [
-        "Close RG-B6 structured bulk-edit default flow.",
-        "Close RG-B7 media governance upgrades.",
-        "Close RG-B8 notification and alert coverage expansion."
-      ],
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
         "apps/web/test/integration/product-detail-workflow-ui.test.cjs",
@@ -2522,10 +2515,7 @@
       "name": "Bulk Edit Structured Safety",
       "status": "completed",
       "deliveryStatus": "completed",
-      "pendingReleaseItems": [
-        "Close RG-B7 media governance upgrades.",
-        "Close RG-B8 notification and alert coverage expansion."
-      ],
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
         "apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs"
@@ -2552,6 +2542,98 @@
           ],
           "tests_passed": [
             "node apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs",
+            "npm run build --workspace @pim1/web"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-29",
+      "name": "Media Governance Controls",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+        "apps/api/test/integration/media-governance-contract.test.cjs",
+        "apps/web/test/integration/media-governance-ui.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-MEDIA-GOVERNANCE-001",
+          "title": "Expose media-governance controls for alt text, main image, ordering, eligibility, and asset health",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "77a4803",
+          "scope": [
+            "apps/api/src/media/dto/create-media-asset.dto.ts",
+            "apps/api/src/media/dto/update-media-asset-governance.dto.ts",
+            "apps/api/src/media/media.controller.ts",
+            "apps/api/src/media/media.service.ts",
+            "apps/api/test/integration/media-governance-contract.test.cjs",
+            "apps/web/src/app/actions.ts",
+            "apps/web/src/app/media/page.tsx",
+            "apps/web/src/app/products/[id]/_components/media-tab.tsx",
+            "apps/web/src/lib/api/core.ts",
+            "apps/web/test/integration/media-governance-ui.test.cjs",
+            "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Media upload and asset-governance flows expose alt text, main-image selection, gallery order, and channel eligibility.",
+            "Media validation records asset-health state and warns when alt text is missing or the asset is marked ineligible for the current channel.",
+            "Product media tab points operators to governance controls instead of only generic upload and validation links.",
+            "API and UI contract tests plus API and web builds validate the governance slice."
+          ],
+          "tests_passed": [
+            "node apps/api/test/integration/media-governance-contract.test.cjs",
+            "node apps/web/test/integration/media-governance-ui.test.cjs",
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-30",
+      "name": "Operational Notification Coverage",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [],
+      "evidence": [
+        "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+        "apps/api/test/integration/notification-event-coverage.test.cjs",
+        "apps/web/test/integration/notification-center-severity-ui.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-NOTIFICATION-COVERAGE-001",
+          "title": "Expand operational notifications and severity-aware alert handling for release-critical failures",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "7673380",
+          "scope": [
+            "apps/api/src/notifications/notification-event.types.ts",
+            "apps/api/src/notifications/notifications.service.ts",
+            "apps/api/test/integration/notification-event-coverage.test.cjs",
+            "apps/web/src/components/nav/notification-center.tsx",
+            "apps/web/src/lib/api/core.ts",
+            "apps/web/test/integration/notification-center-severity-ui.test.cjs",
+            "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Notification event coverage includes connector, scheduled-export, import-repair, readiness, mapping, and DLQ operational alerts.",
+            "Notification center shows severity-aware styling and keeps deep links to the exact recovery surface.",
+            "Expanded event catalog remains aligned between API and web notification types.",
+            "Focused notification contract tests and API/web builds pass."
+          ],
+          "tests_passed": [
+            "node apps/api/test/integration/notification-event-coverage.test.cjs",
+            "node apps/web/test/integration/notification-center-severity-ui.test.cjs",
+            "npm run build --workspace @pim1/api",
             "npm run build --workspace @pim1/web"
           ]
         }
