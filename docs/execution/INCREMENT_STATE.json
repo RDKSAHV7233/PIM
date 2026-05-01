@@ -2410,6 +2410,67 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-26",
+      "name": "Mapping Workbench Release Hardening",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [
+        "Close RG-B5 product readiness header and terminology alignment.",
+        "Close RG-B6 structured bulk-edit default flow.",
+        "Close RG-B7 media governance upgrades.",
+        "Close RG-B8 notification and alert coverage expansion."
+      ],
+      "evidence": [
+        "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+        "apps/api/test/integration/connector-mapping-installation-readiness.test.cjs",
+        "apps/api/test/integration/connector-mapping-history-contract.test.cjs",
+        "apps/web/test/integration/mapping-editor-component.test.cjs",
+        "apps/web/test/integration/mapping-workflow-ui.test.cjs",
+        "apps/web/test/integration/version-manager-component.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-MAPPING-HARDENING-001",
+          "title": "Close mapping workbench release hardening gates through readiness, preview, history, and blocked-state recovery",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "8111a20",
+          "scope": [
+            "apps/api/src/marketplace/connector-mapping.service.ts",
+            "apps/api/test/integration/connector-mapping-installation-readiness.test.cjs",
+            "apps/api/test/integration/connector-mapping-history-contract.test.cjs",
+            "apps/web/src/app/channels/mappings/page.tsx",
+            "apps/web/src/components/channel/mapping-editor.tsx",
+            "apps/web/src/components/channel/version-manager.tsx",
+            "apps/web/src/lib/api/core.ts",
+            "apps/web/src/lib/channel-mappings.ts",
+            "apps/web/test/integration/mapping-editor-component.test.cjs",
+            "apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "apps/web/test/integration/version-manager-component.test.cjs",
+            "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Mapping readiness evaluates the selected connector installation context rather than only the connector slug default.",
+            "Mapping workbench shows sample PIM source values from a selected or category-sample product while authoring mappings.",
+            "Blocked readiness state exposes connector-health and payload-preview recovery links.",
+            "Version history shows active promoted version context plus lifecycle actor and timestamp metadata for save, validate, publish, archive, and rollback actions."
+          ],
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "npm run build --workspace @pim1/web",
+            "node apps/api/test/integration/connector-mapping-installation-readiness.test.cjs",
+            "node apps/api/test/integration/connector-mapping-history-contract.test.cjs",
+            "node apps/web/test/integration/mapping-editor-component.test.cjs",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
+            "node apps/web/test/integration/version-manager-component.test.cjs",
+            "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
+          ]
+        }
+      ]
     }
   ]
 }
