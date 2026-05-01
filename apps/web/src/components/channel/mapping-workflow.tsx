@@ -19,6 +19,31 @@ function contextPill(label: string, value: string, tone: "info" | "success" | "w
   );
 }
 
+function presentBlockingReason(reason: string): string {
+  if (reason === "fallback_ack_required") {
+    return "Fallback acknowledgement required";
+  }
+  if (reason === "required_attribute_mapping_missing") {
+    return "Required attribute mappings missing";
+  }
+  if (reason === "field_mappings_missing") {
+    return "Field mappings missing";
+  }
+  if (reason === "connector_not_installed") {
+    return "Connector not installed";
+  }
+  if (reason === "connector_credentials_expired") {
+    return "Connector credentials expired";
+  }
+  if (reason === "mapping_compatibility_blocked") {
+    return "Mapping compatibility blocked";
+  }
+  if (reason === "mapping_remap_required") {
+    return "Mapping remap required";
+  }
+  return reason.replace(/_/g, " ");
+}
+
 export function MappingWorkflowHeader({
   product,
   productId,
@@ -26,6 +51,9 @@ export function MappingWorkflowHeader({
   categoryPath,
   publishCategory,
   connectorSlug,
+  connectorAccountLabel,
+  connectorAccountDetail,
+  priorityBlockers,
   requiredCount,
   mappedRequiredCount,
   missingRequiredCount,
@@ -36,6 +64,9 @@ export function MappingWorkflowHeader({
   categoryPath: string;
   publishCategory: string;
   connectorSlug: string;
+  connectorAccountLabel?: string;
+  connectorAccountDetail?: string;
+  priorityBlockers: string[];
   requiredCount: number;
   mappedRequiredCount: number;
   missingRequiredCount: number;
@@ -62,6 +93,7 @@ export function MappingWorkflowHeader({
           <div className="flex flex-wrap gap-2">
             {contextPill("Channel", presentChannel(channel))}
             {contextPill("Connector", connectorSlug)}
+            {connectorAccountLabel ? contextPill("Connector account", connectorAccountLabel) : null}
             {contextPill("Category", categoryPath || "Unknown category")}
             {contextPill("Publish category", publishCategory || "Not selected")}
             {contextPill("Required fields", String(requiredCount))}
@@ -72,6 +104,26 @@ export function MappingWorkflowHeader({
               missingRequiredCount > 0 ? "warning" : "success",
             )}
           </div>
+          {connectorAccountDetail ? (
+            <p className="text-xs text-slate-500">
+              Connector account context: {connectorAccountDetail}
+            </p>
+          ) : null}
+          {priorityBlockers.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-amber-900">Top publish blockers</p>
+                <a href="#mapping-readiness" className="text-xs font-medium text-amber-900 underline underline-offset-2">
+                  Open readiness details
+                </a>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {priorityBlockers.map((blocker) => (
+                  <StatusChip key={blocker} label={presentBlockingReason(blocker)} tone="warning" />
+                ))}
+              </div>
+            </div>
+          ) : null}
           {productId ? (
             <div className="flex flex-wrap gap-2">
               <Link
@@ -111,6 +163,8 @@ export function MappingContextSummaryCard({
   channel,
   categoryPath,
   publishCategory,
+  connectorAccountLabel,
+  connectorAccountDetail,
   compatibilityLabel,
   matchedVersions,
 }: {
@@ -119,6 +173,8 @@ export function MappingContextSummaryCard({
   channel: string;
   categoryPath: string;
   publishCategory: string;
+  connectorAccountLabel?: string;
+  connectorAccountDetail?: string;
   compatibilityLabel: string;
   matchedVersions: number;
 }) {
@@ -145,6 +201,13 @@ export function MappingContextSummaryCard({
           <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publish category</dt>
           <dd className="mt-1">{publishCategory || "Not selected"}</dd>
         </div>
+        {connectorAccountLabel ? (
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Connector account</dt>
+            <dd className="mt-1 font-medium text-slate-900">{connectorAccountLabel}</dd>
+            {connectorAccountDetail ? <dd className="text-xs text-slate-500">{connectorAccountDetail}</dd> : null}
+          </div>
+        ) : null}
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Compatibility</dt>
           <dd className="mt-1">

@@ -3,7 +3,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import type { MarketplaceChannel } from "@/lib/api";
+import type { ConnectorInstallation, MarketplaceChannel } from "@/lib/api";
 import type { ConnectorTaxonomyOption } from "@/lib/channel-mappings";
 
 export function MappingsFilterCard({
@@ -11,6 +11,8 @@ export function MappingsFilterCard({
   channels,
   selectedCategoryId,
   selectedChannel,
+  installations,
+  selectedInstallationId,
   taxonomyQ,
   selectedProductId,
   preserveFlags,
@@ -19,13 +21,15 @@ export function MappingsFilterCard({
   channels: Array<{ channel: MarketplaceChannel; displayName: string }>;
   selectedCategoryId: string;
   selectedChannel: MarketplaceChannel;
+  installations: ConnectorInstallation[];
+  selectedInstallationId?: string;
   taxonomyQ: string;
   selectedProductId?: string;
   preserveFlags?: Partial<Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory", boolean>>;
 }) {
   return (
     <FilterBar>
-      <form method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+      <form method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_220px_minmax(0,1fr)_auto]">
         {selectedProductId ? <input type="hidden" name="productId" value={selectedProductId} /> : null}
         {Object.entries(preserveFlags ?? {}).map(([key, enabled]) =>
           enabled ? <input key={key} type="hidden" name={key} value="1" /> : null,
@@ -54,6 +58,21 @@ export function MappingsFilterCard({
             ))}
           </Select>
         </div>
+        {installations.length > 0 ? (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-installation">
+              Connector account
+            </label>
+            <Select id="mapping-installation" name="installationId" defaultValue={selectedInstallationId || ""}>
+              {installations.length > 1 ? <option value="">Choose connector account</option> : null}
+              {installations.map((installation) => (
+                <option key={installation.id} value={installation.id}>
+                  {`${installation.accountAlias}${installation.externalAccountRef ? ` - ${installation.externalAccountRef}` : ""}`}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-taxonomy-q">
             Taxonomy search
