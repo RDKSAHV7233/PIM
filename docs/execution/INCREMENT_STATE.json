@@ -2417,7 +2417,6 @@
       "status": "completed",
       "deliveryStatus": "completed",
       "pendingReleaseItems": [
-        "Close RG-B6 structured bulk-edit default flow.",
         "Close RG-B7 media governance upgrades.",
         "Close RG-B8 notification and alert coverage expansion."
       ],
@@ -2513,6 +2512,46 @@
           "tests_passed": [
             "node apps/web/test/integration/product-detail-workflow-ui.test.cjs",
             "node apps/web/test/integration/product-detail-route-contract.test.cjs",
+            "npm run build --workspace @pim1/web"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-28",
+      "name": "Bulk Edit Structured Safety",
+      "status": "completed",
+      "deliveryStatus": "completed",
+      "pendingReleaseItems": [
+        "Close RG-B7 media governance upgrades.",
+        "Close RG-B8 notification and alert coverage expansion."
+      ],
+      "evidence": [
+        "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+        "apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-BULK-EDIT-SAFETY-001",
+          "title": "Default bulk edit to a structured builder while retaining advanced JSON as a secondary path",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "74961fc",
+          "scope": [
+            "apps/web/src/app/operations/bulk-edit/page.tsx",
+            "apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs",
+            "docs/execution/VEXA_PIM_ENGINEERING_DELIVERY_PLAN_2026-05-01.md",
+            "docs/execution/INCREMENT_STATE.json"
+          ],
+          "acceptance": [
+            "Default bulk-edit flow uses a structured field picker, operation selector, and generated payload preview.",
+            "Advanced JSON mode remains available but secondary behind a disclosure block.",
+            "Preview continues to show affected count and before/after values through the existing diff component.",
+            "Structured and advanced input paths both validate before preview and apply."
+          ],
+          "tests_passed": [
+            "node apps/web/test/integration/operations-bulk-edit-route-contract.test.cjs",
             "npm run build --workspace @pim1/web"
           ]
         }
