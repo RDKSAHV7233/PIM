@@ -99,7 +99,7 @@ This gate must pass before broad production claims.
 | RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | completed on current branch | blocked state includes health context and payload preview path |
 | RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | completed on current branch | product page shows blocker summary and uses publish/export terms consistently |
 | RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | completed on current branch | default bulk-edit experience is structured and preview-first |
-| RG-B7 | Add first-class media governance | Catalog Operations Lead | open | main image, order, alt text, and asset health are explicit |
+| RG-B7 | Add first-class media governance | Catalog Operations Lead | completed on current branch | main image, order, alt text, and asset health are explicit |
 | RG-B8 | Expand operational notifications and alert coverage | Platform Operations Lead | open | critical failures raise in-app notifications with deep links |
 
 ### Gate C - Enterprise SaaS positioning
@@ -419,6 +419,7 @@ Goal: reduce operator error and strengthen operational recovery.
 - Priority: P1
 - Owner: Catalog Operations Lead
 - Release gate: RG-B7
+- Current status: completed on current branch
 - File scope:
   - `packages/db/prisma/schema.prisma`
   - `apps/api/src/media/*`
@@ -437,6 +438,8 @@ Goal: reduce operator error and strengthen operational recovery.
   - gallery order is explicit
   - missing alt text can be surfaced as warning
   - broken or ineligible assets are visible before publish
+- Current branch note:
+  - Media assets now expose governance controls for alt text, main image, order, channel eligibility, and persisted asset-health feedback, with validation warnings surfacing missing alt text and ineligible-channel usage.
 
 ### Ticket E3-T3 - Expand notifications and operational alerts
 

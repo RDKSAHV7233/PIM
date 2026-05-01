@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { bulkAssociateMediaCsvAction, uploadMediaAssetAction } from "@/app/actions";
+import { bulkAssociateMediaCsvAction, updateMediaGovernanceAction, uploadMediaAssetAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,17 @@ function normalizeChannel(value: MarketplaceChannel | undefined): MarketplaceCha
 
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "Not checked";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Not checked";
+  }
+  return parsed.toLocaleString();
 }
 
 interface MediaPageProps {
@@ -215,6 +226,34 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
               </label>
               <Input id="media-upload-height" name="height" type="number" min={1} placeholder="Optional if PNG" />
             </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-alt-text">
+                Alt Text
+              </label>
+              <Input id="media-upload-alt-text" name="altText" placeholder="Describe the image for accessibility" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-sort-order">
+                Gallery Order
+              </label>
+              <Input id="media-upload-sort-order" name="sortOrder" type="number" min={0} defaultValue={0} />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Governance</label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" name="isMain" value="true" />
+                Mark as main image
+              </label>
+              <p className="mt-2 text-xs text-slate-500">Eligible channels</p>
+              <div className="flex flex-wrap gap-3 text-sm text-slate-700">
+                {READINESS_CHANNELS.map((availableChannel) => (
+                  <label key={`upload-${availableChannel}`} className="flex items-center gap-2">
+                    <input type="checkbox" name="channelEligibility" value={availableChannel} />
+                    {formatMarketplaceChannelLabel(availableChannel)}
+                  </label>
+                ))}
+              </div>
+            </div>
             <Button type="submit" className="w-fit">
               Upload media
             </Button>
@@ -267,9 +306,9 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
                 <th className="py-2">Asset</th>
                 <th className="py-2">Product</th>
                 <th className="py-2">Variant</th>
-                <th className="py-2">Type</th>
-                <th className="py-2">Dimensions</th>
-                <th className="py-2">Size (KB)</th>
+                <th className="py-2">Governance</th>
+                <th className="py-2">Eligibility</th>
+                <th className="py-2">Health</th>
                 <th className="py-2">Validation</th>
               </tr>
             </thead>
@@ -279,9 +318,52 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
                   <td className="py-2 font-mono text-xs">{asset.id}</td>
                   <td className="py-2">{asset.productId ?? "-"}</td>
                   <td className="py-2">{asset.variantId ?? "-"}</td>
-                  <td className="py-2">{asset.mimeType}</td>
-                  <td className="py-2">{asset.width && asset.height ? `${asset.width}x${asset.height}` : "-"}</td>
-                  <td className="py-2">{Math.round(asset.sizeBytes / 1024)}</td>
+                  <td className="py-2">
+                    <form action={updateMediaGovernanceAction} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <RoleHiddenInput role={actorRole} />
+                      <input type="hidden" name="assetId" value={asset.id} />
+                      <input type="hidden" name="productId" value={productId} />
+                      <input type="hidden" name="variantId" value={variantId} />
+                      <input type="hidden" name="assetFilterId" value={assetId} />
+                      <input type="hidden" name="channel" value={channel} />
+                      <p className="text-xs text-slate-500">
+                        {asset.mimeType} {asset.width && asset.height ? `• ${asset.width}x${asset.height}` : ""} •{" "}
+                        {Math.round(asset.sizeBytes / 1024)} KB
+                      </p>
+                      <Input name="altText" defaultValue={asset.altText ?? ""} placeholder="Alt text" />
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <Input name="sortOrder" type="number" min={0} defaultValue={asset.sortOrder} placeholder="Order" />
+                        <label className="flex items-center gap-2 text-sm text-slate-700">
+                          <input type="checkbox" name="isMain" value="true" defaultChecked={asset.isMain} />
+                          Main image
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-slate-700">
+                        {READINESS_CHANNELS.map((availableChannel) => (
+                          <label key={`${asset.id}-${availableChannel}`} className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              name="channelEligibility"
+                              value={availableChannel}
+                              defaultChecked={asset.channelEligibility.includes(availableChannel)}
+                            />
+                            {formatMarketplaceChannelLabel(availableChannel)}
+                          </label>
+                        ))}
+                      </div>
+                      <Button type="submit" variant="secondary" className="w-fit">
+                        Save governance
+                      </Button>
+                    </form>
+                  </td>
+                  <td className="py-2">
+                    <p>{asset.channelEligibility.length > 0 ? asset.channelEligibility.join(", ") : "All channels not set"}</p>
+                    <p className="text-xs text-slate-500">Usage count: {asset.usageCount}</p>
+                  </td>
+                  <td className="py-2">
+                    <p className="font-medium text-slate-900">{asset.assetHealthStatus}</p>
+                    <p className="text-xs text-slate-500">Last checked: {formatDateTime(asset.lastCheckedAt)}</p>
+                  </td>
                   <td className="py-2">
                     <Link
                       className="inline-flex items-center rounded-md border border-border px-3 py-2"
@@ -317,6 +399,12 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
             <div className="mt-3 space-y-2 text-sm">
               <p>
                 Result: <strong>{validation.valid ? "valid" : "invalid"}</strong>
+              </p>
+              <p>
+                Asset health: <strong>{validation.assetHealthStatus}</strong>
+              </p>
+              <p>
+                Last checked: <strong>{formatDateTime(validation.lastCheckedAt)}</strong>
               </p>
               <p>
                 Rules: min {validation.checks.minWidth}x{validation.checks.minHeight}, aspect{" "}

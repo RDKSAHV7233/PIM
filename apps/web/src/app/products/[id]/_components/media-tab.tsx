@@ -6,7 +6,10 @@ export function MediaTab({ data }: { data: ProductDetailPageData }) {
   return (
     <Card hidden={data.activeTab !== "media"}>
       <CardTitle>Media</CardTitle>
-      <p className="text-sm text-slate-600">Use the Media library for uploads, validation checks, and asset linkage.</p>
+      <p className="text-sm text-slate-600">
+        {data.imageAssetCount} image asset{data.imageAssetCount === 1 ? "" : "s"} linked across {data.mediaAssetCount} total asset{data.mediaAssetCount === 1 ? "" : "s"}.
+        Use the Media library for uploads, validation checks, alt text, main image selection, gallery ordering, and channel eligibility.
+      </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           href={`/catalog/media?productId=${encodeURIComponent(data.productId)}`}

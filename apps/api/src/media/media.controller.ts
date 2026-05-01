@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
@@ -11,6 +11,7 @@ import { DEFAULT_MARKETPLACE_CHANNEL } from "../marketplace/marketplace-channels
 import { BulkMediaAssociationDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { MediaService } from "./media.service";
+import { UpdateMediaAssetGovernanceDto } from "./dto/update-media-asset-governance.dto";
 
 type AuthenticatedRequest = {
   pimUserId?: string;
@@ -77,6 +78,15 @@ export class MediaController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.mediaService.validateAsset(id, channel, this.resolveActor(request));
+  }
+
+  @Patch("assets/:id/governance")
+  updateGovernance(
+    @Param("id") id: string,
+    @Body() dto: UpdateMediaAssetGovernanceDto,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.mediaService.updateGovernance(id, dto, this.resolveActor(request));
   }
 
   @Post("bulk-associations")

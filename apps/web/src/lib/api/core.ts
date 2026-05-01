@@ -947,6 +947,13 @@ export interface MediaAsset {
   sizeBytes: number;
   checksum: string;
   metadata: Record<string, unknown>;
+  altText: string | null;
+  isMain: boolean;
+  sortOrder: number;
+  assetHealthStatus: "unknown" | "healthy" | "warning" | "attention" | string;
+  lastCheckedAt: string | null;
+  channelEligibility: string[];
+  usageCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -956,6 +963,8 @@ export interface MediaValidation {
   valid: boolean;
   issues: string[];
   warnings: string[];
+  assetHealthStatus: string;
+  lastCheckedAt: string | null;
   checks: {
     minWidth: number;
     minHeight: number;

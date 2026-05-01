@@ -19,6 +19,7 @@ import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
+import { UpdateMediaAssetGovernanceDto } from "./dto/update-media-asset-governance.dto";
 
 type Channel = MarketplaceChannel;
 
@@ -48,6 +49,21 @@ type ChannelRule = {
   minHeight: number;
   aspectMin: number;
   aspectMax: number;
+};
+
+type MediaMetadata = Prisma.JsonObject & {
+  governance?: Prisma.JsonObject & {
+    altText?: string | null;
+    isMain?: boolean;
+    sortOrder?: number;
+    assetHealthStatus?: string;
+    lastCheckedAt?: string | null;
+    channelEligibility?: string[];
+  };
+  validation?: Prisma.JsonObject & {
+    lastChannel?: string;
+    channels?: Prisma.JsonObject;
+  };
 };
 
 const CHANNEL_RULES: Record<Channel, ChannelRule> = {
@@ -136,6 +152,20 @@ function parsePngDimensions(buffer: Buffer): { width: number; height: number } |
   return null;
 }
 
+function asJsonObject(value: unknown): Prisma.JsonObject {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Prisma.JsonObject;
+  }
+  return {};
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => String(entry ?? "").trim()).filter((entry) => entry.length > 0);
+}
+
 @Injectable()
 export class MediaService {
   constructor(
@@ -153,6 +183,10 @@ export class MediaService {
       contentBuffer: Buffer.from(dto.contentBase64, "base64"),
       width: dto.width,
       height: dto.height,
+      altText: dto.altText?.trim() || null,
+      isMain: dto.isMain === true,
+      sortOrder: dto.sortOrder,
+      channelEligibility: Array.isArray(dto.channelEligibility) ? dto.channelEligibility : [],
       source: "direct_upload",
       sourceRef: null,
     });
@@ -329,7 +363,7 @@ export class MediaService {
       const createdAt = last?.createdAt ?? null;
 
       return {
-        items,
+        items: items.map((item) => this.presentAsset(item)),
         limit,
         nextCursor: hasNext && last?.id && createdAt && !Number.isNaN(createdAt.getTime())
           ? encodeCursorToken({
@@ -341,22 +375,25 @@ export class MediaService {
     }
 
     if (variantId) {
-      return this.prisma.tenant().mediaAsset.findMany({
+      const assets = await this.prisma.tenant().mediaAsset.findMany({
         where: mergeWhere({ variantId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
+      return assets.map((asset) => this.presentAsset(asset));
     }
     if (productId) {
-      return this.prisma.tenant().mediaAsset.findMany({
+      const assets = await this.prisma.tenant().mediaAsset.findMany({
         where: mergeWhere({ productId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
+      return assets.map((asset) => this.presentAsset(asset));
     }
-    return this.prisma.tenant().mediaAsset.findMany({
+    const assets = await this.prisma.tenant().mediaAsset.findMany({
       where: scopeWhere,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 200,
     });
+    return assets.map((asset) => this.presentAsset(asset));
   }
 
   async getAsset(assetId: string, actor?: PolicyActor) {
@@ -364,17 +401,20 @@ export class MediaService {
     if (!asset) {
       throw new NotFoundException("Media asset not found");
     }
-    await this.assertAssetAccess(actor ?? {}, asset.id, asset.productId, asset.variantId);
-    return asset;
+    await this.assertAssetAccess(actor ?? {}, "view", asset.id, asset.productId, asset.variantId);
+    return this.presentAsset(asset);
   }
 
   async validateAsset(assetId: string, channelInput: string, actor?: PolicyActor) {
     const channel = this.parseChannel(channelInput);
     const asset = (await this.getAsset(assetId, actor)) as {
+      id: string;
       width: number | null;
       height: number | null;
       mimeType: string;
       sizeBytes: number;
+      altText: string | null;
+      channelEligibility: string[];
     };
     const rule = CHANNEL_RULES[channel];
     const issues: string[] = [];
@@ -397,12 +437,23 @@ export class MediaService {
     if (asset.mimeType === "image/jpeg" && asset.sizeBytes < 150 * 1024) {
       warnings.push("Image looks heavily compressed (possible WhatsApp share). Consider re-uploading original quality.");
     }
+    if (!asset.altText) {
+      warnings.push("Alt text missing. Add descriptive alt text before publish.");
+    }
+    if (asset.channelEligibility.length > 0 && !asset.channelEligibility.includes(channel)) {
+      issues.push(`Asset is not marked eligible for ${channel}. Update channel eligibility before publish.`);
+    }
+
+    const valid = issues.length === 0;
+    await this.recordValidationState(asset.id, channel, valid, issues, warnings);
 
     return {
       channel,
-      valid: issues.length === 0,
+      valid,
       issues,
       warnings,
+      assetHealthStatus: valid ? (warnings.length > 0 ? "warning" : "healthy") : "attention",
+      lastCheckedAt: new Date().toISOString(),
       checks: {
         minWidth: rule.minWidth,
         minHeight: rule.minHeight,
@@ -413,6 +464,31 @@ export class MediaService {
     };
   }
 
+  async updateGovernance(assetId: string, dto: UpdateMediaAssetGovernanceDto, actor?: PolicyActor) {
+    const asset = await this.prisma.tenant().mediaAsset.findUnique({ where: { id: assetId } });
+    if (!asset) {
+      throw new NotFoundException("Media asset not found");
+    }
+    await this.assertAssetAccess(actor ?? {}, "edit", asset.id, asset.productId, asset.variantId);
+
+    if (dto.isMain === true) {
+      await this.clearSiblingMainFlags(asset.id, asset.productId, asset.variantId);
+    }
+
+    const updated = await this.prisma.tenant().mediaAsset.update({
+      where: { id: assetId },
+      data: {
+        metadata: this.mergeGovernanceMetadata(asset.metadata, {
+          altText: dto.altText === undefined ? undefined : dto.altText.trim() || null,
+          isMain: dto.isMain,
+          sortOrder: dto.sortOrder,
+          channelEligibility: dto.channelEligibility,
+        }),
+      },
+    });
+    return this.presentAsset(updated);
+  }
+
   private async createAssetFromBuffer(input: {
     actor?: PolicyActor;
     entity: EntityLink;
@@ -421,6 +497,10 @@ export class MediaService {
     contentBuffer: Buffer;
     width?: number;
     height?: number;
+    altText?: string | null;
+    isMain?: boolean;
+    sortOrder?: number;
+    channelEligibility?: string[];
     source: "direct_upload" | "bulk_association";
     sourceRef: string | null;
   }) {
@@ -462,6 +542,10 @@ export class MediaService {
     const storagePath = path.join(storageDir, `${assetId}${extension}`);
     await fs.writeFile(storagePath, fileBuffer);
 
+    if (input.isMain === true) {
+      await this.clearSiblingMainFlags(assetId, input.entity.productId, input.entity.variantId);
+    }
+
     await this.prisma.tenant().mediaAsset.create({
       data: {
         id: assetId,
@@ -480,6 +564,14 @@ export class MediaService {
           extractedFrom: detectedDimensions ? "png_header" : input.width && input.height ? "provided" : "none",
           source: input.source,
           sourceRef: input.sourceRef,
+          governance: {
+            altText: input.altText ?? null,
+            isMain: input.isMain === true,
+            sortOrder: input.sortOrder ?? 0,
+            assetHealthStatus: "unknown",
+            lastCheckedAt: null,
+            channelEligibility: (input.channelEligibility ?? []).map((item) => item.trim()).filter((item) => item.length > 0),
+          },
         } as Prisma.JsonObject,
       },
     });
@@ -537,7 +629,13 @@ export class MediaService {
     };
   }
 
-  private async assertAssetAccess(actor: PolicyActor, assetId: string, productId: string | null, variantId: string | null) {
+  private async assertAssetAccess(
+    actor: PolicyActor,
+    access: "view" | "edit",
+    assetId: string,
+    productId: string | null,
+    variantId: string | null,
+  ) {
     if (productId) {
       const product = await this.prisma.tenant().product.findUnique({
         where: { id: productId },
@@ -546,7 +644,7 @@ export class MediaService {
       if (!product) {
         throw new NotFoundException("Product not found");
       }
-      await this.accessPolicy.assertProductAccess(actor, "view", product, "MediaAsset");
+      await this.accessPolicy.assertProductAccess(actor, access, product, "MediaAsset");
       return;
     }
     if (variantId) {
@@ -564,10 +662,131 @@ export class MediaService {
       if (!product) {
         throw new NotFoundException("Product not found");
       }
-      await this.accessPolicy.assertProductAccess(actor, "view", product, "MediaAsset");
+      await this.accessPolicy.assertProductAccess(actor, access, product, "MediaAsset");
       return;
     }
-    await this.accessPolicy.assertProductAccess(actor, "view", { id: assetId, categoryId: null, brand: null }, "MediaAsset");
+    await this.accessPolicy.assertProductAccess(actor, access, { id: assetId, categoryId: null, brand: null }, "MediaAsset");
+  }
+
+  private presentAsset<T extends { metadata: Prisma.JsonValue; productId: string | null; variantId: string | null }>(
+    asset: T,
+  ) {
+    const metadata = asJsonObject(asset.metadata) as MediaMetadata;
+    const governance = asJsonObject(metadata.governance);
+    return {
+      ...asset,
+      altText: typeof governance.altText === "string" ? governance.altText : null,
+      isMain: governance.isMain === true,
+      sortOrder: typeof governance.sortOrder === "number" ? governance.sortOrder : 0,
+      assetHealthStatus: typeof governance.assetHealthStatus === "string" ? governance.assetHealthStatus : "unknown",
+      lastCheckedAt: typeof governance.lastCheckedAt === "string" ? governance.lastCheckedAt : null,
+      channelEligibility: asStringArray(governance.channelEligibility),
+      usageCount: asset.productId || asset.variantId ? 1 : 0,
+    };
+  }
+
+  private mergeGovernanceMetadata(
+    currentMetadataValue: Prisma.JsonValue,
+    update: {
+      altText?: string | null;
+      isMain?: boolean;
+      sortOrder?: number;
+      channelEligibility?: string[];
+      assetHealthStatus?: string;
+      lastCheckedAt?: string | null;
+    },
+  ): Prisma.JsonObject {
+    const currentMetadata = asJsonObject(currentMetadataValue) as MediaMetadata;
+    const governance = asJsonObject(currentMetadata.governance);
+    const nextGovernance: Prisma.JsonObject = { ...governance };
+    if (update.altText !== undefined) {
+      nextGovernance.altText = update.altText;
+    }
+    if (update.isMain !== undefined) {
+      nextGovernance.isMain = update.isMain;
+    }
+    if (update.sortOrder !== undefined) {
+      nextGovernance.sortOrder = update.sortOrder;
+    }
+    if (update.channelEligibility !== undefined) {
+      nextGovernance.channelEligibility = update.channelEligibility
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+    if (update.assetHealthStatus !== undefined) {
+      nextGovernance.assetHealthStatus = update.assetHealthStatus;
+    }
+    if (update.lastCheckedAt !== undefined) {
+      nextGovernance.lastCheckedAt = update.lastCheckedAt;
+    }
+    return {
+      ...currentMetadata,
+      governance: nextGovernance,
+    };
+  }
+
+  private async recordValidationState(assetId: string, channel: Channel, valid: boolean, issues: string[], warnings: string[]) {
+    const asset = await this.prisma.tenant().mediaAsset.findUnique({
+      where: { id: assetId },
+      select: { metadata: true },
+    });
+    if (!asset) {
+      return;
+    }
+    const checkedAt = new Date().toISOString();
+    const currentMetadata = asJsonObject(asset.metadata) as MediaMetadata;
+    const validation = asJsonObject(currentMetadata.validation);
+    const channels = asJsonObject(validation.channels);
+    channels[channel] = {
+      valid,
+      issues,
+      warnings,
+      lastCheckedAt: checkedAt,
+    };
+    await this.prisma.tenant().mediaAsset.update({
+      where: { id: assetId },
+      data: {
+        metadata: this.mergeGovernanceMetadata(
+          {
+            ...currentMetadata,
+            validation: {
+              ...validation,
+              lastChannel: channel,
+              channels,
+            },
+          } as Prisma.JsonObject,
+          {
+            assetHealthStatus: valid ? (warnings.length > 0 ? "warning" : "healthy") : "attention",
+            lastCheckedAt: checkedAt,
+          },
+        ),
+      },
+    });
+  }
+
+  private async clearSiblingMainFlags(assetId: string, productId: string | null, variantId: string | null) {
+    const where = variantId ? { variantId } : productId ? { productId, variantId: null } : null;
+    if (!where) {
+      return;
+    }
+    const siblings = await this.prisma.tenant().mediaAsset.findMany({
+      where: {
+        ...where,
+        id: { not: assetId },
+      },
+      select: {
+        id: true,
+        metadata: true,
+      },
+    });
+    for (const sibling of siblings) {
+      await this.prisma.tenant().mediaAsset.update({
+        where: { id: sibling.id },
+        data: {
+          metadata: this.mergeGovernanceMetadata(sibling.metadata, { isMain: false }),
+        },
+      });
+    }
   }
 
   private async resolveBulkRows(dto: BulkMediaAssociationDto): Promise<BulkMediaAssociationRowDto[]> {

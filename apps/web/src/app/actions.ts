@@ -277,6 +277,24 @@ function appendQueryParams(basePath: string, params: Record<string, string | und
   const nextQuery = search.toString();
   return nextQuery ? `${path}?${nextQuery}` : path;
 }
+
+function replaceQueryParams(
+  basePath: string,
+  params: Record<string, string | null | undefined>,
+): string {
+  const [path, query = ""] = basePath.split("?");
+  const search = new URLSearchParams(query);
+  for (const [key, value] of Object.entries(params)) {
+    const normalized = typeof value === "string" ? value.trim() : value;
+    if (normalized) {
+      search.set(key, normalized);
+      continue;
+    }
+    search.delete(key);
+  }
+  const nextQuery = search.toString();
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
 function resolveConnectorPermissionGrantStatus(error: unknown): string | null {
   if (!(error instanceof ApiHttpError) || error.status !== 400 || !error.body || typeof error.body !== "object") {
     return null;
@@ -1212,13 +1230,37 @@ export async function validateConnectorMappingVersionAction(formData: FormData) 
   redirect(redirectTo);
 }
 
+export async function setMappingFallbackAcknowledgementAction(formData: FormData) {
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const versionId = String(formData.get("versionId") ?? "").trim();
+  const acknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
+  redirect(
+    replaceQueryParams(redirectTo, {
+      fallbackAcknowledged: acknowledged ? "true" : null,
+      fallbackAckVersionId: acknowledged ? versionId : null,
+      fallbackAckError: null,
+    }),
+  );
+}
+
 export async function publishConnectorMappingVersionAction(formData: FormData) {
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const versionId = String(formData.get("versionId") ?? "").trim();
   const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
   const confirm = String(formData.get("confirm") ?? "").trim() === "true";
+  const fallbackAckRequired = String(formData.get("fallbackAckRequired") ?? "").trim() === "true";
+  const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
   if (!connectorSlug || !versionId || !confirm) {
     throw new Error("Connector slug, version id, and explicit confirmation are required.");
+  }
+  if (fallbackAckRequired && !fallbackAcknowledged) {
+    redirect(
+      replaceQueryParams(redirectTo, {
+        fallbackAckError: "required",
+        fallbackAckVersionId: versionId,
+        fallbackAcknowledged: null,
+      }),
+    );
   }
   try {
     const stepUpToken = await issueMappingStepUpToken(formData);
@@ -1545,6 +1587,13 @@ export async function applyBulkEditAction(formData: FormData) {
 export async function uploadMediaAssetAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   const variantId = String(formData.get("variantId") ?? "").trim();
+  const altText = String(formData.get("altText") ?? "").trim();
+  const isMain = String(formData.get("isMain") ?? "false") === "true";
+  const sortOrder = parseNumber(formData.get("sortOrder"));
+  const channelEligibility = formData
+    .getAll("channelEligibility")
+    .map((value) => String(value ?? "").trim())
+    .filter((value) => value.length > 0);
   const fileEntry = formData.get("sourceFile");
   const width = parseNumber(formData.get("width"));
   const height = parseNumber(formData.get("height"));
@@ -1565,6 +1614,10 @@ export async function uploadMediaAssetAction(formData: FormData) {
       contentBase64,
       width,
       height,
+      altText: altText || undefined,
+      isMain,
+      sortOrder,
+      channelEligibility,
     });
   } catch (error: unknown) {
     const redirectPath = withPlanLimitQuery(
@@ -1579,6 +1632,41 @@ export async function uploadMediaAssetAction(formData: FormData) {
 
   revalidatePath("/media");
   redirect(`/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}`);
+}
+
+export async function updateMediaGovernanceAction(formData: FormData) {
+  const assetId = String(formData.get("assetId") ?? "").trim();
+  const productId = String(formData.get("productId") ?? "").trim();
+  const variantId = String(formData.get("variantId") ?? "").trim();
+  const assetFilterId = String(formData.get("assetFilterId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
+  const altText = String(formData.get("altText") ?? "").trim();
+  const isMain = String(formData.get("isMain") ?? "false") === "true";
+  const sortOrder = parseNumber(formData.get("sortOrder"));
+  const channelEligibility = formData
+    .getAll("channelEligibility")
+    .map((value) => String(value ?? "").trim())
+    .filter((value) => value.length > 0);
+  if (!assetId) {
+    throw new Error("Media asset id is required.");
+  }
+
+  await patchJsonForAction(formData, `/media/assets/${encodeURIComponent(assetId)}/governance`, {
+    altText: altText || null,
+    isMain,
+    sortOrder,
+    channelEligibility,
+  });
+
+  revalidatePath("/media");
+  redirect(
+    appendQueryParams("/media", {
+      productId,
+      variantId,
+      assetId: assetFilterId,
+      channel,
+    }),
+  );
 }
 
 export async function bulkAssociateMediaCsvAction(formData: FormData) {
