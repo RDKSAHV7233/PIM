@@ -1,14 +1,15 @@
 import {
-  evaluateConnectorPublishReadiness,
   getCategoryAttributes,
   getMarketplaceChannelMapping,
   getMarketplaceSimulation,
   getMarketplaceTemplates,
   type AppRole,
+  type ConnectorPublishReadiness,
   type ConnectorInstallation,
   type MarketplaceChannel,
   type MarketplaceChannelConfig,
   type MarketplaceExportJob,
+  type MediaAsset,
   type Product,
   type Variant,
 } from "@/lib/api";
@@ -33,6 +34,8 @@ interface ProductDetailDeferredSectionProps {
   channels: MarketplaceChannelConfig[];
   installedConnectors: ConnectorInstallation[];
   exportJobs: MarketplaceExportJob[];
+  mediaAssets: MediaAsset[];
+  readiness: ConnectorPublishReadiness;
   selectedChannel: MarketplaceChannel;
   selectedTemplateId: string | undefined;
   actorRole: AppRole;
@@ -50,6 +53,8 @@ export async function ProductDetailDeferredSection({
   channels,
   installedConnectors,
   exportJobs,
+  mediaAssets,
+  readiness,
   selectedChannel,
   selectedTemplateId,
   actorRole,
@@ -59,7 +64,7 @@ export async function ProductDetailDeferredSection({
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
-  const [templates, mapping, simulation, categoryAttributes, readiness] = await Promise.all([
+  const [templates, mapping, simulation, categoryAttributes] = await Promise.all([
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }),
     getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
       role: actorRole,
@@ -67,11 +72,6 @@ export async function ProductDetailDeferredSection({
     }),
     getMarketplaceSimulation(productId, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }),
     getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }),
-    evaluateConnectorPublishReadiness(
-      mapMarketplaceChannelToConnectorSlug(selectedChannel),
-      { categoryScope: product.categoryId, productId, fallbackAcknowledged: false },
-      { role: actorRole, authHeader },
-    ),
   ]);
 
   const publishCapableConnectorSlugs = new Set(
@@ -105,6 +105,8 @@ export async function ProductDetailDeferredSection({
     simulation,
     categoryAttributes,
     readiness,
+    mediaAssetCount: mediaAssets.length,
+    imageAssetCount: mediaAssets.filter((asset) => asset.mimeType.startsWith("image/")).length,
     actorRole,
     canWrite,
     activeTab,

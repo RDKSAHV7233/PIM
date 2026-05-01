@@ -35,6 +35,8 @@ export type ProductDetailPageData = {
   simulation: MarketplaceSimulation;
   categoryAttributes: AttributeDefinition[];
   readiness: ConnectorPublishReadiness;
+  mediaAssetCount: number;
+  imageAssetCount: number;
   actorRole: AppRole;
   canWrite: boolean;
   activeTab: DetailTab;

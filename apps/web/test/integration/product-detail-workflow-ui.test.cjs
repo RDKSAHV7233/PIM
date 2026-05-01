@@ -8,6 +8,7 @@ const PRODUCT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "products
 const OVERVIEW_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "overview-tab.tsx");
 const CHANNELS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "channels-tab.tsx");
 const SIDE_RAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "_components", "product-detail-side-rail.tsx");
+const READINESS_BAR = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "product-readiness-summary-bar.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -20,6 +21,7 @@ function run() {
   const overviewSource = fs.readFileSync(OVERVIEW_TAB, "utf8");
   const channelsSource = fs.readFileSync(CHANNELS_TAB, "utf8");
   const sideRailSource = fs.readFileSync(SIDE_RAIL, "utf8");
+  const readinessBarSource = fs.readFileSync(READINESS_BAR, "utf8");
 
   assert(
     overviewSource.includes("<CardTitle>Product overview</CardTitle>"),
@@ -35,6 +37,25 @@ function run() {
       channelsSource.includes("Queue channel export") &&
       !channelsSource.includes("Publish to a channel"),
     "Product detail must use truthful queued-export language before diagnostics.",
+  );
+  assert(
+    pageSource.includes(">Open publish & export</Link>") &&
+      !pageSource.includes(">Submit</Link>"),
+    "Product detail header must use publish/export terminology instead of generic submit wording.",
+  );
+  assert(
+    pageSource.includes('title: "Product readiness"') &&
+      pageSource.includes('title: "Mapping readiness"') &&
+      pageSource.includes('title: "Media readiness"') &&
+      pageSource.includes('title: "Connector readiness"') &&
+      pageSource.includes('title: "Approval status"') &&
+      pageSource.includes('title: "Last export attempt"'),
+    "Product detail readiness header must expose product, mapping, media, connector, approval, and last export attempt status cards.",
+  );
+  assert(
+    readinessBarSource.includes("Top blockers for") &&
+      readinessBarSource.includes("Open the exact fix path before you queue an export or review publish readiness."),
+    "Product detail readiness header must expose direct blocker recovery links near the top of the page.",
   );
   assert(
     channelsSource.includes("Advanced channel diagnostics") &&

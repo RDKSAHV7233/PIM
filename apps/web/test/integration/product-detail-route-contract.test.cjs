@@ -71,8 +71,10 @@ function run() {
     "Product detail route must preserve normalized channel, template, and return context while switching tabs.",
   );
   assert(
-    pageSource.includes('activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} /> : null'),
-    "Product detail route must only surface the readiness summary bar on the tabs where it supports current decision-making.",
+    pageSource.includes('activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel') &&
+      pageSource.includes('{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }') &&
+      pageSource.includes('{ title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }'),
+    "Product detail route must only surface the readiness summary bar on supported tabs and must pass the top-level publish/export summary cards into it.",
   );
   assert(
     pageSource.includes("returnTo ? <Link href={returnTo}") &&

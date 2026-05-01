@@ -97,7 +97,7 @@ This gate must pass before broad production claims.
 | RG-B2 | Add PIM field sample value preview in mapping table | Channel Mapping Lead | completed on current branch | sample source values visible during mapping |
 | RG-B3 | Expose mapping lifecycle audit metadata | Platform Governance Lead | completed on current branch | save/validate/publish/archive/rollback actor + timestamp visible |
 | RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | completed on current branch | blocked state includes health context and payload preview path |
-| RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | open | product page shows blocker summary and uses publish/export terms consistently |
+| RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | completed on current branch | product page shows blocker summary and uses publish/export terms consistently |
 | RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | open | default bulk-edit experience is structured and preview-first |
 | RG-B7 | Add first-class media governance | Catalog Operations Lead | open | main image, order, alt text, and asset health are explicit |
 | RG-B8 | Expand operational notifications and alert coverage | Platform Operations Lead | open | critical failures raise in-app notifications with deep links |
@@ -379,6 +379,7 @@ Goal: make the current production flows clearer and safer for operators.
 - Priority: P1
 - Owner: Product UX Lead
 - Release gate: RG-B5
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/app/products/[id]/page.tsx`
   - `apps/web/src/app/products/[id]/_components/*`
@@ -388,6 +389,8 @@ Goal: make the current production flows clearer and safer for operators.
   - product header shows product readiness, mapping readiness, media readiness, connector readiness, approval status, and last publish attempt
   - disabled publish action explains why
   - terminology uses `Publish` or `Export` consistently, not generic `Submit`
+- Current branch note:
+  - The product header now uses publish/export wording, surfaces six top-level readiness cards, and exposes blocker recovery links for quality, channels, media, connector setup, and approval follow-up.
 
 ## Epic 3 - Production Hardening And Governance
 

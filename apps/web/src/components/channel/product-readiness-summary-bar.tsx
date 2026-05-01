@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-badge";
 import { Button } from "@/components/ui/button";
+import { StatusChip } from "@/components/ui/status-chip";
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
 import { READINESS_CHANNELS, type ChannelReadinessResult } from "@/lib/channel-readiness";
 
@@ -21,9 +23,23 @@ function relativeTime(from: Date | null): string {
 interface ProductReadinessSummaryBarProps {
   productId: string;
   role: AppRole;
+  summary: {
+    currentChannelLabel: string;
+    cards: Array<{
+      title: string;
+      label: string;
+      tone: "neutral" | "success" | "warning" | "danger" | "info";
+      detail: string;
+      href: string;
+    }>;
+    blockers: Array<{
+      label: string;
+      href: string;
+    }>;
+  };
 }
 
-export function ProductReadinessSummaryBar({ productId, role }: ProductReadinessSummaryBarProps) {
+export function ProductReadinessSummaryBar({ productId, role, summary }: ProductReadinessSummaryBarProps) {
   const buildResults = useCallback(
     (status: "loading" | "unknown"): Partial<Record<MarketplaceChannel, ChannelReadinessResult>> =>
       Object.fromEntries(
@@ -128,7 +144,7 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
     <div className="sticky top-2 z-10 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-slate-800">Channel Readiness:</span>
+          <span className="text-sm font-medium text-slate-800">Channel readiness:</span>
           {badges}
         </div>
         <div className="flex items-center gap-2">
@@ -136,6 +152,44 @@ export function ProductReadinessSummaryBar({ productId, role }: ProductReadiness
             {checking ? "Running..." : "Run Check"}
           </Button>
           <span className="text-xs text-slate-500">Last checked {lastCheckedLabel}</span>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 xl:grid-cols-6">
+        {summary.cards.map((card) => (
+          <Link
+            key={card.title}
+            href={card.href}
+            className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 hover:bg-white"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.title}</p>
+            <div className="mt-2 flex items-start justify-between gap-2">
+              <StatusChip label={card.label} tone={card.tone} />
+            </div>
+            <p className="mt-2 text-xs text-slate-600">{card.detail}</p>
+          </Link>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900">Top blockers for {summary.currentChannelLabel}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Open the exact fix path before you queue an export or review publish readiness.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {summary.blockers.length > 0 ? (
+            summary.blockers.map((blocker) => (
+              <Link
+                key={`${blocker.href}-${blocker.label}`}
+                href={blocker.href}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                {blocker.label}
+              </Link>
+            ))
+          ) : (
+            <span className="text-xs text-slate-500">No top blockers. Use the channel badges to spot marketplace-specific warnings.</span>
+          )}
         </div>
       </div>
     </div>
