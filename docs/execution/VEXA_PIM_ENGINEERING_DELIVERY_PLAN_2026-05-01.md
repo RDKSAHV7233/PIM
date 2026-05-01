@@ -98,7 +98,7 @@ This gate must pass before broad production claims.
 | RG-B3 | Expose mapping lifecycle audit metadata | Platform Governance Lead | completed on current branch | save/validate/publish/archive/rollback actor + timestamp visible |
 | RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | completed on current branch | blocked state includes health context and payload preview path |
 | RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | completed on current branch | product page shows blocker summary and uses publish/export terms consistently |
-| RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | open | default bulk-edit experience is structured and preview-first |
+| RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | completed on current branch | default bulk-edit experience is structured and preview-first |
 | RG-B7 | Add first-class media governance | Catalog Operations Lead | open | main image, order, alt text, and asset health are explicit |
 | RG-B8 | Expand operational notifications and alert coverage | Platform Operations Lead | open | critical failures raise in-app notifications with deep links |
 
@@ -401,6 +401,7 @@ Goal: reduce operator error and strengthen operational recovery.
 - Priority: P1
 - Owner: Catalog Operations Lead
 - Release gate: RG-B6
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/app/operations/bulk-edit/page.tsx`
   - `apps/web/src/components/bulk-edit/*`
@@ -410,6 +411,8 @@ Goal: reduce operator error and strengthen operational recovery.
   - advanced JSON mode is secondary
   - preview shows affected count and before/after values
   - validation runs before apply
+- Current branch note:
+  - Bulk edit now defaults to a structured field-and-operation builder with generated payload preview, while raw JSON remains available only inside an advanced disclosure path.
 
 ### Ticket E3-T2 - Add first-class media governance
 

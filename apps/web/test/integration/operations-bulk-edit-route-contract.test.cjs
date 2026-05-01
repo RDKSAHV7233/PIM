@@ -56,24 +56,33 @@ function run() {
     "Operations bulk edit must apply hide-test-data filtering before building the scoped product preview set.",
   );
   assert(
-    source.includes('const bulkEditUpdatesText = String(query.bulkEditUpdates ?? "").trim() || \'{"status":"active"}\';') &&
+    source.includes('const bulkEditMode = String(query.bulkEditMode ?? "").trim().toLowerCase() === "advanced" ? "advanced" : "structured";') &&
+      source.includes('const bulkEditField = resolveStructuredBulkEditField(query.bulkEditField);') &&
+      source.includes('const bulkEditOperation = resolveStructuredBulkEditOperation(query.bulkEditOperation);') &&
       source.includes('const shouldPreviewBulkEdit = String(query.bulkEditPreview ?? "") === "1";') &&
       source.includes("if (shouldPreviewBulkEdit) {") &&
+      source.includes('if (bulkEditMode === "advanced") {') &&
+      source.includes("buildStructuredBulkEditUpdates(bulkEditField, bulkEditOperation, bulkEditValue)") &&
       source.includes("JSON.parse(bulkEditUpdatesText)") &&
       source.includes('throw new Error("Bulk edit updates must be a JSON object.");'),
-    "Operations bulk edit must only preview when explicitly requested and must validate updates as a JSON object.",
+    "Operations bulk edit must only preview when explicitly requested and must validate both structured and advanced JSON update input.",
   );
   assert(
     source.includes("previewResult = await getBulkEditPreview(scope, parsedUpdates, { role: actorRole, authHeader });") &&
-      source.includes("previewErrorCode = extractErrorCode(error instanceof Error ? error.message : String(error ?? \"\"));"),
+      source.includes("previewErrorCode = extractErrorCode(error instanceof Error ? error.message : String(error ?? \"\"));") &&
+      source.includes('let previewErrorMessage: string | null = null;'),
     "Operations bulk edit must surface preview results and validation failures through the shared preview/error flow.",
   );
   assert(
-    source.includes('form method="get" className="grid gap-3 md:grid-cols-2 lg:grid-cols-3"') &&
-      source.includes('input type="hidden" name="bulkEditPreview" value="1"') &&
+    source.includes('Structured change builder') &&
+      source.includes('name="bulkEditField"') &&
+      source.includes('name="bulkEditOperation"') &&
+      source.includes('Generated update payload') &&
+      source.includes('Advanced JSON mode') &&
+      source.includes('Preview advanced JSON changes') &&
       source.includes("applyAction={applyBulkEditAction}") &&
       source.includes('Preview affected products'),
-    "Operations bulk edit must expose a preview-first form and only wire apply through the diff preview component.",
+    "Operations bulk edit must default to a structured builder, keep advanced JSON secondary, and only wire apply through the diff preview component.",
   );
   assert(
     source.includes('Your role cannot run or apply bulk edits.') &&

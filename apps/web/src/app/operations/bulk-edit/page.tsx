@@ -26,12 +26,81 @@ interface OperationsBulkEditPageProps {
   searchParams: Promise<{
     hideTestData?: string;
     bulkEditPreview?: string;
+    bulkEditMode?: string;
     bulkEditCategoryId?: string;
     bulkEditStatus?: string;
     bulkEditBrandContains?: string;
     bulkEditProductIds?: string;
+    bulkEditField?: string;
+    bulkEditOperation?: string;
+    bulkEditValue?: string;
     bulkEditUpdates?: string;
   }>;
+}
+
+const STRUCTURED_BULK_EDIT_FIELDS = [
+  { value: "status", label: "Status", placeholder: "Choose the next catalog status." },
+  { value: "brand", label: "Brand", placeholder: "Set the product brand." },
+  { value: "title", label: "Title", placeholder: "Set the product title." },
+  { value: "description", label: "Description", placeholder: "Set the product description." },
+  { value: "hsnCode", label: "HSN Code", placeholder: "Set or clear the HSN code." },
+  { value: "gstRate", label: "GST Rate", placeholder: "Set or clear the GST rate." },
+] as const;
+
+type StructuredBulkEditField = (typeof STRUCTURED_BULK_EDIT_FIELDS)[number]["value"];
+type StructuredBulkEditOperation = "set" | "clear";
+
+function isStructuredBulkEditField(value: string): value is StructuredBulkEditField {
+  return STRUCTURED_BULK_EDIT_FIELDS.some((field) => field.value === value);
+}
+
+function resolveStructuredBulkEditField(value: string | undefined): StructuredBulkEditField {
+  const normalized = String(value ?? "").trim();
+  return isStructuredBulkEditField(normalized) ? normalized : "status";
+}
+
+function resolveStructuredBulkEditOperation(value: string | undefined): StructuredBulkEditOperation {
+  return String(value ?? "").trim().toLowerCase() === "clear" ? "clear" : "set";
+}
+
+function fieldLabel(field: StructuredBulkEditField): string {
+  return STRUCTURED_BULK_EDIT_FIELDS.find((item) => item.value === field)?.label ?? field;
+}
+
+function buildStructuredBulkEditUpdates(
+  field: StructuredBulkEditField,
+  operation: StructuredBulkEditOperation,
+  value: string,
+): Record<string, unknown> {
+  if (operation === "clear") {
+    if (field !== "hsnCode" && field !== "gstRate") {
+      throw new Error("Clear is only available for HSN Code and GST Rate.");
+    }
+    return { [field]: null };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${fieldLabel(field)} is required for a set operation.`);
+  }
+
+  if (field === "status") {
+    const normalized = trimmed.toLowerCase();
+    if (!["draft", "in_review", "approved", "rejected", "active", "archived"].includes(normalized)) {
+      throw new Error("Status must be draft, in_review, approved, rejected, active, or archived.");
+    }
+    return { status: normalized };
+  }
+
+  if (field === "gstRate") {
+    const numericValue = Number(trimmed);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      throw new Error("GST Rate must be a non-negative number.");
+    }
+    return { gstRate: numericValue };
+  }
+
+  return { [field]: trimmed };
 }
 
 function resolveHideTestData(value: string | undefined): boolean {
@@ -67,8 +136,27 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   const bulkEditStatus = String(query.bulkEditStatus ?? "").trim();
   const bulkEditBrandContains = String(query.bulkEditBrandContains ?? "").trim();
   const bulkEditProductIds = String(query.bulkEditProductIds ?? "").trim();
-  const bulkEditUpdatesText = String(query.bulkEditUpdates ?? "").trim() || '{"status":"active"}';
+  const bulkEditMode = String(query.bulkEditMode ?? "").trim().toLowerCase() === "advanced" ? "advanced" : "structured";
+  const bulkEditField = resolveStructuredBulkEditField(query.bulkEditField);
+  const bulkEditOperation = resolveStructuredBulkEditOperation(query.bulkEditOperation);
+  const bulkEditValue = String(query.bulkEditValue ?? "").trim() || (bulkEditField === "status" ? "active" : "");
+  const advancedBulkEditUpdatesText = String(query.bulkEditUpdates ?? "").trim() || '{"status":"active"}';
   const shouldPreviewBulkEdit = String(query.bulkEditPreview ?? "") === "1";
+  let structuredUpdatesText = '{"status":"active"}';
+
+  try {
+    structuredUpdatesText = JSON.stringify(
+      buildStructuredBulkEditUpdates(bulkEditField, bulkEditOperation, bulkEditValue),
+      null,
+      2,
+    );
+  } catch {
+    if (bulkEditField === "status" && bulkEditOperation === "set" && !bulkEditValue) {
+      structuredUpdatesText = JSON.stringify({ status: "active" }, null, 2);
+    }
+  }
+
+  const bulkEditUpdatesText = bulkEditMode === "advanced" ? advancedBulkEditUpdatesText : structuredUpdatesText;
 
   try {
     const [operations, categories, products] = await Promise.all([
@@ -113,15 +201,20 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
 
     let previewResult: Awaited<ReturnType<typeof getBulkEditPreview>> | null = null;
     let previewErrorCode: string | null = null;
+    let previewErrorMessage: string | null = null;
     let parsedUpdates: Record<string, unknown> = {};
 
     if (shouldPreviewBulkEdit) {
       try {
-        const parsed = JSON.parse(bulkEditUpdatesText);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          throw new Error("Bulk edit updates must be a JSON object.");
+        if (bulkEditMode === "advanced") {
+          const parsed = JSON.parse(bulkEditUpdatesText);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new Error("Bulk edit updates must be a JSON object.");
+          }
+          parsedUpdates = parsed as Record<string, unknown>;
+        } else {
+          parsedUpdates = buildStructuredBulkEditUpdates(bulkEditField, bulkEditOperation, bulkEditValue);
         }
-        parsedUpdates = parsed as Record<string, unknown>;
 
         const scope: Record<string, unknown> = {};
         if (bulkEditCategoryId) {
@@ -140,6 +233,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
         previewResult = await getBulkEditPreview(scope, parsedUpdates, { role: actorRole, authHeader });
       } catch (error: unknown) {
         previewErrorCode = extractErrorCode(error instanceof Error ? error.message : String(error ?? ""));
+        previewErrorMessage = error instanceof Error ? error.message : String(error ?? "");
       }
     }
 
@@ -204,21 +298,96 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                   placeholder="Optional, comma or newline separated"
                 />
               </div>
-              <div className="space-y-1 md:col-span-2 lg:col-span-3">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-updates">
-                  Updates
-                </label>
-                <Textarea
-                  id="bulk-edit-updates"
-                  name="bulkEditUpdates"
-                  rows={4}
-                  defaultValue={bulkEditUpdatesText}
-                  placeholder='e.g. {"status":"active","gstRate":18}'
-                />
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:col-span-2 lg:col-span-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Structured change builder</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Default to field + operation changes here. Advanced JSON stays secondary for uncommon edits.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-field">
+                      Field
+                    </label>
+                    <Select id="bulk-edit-field" name="bulkEditField" defaultValue={bulkEditField}>
+                      {STRUCTURED_BULK_EDIT_FIELDS.map((field) => (
+                        <option key={field.value} value={field.value}>
+                          {field.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-operation">
+                      Operation
+                    </label>
+                    <Select id="bulk-edit-operation" name="bulkEditOperation" defaultValue={bulkEditOperation}>
+                      <option value="set">Set value</option>
+                      <option value="clear">Clear value</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-value">
+                      New value
+                    </label>
+                    {bulkEditField === "status" && bulkEditOperation === "set" ? (
+                      <Select id="bulk-edit-value" name="bulkEditValue" defaultValue={bulkEditValue}>
+                        <option value="draft">draft</option>
+                        <option value="in_review">in_review</option>
+                        <option value="approved">approved</option>
+                        <option value="rejected">rejected</option>
+                        <option value="active">active</option>
+                        <option value="archived">archived</option>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="bulk-edit-value"
+                        name="bulkEditValue"
+                        defaultValue={bulkEditOperation === "clear" ? "" : bulkEditValue}
+                        disabled={bulkEditOperation === "clear"}
+                        placeholder={
+                          bulkEditOperation === "clear"
+                            ? "Clear sets the field to blank/null."
+                            : STRUCTURED_BULK_EDIT_FIELDS.find((field) => field.value === bulkEditField)?.placeholder
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated update payload</p>
+                  <pre className="mt-2 overflow-auto text-xs text-slate-700">{structuredUpdatesText}</pre>
+                </div>
+                <Button type="submit" className="w-fit" name="bulkEditMode" value="structured">
+                  Preview affected products
+                </Button>
               </div>
-              <Button type="submit" className="w-fit">
-                Preview affected products
-              </Button>
+              <div className="space-y-1 md:col-span-2 lg:col-span-3">
+                <details className="rounded-lg border border-slate-200 bg-white">
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
+                    Advanced JSON mode
+                  </summary>
+                  <div className="space-y-3 border-t border-slate-200 px-4 py-4">
+                    <p className="text-xs text-slate-500">
+                      Use raw JSON only when the structured builder does not fit the change you need.
+                    </p>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="bulk-edit-updates">
+                      Updates JSON
+                    </label>
+                    <Textarea
+                      id="bulk-edit-updates"
+                      name="bulkEditUpdates"
+                      rows={4}
+                      defaultValue={advancedBulkEditUpdatesText}
+                      placeholder='e.g. {"status":"active","gstRate":18}'
+                    />
+                    <Button type="submit" variant="secondary" className="w-fit" name="bulkEditMode" value="advanced">
+                      Preview advanced JSON changes
+                    </Button>
+                  </div>
+                </details>
+              </div>
             </form>
           ) : (
             <p className="mt-2 text-sm text-slate-600">Your role cannot run or apply bulk edits.</p>
@@ -226,10 +395,12 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
 
           {shouldPreviewBulkEdit ? (
             <div className="mt-4 space-y-3">
-              {previewErrorCode ? (
+              {previewErrorCode || previewErrorMessage ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                  <p className="font-medium">{translateError(previewErrorCode).title}</p>
-                  <p>{translateError(previewErrorCode).description}</p>
+                  <p className="font-medium">
+                    {previewErrorCode ? translateError(previewErrorCode).title : "Bulk edit preview could not run"}
+                  </p>
+                  <p>{previewErrorCode ? translateError(previewErrorCode).description : previewErrorMessage}</p>
                 </div>
               ) : null}
               {previewResult && canWrite && previewResult.requestedCount > 0 ? (
