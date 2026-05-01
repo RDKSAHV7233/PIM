@@ -157,7 +157,7 @@ export async function resolveConnectorMapping(
 
 export async function evaluateConnectorMappingPreflight(
   connectorSlug: string,
-  body: { categoryScope: string; fallbackAcknowledged?: boolean },
+  body: { categoryScope: string; installationId?: string; fallbackAcknowledged?: boolean },
   options?: ApiRequestOptions,
 ) {
   return postJson<ConnectorMappingPreflight>(
@@ -197,7 +197,7 @@ export async function getUnmappedConnectorTaxonomy(connectorSlug: string, option
 
 export async function evaluateConnectorPublishReadiness(
   connectorSlug: string,
-  body: { categoryScope: string; fallbackAcknowledged?: boolean; productId?: string },
+  body: { categoryScope: string; installationId?: string; fallbackAcknowledged?: boolean; productId?: string },
   options?: ApiRequestOptions,
 ) {
   return postJson<ConnectorPublishReadiness>(

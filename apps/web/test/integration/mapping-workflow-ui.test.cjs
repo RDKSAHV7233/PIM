@@ -32,11 +32,17 @@ function run() {
       pageSource.includes("Build the draft") &&
       pageSource.includes("Validate and publish") &&
       pageSource.includes("Operator flow") &&
+      pageSource.includes("installations={matchingInstallations}") &&
+      pageSource.includes("installationId: selectedInstallationId || undefined") &&
+      pageSource.includes("priorityBlockers={priorityBlockers}") &&
       workflowSource.includes("Build a publish-ready") &&
+      workflowSource.includes("Connector account") &&
+      workflowSource.includes("Top publish blockers") &&
+      workflowSource.includes("Open readiness details") &&
       workflowSource.includes("Choose scope") &&
       workflowSource.includes("Build draft") &&
       workflowSource.includes("Validate and publish"),
-    "Mappings workflow header must show the publish task context and 3-step progression.",
+    "Mappings workflow header must show the publish task context, connector account context, top blockers, and 3-step progression.",
   );
   assert(
     editorSource.includes('id="mapping-draft"') &&
@@ -63,6 +69,8 @@ function run() {
         status: "ok",
         validated: [
           "mappings_page_uses_task_first_workflow_shell",
+          "mapping_workbench_preserves_connector_account_context",
+          "mapping_workbench_surfaces_top_publish_blockers_inline",
           "mapping_editor_defaults_to_required_first_layout",
           "version_history_and_readiness_are_explicit_workflow_steps",
         ],

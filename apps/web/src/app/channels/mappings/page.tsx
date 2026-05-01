@@ -8,7 +8,9 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   ApiHttpError,
+  getInstalledConnectors,
   getProduct,
+  type ConnectorInstallation,
   type MarketplaceChannel,
   evaluateConnectorMappingPreflight,
   evaluateConnectorPublishReadiness,
@@ -35,7 +37,11 @@ interface ChannelsMappingsPageProps {
   searchParams: Promise<{
     categoryId?: string;
     channel?: MarketplaceChannel;
+    installationId?: string;
     productId?: string;
+    fallbackAcknowledged?: string;
+    fallbackAckVersionId?: string;
+    fallbackAckError?: string;
     stepUpAction?: "publish" | "archive" | "rollback";
     stepUpError?: string;
     stepUpVersionId?: string;
@@ -54,14 +60,18 @@ function isEnabled(value: string | undefined): boolean {
 function buildMappingHref(
   query: Awaited<ChannelsMappingsPageProps["searchParams"]>,
   overrides: Partial<
-    Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory" | "taxonomyQ" | "categoryId" | "channel" | "productId", string | undefined>
+    Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory" | "taxonomyQ" | "categoryId" | "channel" | "installationId" | "productId" | "fallbackAcknowledged" | "fallbackAckVersionId" | "fallbackAckError", string | undefined>
   >,
 ): string {
   const params = new URLSearchParams();
   const nextQuery = {
     categoryId: String(query.categoryId ?? "").trim(),
     channel: String(query.channel ?? "").trim(),
+    installationId: String(query.installationId ?? "").trim(),
     productId: String(query.productId ?? "").trim(),
+    fallbackAcknowledged: String(query.fallbackAcknowledged ?? "").trim(),
+    fallbackAckVersionId: String(query.fallbackAckVersionId ?? "").trim(),
+    fallbackAckError: String(query.fallbackAckError ?? "").trim(),
     taxonomyQ: String(query.taxonomyQ ?? "").trim(),
     showContext: String(query.showContext ?? "").trim(),
     showTaxonomy: String(query.showTaxonomy ?? "").trim(),
@@ -106,6 +116,39 @@ function DeferredMappingPanelCard({
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readMetadataValue(metadata: unknown, key: string): string | null {
+  const value = asRecord(metadata)[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveInstallationLabel(installation: ConnectorInstallation): string {
+  const shopName = readMetadataValue(installation.metadata, "shopName");
+  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
+  const accountContext = shopName || shopDomain || installation.externalAccountRef || installation.accountAlias;
+  return `${installation.accountAlias} (${accountContext})`;
+}
+
+function resolveInstallationDetail(installation: ConnectorInstallation): string {
+  const shopName = readMetadataValue(installation.metadata, "shopName");
+  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
+  const externalRef = installation.externalAccountRef;
+  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" · ");
+  const prefix = context.length > 0
+    ? `${installation.displayName} · ${context} · status ${installation.status}`
+    : `${installation.displayName} · status ${installation.status}`;
+  return `${prefix}. Current readiness checks remain connector-scoped while account context stays visible in this workbench.`;
+}
+
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -119,23 +162,33 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   const showResolved = isEnabled(query.showResolved) || showContext;
   const showTaxonomy = isEnabled(query.showTaxonomy) || String(query.taxonomyQ ?? "").trim().length > 0;
   const showHistory = isEnabled(query.showHistory) || Boolean(stepUpAction) || Boolean(stepUpVersionId);
+  const fallbackAcknowledged = String(query.fallbackAcknowledged ?? "").trim() === "true";
+  const fallbackAckVersionId = String(query.fallbackAckVersionId ?? "").trim();
+  const fallbackAckError = String(query.fallbackAckError ?? "").trim();
 
   try {
-    const [channels, categoriesRaw, connectorDefinitions] = await Promise.all([
+    const [channels, categoriesRaw, connectorDefinitions, installedConnectors] = await Promise.all([
       getMarketplaceChannels({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       getConnectorDefinitions({ role: actorRole, authHeader }),
+      getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
     const categories = filterTestData(categoriesRaw, true);
     const selectedCategoryId = String(query.categoryId ?? "").trim() || categories[0]?.id || "";
     const selectedChannel = normalizeChannel(query.channel, channels);
     const connectorSlug = mapChannelToConnectorSlug(selectedChannel);
+    const matchingInstallations = installedConnectors.filter((installation) => installation.slug === connectorSlug);
+    const requestedInstallationId = String(query.installationId ?? "").trim();
+    const selectedInstallation =
+      matchingInstallations.find((installation) => installation.id === requestedInstallationId) ??
+      (matchingInstallations.length === 1 ? matchingInstallations[0] : null);
+    const selectedInstallationId = selectedInstallation?.id ?? "";
     const definition = definitionForConnector(connectorDefinitions, connectorSlug);
     const taxonomyQ = String(query.taxonomyQ ?? "").trim();
     const [mapping, preflight, readiness, categoryAttributes] = await Promise.all([
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, { role: actorRole, authHeader }),
-      selectedCategoryId ? evaluateConnectorMappingPreflight(connectorSlug, { categoryScope: selectedCategoryId, fallbackAcknowledged: false }, { role: actorRole, authHeader }) : Promise.resolve(null),
-      selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, productId: selectedProductId || undefined, fallbackAcknowledged: false }, { role: actorRole, authHeader }) : Promise.resolve(null),
+      selectedCategoryId ? evaluateConnectorMappingPreflight(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
+      selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, productId: selectedProductId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve([]),
     ]);
     const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct] = await Promise.all([
@@ -160,7 +213,20 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           })
         : Promise.resolve(null),
     ]);
-    const viewModel = buildMappingsViewModel({ mapping, resolved, taxonomyMatches, unmappedCategories, categoryAttributes, selectedCategoryId, selectedChannel, selectedProductId, taxonomyQ });
+    const viewModel = buildMappingsViewModel({
+      mapping,
+      resolved,
+      taxonomyMatches,
+      unmappedCategories,
+      categoryAttributes,
+      selectedCategoryId,
+      selectedChannel,
+      selectedProductId,
+      selectedInstallationId,
+      fallbackAcknowledged,
+      fallbackAckVersionId,
+      taxonomyQ,
+    });
     const selectedCategoryPath =
       categories.find((item) => item.id === selectedCategoryId)?.path ?? selectedCategoryId;
     const selectedTargetCategoryLabel =
@@ -171,6 +237,23 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       (field) => Boolean(viewModel.mappedTargetToSource[field]),
     ).length;
     const missingRequiredCount = viewModel.requiredTargetFields.length - mappedRequiredCount;
+    const priorityBlockers = Array.from(
+      new Set([...(preflight?.blockers ?? []), ...(readiness?.blockers ?? [])]),
+    ).slice(0, 3);
+    const connectorAccountLabel = selectedInstallation
+      ? resolveInstallationLabel(selectedInstallation)
+      : matchingInstallations.length > 1
+        ? "Choose connector account"
+        : matchingInstallations.length === 1
+          ? resolveInstallationLabel(matchingInstallations[0]!)
+          : "No installed connector account";
+    const connectorAccountDetail = selectedInstallation
+      ? resolveInstallationDetail(selectedInstallation)
+      : matchingInstallations.length > 1
+        ? `${matchingInstallations.length} installed accounts match this connector. Choose the exact account to keep mapping context aligned.`
+        : matchingInstallations.length === 0
+          ? "No installed connector account is linked to this channel yet."
+          : null;
 
     return (
       <div className="space-y-5">
@@ -196,6 +279,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           channels={channels}
           selectedCategoryId={selectedCategoryId}
           selectedChannel={selectedChannel}
+          installations={matchingInstallations}
+          selectedInstallationId={selectedInstallationId || undefined}
           taxonomyQ={taxonomyQ}
           selectedProductId={selectedProductId}
           preserveFlags={{ showContext, showTaxonomy, showResolved, showHistory }}
@@ -207,6 +292,9 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           categoryPath={selectedCategoryPath}
           publishCategory={selectedTargetCategoryLabel}
           connectorSlug={connectorSlug}
+          connectorAccountLabel={connectorAccountLabel}
+          connectorAccountDetail={connectorAccountDetail ?? undefined}
+          priorityBlockers={priorityBlockers}
           requiredCount={viewModel.requiredTargetFields.length}
           mappedRequiredCount={mappedRequiredCount}
           missingRequiredCount={missingRequiredCount}
@@ -217,7 +305,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             {/* placeholder={mappingDraftRulesDefault} */}
             <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
             {showHistory ? (
-              <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} />
+              <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} />
             ) : (
               <DeferredMappingPanelCard
                 title="Version History"
@@ -235,6 +323,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 channel={selectedChannel}
                 categoryPath={selectedCategoryPath}
                 publishCategory={selectedTargetCategoryLabel}
+                connectorAccountLabel={connectorAccountLabel}
+                connectorAccountDetail={connectorAccountDetail ?? undefined}
                 compatibilityLabel={definition ? (resolved?.compatibilityState ?? "compatible") : "compatible"}
                 matchedVersions={resolved?.matched?.length ?? 0}
               />
@@ -246,7 +336,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 actionLabel="Open context"
               />
             )}
-            <PublishReadinessCard preflight={preflight} readiness={readiness} />
+            <PublishReadinessCard preflight={preflight} readiness={readiness} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} />
             {showTaxonomy ? (
               <TaxonomyAlignmentCard connectorSlug={connectorSlug} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} />
             ) : (

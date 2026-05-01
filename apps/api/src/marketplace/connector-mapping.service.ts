@@ -863,6 +863,7 @@ export class ConnectorMappingService {
   async evaluateMappingPreflight(input: {
     connectorSlug: string;
     categoryScope: string;
+    installationId?: string;
     fallbackAcknowledged?: boolean;
     actorId?: string | null;
   }): Promise<MappingPreflightResult> {
@@ -1003,6 +1004,7 @@ export class ConnectorMappingService {
   async evaluatePublishReadiness(input: {
     connectorSlug: string;
     categoryScope: string;
+    installationId?: string;
     fallbackAcknowledged?: boolean;
     productId?: string;
     actorId?: string | null;
@@ -1016,28 +1018,17 @@ export class ConnectorMappingService {
     const preflight = await this.evaluateMappingPreflight({
       connectorSlug: input.connectorSlug,
       categoryScope: input.categoryScope,
+      installationId: input.installationId,
       fallbackAcknowledged: input.fallbackAcknowledged,
       actorId: input.actorId,
     });
     const blockers = [...preflight.blockers];
     const warnings = [...preflight.warnings];
 
-    const connectorDefinition = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
-      where: { slug: input.connectorSlug },
-      select: { id: true },
+    const installation = await this.resolveReadinessInstallation({
+      connectorSlug: input.connectorSlug,
+      installationId: input.installationId,
     });
-    const installation = connectorDefinition
-      ? await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
-          where: {
-            connectorId: connectorDefinition.id,
-          },
-          orderBy: [{ installedAt: "desc" }, { id: "desc" }],
-          select: {
-            id: true,
-            status: true,
-          },
-        })
-      : null;
     if (!installation) {
       blockers.push("connector_not_installed");
     } else {
@@ -1116,6 +1107,7 @@ export class ConnectorMappingService {
           ? {
               id: String(installation.id),
               status: String(installation.status),
+              accountAlias: String(installation.accountAlias ?? ""),
             }
           : null,
         missingRequiredMappings,
@@ -1127,6 +1119,7 @@ export class ConnectorMappingService {
   async assertPublishReadyForExport(input: {
     connectorSlug: string;
     categoryScope: string;
+    installationId?: string;
     fallbackAcknowledged?: boolean;
     productId?: string;
     actorId?: string | null;
@@ -1139,6 +1132,66 @@ export class ConnectorMappingService {
         warnings: readiness.warnings,
       });
     }
+  }
+
+  private async resolveReadinessInstallation(input: {
+    connectorSlug: string;
+    installationId?: string;
+  }): Promise<{
+    id: string;
+    status: string;
+    accountAlias: string;
+  } | null> {
+    const tenantKey = this.getTenantKey();
+    const connectorSlug = String(input.connectorSlug ?? "").trim().toLowerCase();
+    const installationId = String(input.installationId ?? "").trim();
+    const connectorDefinition = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
+      where: { slug: connectorSlug },
+      select: { id: true },
+    });
+    if (!connectorDefinition) {
+      return null;
+    }
+
+    if (installationId) {
+      const selected = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+        where: {
+          id: installationId,
+          connectorId: connectorDefinition.id,
+        },
+        select: {
+          id: true,
+          status: true,
+          accountAlias: true,
+        },
+      });
+      return selected
+        ? {
+            id: String(selected.id),
+            status: String(selected.status),
+            accountAlias: String(selected.accountAlias),
+          }
+        : null;
+    }
+
+    const fallback = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
+      where: {
+        connectorId: connectorDefinition.id,
+      },
+      orderBy: [{ installedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        status: true,
+        accountAlias: true,
+      },
+    });
+    return fallback
+      ? {
+          id: String(fallback.id),
+          status: String(fallback.status),
+          accountAlias: String(fallback.accountAlias),
+        }
+      : null;
   }
 
   private async emitMappingCompletionMetric(tenantKey: string, connectorSlug: string): Promise<void> {

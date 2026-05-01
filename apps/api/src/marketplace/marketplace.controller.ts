@@ -183,6 +183,7 @@ export class MarketplaceController {
     return this.connectorMappingService.evaluateMappingPreflight({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       categoryScope: dto.categoryScope,
+      installationId: dto.installationId,
       fallbackAcknowledged: dto.fallbackAcknowledged,
       actorId: request.pimUserId,
     });
@@ -220,6 +221,7 @@ export class MarketplaceController {
     return this.connectorMappingService.evaluatePublishReadiness({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       categoryScope: dto.categoryScope,
+      installationId: dto.installationId,
       fallbackAcknowledged: dto.fallbackAcknowledged,
       productId: dto.productId,
       actorId: request.pimUserId,
