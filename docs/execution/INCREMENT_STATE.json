@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-04-28",
+    "lastUpdated": "2026-05-01",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -78,21 +78,26 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "dad4aec",
+          "commit": "3cbb1ed",
           "tests_passed": [
+            "npm run build --workspace @pim1/api",
             "npm run lint --workspace @pim1/web",
             "npm run build --workspace @pim1/web",
+            "node apps/api/test/integration/connector-mapping-installation-readiness.test.cjs",
             "node apps/web/test/integration/mapping-structured-editor.test.cjs",
             "node apps/web/test/integration/mapping-canonical-ui.test.cjs",
+            "node apps/web/test/integration/mapping-fallback-ack-ui.test.cjs",
+            "node apps/web/test/integration/mapping-readiness-version-context-ui.test.cjs",
+            "node apps/web/test/integration/mapping-workflow-ui.test.cjs",
             "node apps/web/test/integration/mapping-step-up-ui.test.cjs",
             "node apps/web/test/integration/internal-surface-gating.test.cjs",
             "node apps/web/test/integration/dashboard-approval-truth.test.cjs",
             "npm run test:integration:marketplace-capability-ui-gating",
             "npm run test:integration:connector-action-matrix-ui-gating"
           ],
-          "reopened_by": "",
-          "reopened_reason": "",
-          "regression_evidence": ""
+          "reopened_by": "codex",
+          "reopened_reason": "Mapping handoff now loses connector installation/account context between the installation-scoped redirect route and the shared mapping workbench, so operators cannot tell which connector account or store they are mapping.",
+          "regression_evidence": "Exact failing command: @' const fs = require('fs'); const redirect = fs.readFileSync('apps/web/src/app/connectors/[installationId]/mapping/page.tsx', 'utf8'); const page = fs.readFileSync('apps/web/src/app/channels/mappings/page.tsx', 'utf8'); const workflow = fs.readFileSync('apps/web/src/components/channel/mapping-workflow.tsx', 'utf8'); const preservesInstall = redirect.includes('target.set(\"installationId\"'); const showsAccount = page.includes('installationId') || workflow.includes('Account alias') || workflow.includes('Connector account'); if (preservesInstall && showsAccount) { console.log('ok'); process.exit(0); } console.error('FAIL: mapping handoff drops connector installation context, so the workbench cannot show which connector account/store is being mapped. Likely files: apps/web/src/app/connectors/[installationId]/mapping/page.tsx, apps/web/src/app/channels/mappings/page.tsx, apps/web/src/components/channel/mapping-workflow.tsx.'); process.exit(1); '@ | node -. Failing output snippet: FAIL: mapping handoff drops connector installation context, so the workbench cannot show which connector account/store is being mapped. Likely files: apps/web/src/app/connectors/[installationId]/mapping/page.tsx, apps/web/src/app/channels/mappings/page.tsx, apps/web/src/components/channel/mapping-workflow.tsx."
         },
         {
           "storyId": "ST-UI-PRODUCT-DETAIL-004",
@@ -497,12 +502,9 @@
     {
       "incrementId": "INC-08",
       "name": "Release Readiness",
-      "status": "in_progress",
+      "status": "completed",
       "deliveryStatus": "completed",
-      "pendingReleaseItems": [
-        "RISK-P0-001 14-day broad rollout observation window pending",
-        "RISK-P0-001 production SLO trend evidence window pending"
-      ],
+      "pendingReleaseItems": [],
       "evidence": [
         "docs/execution/E10_STORIES_EXECUTION_2026-03-03.md",
         "docs/execution/CONTROLLED_RELEASE_CHECKLIST.md",
@@ -526,7 +528,8 @@
         "https://github.com/RDKSAHV7233/PIM1/actions/runs/23246813746",
         "commit:e2938f3",
         "commit:d51031e",
-        "commit:60e9b6b"
+        "commit:60e9b6b",
+        "docs/execution/rollout/2026-05-01T05-03-41.080Z_CONTROLLED_ROLLOUT_SNAPSHOT.json"
       ],
       "stories": [
         {
