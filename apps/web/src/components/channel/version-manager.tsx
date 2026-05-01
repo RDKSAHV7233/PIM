@@ -42,6 +42,48 @@ function presentPublishedAt(value: string | null, fallbackValue: string): string
   return new Date(source).toLocaleString();
 }
 
+function presentActor(actorId: string | null | undefined): string {
+  const normalized = String(actorId ?? "").trim();
+  return normalized.length > 0 ? normalized : "system";
+}
+
+function describeRollbackSource(version: ConnectorMappingVersion): string | null {
+  const sourceVersionId = String(version.history?.rollback?.metadata?.rollback_source_version_id ?? "").trim();
+  return sourceVersionId.length > 0 ? sourceVersionId.slice(0, 8) : null;
+}
+
+function VersionHistoryMetadata({ version }: { version: ConnectorMappingVersion }) {
+  const entries: string[] = [];
+  entries.push(`Saved by ${presentActor(version.history?.created?.actorId ?? version.createdBy)} on ${new Date(version.createdAt).toLocaleString()}`);
+  if (version.history?.validated) {
+    entries.push(`Validated by ${presentActor(version.history.validated.actorId)} on ${new Date(version.history.validated.createdAt).toLocaleString()}`);
+  }
+  if (version.history?.published) {
+    entries.push(`Published by ${presentActor(version.history.published.actorId)} on ${new Date(version.history.published.createdAt).toLocaleString()}`);
+  }
+  if (version.history?.archived) {
+    entries.push(`Archived by ${presentActor(version.history.archived.actorId)} on ${new Date(version.history.archived.createdAt).toLocaleString()}`);
+  }
+  if (version.history?.rollback) {
+    const rollbackSource = describeRollbackSource(version);
+    entries.push(
+      rollbackSource
+        ? `Rolled back from ${rollbackSource} by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString()}`
+        : `Published via rollback by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString()}`,
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      {entries.map((entry) => (
+        <p key={entry} className="text-xs text-slate-500">
+          {entry}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function ProtectedMappingActionForm({
   action,
   actorRole,
@@ -194,6 +236,7 @@ export function VersionManagerCard({
                     <p className="font-medium text-slate-900">{version.connectorDefinitionVersion}</p>
                     <p className="text-xs text-slate-500">{version.id}</p>
                     <p className="text-xs text-slate-500">{presentMappingLevel(version.mappingLevel)}</p>
+                    <VersionHistoryMetadata version={version} />
                   </td>
                   <td className="px-3 py-2.5">{version.categoryScope}</td>
                   <td className="px-3 py-2.5">

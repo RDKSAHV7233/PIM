@@ -24,6 +24,14 @@ function run() {
       source.includes("currently live for this mapping scope"),
     "Version manager must surface an explicit active-promoted banner so operators can tell which mapping version is live.",
   );
+  assert(
+    source.includes("Saved by") &&
+      source.includes("Validated by") &&
+      source.includes("Published by") &&
+      source.includes("Archived by") &&
+      source.includes("Rolled back from"),
+    "Version manager must surface audit-style lifecycle metadata for save, validate, publish, archive, and rollback actions.",
+  );
   console.log(
     JSON.stringify(
       {
@@ -31,6 +39,7 @@ function run() {
         validated: [
           "version_manager_module_exports_isolated_cards",
           "version_manager_surfaces_active_promoted_version_banner",
+          "version_manager_surfaces_lifecycle_audit_metadata",
         ],
       },
       null,

@@ -20,6 +20,20 @@ export type MappingEventType =
   | "archived"
   | "resolution_evaluated";
 
+export interface ConnectorMappingHistoryEntry {
+  actorId: string | null;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorMappingHistory {
+  created?: ConnectorMappingHistoryEntry;
+  validated?: ConnectorMappingHistoryEntry;
+  published?: ConnectorMappingHistoryEntry;
+  archived?: ConnectorMappingHistoryEntry;
+  rollback?: ConnectorMappingHistoryEntry;
+}
+
 export interface ConnectorMappingVersion {
   id: string;
   tenantKey: string;
@@ -39,6 +53,7 @@ export interface ConnectorMappingVersion {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  history?: ConnectorMappingHistory;
 }
 
 export interface MappingPreflightResult {
@@ -232,6 +247,30 @@ function toVersion(row: Record<string, unknown>): ConnectorMappingVersion {
   };
 }
 
+function toHistoryEntry(row: Record<string, unknown>): ConnectorMappingHistoryEntry {
+  const actorId = firstDefined(row.actorId, row.actor_id);
+  const createdAt = firstDefined(row.createdAt, row.created_at);
+  const metadata = firstDefined(row.metadata);
+  return {
+    actorId: actorId ? String(actorId) : null,
+    createdAt: new Date(String(createdAt)).toISOString(),
+    metadata: parseObject(metadata),
+  };
+}
+
+function withHistory(
+  version: ConnectorMappingVersion,
+  history: ConnectorMappingHistory | undefined,
+): ConnectorMappingVersion {
+  if (!history) {
+    return version;
+  }
+  return {
+    ...version,
+    history,
+  };
+}
+
 function mappingResolutionWeight(level: MappingLevel): number {
   switch (level) {
     case "tenant_connector_default":
@@ -339,7 +378,46 @@ export class ConnectorMappingService {
       },
       orderBy: { createdAt: "desc" },
     });
-    return rows.map((row) => toVersion(row as unknown as Record<string, unknown>));
+    const versions = rows.map((row) => toVersion(row as unknown as Record<string, unknown>));
+    if (versions.length === 0) {
+      return versions;
+    }
+
+    const eventRows = await this.prisma.tenant(tenantKey).connectorMappingEvent.findMany({
+      where: {
+        mappingVersionId: { in: versions.map((version) => version.id) },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    const historyByVersion = new Map<string, ConnectorMappingHistory>();
+    for (const eventRow of eventRows) {
+      const mappingVersionId = String(eventRow.mappingVersionId);
+      const history = historyByVersion.get(mappingVersionId) ?? {};
+      const entry = toHistoryEntry(eventRow as unknown as Record<string, unknown>);
+      const metadata = entry.metadata ?? {};
+      const rollbackEvent = Boolean(metadata.rollback);
+
+      if (eventRow.eventType === "created") {
+        if (rollbackEvent) {
+          history.rollback = entry;
+        } else if (!history.created) {
+          history.created = entry;
+        }
+      } else if (eventRow.eventType === "validated" && !history.validated) {
+        history.validated = entry;
+      } else if (eventRow.eventType === "published" && !history.published) {
+        history.published = entry;
+        if (rollbackEvent && !history.rollback) {
+          history.rollback = entry;
+        }
+      } else if (eventRow.eventType === "archived" && !history.archived) {
+        history.archived = entry;
+      }
+
+      historyByVersion.set(mappingVersionId, history);
+    }
+
+    return versions.map((version) => withHistory(version, historyByVersion.get(version.id)));
   }
 
   async createDraft(input: {

@@ -34,6 +34,11 @@ function run() {
       pageSource.includes("Operator flow") &&
       pageSource.includes("installations={matchingInstallations}") &&
       pageSource.includes("installationId: selectedInstallationId || undefined") &&
+      pageSource.includes("selectedProductId ? Promise.resolve([]) : getProducts") &&
+      pageSource.includes("sampleProduct: previewProduct") &&
+      pageSource.includes("sampleProductMode={sampleProductMode}") &&
+      pageSource.includes("connectorHealthHref={connectorHealthHref}") &&
+      pageSource.includes("payloadPreviewHref={payloadPreviewHref}") &&
       pageSource.includes("priorityBlockers={priorityBlockers}") &&
       workflowSource.includes("Build a publish-ready") &&
       workflowSource.includes("Connector account") &&
@@ -47,9 +52,11 @@ function run() {
   assert(
     editorSource.includes('id="mapping-draft"') &&
       editorSource.includes("Required fields still missing") &&
+      editorSource.includes("Sample product value") &&
+      editorSource.includes("Sample source values come from the selected product:") &&
       editorSource.includes("Show mapped required fields") &&
       editorSource.includes("Show optional fields"),
-    "Mapping editor must default to a required-first layout with mapped and optional sections collapsed.",
+    "Mapping editor must default to a required-first layout with sample-value preview plus mapped and optional sections collapsed.",
   );
   assert(
     versionSource.includes('id="mapping-history"') &&
@@ -59,8 +66,11 @@ function run() {
   );
   assert(
     editorSource.includes('id="mapping-readiness"') &&
+      editorSource.includes("Blocked-state recovery") &&
+      editorSource.includes("Open connector health") &&
+      editorSource.includes("Open payload preview") &&
       editorSource.includes("Use this section after the draft is validated."),
-    "Publish readiness must be anchored as the third step with explicit sequencing guidance.",
+    "Publish readiness must be anchored as the third step with explicit sequencing guidance and blocked-state recovery links.",
   );
 
   console.log(
@@ -70,8 +80,10 @@ function run() {
         validated: [
           "mappings_page_uses_task_first_workflow_shell",
           "mapping_workbench_preserves_connector_account_context",
+          "mapping_workbench_surfaces_sample_source_values",
           "mapping_workbench_surfaces_top_publish_blockers_inline",
           "mapping_editor_defaults_to_required_first_layout",
+          "mapping_readiness_exposes_blocked_state_recovery",
           "version_history_and_readiness_are_explicit_workflow_steps",
         ],
         checkedAt: new Date().toISOString(),

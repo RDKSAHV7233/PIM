@@ -94,9 +94,9 @@ This gate must pass before broad production claims.
 | Gate ID | Gate | Owner | Status | Acceptance evidence |
 |---|---|---|---|---|
 | RG-B1 | Show active/promoted mapping version banner | Channel Mapping Lead | completed on current branch | active version is visible on mapping workbench |
-| RG-B2 | Add PIM field sample value preview in mapping table | Channel Mapping Lead | open | sample source values visible during mapping |
-| RG-B3 | Expose mapping lifecycle audit metadata | Platform Governance Lead | open | save/validate/publish/archive/rollback actor + timestamp visible |
-| RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | open | blocked state includes health context and payload preview path |
+| RG-B2 | Add PIM field sample value preview in mapping table | Channel Mapping Lead | completed on current branch | sample source values visible during mapping |
+| RG-B3 | Expose mapping lifecycle audit metadata | Platform Governance Lead | completed on current branch | save/validate/publish/archive/rollback actor + timestamp visible |
+| RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | completed on current branch | blocked state includes health context and payload preview path |
 | RG-B5 | Improve product detail readiness header and terminology | Product UX Lead | open | product page shows blocker summary and uses publish/export terms consistently |
 | RG-B6 | Replace raw-JSON-first bulk edit with structured operator flow | Catalog Operations Lead | open | default bulk-edit experience is structured and preview-first |
 | RG-B7 | Add first-class media governance | Catalog Operations Lead | open | main image, order, alt text, and asset health are explicit |
@@ -332,18 +332,22 @@ Goal: make the current production flows clearer and safer for operators.
 - Priority: P1
 - Owner: Channel Mapping Lead
 - Release gate: RG-B2
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/components/channel/mapping-editor.tsx`
   - `apps/api/src/marketplace/marketplace.service.ts`
 - Acceptance criteria:
   - table shows sample product values from PIM source fields
   - operator can preview whether mapping is semantically correct
+- Current branch note:
+  - The mapping table now shows a sample-value column sourced from the selected product when present, or from a category sample product when the workbench is opened standalone.
 
 ### Ticket E2-T3 - Expose audit metadata in mapping history
 
 - Priority: P1
 - Owner: Platform Governance Lead
 - Release gate: RG-B3
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/components/channel/version-manager*`
   - `apps/api/src/marketplace/connector-mapping.service.ts`
@@ -351,12 +355,15 @@ Goal: make the current production flows clearer and safer for operators.
 - Acceptance criteria:
   - history shows who saved, validated, published, archived, or rolled back
   - timestamps are visible and role-appropriate
+- Current branch note:
+  - Mapping version history now hydrates lifecycle event metadata from `connector_mapping_events` and surfaces actor/timestamp lines directly in the version table without a schema migration.
 
 ### Ticket E2-T4 - Show connector health and payload preview when blocked
 
 - Priority: P1
 - Owner: Connector Platform Lead
 - Release gate: RG-B4
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/app/channels/connectors/[installationId]/page.tsx`
   - `apps/web/src/app/channels/mappings/page.tsx`
@@ -364,6 +371,8 @@ Goal: make the current production flows clearer and safer for operators.
 - Acceptance criteria:
   - blocked publish state includes connector health cue
   - operator can reach payload preview directly from blocked state
+- Current branch note:
+  - The blocked-state readiness panel now shows connector-account health and direct links into connector health and payload-preview recovery surfaces.
 
 ### Ticket E2-T5 - Improve product readiness header and terminology
 

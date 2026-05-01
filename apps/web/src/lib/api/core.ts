@@ -132,6 +132,7 @@ export interface ProductListItem {
   status: CatalogStatus;
   completenessScore?: number;
   variantCount: number;
+  skuCodes?: string[];
   openValidationErrorCount: number;
   openValidationWarningCount: number;
   createdAt: string;
@@ -635,6 +636,20 @@ export type ConnectorMappingLifecycle =
   | "archived";
 export type ConnectorMappingCompatibility = "compatible" | "deprecated" | "remap_required" | "blocked";
 
+export interface ConnectorMappingHistoryEntry {
+  actorId: string | null;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConnectorMappingHistory {
+  created?: ConnectorMappingHistoryEntry;
+  validated?: ConnectorMappingHistoryEntry;
+  published?: ConnectorMappingHistoryEntry;
+  archived?: ConnectorMappingHistoryEntry;
+  rollback?: ConnectorMappingHistoryEntry;
+}
+
 export interface ConnectorMappingVersion {
   id: string;
   tenantKey: string;
@@ -654,6 +669,7 @@ export interface ConnectorMappingVersion {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  history?: ConnectorMappingHistory;
 }
 
 export interface ConnectorMappingResolved {

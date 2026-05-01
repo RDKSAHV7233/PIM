@@ -6,6 +6,7 @@ import type {
   ConnectorTaxonomyItem,
   MarketplaceChannel,
   MarketplaceChannelMapping,
+  Product,
 } from "@/lib/api";
 import {
   DEFAULT_MARKETPLACE_CHANNEL,
@@ -178,7 +179,8 @@ function invertFieldMap(fieldMap: Record<string, string>): Record<string, string
 function buildSourceFieldOptions(
   attributeDefinitions: AttributeDefinition[],
   currentFieldMap: Record<string, string>,
-): Array<{ value: string; label: string }> {
+  sampleProduct: Product | null,
+): Array<{ value: string; label: string; preview: string | null }> {
   const options = new Map<string, string>();
   const commonFields: Array<[string, string]> = [
     ["title", "Title"],
@@ -203,8 +205,97 @@ function buildSourceFieldOptions(
     }
   }
   return Array.from(options.entries())
-    .map(([value, label]) => ({ value, label }))
+    .map(([value, label]) => ({
+      value,
+      label,
+      preview: previewSourceFieldValue(sampleProduct, value),
+    }))
     .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function readNestedRecord(value: unknown, path: string[]): unknown {
+  let current: unknown = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function compactPreviewValue(value: string, max = 72): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= max) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function formatPreviewValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? compactPreviewValue(trimmed) : "Blank string";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "Empty list";
+    }
+    const formatted = value
+      .slice(0, 3)
+      .map((entry) => formatPreviewValue(entry) ?? "Empty")
+      .join(", ");
+    return value.length > 3 ? `${formatted} (+${value.length - 3} more)` : formatted;
+  }
+  if (typeof value === "object") {
+    return compactPreviewValue(JSON.stringify(value));
+  }
+  return compactPreviewValue(String(value));
+}
+
+function previewSourceFieldValue(sampleProduct: Product | null, sourceField: string): string | null {
+  if (!sampleProduct) {
+    return null;
+  }
+
+  const latestVariant = sampleProduct.variants?.[0] ?? null;
+  const normalizedField = String(sourceField ?? "").trim();
+  if (!normalizedField) {
+    return null;
+  }
+
+  if (normalizedField === "mrp") {
+    return formatPreviewValue(latestVariant?.mrp ?? null);
+  }
+  if (normalizedField === "sellingPrice") {
+    return formatPreviewValue(latestVariant?.sellingPrice ?? null);
+  }
+  if (normalizedField === "inventoryQty") {
+    return formatPreviewValue(latestVariant?.inventoryQty ?? null);
+  }
+  if (normalizedField === "sku" || normalizedField === "skuCode" || normalizedField === "attributes.sku") {
+    return formatPreviewValue(latestVariant?.skuCode ?? readNestedRecord(sampleProduct.attributes, ["sku"]));
+  }
+
+  if (normalizedField.startsWith("attributes.")) {
+    const attributePath = normalizedField.slice("attributes.".length).split(".");
+    return (
+      formatPreviewValue(readNestedRecord(sampleProduct.attributes, attributePath)) ??
+      formatPreviewValue(readNestedRecord(latestVariant?.attributes ?? null, attributePath))
+    );
+  }
+
+  return (
+    formatPreviewValue(readNestedRecord(sampleProduct, normalizedField.split("."))) ??
+    formatPreviewValue(readNestedRecord(sampleProduct.attributes, normalizedField.split("."))) ??
+    formatPreviewValue(readNestedRecord(latestVariant?.attributes ?? null, normalizedField.split(".")))
+  );
 }
 
 interface BuildMappingsViewModelArgs {
@@ -213,9 +304,13 @@ interface BuildMappingsViewModelArgs {
   taxonomyMatches: ConnectorTaxonomyItem[];
   unmappedCategories: ConnectorTaxonomyOption[];
   categoryAttributes: AttributeDefinition[];
+  sampleProduct: Product | null;
   selectedCategoryId: string;
   selectedChannel: MarketplaceChannel;
   selectedProductId: string;
+  selectedInstallationId?: string;
+  fallbackAcknowledged?: boolean;
+  fallbackAckVersionId?: string;
   taxonomyQ: string;
 }
 
@@ -225,12 +320,16 @@ export function buildMappingsViewModel({
   taxonomyMatches,
   unmappedCategories,
   categoryAttributes,
+  sampleProduct,
   selectedCategoryId,
   selectedChannel,
   selectedProductId,
+  selectedInstallationId,
+  fallbackAcknowledged,
+  fallbackAckVersionId,
   taxonomyQ,
 }: BuildMappingsViewModelArgs) {
-  const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}${taxonomyQ ? `&taxonomyQ=${encodeURIComponent(taxonomyQ)}` : ""}${selectedProductId ? `&productId=${encodeURIComponent(selectedProductId)}` : ""}`;
+  const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}${selectedInstallationId ? `&installationId=${encodeURIComponent(selectedInstallationId)}` : ""}${taxonomyQ ? `&taxonomyQ=${encodeURIComponent(taxonomyQ)}` : ""}${selectedProductId ? `&productId=${encodeURIComponent(selectedProductId)}` : ""}${fallbackAcknowledged ? "&fallbackAcknowledged=true" : ""}${fallbackAckVersionId ? `&fallbackAckVersionId=${encodeURIComponent(fallbackAckVersionId)}` : ""}`;
   const taxonomyDefaults = requiredAttributesFromTaxonomy(taxonomyMatches);
   const resolvedCategoryTarget = extractResolvedCategoryTarget(resolved?.resolvedMapping ?? null);
   const targetCategoryOptions = uniqueStrings([
@@ -248,6 +347,7 @@ export function buildMappingsViewModel({
   const sourceFieldOptions = buildSourceFieldOptions(
     categoryAttributes.filter((definition) => definition.appliesTo === "product"),
     currentFieldMap,
+    sampleProduct,
   );
   const mappingDraftRulesDefault = JSON.stringify(
     {

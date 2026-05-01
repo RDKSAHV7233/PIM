@@ -10,6 +10,7 @@ import {
   ApiHttpError,
   getInstalledConnectors,
   getProduct,
+  getProducts,
   type ConnectorInstallation,
   type MarketplaceChannel,
   evaluateConnectorMappingPreflight,
@@ -146,7 +147,41 @@ function resolveInstallationDetail(installation: ConnectorInstallation): string 
   const prefix = context.length > 0
     ? `${installation.displayName} · ${context} · status ${installation.status}`
     : `${installation.displayName} · status ${installation.status}`;
-  return `${prefix}. Current readiness checks remain connector-scoped while account context stays visible in this workbench.`;
+  return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
+}
+
+function connectorHealthTone(status: string): "neutral" | "success" | "warning" | "danger" {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (normalized === "ACTIVE") {
+    return "success";
+  }
+  if (normalized === "CREDENTIAL_EXPIRED" || normalized === "FAILED" || normalized === "ERROR") {
+    return "danger";
+  }
+  if (normalized === "PAUSED" || normalized === "DISABLED" || normalized === "INACTIVE") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function connectorHealthLabel(status: string): string {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (normalized === "ACTIVE") {
+    return "Healthy";
+  }
+  if (normalized === "CREDENTIAL_EXPIRED") {
+    return "Credentials expired";
+  }
+  if (normalized === "PAUSED") {
+    return "Paused";
+  }
+  if (normalized === "DISABLED") {
+    return "Disabled";
+  }
+  if (normalized === "FAILED" || normalized === "ERROR") {
+    return "Needs attention";
+  }
+  return status || "Unknown";
 }
 
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
@@ -191,7 +226,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, productId: selectedProductId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve([]),
     ]);
-    const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct] = await Promise.all([
+    const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct, sampleProductsRaw] = await Promise.all([
       showHistory
         ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId || undefined, includeArchived: true }, { role: actorRole, authHeader })
         : Promise.resolve([]),
@@ -204,7 +239,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
       showTaxonomy
         ? getUnmappedConnectorTaxonomy(connectorSlug, { role: actorRole, authHeader })
         : Promise.resolve([]),
-      showContext && selectedProductId
+      selectedProductId
         ? getProduct(selectedProductId, { role: actorRole, authHeader }).catch((error: unknown) => {
             if (error instanceof ApiHttpError && error.status === 404) {
               return null;
@@ -212,13 +247,27 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             throw error;
           })
         : Promise.resolve(null),
+      selectedProductId ? Promise.resolve([]) : getProducts({ role: actorRole, authHeader }).catch(() => []),
     ]);
+    const sampleProducts = filterTestData(sampleProductsRaw, true);
+    const categorySampleProduct =
+      sampleProducts.find((product) => product.categoryId === selectedCategoryId) ?? null;
+    const previewProduct = selectedProduct ?? categorySampleProduct;
+    const sampleProductLabel = previewProduct
+      ? `${previewProduct.title}${previewProduct.brand ? ` (${previewProduct.brand})` : ""}`
+      : null;
+    const sampleProductMode: "selected" | "category_sample" | "none" = selectedProduct
+      ? "selected"
+      : categorySampleProduct
+        ? "category_sample"
+        : "none";
     const viewModel = buildMappingsViewModel({
       mapping,
       resolved,
       taxonomyMatches,
       unmappedCategories,
       categoryAttributes,
+      sampleProduct: previewProduct,
       selectedCategoryId,
       selectedChannel,
       selectedProductId,
@@ -254,6 +303,14 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         : matchingInstallations.length === 0
           ? "No installed connector account is linked to this channel yet."
           : null;
+    const connectorHealthHref = selectedInstallationId
+      ? `/channels/connectors/${encodeURIComponent(selectedInstallationId)}?tab=overview`
+      : "/channels/connectors";
+    const payloadPreviewHref = selectedProductId
+      ? `/products/${encodeURIComponent(selectedProductId)}?tab=channels&channel=${encodeURIComponent(selectedChannel)}`
+      : selectedInstallationId
+        ? `/channels/connectors/${encodeURIComponent(selectedInstallationId)}?tab=catalog#catalog-payload`
+        : "/channels/connectors";
 
     return (
       <div className="space-y-5">
@@ -303,7 +360,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           <div className="space-y-4">
             {/* mapTarget:: */}
             {/* placeholder={mappingDraftRulesDefault} */}
-            <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
+            <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} sampleProductLabel={sampleProductLabel} sampleProductMode={sampleProductMode} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
             {showHistory ? (
               <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} />
             ) : (
@@ -336,7 +393,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 actionLabel="Open context"
               />
             )}
-            <PublishReadinessCard preflight={preflight} readiness={readiness} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} />
+            <PublishReadinessCard preflight={preflight} readiness={readiness} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} connectorAccountLabel={selectedInstallation ? resolveInstallationLabel(selectedInstallation) : null} connectorHealthLabel={selectedInstallation ? connectorHealthLabel(selectedInstallation.status) : null} connectorHealthTone={selectedInstallation ? connectorHealthTone(selectedInstallation.status) : "neutral"} connectorHealthHref={connectorHealthHref} payloadPreviewHref={payloadPreviewHref} />
             {showTaxonomy ? (
               <TaxonomyAlignmentCard connectorSlug={connectorSlug} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} />
             ) : (

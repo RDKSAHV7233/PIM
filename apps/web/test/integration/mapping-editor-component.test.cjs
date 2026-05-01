@@ -19,7 +19,33 @@ function run() {
   assert(source.includes("export function PublishReadinessCard"), "Mapping editor module must export the publish readiness card.");
   assert(source.includes("export function LegacyTemplateCompatibilityCard"), "Mapping editor module must export the legacy compatibility card.");
   assert(source.includes("createConnectorMappingVersionAction"), "Mapping editor module must own the mapping draft action wiring.");
-  console.log(JSON.stringify({ status: "ok", validated: ["mapping_editor_module_exports_isolated_cards"] }, null, 2));
+  assert(
+    source.includes("Sample product value") &&
+      source.includes("Select a PIM field to preview sample value.") &&
+      source.includes("Sample source values come from the selected product:") &&
+      source.includes("Sample source values use a category example product:"),
+    "Mapping editor must surface sample source values so operators can verify PIM field choices semantically.",
+  );
+  assert(
+    source.includes("Blocked-state recovery") &&
+      source.includes("Open connector health") &&
+      source.includes("Open payload preview"),
+    "Publish readiness must expose connector-health and payload-preview recovery links while blocked.",
+  );
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "mapping_editor_module_exports_isolated_cards",
+          "mapping_editor_surfaces_sample_source_value_preview",
+          "mapping_editor_surfaces_blocked_state_recovery_links",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 try {

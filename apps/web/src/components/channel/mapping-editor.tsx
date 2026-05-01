@@ -75,7 +75,7 @@ function classifyMappingFieldGroup(targetField: string): {
 function renderFieldRows(
   rows: MappingFieldRow[],
   fieldInputPrefix: string,
-  sourceFieldOptions: Array<{ value: string; label: string }>,
+  sourceFieldOptions: Array<{ value: string; label: string; preview: string | null }>,
 ) {
   if (rows.length === 0) {
     return null;
@@ -110,43 +110,72 @@ function renderFieldRows(
             <tr>
               <th className="px-3 py-2">Channel field</th>
               <th className="px-3 py-2">PIM field</th>
+              <th className="px-3 py-2">Sample product value</th>
               <th className="px-3 py-2">Required</th>
               <th className="px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
-            {group.rows.map((row) => (
-              <tr key={row.targetField} className="border-t border-slate-200">
-                <td className="px-3 py-2.5 font-medium text-slate-900">{row.targetField}</td>
-                <td className="px-3 py-2.5">
-                  <Select name={`${fieldInputPrefix}${row.targetField}`} defaultValue={row.selectedSource}>
-                    <option value="">Select PIM field</option>
-                    {sourceFieldOptions.map((option) => (
-                      <option key={`${row.targetField}:${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </td>
-                <td className="px-3 py-2.5">
-                  <StatusChip
-                    label={row.required ? "Required" : "Optional"}
-                    tone={row.required ? "warning" : "neutral"}
-                  />
-                </td>
-                <td className="px-3 py-2.5">
-                  <StatusChip
-                    label={row.selectedSource ? "Mapped" : "Missing"}
-                    tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
-                  />
-                </td>
-              </tr>
-            ))}
+            {group.rows.map((row) => {
+              const selectedOption =
+                sourceFieldOptions.find((option) => option.value === row.selectedSource) ?? null;
+              const samplePreview = row.selectedSource
+                ? selectedOption?.preview ?? "No value on sample product"
+                : "Select a PIM field to preview sample value.";
+
+              return (
+                <tr key={row.targetField} className="border-t border-slate-200">
+                  <td className="px-3 py-2.5 font-medium text-slate-900">{row.targetField}</td>
+                  <td className="px-3 py-2.5">
+                    <Select name={`${fieldInputPrefix}${row.targetField}`} defaultValue={row.selectedSource}>
+                      <option value="">Select PIM field</option>
+                      {sourceFieldOptions.map((option) => (
+                        <option key={`${row.targetField}:${option.value}`} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-600">{samplePreview}</td>
+                  <td className="px-3 py-2.5">
+                    <StatusChip
+                      label={row.required ? "Required" : "Optional"}
+                      tone={row.required ? "warning" : "neutral"}
+                    />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <StatusChip
+                      label={row.selectedSource ? "Mapped" : "Missing"}
+                      tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </div>
   ));
+}
+
+function describeReadinessCode(code: string): string {
+  if (code === "fallback_ack_required") {
+    return "Fallback acknowledgement is required before readiness can clear.";
+  }
+  if (code === "fallback_mapping_applied") {
+    return "A tenant fallback mapping is being applied for this category scope.";
+  }
+  if (code === "using_system_default_mapping") {
+    return "This scope is falling back to the system default mapping pack.";
+  }
+  if (code === "required_attribute_mapping_missing") {
+    return "One or more required attribute mappings are still missing.";
+  }
+  if (code === "field_mappings_missing") {
+    return "No field mappings are defined for this scope yet.";
+  }
+  return code.replace(/_/g, " ");
 }
 
 export function MappingStepUpAlert({
@@ -227,6 +256,8 @@ export function MappingEditorCard({
   mappedTargetToSource,
   targetFieldOptions,
   sourceFieldOptions,
+  sampleProductLabel,
+  sampleProductMode,
   taxonomyDefaults,
   mappingDraftRulesDefault,
   fallbackPolicyDefault,
@@ -252,7 +283,9 @@ export function MappingEditorCard({
   requiredTargetFields: string[];
   mappedTargetToSource: Record<string, string>;
   targetFieldOptions: string[];
-  sourceFieldOptions: Array<{ value: string; label: string }>;
+  sourceFieldOptions: Array<{ value: string; label: string; preview: string | null }>;
+  sampleProductLabel: string | null;
+  sampleProductMode: "selected" | "category_sample" | "none";
   taxonomyDefaults: string[];
   mappingDraftRulesDefault: string;
   fallbackPolicyDefault: string;
@@ -289,6 +322,13 @@ export function MappingEditorCard({
             </div>
             <p className="mt-2 text-sm text-slate-700">
               Start by mapping the missing required fields below. Optional fields and advanced JSON overrides are available after the required fields are covered.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              {sampleProductMode === "selected" && sampleProductLabel
+                ? `Sample source values come from the selected product: ${sampleProductLabel}.`
+                : sampleProductMode === "category_sample" && sampleProductLabel
+                  ? `Sample source values use a category example product: ${sampleProductLabel}.`
+                  : "Sample source values are unavailable until a product context is available for this category."}
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -483,10 +523,28 @@ export function MappingEditorCard({
 export function PublishReadinessCard({
   preflight,
   readiness,
+  fallbackAcknowledged,
+  fallbackAckVersionId,
+  fallbackAckError,
+  connectorAccountLabel,
+  connectorHealthLabel,
+  connectorHealthTone,
+  connectorHealthHref,
+  payloadPreviewHref,
 }: {
   preflight: ConnectorMappingPreflight | null;
   readiness: ConnectorPublishReadiness | null;
+  fallbackAcknowledged: boolean;
+  fallbackAckVersionId?: string;
+  fallbackAckError?: string;
+  connectorAccountLabel: string | null;
+  connectorHealthLabel: string | null;
+  connectorHealthTone: "neutral" | "success" | "warning" | "danger" | "info";
+  connectorHealthHref: string;
+  payloadPreviewHref: string;
 }) {
+  const isBlocked = !(preflight?.ok ?? false) || !(readiness?.ok ?? false) || fallbackAckError === "required";
+
   return (
     <Card id="mapping-readiness">
       <CardTitle>Publish Readiness (Hard Gate)</CardTitle>
@@ -499,11 +557,75 @@ export function PublishReadinessCard({
           <StatusChip label={preflight?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(preflight)} />
           <p className="mt-1 text-xs text-slate-500">Blockers: {preflight?.blockers.length ?? 0}</p>
         </div>
+        {preflight?.matchedVersionIds?.length ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evaluated mapping versions</p>
+            <p className="mt-1 text-sm text-slate-800">
+              Readiness is evaluating the currently published mapping version set, not the unsaved draft. Version IDs: {preflight.matchedVersionIds.join(", ")}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evaluated mapping versions</p>
+            <p className="mt-1 text-sm text-slate-800">
+              No published mapping version is active for this scope yet. Readiness is currently falling back to the system or tenant default path.
+            </p>
+          </div>
+        )}
         <div>
           <p className="font-medium">Publish readiness</p>
           <StatusChip label={readiness?.ok ? "ok" : "blocked"} tone={statusToneForPreflight(readiness)} />
           <p className="mt-1 text-xs text-slate-500">Blockers: {readiness?.blockers.length ?? 0}</p>
         </div>
+        {isBlocked ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocked-state recovery</p>
+            {connectorHealthLabel ? (
+              <>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <StatusChip label={connectorHealthLabel} tone={connectorHealthTone} />
+                  {connectorAccountLabel ? <span className="text-sm text-slate-700">{connectorAccountLabel}</span> : null}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Open the connector account cockpit for health, credentials, and retry context, or jump to payload preview for this product and channel.
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                No connector account is selected for this channel yet. Install or choose an account before publish can clear.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={connectorHealthHref}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Open connector health
+              </Link>
+              <Link
+                href={payloadPreviewHref}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Open payload preview
+              </Link>
+            </div>
+          </div>
+        ) : null}
+        {(preflight?.fallbackAckRequired || readiness?.blockers.includes("fallback_ack_required") || fallbackAckError === "required") ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-semibold text-amber-900">Fallback acknowledgement required</p>
+            <p className="mt-1 text-xs text-amber-800">
+              A fallback category path is active for this mapping scope. Acknowledge it from version history before publishing the affected version.
+            </p>
+            {fallbackAcknowledged ? (
+              <p className="mt-2 text-xs text-emerald-800">
+                Acknowledgement is active{fallbackAckVersionId ? ` for version ${fallbackAckVersionId}.` : "."}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-amber-900">Readiness stays blocked until that acknowledgement is recorded in the current workflow.</p>
+            )}
+          </div>
+        ) : null}
         <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-800">Blockers and warnings</summary>
           <div className="mt-2 space-y-2">
@@ -511,7 +633,7 @@ export function PublishReadinessCard({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preflight blockers</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
                 {(preflight?.blockers ?? []).map((item) => (
-                  <li key={`pf-b-${item}`}>{item}</li>
+                  <li key={`pf-b-${item}`}>{describeReadinessCode(item)}</li>
                 ))}
               </ul>
             </div>
@@ -519,7 +641,7 @@ export function PublishReadinessCard({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness blockers</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
                 {(readiness?.blockers ?? []).map((item) => (
-                  <li key={`rd-b-${item}`}>{item}</li>
+                  <li key={`rd-b-${item}`}>{describeReadinessCode(item)}</li>
                 ))}
               </ul>
             </div>
@@ -527,7 +649,7 @@ export function PublishReadinessCard({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
                 {(readiness?.warnings ?? []).map((item) => (
-                  <li key={`rd-w-${item}`}>{item}</li>
+                  <li key={`rd-w-${item}`}>{describeReadinessCode(item)}</li>
                 ))}
               </ul>
             </div>
