@@ -18,7 +18,25 @@ function run() {
   assert(source.includes("validateConnectorMappingVersionAction"), "Version manager module must own mapping validation action wiring.");
   assert(source.includes("Publish"), "Version manager module must expose publish controls.");
   assert(source.includes("Rollback"), "Version manager module must expose rollback controls.");
-  console.log(JSON.stringify({ status: "ok", validated: ["version_manager_module_exports_isolated_cards"] }, null, 2));
+  assert(
+    source.includes("Active promoted version") &&
+      source.includes("No active promoted version yet") &&
+      source.includes("currently live for this mapping scope"),
+    "Version manager must surface an explicit active-promoted banner so operators can tell which mapping version is live.",
+  );
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "version_manager_module_exports_isolated_cards",
+          "version_manager_surfaces_active_promoted_version_banner",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 try {

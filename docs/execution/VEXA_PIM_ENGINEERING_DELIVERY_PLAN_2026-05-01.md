@@ -93,7 +93,7 @@ This gate must pass before broad production claims.
 
 | Gate ID | Gate | Owner | Status | Acceptance evidence |
 |---|---|---|---|---|
-| RG-B1 | Show active/promoted mapping version banner | Channel Mapping Lead | open | active version is visible on mapping workbench |
+| RG-B1 | Show active/promoted mapping version banner | Channel Mapping Lead | completed on current branch | active version is visible on mapping workbench |
 | RG-B2 | Add PIM field sample value preview in mapping table | Channel Mapping Lead | open | sample source values visible during mapping |
 | RG-B3 | Expose mapping lifecycle audit metadata | Platform Governance Lead | open | save/validate/publish/archive/rollback actor + timestamp visible |
 | RG-B4 | Show connector health and payload preview in blocked states | Connector Platform Lead | open | blocked state includes health context and payload preview path |
@@ -317,12 +317,15 @@ Goal: make the current production flows clearer and safer for operators.
 - Priority: P1
 - Owner: Channel Mapping Lead
 - Release gate: RG-B1
+- Current status: completed on current branch
 - File scope:
   - `apps/web/src/app/channels/mappings/page.tsx`
   - `apps/web/src/components/channel/version-manager*`
 - Acceptance criteria:
   - operator can instantly identify the live/promoted version
   - current draft vs active version cannot be confused
+- Current branch note:
+  - Version history now shows an above-the-fold banner for the active promoted version and a clear empty-state banner when no live version exists yet.
 
 ### Ticket E2-T2 - Add PIM source value preview in mapping table
 

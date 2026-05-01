@@ -3,6 +3,7 @@ import {
   archiveConnectorMappingVersionAction,
   publishConnectorMappingVersionAction,
   rollbackConnectorMappingVersionAction,
+  setMappingFallbackAcknowledgementAction,
   validateConnectorMappingVersionAction,
 } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,26 @@ import {
 
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function fallbackAckMessage(version: ConnectorMappingVersion): string | null {
+  const ackMessage = asRecord(version.fallbackPolicy).ack_message;
+  return typeof ackMessage === "string" && ackMessage.trim().length > 0 ? ackMessage.trim() : null;
+}
+
+function describePublishedVersion(version: ConnectorMappingVersion): string {
+  return version.id.slice(0, 8);
+}
+
+function presentPublishedAt(value: string | null, fallbackValue: string): string {
+  const source = value ?? fallbackValue;
+  return new Date(source).toLocaleString();
 }
 
 function ProtectedMappingActionForm({
@@ -91,6 +112,9 @@ export function VersionManagerCard({
   redirectTo,
   stepUpAction,
   stepUpVersionId,
+  fallbackAcknowledged,
+  fallbackAckVersionId,
+  fallbackAckError,
 }: {
   actorRole: AppRole;
   canWrite: boolean;
@@ -99,10 +123,21 @@ export function VersionManagerCard({
   redirectTo: string;
   stepUpAction: ProtectedMappingActionKind | "";
   stepUpVersionId: string;
+  fallbackAcknowledged: boolean;
+  fallbackAckVersionId: string;
+  fallbackAckError: string;
 }) {
   const draftCount = versions.filter((version) => version.lifecycleState === "draft").length;
   const validatedCount = versions.filter((version) => version.lifecycleState === "validated").length;
   const liveCount = versions.filter((version) => version.lifecycleState === "published").length;
+  const publishedVersions = versions
+    .filter((version) => version.lifecycleState === "published")
+    .sort((left, right) => {
+      const leftTime = new Date(left.publishedAt ?? left.updatedAt).getTime();
+      const rightTime = new Date(right.publishedAt ?? right.updatedAt).getTime();
+      return rightTime - leftTime;
+    });
+  const activeVersion = publishedVersions[0] ?? null;
 
   return (
     <Card id="mapping-history">
@@ -115,6 +150,30 @@ export function VersionManagerCard({
       <p className="mt-2 text-xs text-slate-500">
         After you save a draft, validate it here. Publish becomes available only for validated versions.
       </p>
+      {activeVersion ? (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+          <p className="font-semibold">Active promoted version</p>
+          <p className="mt-1">
+            Version {describePublishedVersion(activeVersion)} is currently live for this mapping scope.
+          </p>
+          <p className="mt-1 text-xs text-emerald-900">
+            Published {presentPublishedAt(activeVersion.publishedAt, activeVersion.updatedAt)} from connector definition version{" "}
+            {activeVersion.connectorDefinitionVersion}.
+          </p>
+          {publishedVersions.length > 1 ? (
+            <p className="mt-1 text-xs text-emerald-900">
+              {publishedVersions.length - 1} prior published version{publishedVersions.length - 1 === 1 ? "" : "s"} remain in history for rollback.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-semibold">No active promoted version yet</p>
+          <p className="mt-1 text-xs text-amber-900">
+            Validate the current draft, then publish it here to create the first live mapping version for this scope.
+          </p>
+        </div>
+      )}
       <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -179,12 +238,60 @@ export function VersionManagerCard({
                             pendingLabel="Validating..."
                           />
                         </form>
+                        {version.fallbackAckRequired ? (
+                          <form action={setMappingFallbackAcknowledgementAction} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            <input type="hidden" name="redirectTo" value={redirectTo} />
+                            <input type="hidden" name="versionId" value={version.id} />
+                            <label className="flex items-start gap-2">
+                              <input
+                                type="checkbox"
+                                name="fallbackAcknowledged"
+                                value="true"
+                                defaultChecked={fallbackAcknowledged && fallbackAckVersionId === version.id}
+                              />
+                              <span>
+                                <span className="font-medium">Acknowledge fallback</span>
+                                <span className="mt-1 block text-[11px] text-amber-800">
+                                  {fallbackAckMessage(version) ?? "Fallback category will be used for publish if no explicit mapping exists."}
+                                </span>
+                              </span>
+                            </label>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <PendingSubmitButton
+                                type="submit"
+                                variant="secondary"
+                                className="text-xs"
+                                idleLabel="Save acknowledgement"
+                                pendingLabel="Saving..."
+                              />
+                            </div>
+                            {fallbackAckError === "required" && fallbackAckVersionId === version.id ? (
+                              <p className="mt-2 text-[11px] font-medium text-amber-900">
+                                Save fallback acknowledgement before publishing this version.
+                              </p>
+                            ) : null}
+                          </form>
+                        ) : null}
+                        {version.fallbackAckRequired && fallbackAcknowledged && fallbackAckVersionId === version.id ? (
+                          <form action={setMappingFallbackAcknowledgementAction}>
+                            <input type="hidden" name="redirectTo" value={redirectTo} />
+                            <input type="hidden" name="versionId" value={version.id} />
+                            <input type="hidden" name="fallbackAcknowledged" value="false" />
+                            <PendingSubmitButton
+                              type="submit"
+                              variant="secondary"
+                              className="text-xs"
+                              idleLabel="Clear acknowledgement"
+                              pendingLabel="Clearing..."
+                            />
+                          </form>
+                        ) : null}
                         <ProtectedMappingActionForm
                           action={publishConnectorMappingVersionAction}
                           actorRole={actorRole}
                           connectorSlug={connectorSlug}
                           description="Publishing is a high-risk action. Confirm your password before promoting this version."
-                          disabled={version.lifecycleState !== "validated"}
+                          disabled={version.lifecycleState !== "validated" || (version.fallbackAckRequired && !(fallbackAcknowledged && fallbackAckVersionId === version.id))}
                           label="Publish"
                           open={stepUpAction === "publish" && stepUpVersionId === version.id}
                           pendingLabel="Publishing..."
@@ -192,6 +299,15 @@ export function VersionManagerCard({
                           versionId={version.id}
                         >
                           <input type="hidden" name="confirm" value="true" />
+                          <input type="hidden" name="fallbackAckRequired" value={version.fallbackAckRequired ? "true" : "false"} />
+                          <input type="hidden" name="fallbackAcknowledged" value={fallbackAcknowledged && fallbackAckVersionId === version.id ? "true" : "false"} />
+                          {version.fallbackAckRequired ? (
+                            <p className="text-xs text-slate-500">
+                              {fallbackAcknowledged && fallbackAckVersionId === version.id
+                                ? "Fallback acknowledgement is already recorded for this version in the current workflow."
+                                : "Fallback acknowledgement must be saved for this version before publish can continue."}
+                            </p>
+                          ) : null}
                         </ProtectedMappingActionForm>
                         <ProtectedMappingActionForm
                           action={archiveConnectorMappingVersionAction}
