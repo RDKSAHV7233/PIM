@@ -45,8 +45,10 @@ function run() {
   assert(
     readinessBatchRouteSource.includes('/marketplace/readiness/batch') &&
       readinessBatchRouteSource.includes("unknownBatch") &&
-      readinessBatchRouteSource.includes("productIds is required."),
-    "Web readiness batch route must proxy the backend batch contract and provide unknown-state fallback.",
+      readinessBatchRouteSource.includes("productIds is required.") &&
+      readinessBatchRouteSource.includes("ApiHttpError") &&
+      readinessBatchRouteSource.includes('status: 502'),
+    "Web readiness batch route must proxy the backend batch contract and preserve upstream failure semantics instead of masking every error as HTTP 200.",
   );
 
   console.log(

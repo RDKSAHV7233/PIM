@@ -35,6 +35,10 @@ function setDefaultEnv(name, value) {
   }
 }
 
+function getAuthPassword() {
+  return process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
+}
+
 function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const databaseUrl = process.env.DATABASE_URL;
@@ -56,6 +60,7 @@ function prepareEnv() {
   setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
 }
 
@@ -122,19 +127,26 @@ async function run() {
   const runId = Date.now().toString();
   const tenantId = `pagination-tenant-${runId}`;
   const userId = `pagination-user-${runId}`;
+  const workspaceSlug = `pagination-${runId}`.slice(0, 24);
   const port = 5400 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
   const authIdentityJson = JSON.stringify({
-    [userId]: { tenantId, role: "admin" },
+    [userId]: { tenantId, role: "admin", workspaceSlug },
   });
 
   const env = {
     ...process.env,
     PORT: String(port),
+    AUTH_MODE: "local",
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_DEFAULT_TENANT_KEY: tenantId,
+    PIM_DEFAULT_WORKSPACE_SLUG: workspaceSlug,
     PIM_DEFAULT_ROLE: "admin",
+    PIM_AUTH_PASSWORD: getAuthPassword(),
     PIM_AUTH_IDENTITIES_JSON: authIdentityJson,
+    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
+      [workspaceSlug]: { tenantId, displayName: "Cursor pagination workspace" },
+    }),
   };
 
   const apiProcess = spawn("node", [API_ENTRY], {
@@ -150,10 +162,9 @@ async function run() {
   try {
     await waitForHealth(baseUrl, 60_000);
     const loginResponse = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug,
       userId,
-      tenantId,
-      role: "admin",
-      password: "vexa-pim-demo-password",
+      password: getAuthPassword(),
       expiresInMinutes: 30,
     });
     const token = loginResponse.payload?.accessToken;

@@ -35,6 +35,12 @@ const workspaceAdminModules = [
     visibility: "admin" as AdminNavigationAudience,
   },
   {
+    title: "Auth Policy",
+    description: "Store tenant MFA, session timeout, and OIDC posture ahead of enterprise identity rollout.",
+    href: "/admin/auth-policy",
+    visibility: "admin" as AdminNavigationAudience,
+  },
+  {
     title: "Outbound Webhooks",
     description: "Configure outbound event deliveries for imports, approvals, and publishing.",
     href: "/admin/webhooks",

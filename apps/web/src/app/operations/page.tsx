@@ -42,6 +42,8 @@ function resolveResponseTotal<T>(value: T[] | { items: T[] } | null | undefined)
 export const dynamic = "force-dynamic";
 
 export default async function OperationsPage() {
+  const submissionWindowLimit = 500;
+  const deadLetterWindowLimit = 500;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const canRunWriteOperations = canEditWorkspace(actorRole);
@@ -53,12 +55,12 @@ export default async function OperationsPage() {
        * Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
        * TODO: replace with count endpoint when available.
        */
-      getSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
+      getSubmissions({ limit: submissionWindowLimit }, { role: actorRole, authHeader }),
       /*
        * Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
        * TODO: replace with count endpoint when available.
        */
-      getDeadLetterSubmissions({ limit: 500 }, { role: actorRole, authHeader }),
+      getDeadLetterSubmissions({ limit: deadLetterWindowLimit }, { role: actorRole, authHeader }),
     ]);
 
     const submissions = toItems(submissionsResponse);
@@ -91,14 +93,22 @@ export default async function OperationsPage() {
           <KpiCard
             label="Submission Jobs"
             value={submissionTotal}
-            helper={`${submissionNeedsAttention} of ${submissionTotal} rejected/error`}
+            helper={
+              submissions.length >= submissionWindowLimit
+                ? `${submissionNeedsAttention} of latest ${submissionWindowLimit} rejected/error`
+                : `${submissionNeedsAttention} of ${submissionTotal} rejected/error`
+            }
             tone={submissionNeedsAttention > 0 ? "danger" : "default"}
             href="/operations/jobs"
           />
           <KpiCard
             label="Dead Letter Queue"
             value={deadLetterTotal}
-            helper="Jobs pending manual recovery"
+            helper={
+              deadLetterTotal >= deadLetterWindowLimit
+                ? `Latest ${deadLetterWindowLimit} jobs pending manual recovery`
+                : "Jobs pending manual recovery"
+            }
             tone={deadLetterTotal > 0 ? "danger" : "success"}
             href="/operations/repair"
           />

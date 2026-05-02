@@ -7,7 +7,7 @@ The codebase is the source of truth. Use the documentation below for current wor
 ## Current Stack
 
 - Web: Next.js 15, React, TypeScript, Tailwind CSS
-- API: NestJS on Fastify
+- API: NestJS on Express
 - Database: PostgreSQL with Prisma
 - Queue/cache: in-memory locally or BullMQ/Redis for staging and production
 - Media: Cloudflare R2-compatible object storage
@@ -57,10 +57,24 @@ Default local URLs:
 ## Validation Commands
 
 ```bash
-npm run lint
-npm test
-npm run build
-npm run openapi:check
+npm run lint --workspace @pim1/api
+npm run build --workspace @pim1/api
+npm run lint --workspace @pim1/web
+npm run build --workspace @pim1/web
+npm run test --workspace @pim1/web
+npm run gate:run:increment
+npm run gate:run:sprint
+npm audit --omit=dev --audit-level=high
+git diff --check
 ```
 
 Run focused integration scripts from `package.json` when changing a specific route, connector, queue, auth, or admin surface.
+
+## Release Posture
+
+Current repo truth:
+
+- Targeted production-readiness code blockers around web session fail-closed behavior, privileged internal route guarding, web build/gate stability, submission and DLQ count honesty, readiness proxy failure handling, and catalog products pagination have been closed in code and revalidated locally.
+- `INC-08` in `docs/execution/INCREMENT_STATE.json` is now complete, supported by the latest checked-in staging rollout snapshot with `healthOk: true`, `controlledPending: []`, and `broadPending: []`.
+- Production-ready is approved from the current checked-in code and release-governance evidence.
+- Enterprise-ready is still not approved from the current evidence bundle.

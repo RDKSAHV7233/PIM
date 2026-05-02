@@ -57,6 +57,8 @@ function statusTone(status: string): "neutral" | "success" | "warning" | "danger
 }
 
 export default async function OperationsJobsPage({ searchParams }: OperationsJobsPageProps) {
+  const visibleSubmissionLimit = 100;
+  const deadLetterLimit = 100;
   const query = await searchParams;
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
@@ -68,13 +70,13 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
     const [submissionsResponse, deadLetterResponse] = await Promise.all([
       getSubmissions(
         {
-          limit: 100,
+          limit: visibleSubmissionLimit,
           status: statusFilter || undefined,
           connectorSlug: connectorSlug || undefined,
         },
         { role: actorRole, authHeader },
       ),
-      getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
+      getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }),
     ]);
     const submissions = toItems(submissionsResponse);
     const deadLetterSubmissions = toItems(deadLetterResponse);
@@ -112,14 +114,23 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Total Submissions" value={submissions.length} />
+          <KpiCard
+            label="Visible Submissions"
+            value={submissions.length}
+            helper={`Latest ${visibleSubmissionLimit} matching jobs`}
+          />
           <KpiCard label="Pending" value={statusCounts.PENDING ?? 0} tone="warning" />
           <KpiCard
             label="Rejected / Error"
             value={(statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0)}
             tone={(statusCounts.REJECTED ?? 0) + (statusCounts.ERROR ?? 0) > 0 ? "danger" : "success"}
           />
-          <KpiCard label="Dead Letter" value={deadLetterSubmissions.length} tone={deadLetterSubmissions.length > 0 ? "warning" : "default"} />
+          <KpiCard
+            label="Dead Letter"
+            value={deadLetterSubmissions.length}
+            helper={`Latest ${deadLetterLimit} dead-letter jobs`}
+            tone={deadLetterSubmissions.length > 0 ? "warning" : "default"}
+          />
         </section>
 
         <FilterBar>

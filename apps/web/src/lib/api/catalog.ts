@@ -46,6 +46,14 @@ export async function getProductList(
   inputOrOptions?: ProductListQuery | ApiRequestOptions,
   maybeOptions?: ApiRequestOptions,
 ) {
+  const response = await getProductListPage(inputOrOptions, maybeOptions);
+  return response.items;
+}
+
+export async function getProductListPage(
+  inputOrOptions?: ProductListQuery | ApiRequestOptions,
+  maybeOptions?: ApiRequestOptions,
+) {
   const queryInput = isApiRequestOptions(inputOrOptions) || !inputOrOptions ? {} : inputOrOptions;
   const options = isApiRequestOptions(inputOrOptions) ? inputOrOptions : maybeOptions;
   const params = new URLSearchParams();
@@ -65,7 +73,14 @@ export async function getProductList(
     undefined,
     options,
   );
-  return Array.isArray(response) ? response : response.items;
+  if (Array.isArray(response)) {
+    return {
+      items: response,
+      nextCursor: null,
+      limit: queryInput.limit ?? response.length,
+    };
+  }
+  return response;
 }
 
 export async function getProduct(productId: string, options?: ApiRequestOptions) {

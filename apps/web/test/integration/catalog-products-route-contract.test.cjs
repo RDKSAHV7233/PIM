@@ -36,9 +36,16 @@ function run() {
       source.includes("Promise.all([") &&
       source.includes("getStats({ role: actorRole, authHeader })") &&
       source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })") &&
-      source.includes("getProducts({ role: actorRole, authHeader })") &&
+      source.includes("loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader })") &&
+      source.includes("getProductListPage(") &&
       source.includes("getInstalledConnectors({ role: actorRole, authHeader })"),
-    "Catalog products route must fetch stats, categories, products, and connectors in parallel using the shared server auth context.",
+    "Catalog products route must fetch stats, categories, paginated products, and connectors in parallel using the shared server auth context.",
+  );
+  assert(
+    source.includes("const requestedOffset = (page - 1) * limit;") &&
+      source.includes("visibleProducts.push(...filteredBatch.slice(startIndex, startIndex + remaining));") &&
+      !source.includes("filteredProducts.slice((page - 1) * limit, page * limit)"),
+    "Catalog products route must page through the slim product API instead of fetching the full catalog and slicing locally.",
   );
   assert(
     source.includes('redirect(buildLoginRedirect("/catalog/products", error));'),
@@ -56,8 +63,8 @@ function run() {
   );
   assert(
     source.includes("categories: filteredCategories.length,") &&
-      source.includes("products: filteredProducts.length,") &&
-      source.includes("variants: filteredProducts.reduce("),
+      source.includes("products: productWindow.totals?.products ?? 0,") &&
+      source.includes("variants: productWindow.totals?.variants ?? 0,"),
     "Catalog products route must recompute top-line catalog stats from the filtered product/category set when test data is hidden.",
   );
   assert(

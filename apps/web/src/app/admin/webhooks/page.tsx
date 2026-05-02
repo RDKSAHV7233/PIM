@@ -27,6 +27,7 @@ interface WebhookAdminPageProps {
 const EVENT_LABELS: Record<string, string> = {
   import_completed: "Import completed",
   import_failed: "Import failed",
+  import_repair_required: "Import repair required",
   publish_succeeded: "Publish succeeded",
   publish_failed: "Publish failed",
   approval_decision: "Approval decision",

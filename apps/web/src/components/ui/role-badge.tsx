@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { AppRole } from "@/lib/api";
 import { canViewAdminNavigationItem } from "@/lib/admin-navigation";
@@ -20,6 +21,7 @@ export function RoleBadge({ role }: RoleBadgeProps) {
   const current = roleConfig[role];
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     function onMouseDown(event: MouseEvent) {
@@ -38,6 +40,7 @@ export function RoleBadge({ role }: RoleBadgeProps) {
         ? "Can create and edit products, manage mappings"
         : "Read-only access to catalog and quality data";
   const canManageRoles = canViewAdminNavigationItem(role, "editor_plus");
+  const manageRolesHref = pathname === "/admin/users" ? "#workspace-users" : "/admin/users#workspace-users";
 
   return (
     <div ref={rootRef} className="relative">
@@ -58,8 +61,12 @@ export function RoleBadge({ role }: RoleBadgeProps) {
           <p className="font-semibold text-slate-900">{current.label}</p>
           <p className="mt-1">{description}</p>
           {canManageRoles ? (
-            <Link href="/admin/users" className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline">
-              Manage team roles →
+            <Link
+              href={manageRolesHref}
+              className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline"
+              onClick={() => setOpen(false)}
+            >
+              Manage team roles {"->"}
             </Link>
           ) : null}
         </div>

@@ -33,6 +33,8 @@ interface ConnectorSetupPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
   if (value === "installed") {
@@ -99,14 +101,23 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
   return "info";
 }
 
-function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
+function connectorLaunchLabel(
+  stage: "live" | "manual" | "planned",
+  implementationStatus: string | undefined,
+): ConnectorMaturity {
+  if (stage === "live" && implementationStatus === "partial") {
+    return "Beta";
+  }
   if (stage === "manual") {
-    return "guided rollout";
+    return implementationStatus === "partial" ? "Export/manual" : "Beta";
   }
   if (stage === "planned") {
-    return "not seller-ready";
+    return "Experimental";
   }
-  return "live";
+  if (implementationStatus === "stub") {
+    return "Experimental";
+  }
+  return "Live publish";
 }
 
 function connectorStatusNote(
@@ -123,6 +134,29 @@ function connectorStatusNote(
     return "This connector has limited functionality. Check the channel guide for details.";
   }
   return null;
+}
+
+function formatCapabilityLabel(capability: string): string {
+  if (capability === "PUBLISH") {
+    return "Publish";
+  }
+  if (capability === "VALIDATE") {
+    return "Validate";
+  }
+  if (capability === "STATUS_SYNC") {
+    return "Status sync";
+  }
+  if (capability === "WEBHOOK_RECEIVE") {
+    return "Webhook receive";
+  }
+  if (capability === "EXCEL_EXPORT") {
+    return "Excel export";
+  }
+  return capability.replace(/_/g, " ").toLowerCase();
+}
+
+function formatCapabilityList(capabilities: string[]): string {
+  return capabilities.length > 0 ? capabilities.map(formatCapabilityLabel).join(", ") : "-";
 }
 
 function summarizeDefinitionWorkspace(
@@ -142,14 +176,14 @@ function summarizeDefinitionWorkspace(
   }
   if (definition.launchStage === "manual") {
     return {
-      label: "Guided rollout",
+      label: "Export/manual",
       tone: "warning",
-      description: "Operationally limited. Coordinate installs with the rollout owner before you connect a new account.",
+      description: "Operationally limited. Coordinate export-led or manual rollout work before you connect a new account.",
     };
   }
   if (definition.launchStage === "planned") {
     return {
-      label: "Planned",
+      label: "Experimental",
       tone: "info",
       description: "Tracked in the roadmap but not open for seller self-serve install yet.",
     };
@@ -402,7 +436,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">1. Choose channel</p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Filter to the exact connector lane you want to install so the rest of the page stays focused.
+                  Filter to the exact connector lane you want to install so the rest of the page stays focused. This setup workspace only exposes Live publish connectors.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -432,7 +466,13 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusChip label={selectedDefinitionModel.workspaceState.label} tone={selectedDefinitionModel.workspaceState.tone} />
-                <StatusChip label={connectorLaunchLabel(selectedDefinitionModel.definition.launchStage)} tone={connectorLaunchTone(selectedDefinitionModel.definition.launchStage)} />
+                <StatusChip
+                  label={connectorLaunchLabel(
+                    selectedDefinitionModel.definition.launchStage,
+                    selectedDefinitionModel.definition.implementationStatus,
+                  )}
+                  tone={connectorLaunchTone(selectedDefinitionModel.definition.launchStage)}
+                />
               </div>
             </div>
           </Card>
@@ -464,7 +504,10 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
-                      <StatusChip label={connectorLaunchLabel(definition.launchStage)} tone={connectorLaunchTone(definition.launchStage)} />
+                      <StatusChip
+                        label={connectorLaunchLabel(definition.launchStage, definition.implementationStatus)}
+                        tone={connectorLaunchTone(definition.launchStage)}
+                      />
                     </div>
                   </div>
 
@@ -474,8 +517,8 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                       <p className="mt-2 text-sm text-slate-700">{existingAliases || "No accounts installed yet"}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capabilities</p>
-                      <p className="mt-2 text-sm text-slate-700">{definition.capabilities.join(", ") || "-"}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported operations</p>
+                      <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(definition.capabilities)}</p>
                     </div>
                   </div>
 

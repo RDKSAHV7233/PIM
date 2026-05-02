@@ -33,6 +33,13 @@ function run() {
     "Connectors page must explain why non-live connectors are not installable.",
   );
   assert(
+    source.includes("Live publish") &&
+      source.includes("Export/manual") &&
+      source.includes("Experimental") &&
+      source.includes("Maturity labels distinguish live publish lanes from export/manual and experimental connectors."),
+    "Connectors page must distinguish live publish connectors from export/manual and experimental lanes.",
+  );
+  assert(
     !source.includes("function isCatalogPilotConnector(") &&
       !source.includes(staleShopifyCatalogCopy) &&
       source.includes("Review live connector lanes first so operators can install, map, and manage each Vexa connector"),
@@ -57,6 +64,11 @@ function run() {
       source.includes('implementationStatus === "stub"'),
     "Installed stub connectors must show CONNECTED (limited) instead of ACTIVE.",
   );
+  assert(
+    setupSource.includes("This setup workspace only exposes Live publish connectors.") &&
+      setupSource.includes("Supported operations"),
+    "Connector setup page must describe the live-publish setup boundary and show supported operations in plain language.",
+  );
 
   console.log(
     JSON.stringify(
@@ -64,6 +76,7 @@ function run() {
         status: "ok",
         validated: [
           "connector_setup_page_hides_non_live_install_forms",
+          "connector_maturity_labels_are_explicit",
           "connector_page_surfaces_launch_honesty_notes",
           "installed_connector_rows_show_launch_stage",
           "connector_page_surfaces_implementation_status_notes",

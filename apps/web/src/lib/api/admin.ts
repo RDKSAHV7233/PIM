@@ -1,5 +1,22 @@
-import type { AccessScopeAssignment, AccessScopeAssignmentAction, AccessScopeAssignmentScopeType, AccessScopeAssignmentSubjectType, ApiAccessKey, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, WorkspaceUser } from "./core";
+import type { AccessScopeAssignment, AccessScopeAssignmentAction, AccessScopeAssignmentScopeType, AccessScopeAssignmentSubjectType, ApiAccessKey, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, TenantAuthPolicy, WorkspaceUser } from "./core";
 import { fetchJson, patchJson, postJson } from "./core";
+
+export async function getTenantAuthPolicy(options?: ApiRequestOptions) {
+  return fetchJson<TenantAuthPolicy>("/admin/auth-policy", undefined, options);
+}
+
+export async function updateTenantAuthPolicy(
+  dto: {
+    externalIdentityMode?: boolean;
+    mfaRequired?: boolean;
+    mfaGracePeriodDays?: number;
+    sessionTimeoutMinutes?: number;
+    allowedAuthMethods?: Array<"password" | "oidc">;
+  },
+  options?: ApiRequestOptions,
+) {
+  return patchJson<TenantAuthPolicy>("/admin/auth-policy", dto, options);
+}
 
 export async function getWorkspaceUsers(options?: ApiRequestOptions) {
   return fetchJson<WorkspaceUser[]>("/admin/workspace/users", undefined, options);

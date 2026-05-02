@@ -484,15 +484,15 @@ async function run() {
     assert(approvalEndpointId.length > 0, "missing approval webhook endpoint id");
 
     const createImportWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
-      name: "Import failures",
-      eventType: "import_failed",
+      name: "Import repair required",
+      eventType: "import_repair_required",
       targetUrl: webhookUrl,
       signingSecret,
       isActive: true,
     });
-    assertStatus(createImportWebhook, 201, "create import_failed webhook endpoint");
+    assertStatus(createImportWebhook, 201, "create import_repair_required webhook endpoint");
     importEndpointId = String(createImportWebhook.payload?.id ?? "");
-    assert(importEndpointId.length > 0, "missing import_failed webhook endpoint id");
+    assert(importEndpointId.length > 0, "missing import_repair_required webhook endpoint id");
 
     const createImportCompletedWebhook = await apiRequest(baseUrl, "POST", "/admin/webhooks", adminToken, {
       name: "Import completions",
@@ -584,8 +584,8 @@ async function run() {
     assertStatus(processedImport, 201, "process bulk import job");
 
     const importReceived = await waitForWebhook(webhookState, 15_000);
-    assert(importReceived.method === "POST", `expected POST import_failed webhook delivery, got ${importReceived.method}`);
-    assert(importReceived.payload && importReceived.payload.type === "import_failed", "import webhook payload must be import_failed");
+    assert(importReceived.method === "POST", `expected POST import_repair_required webhook delivery, got ${importReceived.method}`);
+    assert(importReceived.payload && importReceived.payload.type === "import_repair_required", "import webhook payload must be import_repair_required");
     assert(importReceived.payload && importReceived.payload.userId === editorUserId.toLowerCase(), "import webhook payload must target the editor");
     assert(
       String(importReceived.payload?.metadata?.bulkJobId ?? "") === String(importJob.payload.id),
@@ -873,7 +873,7 @@ async function run() {
       [
         { match: (row) => row.id === testDeliveryId },
         { match: (row) => row.endpointId === approvalEndpointId && row.eventType === "approval_decision" && row.id !== testDeliveryId },
-        { match: (row) => row.endpointId === importEndpointId && row.eventType === "import_failed" },
+        { match: (row) => row.endpointId === importEndpointId && row.eventType === "import_repair_required" },
         { match: (row) => row.endpointId === importCompletedEndpointId && row.eventType === "import_completed" },
         { match: (row) => row.endpointId === publishEndpointId && row.eventType === "publish_failed" },
         { match: (row) => row.endpointId === publishSucceededEndpointId && row.eventType === "publish_succeeded" },
@@ -892,9 +892,9 @@ async function run() {
     assert(delivery.status === "delivered", `expected delivered webhook row, got ${delivery.status}`);
     assert(Number(delivery.responseStatus) === 204, `expected responseStatus=204, got ${delivery.responseStatus}`);
     const importDelivery = deliveryRows.find(
-      (row) => row.endpointId === importEndpointId && row.eventType === "import_failed",
+      (row) => row.endpointId === importEndpointId && row.eventType === "import_repair_required",
     );
-    assert(importDelivery, "expected delivery row for import_failed");
+    assert(importDelivery, "expected delivery row for import_repair_required");
     assert(importDelivery.status === "delivered", `expected delivered import webhook row, got ${importDelivery.status}`);
     assert(Number(importDelivery.responseStatus) === 204, `expected import responseStatus=204, got ${importDelivery.responseStatus}`);
     const importCompletedDelivery = deliveryRows.find(
@@ -963,7 +963,7 @@ async function run() {
         "viewer_forbidden_from_outbound_webhook_admin_routes",
         "admin_can_send_signed_outbound_webhook_test_deliveries",
         "import_completed_notifications_trigger_signed_outbound_webhooks",
-        "import_failed_notifications_trigger_signed_outbound_webhooks",
+        "import_repair_required_notifications_trigger_signed_outbound_webhooks",
         "approval_decision_triggers_signed_outbound_webhook_delivery",
         "publish_failed_notifications_trigger_signed_outbound_webhooks",
         "publish_succeeded_notifications_trigger_signed_outbound_webhooks",

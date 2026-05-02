@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMarketplaceSimulation, MarketplaceChannel } from "@/lib/api";
+import { ApiHttpError, getMarketplaceSimulation, MarketplaceChannel } from "@/lib/api";
 import { READINESS_CHANNELS, summarizeSimulation } from "@/lib/channel-readiness";
 import { isMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerActorRole } from "@/lib/server-session";
@@ -36,15 +36,27 @@ export async function GET(request: NextRequest) {
     });
     const summary = summarizeSimulation(channel, simulation);
     return NextResponse.json(summary);
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      return NextResponse.json(
+        {
+          channel,
+          status: "unknown",
+          error: "READINESS_UPSTREAM_FAILED",
+          details: error.body,
+        },
+        { status: error.status },
+      );
+    }
     return NextResponse.json(
       {
         channel,
         status: "unknown",
+        error: "READINESS_PROXY_FAILED",
         errorCount: 0,
         warningCount: 0,
       },
-      { status: 200 },
+      { status: 502 },
     );
   }
 }

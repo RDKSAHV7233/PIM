@@ -35,6 +35,47 @@ function setDefaultEnv(name, value) {
   }
 }
 
+async function runValidationOnlyFailureCase(baseEnv, overrides, expectedOutput, failureMessage) {
+  const stdout = [];
+  const stderr = [];
+  const script = `
+const { validateEnv } = require(${JSON.stringify(path.join(REPO_ROOT, "apps", "api", "dist", "common", "env-validation.js"))});
+validateEnv();
+console.log("VALIDATION_PASSED_UNEXPECTEDLY");
+  `.trim();
+  const processHandle = spawn("node", ["-e", script], {
+    cwd: REPO_ROOT,
+    env: {
+      ...baseEnv,
+      ...overrides,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
+  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+
+  const result = await Promise.race([
+    new Promise((resolve) => {
+      processHandle.on("close", (code) => resolve({ code, timeout: false }));
+    }),
+    sleep(10_000).then(() => ({ code: null, timeout: true })),
+  ]);
+
+  if (result.timeout) {
+    await killProcessTree(processHandle);
+    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+    throw new Error(`${failureMessage} Output tail: ${mergedOutput.slice(-500)}`);
+  }
+
+  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
+  if (result.code === 0 || mergedOutput.includes("VALIDATION_PASSED_UNEXPECTEDLY")) {
+    throw new Error(`${failureMessage} Process exited with code ${result.code}.`);
+  }
+  if (!mergedOutput.includes(expectedOutput)) {
+    throw new Error(`Expected startup failure output to mention ${expectedOutput}. Output tail: ${mergedOutput.slice(-500)}`);
+  }
+}
+
 function buildBaseEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
   const databaseUrl = process.env.DATABASE_URL;
@@ -178,147 +219,60 @@ async function runCaseValidEnvStarts(baseEnv) {
 }
 
 async function runCaseStagingRequiresBullmq(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5400 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "resend",
-    AUTH_EMAIL_FROM: "noreply@example.com",
-    AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
-    QUEUE_BACKEND: "memory",
-    PIM_AUTH_IDENTITIES_JSON: "",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail when QUEUE_BACKEND=memory, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail when QUEUE_BACKEND=memory, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("QUEUE_BACKEND")) {
-    throw new Error(`Expected startup failure output to mention QUEUE_BACKEND. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5400 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "resend",
+      AUTH_EMAIL_FROM: "noreply@example.com",
+      AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
+      QUEUE_BACKEND: "memory",
+      PIM_AUTH_IDENTITIES_JSON: "",
+    },
+    "QUEUE_BACKEND",
+    "Expected staging startup to fail when QUEUE_BACKEND=memory, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseStagingRequiresWorkerEnabled(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5450 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "resend",
-    AUTH_EMAIL_FROM: "noreply@example.com",
-    AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "false",
-    PIM_AUTH_IDENTITIES_JSON: "",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail when QUEUE_WORKER_ENABLED=false, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail when QUEUE_WORKER_ENABLED=false, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("QUEUE_WORKER_ENABLED")) {
-    throw new Error(`Expected startup failure output to mention QUEUE_WORKER_ENABLED. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5450 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "resend",
+      AUTH_EMAIL_FROM: "noreply@example.com",
+      AUTH_EMAIL_RESEND_API_KEY: "resend-test-key",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "false",
+      PIM_AUTH_IDENTITIES_JSON: "",
+    },
+    "QUEUE_WORKER_ENABLED",
+    "Expected staging startup to fail when QUEUE_WORKER_ENABLED=false, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseStagingRequiresRealEmailProvider(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5475 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "file",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "true",
-    PIM_AUTH_IDENTITIES_JSON: "",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail when AUTH_EMAIL_PROVIDER=file, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail when AUTH_EMAIL_PROVIDER=file, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("AUTH_EMAIL_PROVIDER")) {
-    throw new Error(`Expected startup failure output to mention AUTH_EMAIL_PROVIDER. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5475 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "file",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+    },
+    "AUTH_EMAIL_PROVIDER",
+    "Expected staging startup to fail when AUTH_EMAIL_PROVIDER=file, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
@@ -361,202 +315,86 @@ async function runCaseStagingAllowsConsoleEmailProvider(baseEnv) {
 }
 
 async function runCaseStagingRequiresResendCredentials(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5490 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "resend",
-    AUTH_EMAIL_FROM: "",
-    AUTH_EMAIL_RESEND_API_KEY: "",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "true",
-    PIM_AUTH_IDENTITIES_JSON: "",
-    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
-    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail when resend email env is incomplete, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail when resend email env is incomplete, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("AUTH_EMAIL_RESEND_API_KEY") || !mergedOutput.includes("AUTH_EMAIL_FROM")) {
-    throw new Error(`Expected startup failure output to mention resend credentials. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5490 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "resend",
+      AUTH_EMAIL_FROM: "",
+      AUTH_EMAIL_RESEND_API_KEY: "",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+      PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+    },
+    "AUTH_EMAIL_RESEND_API_KEY",
+    "Expected staging startup to fail when resend email env is incomplete, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseProductionRejectsConsoleEmailProvider(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5495 + Math.floor(Math.random() * 100)),
-    APP_ENV: "production",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://app.example.com",
-    AUTH_EMAIL_PROVIDER: "console",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "true",
-    PIM_AUTH_IDENTITIES_JSON: "",
-    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
-    PIM_COMMERCIAL_OPS_TOKEN: "production-commercial-ops-token",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected production startup to fail when AUTH_EMAIL_PROVIDER=console, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected production startup to fail when AUTH_EMAIL_PROVIDER=console, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("AUTH_EMAIL_PROVIDER")) {
-    throw new Error(`Expected startup failure output to mention AUTH_EMAIL_PROVIDER. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5495 + Math.floor(Math.random() * 100)),
+      APP_ENV: "production",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://app.example.com",
+      AUTH_EMAIL_PROVIDER: "console",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+      PIM_COMMERCIAL_OPS_TOKEN: "production-commercial-ops-token",
+    },
+    "AUTH_EMAIL_PROVIDER",
+    "Expected production startup to fail when AUTH_EMAIL_PROVIDER=console, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseStagingRequiresCommercialContact(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5498 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "console",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "true",
-    PIM_AUTH_IDENTITIES_JSON: "",
-    PIM_COMMERCIAL_CONTACT_URL: "",
-    PIM_COMMERCIAL_CONTACT_EMAIL: "",
-    PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail without commercial contact config, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail without commercial contact config, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("PIM_COMMERCIAL_CONTACT_URL") && !mergedOutput.includes("PIM_COMMERCIAL_CONTACT_EMAIL")) {
-    throw new Error(`Expected startup failure output to mention commercial contact config. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5498 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "console",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "",
+      PIM_COMMERCIAL_CONTACT_EMAIL: "",
+      PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+    },
+    "PIM_COMMERCIAL_CONTACT_URL",
+    "Expected staging startup to fail without commercial contact config, but validation passed unexpectedly.",
+  );
 }
 
 async function runCaseStagingRequiresCommercialOpsToken(baseEnv) {
-  const env = {
-    ...baseEnv,
-    PORT: String(5502 + Math.floor(Math.random() * 100)),
-    APP_ENV: "staging",
-    AUTH_MODE: "db",
-    CORS_ORIGIN: "https://staging.example.com",
-    AUTH_EMAIL_PROVIDER: "console",
-    QUEUE_BACKEND: "bullmq",
-    QUEUE_WORKER_ENABLED: "true",
-    PIM_AUTH_IDENTITIES_JSON: "",
-    PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
-    PIM_COMMERCIAL_OPS_TOKEN: "",
-  };
-
-  const stderr = [];
-  const stdout = [];
-  const processHandle = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  processHandle.stdout.on("data", (chunk) => stdout.push(String(chunk)));
-  processHandle.stderr.on("data", (chunk) => stderr.push(String(chunk)));
-
-  const result = await Promise.race([
-    new Promise((resolve) => {
-      processHandle.on("close", (code) => resolve({ code, timeout: false }));
-    }),
-    sleep(20_000).then(() => ({ code: null, timeout: true })),
-  ]);
-
-  if (result.timeout) {
-    await killProcessTree(processHandle);
-    const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-    throw new Error(
-      `Expected staging startup to fail without commercial ops token, but process stayed alive. Output tail: ${mergedOutput.slice(-500)}`,
-    );
-  }
-
-  const mergedOutput = `${stdout.join("")}\n${stderr.join("")}`;
-  if (result.code === 0) {
-    throw new Error("Expected staging startup to fail without commercial ops token, but process exited with code 0.");
-  }
-  if (!mergedOutput.includes("PIM_COMMERCIAL_OPS_TOKEN")) {
-    throw new Error(`Expected startup failure output to mention PIM_COMMERCIAL_OPS_TOKEN. Output tail: ${mergedOutput.slice(-500)}`);
-  }
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5502 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "console",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+      PIM_COMMERCIAL_OPS_TOKEN: "",
+    },
+    "PIM_COMMERCIAL_OPS_TOKEN",
+    "Expected staging startup to fail without commercial ops token, but validation passed unexpectedly.",
+  );
 }
 
 async function run() {

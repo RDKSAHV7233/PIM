@@ -39,8 +39,9 @@ function run() {
     "Mappings page must clearly label legacy templates as transitional.",
   );
   assert(
-    connectorMappingSource.includes('redirect(`/channels/mappings?${target.toString()}`)'),
-    "Legacy connector mapping route must redirect into the lifecycle mappings workspace.",
+    connectorMappingSource.includes('target.set("installationId", installation.id);') &&
+      connectorMappingSource.includes('redirect(`/channels/mappings?${target.toString()}`)'),
+    "Legacy connector mapping route must redirect into the lifecycle mappings workspace and preserve connector installation context.",
   );
 
   console.log(
@@ -51,6 +52,7 @@ function run() {
           "canonical_mapping_manager_promoted",
           "legacy_template_flow_marked_transition_only",
           "legacy_connector_mapping_route_redirects_to_lifecycle_workspace",
+          "legacy_connector_mapping_route_preserves_installation_context",
         ],
         checkedAt: new Date().toISOString(),
       },

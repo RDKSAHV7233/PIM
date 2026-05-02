@@ -24,6 +24,7 @@ import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
 import { AuthExportStorageService } from "./auth-export-storage.service";
+import { AuthPolicyService } from "./auth-policy.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
@@ -40,6 +41,7 @@ const REDIS_RETRY_BACKOFF_MS = 30_000;
 const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
 const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
+const MIN_STEP_UP_EXPIRY_SECONDS = 2;
 const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
 const PASSWORD_RESET_EXPIRY_MS = 30 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_BYTES = 24;
@@ -351,6 +353,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly authEmailService: AuthEmailService,
     private readonly authExportStorageService: AuthExportStorageService,
     private readonly planUsageService: PlanUsageService,
+    private readonly authPolicyService: AuthPolicyService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
       await this.processAuthEmailJob(payload);
@@ -438,9 +441,11 @@ export class AuthService implements OnModuleDestroy {
       };
     }
 
+    const policySessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(identity.tenantId);
+    const maxSessionTimeoutMinutes = Math.min(MAX_LOGIN_EXPIRY_MINUTES, policySessionTimeoutMinutes);
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
-      ? Math.min(MAX_LOGIN_EXPIRY_MINUTES, Math.max(1, Math.floor(dto.expiresInMinutes ?? DEFAULT_LOGIN_EXPIRY_MINUTES)))
-      : DEFAULT_LOGIN_EXPIRY_MINUTES;
+      ? Math.min(maxSessionTimeoutMinutes, Math.max(1, Math.floor(dto.expiresInMinutes ?? maxSessionTimeoutMinutes)))
+      : maxSessionTimeoutMinutes;
     const expiresInSeconds = expiryMinutes * 60;
 
     const accessToken = signPimJwt({
@@ -508,7 +513,9 @@ export class AuthService implements OnModuleDestroy {
       stepUpScope: input.scope,
       parentJti: input.claims.jti,
       expiresInSeconds,
-      minimumExpiresInSeconds: 1,
+      // JWT expiry is second-granular, so a 1-second token can expire
+      // between issuance and the very next protected request.
+      minimumExpiresInSeconds: MIN_STEP_UP_EXPIRY_SECONDS,
     });
 
     await this.auditService.record({
@@ -1814,7 +1821,7 @@ export class AuthService implements OnModuleDestroy {
     if (!Number.isFinite(configured)) {
       return DEFAULT_STEP_UP_EXPIRY_SECONDS;
     }
-    return Math.min(MAX_STEP_UP_EXPIRY_SECONDS, Math.max(1, configured));
+    return Math.min(MAX_STEP_UP_EXPIRY_SECONDS, Math.max(MIN_STEP_UP_EXPIRY_SECONDS, configured));
   }
 
   private isLocalAuthMode(): boolean {

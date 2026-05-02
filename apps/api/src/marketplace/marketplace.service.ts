@@ -62,6 +62,17 @@ type AuthoritativeChannelIssue = {
   message: string;
 };
 
+function resolveCollectionLimit(limit?: number, fallback = 50, max = 500): number {
+  if (!Number.isFinite(limit)) {
+    return fallback;
+  }
+  const parsed = Math.floor(Number(limit));
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(max, parsed));
+}
+
 function resolveStubConnectorSlugs(): Set<string> {
   return new Set(
     String(process.env.CONNECTOR_STUB_SLUGS ?? "")
@@ -834,7 +845,8 @@ export class MarketplaceService implements OnModuleInit {
       };
     }
 
-    params.push(50);
+    const limit = resolveCollectionLimit(pagination?.limit);
+    params.push(limit);
     const limitParam = params.length;
     // RLS-BYPASS: manual tenant filter
     const rows = (await this.prisma.tenant().$queryRawUnsafe(
@@ -923,7 +935,7 @@ export class MarketplaceService implements OnModuleInit {
         template: true,
       },
       orderBy: [{ updatedAt: "desc" }],
-      take: 50,
+      take: resolveCollectionLimit(pagination?.limit),
     });
   }
 

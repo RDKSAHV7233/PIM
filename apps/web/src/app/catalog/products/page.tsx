@@ -1,7 +1,16 @@
 import { redirect } from "next/navigation";
 import { ProductsTab } from "@/components/product/products-tab";
 import { PageHeader } from "@/components/ui/page-header";
-import { ApiHttpError, getCategoryTree, getInstalledConnectors, getProducts, getStats } from "@/lib/api";
+import {
+  ApiHttpError,
+  getCategoryTree,
+  getInstalledConnectors,
+  getProductListPage,
+  getStats,
+  type ApiRequestOptions,
+  type CatalogStats,
+  type ProductListItem,
+} from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -51,6 +60,80 @@ function resolvePositiveInteger(value: string | undefined, fallback: number, max
   return Math.min(max, parsed);
 }
 
+type FilteredProductWindow = {
+  items: ProductListItem[];
+  firstProduct: ProductListItem | null;
+  totals: {
+    products: number;
+    variants: number;
+  } | null;
+};
+
+async function loadVisibleProducts(
+  page: number,
+  limit: number,
+  hideTestData: boolean,
+  options: ApiRequestOptions,
+): Promise<FilteredProductWindow> {
+  const visibleProducts: ProductListItem[] = [];
+  const requestedOffset = (page - 1) * limit;
+  const requestLimit = Math.min(Math.max(limit, 50), 200);
+  let filteredOffset = 0;
+  let firstProduct: ProductListItem | null = null;
+  let cursor: string | undefined;
+  const totals = hideTestData
+    ? {
+        products: 0,
+        variants: 0,
+      }
+    : null;
+
+  while (true) {
+    const response = await getProductListPage(
+      {
+        slim: true,
+        limit: requestLimit,
+        ...(cursor ? { cursor } : {}),
+      },
+      options,
+    );
+    const filteredBatch = filterTestData(response.items, hideTestData);
+
+    if (!firstProduct && filteredBatch.length > 0) {
+      firstProduct = filteredBatch[0];
+    }
+
+    if (totals) {
+      totals.products += filteredBatch.length;
+      totals.variants += filteredBatch.reduce((sum, product) => sum + (product.variantCount ?? 0), 0);
+    }
+
+    if (visibleProducts.length < limit && filteredOffset + filteredBatch.length > requestedOffset) {
+      const startIndex = Math.max(0, requestedOffset - filteredOffset);
+      const remaining = limit - visibleProducts.length;
+      visibleProducts.push(...filteredBatch.slice(startIndex, startIndex + remaining));
+    }
+
+    filteredOffset += filteredBatch.length;
+
+    if (!response.nextCursor) {
+      break;
+    }
+
+    if (!hideTestData && visibleProducts.length >= limit && filteredOffset >= requestedOffset + limit) {
+      break;
+    }
+
+    cursor = response.nextCursor;
+  }
+
+  return {
+    items: visibleProducts,
+    firstProduct,
+    totals,
+  };
+}
+
 export default async function CatalogProductsPage({ searchParams }: CatalogProductsPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -62,27 +145,24 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const actorRole = await getServerActorRole();
 
   try {
-    const [stats, categories, products, installedConnectors] = await Promise.all([
+    const [stats, categories, productWindow, installedConnectors] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
 
     const filteredCategories = filterTestData(categories, hideTestData);
-    const filteredProducts = filterTestData(products, hideTestData);
-    // TODO: replace client-side pagination with API cursor pagination once getProducts supports pagination inputs.
-    const pagedProducts = filteredProducts.slice((page - 1) * limit, page * limit);
     const filteredStats = hideTestData
       ? {
           ...stats,
           categories: filteredCategories.length,
-          products: filteredProducts.length,
-          variants: filteredProducts.reduce((sum, product) => sum + (product.variants?.length ?? 0), 0),
+          products: productWindow.totals?.products ?? 0,
+          variants: productWindow.totals?.variants ?? 0,
         }
       : stats;
     const installedConnectorCount = installedConnectors.length;
-    const firstProduct = filteredProducts[0];
+    const firstProduct = productWindow.firstProduct;
     const firstActiveConnector = installedConnectors.find(
       (item) => item.status === "ACTIVE" && mapConnectorSlugToMarketplaceChannel(item.slug),
     );
@@ -107,7 +187,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
         />
         <ProductsTab
           role={actorRole}
-          products={pagedProducts}
+          products={productWindow.items}
           categories={categories}
           stats={filteredStats}
           hideTestData={hideTestData}

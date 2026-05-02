@@ -10,7 +10,7 @@ import { CreateProductForm } from "@/components/product/CreateProductForm";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
-import type { AppRole, CatalogStats, Category, MarketplaceChannel, Product } from "@/lib/api";
+import type { AppRole, CatalogStats, Category, MarketplaceChannel, ProductListItem } from "@/lib/api";
 import {
   aggregateReadinessStatus,
   buildLoadingReadiness,
@@ -26,7 +26,11 @@ import { filterTestData } from "@/lib/test-data-filter";
 type ProductFilter = "all" | "needs_attention" | "ready";
 type TriageBucket = "needs_attention" | "at_risk" | "ready";
 
-interface ProductWithCompliance extends Product {
+interface ProductWorkbenchItem extends ProductListItem {
+  category?: Category | null;
+}
+
+interface ProductWithCompliance extends ProductWorkbenchItem {
   complianceErrorCount: number;
   complianceWarningCount: number;
 }
@@ -35,7 +39,7 @@ type ProductReadinessState = Record<string, Partial<Record<MarketplaceChannel, C
 
 interface ProductsTabProps {
   role: AppRole;
-  products: Product[];
+  products: ProductWorkbenchItem[];
   categories: Category[];
   stats: CatalogStats;
   hideTestData: boolean;
@@ -143,7 +147,7 @@ function matchesProductSearch(product: ProductWithCompliance, query: string): bo
     return true;
   }
 
-  return (product.variants ?? []).some((variant) => variant.skuCode.toLowerCase().includes(normalized));
+  return (product.skuCodes ?? []).some((skuCode) => skuCode.toLowerCase().includes(normalized));
 }
 
 export function ProductsTab({
@@ -190,8 +194,8 @@ export function ProductsTab({
     const cleaned = filterTestData(products, hideTestData);
     return cleaned.map((product) => ({
       ...product,
-      complianceErrorCount: (product.validationIssues ?? []).filter((issue) => issue.severity === "error").length,
-      complianceWarningCount: (product.validationIssues ?? []).filter((issue) => issue.severity === "warning").length,
+      complianceErrorCount: product.openValidationErrorCount ?? 0,
+      complianceWarningCount: product.openValidationWarningCount ?? 0,
     }));
   }, [hideTestData, products]);
 
@@ -639,7 +643,7 @@ export function ProductsTab({
                         <p className="text-xs text-slate-500">{product.brand || "No brand set"}</p>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">{product.category?.path ?? product.categoryId}</td>
+                    <td className="px-3 py-2.5">{product.categoryPath ?? product.categoryName ?? product.categoryId}</td>
                     <td className="px-3 py-2.5">
                       <StatusChip label={product.status} tone={productStatusTone(product.status)} />
                     </td>
@@ -653,7 +657,7 @@ export function ProductsTab({
                       />
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>
-                    <td className="px-3 py-2.5">{product.variants?.length ?? 0}</td>
+                    <td className="px-3 py-2.5">{product.variantCount ?? 0}</td>
                     {canWrite ? (
                       <td className="px-3 py-2.5 text-right">
                         <form action={deleteProductAction} onSubmit={(event) => handleDeleteSubmit(event, product.title)}>

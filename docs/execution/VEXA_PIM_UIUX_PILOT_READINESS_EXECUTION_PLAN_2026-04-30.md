@@ -1,5 +1,28 @@
 # Vexa PIM UI/UX Pilot-Readiness Execution Plan - 2026-04-30
 
+## Superseded Status
+
+This document remains useful as the historical April 30 pilot-readiness execution record, but it is no longer the canonical release-position artifact.
+
+Current canonical release truth now lives in:
+
+- `docs/execution/INCREMENT_STATE.json`
+- `docs/execution/CURRENT_STATE.md`
+- `docs/execution/PROD_READINESS_RISK_REGISTER.md`
+- `docs/execution/VEXA_PIM_PRODUCTION_READINESS_ROLLUP_2026-05-01.md`
+- `docs/execution/rollout/2026-05-01T05-03-41.080Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+
+Important superseding changes since this plan:
+
+- the code and validation work described here was carried through to green packaged validation
+- `INC-08` Release Readiness is now `completed`
+- the fresh 2026-05-01 rollout snapshot shows `controlledPending = []` and `broadPending = []`
+
+Therefore:
+
+- statements in this file that describe `INC-08` as still open should be treated as historical
+- this file should be read as execution history, not as the current production-readiness verdict
+
 Status: PO-validated execution plan  
 Decision basis: accepted Vexa PIM product/CTO/UIUX review documentation  
 Target posture: controlled pilot preparation, not broad release, not enterprise-ready  

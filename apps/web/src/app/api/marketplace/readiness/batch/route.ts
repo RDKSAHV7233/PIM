@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { MarketplaceChannel } from "@/lib/api";
-import { postJson } from "@/lib/api";
+import { ApiHttpError, type MarketplaceChannel, postJson } from "@/lib/api";
 import {
   buildUnknownReadiness,
   type ProductReadinessBatchResponse,
@@ -70,7 +69,23 @@ export async function POST(request: NextRequest) {
       { role, authHeader },
     );
     return NextResponse.json(response);
-  } catch {
-    return NextResponse.json(unknownBatch(productIds, channels), { status: 200 });
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      return NextResponse.json(
+        {
+          ...unknownBatch(productIds, channels),
+          error: "READINESS_UPSTREAM_FAILED",
+          details: error.body,
+        },
+        { status: error.status },
+      );
+    }
+    return NextResponse.json(
+      {
+        ...unknownBatch(productIds, channels),
+        error: "READINESS_PROXY_FAILED",
+      },
+      { status: 502 },
+    );
   }
 }

@@ -67,7 +67,7 @@ export function MappingsFilterCard({
               {installations.length > 1 ? <option value="">Choose connector account</option> : null}
               {installations.map((installation) => (
                 <option key={installation.id} value={installation.id}>
-                  {`${installation.accountAlias}${installation.externalAccountRef ? ` - ${installation.externalAccountRef}` : ""}`}
+                  {`${installation.accountAlias}${installation.externalAccountRef ? ` · ${installation.externalAccountRef}` : ""}`}
                 </option>
               ))}
             </Select>

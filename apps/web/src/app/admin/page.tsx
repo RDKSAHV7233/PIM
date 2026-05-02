@@ -29,6 +29,12 @@ const adminLinks = [
     visibility: "admin" as AdminNavigationAudience,
   },
   {
+    title: "Auth Policy",
+    description: "Store tenant MFA, session timeout, and OIDC posture with audit visibility.",
+    href: "/admin/auth-policy",
+    visibility: "admin" as AdminNavigationAudience,
+  },
+  {
     title: "Connector Access",
     description: "Grant/revoke install, reconnect, and uninstall actions.",
     href: "/admin/connectors",

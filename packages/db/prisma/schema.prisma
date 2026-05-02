@@ -630,6 +630,59 @@ model TenantPlanProfile {
   @@index([tenantKey, billingStatus, accessStatus])
 }
 
+model TenantAuthPolicy {
+  id                    String   @id @default(cuid())
+  tenantKey             String   @unique
+  externalIdentityMode  Boolean  @default(false)
+  mfaRequired           Boolean  @default(false)
+  mfaGracePeriodDays    Int      @default(7)
+  sessionTimeoutMinutes Int      @default(240)
+  allowedAuthMethods    String[] @default(["password"])
+  createdBy             String?
+  updatedBy             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([tenantKey, updatedAt])
+}
+
+model UserMfaEnrollment {
+  id               String    @id @default(cuid())
+  tenantKey        String    @default("default")
+  userId           String
+  method           String    @default("totp")
+  status           String    @default("pending")
+  secretEncrypted  String    @map("secret_encrypted")
+  secretKeyVersion String    @default("v1") @map("secret_key_version")
+  secretPreview    String?   @map("secret_preview")
+  enrolledAt       DateTime? @map("enrolled_at")
+  verifiedAt       DateTime? @map("verified_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  backupCodes      UserMfaBackupCode[]
+
+  @@unique([tenantKey, userId, method], map: "user_mfa_enrollment_tenant_user_method_unique")
+  @@index([tenantKey, userId, status], map: "idx_user_mfa_enrollment_tenant_user_status")
+  @@map("user_mfa_enrollments")
+}
+
+model UserMfaBackupCode {
+  id           String            @id @default(cuid())
+  tenantKey    String            @default("default")
+  userId       String
+  enrollmentId String            @map("enrollment_id")
+  enrollment   UserMfaEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  codeHash     String            @map("code_hash")
+  consumedAt   DateTime?         @map("consumed_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@index([tenantKey, userId, enrollmentId], map: "idx_user_mfa_backup_code_lookup")
+  @@index([tenantKey, userId, consumedAt], map: "idx_user_mfa_backup_code_consumed")
+  @@map("user_mfa_backup_codes")
+}
+
 model TenantCommercialRequest {
   id                   String   @id @default(cuid())
   tenantKey            String   @default("default")

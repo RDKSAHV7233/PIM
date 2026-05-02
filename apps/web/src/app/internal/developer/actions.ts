@@ -39,7 +39,7 @@ function redirectTo(url: URL) {
 export async function updateUpgradeRequestStatusAction(formData: FormData) {
   const actorRole = await getServerActorRole();
   const claims = await getServerSessionClaims();
-  if (actorRole !== "admin" || !claims?.sub) {
+  if (process.env.APP_ENV === "production" || actorRole !== "admin" || !claims?.sub) {
     redirect("/internal/developer?actionStatus=forbidden");
   }
 

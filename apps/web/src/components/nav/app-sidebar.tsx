@@ -190,6 +190,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Plan & Usage", href: "/admin/plan", icon: "gauge", visibility: "editor_plus" },
       { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "editor_plus" },
       { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "admin" },
+      { label: "Auth Policy", href: "/admin/auth-policy", icon: "shield", visibility: "admin" },
       { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "admin" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
       { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "admin" },

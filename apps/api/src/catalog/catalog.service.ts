@@ -195,6 +195,11 @@ export class CatalogService {
             path: true,
           },
         },
+        variants: {
+          select: {
+            skuCode: true,
+          },
+        },
         _count: {
           select: {
             variants: true,
@@ -259,6 +264,7 @@ export class CatalogService {
         status: product.status,
         completenessScore: product.completenessScore,
         variantCount: product._count.variants,
+        skuCodes: product.variants.map((variant) => variant.skuCode),
         openValidationErrorCount: issueSummary.errorCount,
         openValidationWarningCount: issueSummary.warningCount,
         createdAt: product.createdAt,

@@ -222,11 +222,11 @@ async function run() {
 
     const importNotifications = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
     assertStatus(importNotifications, 200, "list notifications after import failure");
-    const importNotification = importNotifications.payload.items.find((item) => item.eventType === "import_failed");
-    assert(importNotification, "expected import_failed notification for triggering editor");
+    const importNotification = importNotifications.payload.items.find((item) => item.eventType === "import_repair_required");
+    assert(importNotification, "expected import_repair_required notification for triggering editor");
     assert(
       String(importNotification.actionUrl || "").includes(`/operations/imports?bulkJobId=${importJob.payload.id}`),
-      "import_failed notification must deep-link to the import repair view",
+      "import_repair_required notification must deep-link to the import repair view",
     );
 
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", editorToken, {
@@ -304,7 +304,7 @@ async function run() {
       INSERT INTO user_notifications (
         id, tenant_key, user_id, event_type, title, message, action_url, action_label, metadata
       ) VALUES
-        ($1, $2, $3, 'import_failed', 'Import failed', 'Should be hidden from reviewer view', '/operations/imports', 'View import', '{"debug":"hidden"}'::jsonb),
+        ($1, $2, $3, 'import_repair_required', 'Import repair required', 'Should be hidden from reviewer view', '/operations/imports', 'View import', '{"debug":"hidden"}'::jsonb),
         ($4, $2, $3, 'approval_decision', 'Approval decision received', 'Visible reviewer approval item', '/quality/approvals', 'Review approval', '{"productId":"review-product","debug":"hidden"}'::jsonb)
       `,
       randomUUID(),
@@ -333,7 +333,7 @@ async function run() {
     console.log(JSON.stringify({
       status: "ok",
       validated: [
-        "import_failure_notifies_triggering_user",
+        "import_repair_required_notifies_triggering_user",
         "approval_decision_notifies_submitting_editor",
         "publish_failure_notifies_export_job_creator",
         "notification_unread_count_decrements_on_read",

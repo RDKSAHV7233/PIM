@@ -42,6 +42,8 @@ type CatalogModuleId =
   | "payload"
   | "readiness";
 
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+
 const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "credentials", label: "Credentials" },
@@ -144,6 +146,58 @@ function installationStatusTone(status: string): "neutral" | "success" | "warnin
     return "warning";
   }
   return "neutral";
+}
+
+function connectorLaunchTone(stage: "live" | "manual" | "planned"): "success" | "warning" | "info" {
+  if (stage === "live") {
+    return "success";
+  }
+  if (stage === "manual") {
+    return "warning";
+  }
+  return "info";
+}
+
+function connectorLaunchLabel(
+  stage: "live" | "manual" | "planned",
+  implementationStatus: string | undefined,
+): ConnectorMaturity {
+  if (stage === "live" && implementationStatus === "partial") {
+    return "Beta";
+  }
+  if (stage === "manual") {
+    return implementationStatus === "partial" ? "Export/manual" : "Beta";
+  }
+  if (stage === "planned") {
+    return "Experimental";
+  }
+  if (implementationStatus === "stub") {
+    return "Experimental";
+  }
+  return "Live publish";
+}
+
+function formatCapabilityLabel(capability: string): string {
+  if (capability === "PUBLISH") {
+    return "Publish";
+  }
+  if (capability === "VALIDATE") {
+    return "Validate";
+  }
+  if (capability === "STATUS_SYNC") {
+    return "Status sync";
+  }
+  if (capability === "WEBHOOK_RECEIVE") {
+    return "Webhook receive";
+  }
+  if (capability === "EXCEL_EXPORT") {
+    return "Excel export";
+  }
+  return capability.replace(/_/g, " ").toLowerCase();
+}
+
+function formatCapabilityList(capabilities: string[]): string {
+  return capabilities.length > 0 ? capabilities.map(formatCapabilityLabel).join(", ") : "-";
 }
 
 function formatStatusSummary(status: string): string {
@@ -769,6 +823,10 @@ export default async function ChannelConnectorDetailPage({
           actions={
             <>
               <StatusChip label={installation.status} tone={installationStatusTone(installation.status)} />
+              <StatusChip
+                label={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
+                tone={connectorLaunchTone(installation.launchStage)}
+              />
               <Link
                 href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -836,8 +894,12 @@ export default async function ChannelConnectorDetailPage({
                 <dl className="mt-2 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
                   <dt className="text-slate-500">Connector</dt>
                   <dd>{installation.displayName}</dd>
+                  <dt className="text-slate-500">Maturity</dt>
+                  <dd>{connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}</dd>
                   <dt className="text-slate-500">Account alias</dt>
                   <dd>{installation.accountAlias}</dd>
+                  <dt className="text-slate-500">Supported operations</dt>
+                  <dd>{formatCapabilityList(installation.capabilities)}</dd>
                   <dt className="text-slate-500">Installation ID</dt>
                   <dd className="font-mono text-xs text-slate-700">{installation.id}</dd>
                   <dt className="text-slate-500">Slug</dt>

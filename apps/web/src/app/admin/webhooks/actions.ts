@@ -14,6 +14,7 @@ import { getServerActorRole } from "@/lib/server-session";
 const WEBHOOK_EVENTS = new Set([
   "import_completed",
   "import_failed",
+  "import_repair_required",
   "publish_succeeded",
   "publish_failed",
   "approval_decision",

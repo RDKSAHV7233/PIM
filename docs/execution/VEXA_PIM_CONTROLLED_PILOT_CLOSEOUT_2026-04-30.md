@@ -5,6 +5,30 @@ owner: Product + CTO
 last_updated: 2026-04-30
 ---
 
+## Superseded Status
+
+This document remains useful as a historical controlled-pilot closeout snapshot, but it is no longer the canonical release-position artifact.
+
+Current canonical release truth now lives in:
+
+- `docs/execution/INCREMENT_STATE.json`
+- `docs/execution/CURRENT_STATE.md`
+- `docs/execution/PROD_READINESS_RISK_REGISTER.md`
+- `docs/execution/VEXA_PIM_PRODUCTION_READINESS_ROLLUP_2026-05-01.md`
+- `docs/execution/rollout/2026-05-01T05-03-41.080Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+
+Important superseding changes since this closeout:
+
+- the targeted production-readiness code blockers were closed and revalidated
+- the web suite and release gates are green in the current repo state
+- `INC-08` Release Readiness is now `completed`
+- the fresh 2026-05-01 rollout snapshot shows no controlled-rollout or broad-rollout pending items
+
+Therefore:
+
+- this document should not be used as the current production-readiness verdict
+- it should be read as historical pilot-closeout context only
+
 ## 1. Purpose
 
 Prepare the bounded controlled-pilot closeout for the current `PIM1` repo state by re-reading the accepted April 30 review artifacts, rerunning the required validation commands, and deciding whether the current validated state can be approved for controlled pilot without overstating release or enterprise readiness.

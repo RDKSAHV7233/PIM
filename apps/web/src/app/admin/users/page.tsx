@@ -237,7 +237,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           </Card>
         ) : null}
 
-        <Card>
+        <Card id="workspace-users" className="scroll-mt-24">
           <CardTitle>Workspace Users</CardTitle>
           {workspaceUsers.length === 0 ? (
             <p className="mt-2 text-sm text-slate-600">No users yet. Invite the first user above.</p>

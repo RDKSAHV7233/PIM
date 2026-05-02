@@ -59,6 +59,7 @@ function run() {
       adminSource.includes("<CardTitle>{accessSummary.title}</CardTitle>") &&
       adminSource.includes('visibility: "admin" as AdminNavigationAudience') &&
       adminSource.includes('visibility: "editor_plus" as AdminNavigationAudience') &&
+      adminSource.includes('href: "/admin/auth-policy"') &&
       adminSource.includes("View consent, export, and deletion status for the signed-in account."),
     "Admin hub must require auth, describe privacy scope honestly, summarize current-role access, and filter cards to the current role.",
   );
@@ -80,6 +81,7 @@ function run() {
       workspaceSource.includes("This route is a compatibility handoff for older bookmarks.") &&
       workspaceSource.includes("Use the admin modules available for your current") &&
       workspaceSource.includes('href: "/admin/api-keys"') &&
+      workspaceSource.includes('href: "/admin/auth-policy"') &&
       workspaceSource.includes('href: "/admin/webhooks"') &&
       workspaceSource.includes("View export and deletion status for the signed-in account."),
     "Admin workspace handoff must require auth, explain current-role access honestly, and point legacy bookmarks to the role-appropriate admin module set.",

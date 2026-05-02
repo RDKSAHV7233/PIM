@@ -38,6 +38,11 @@ function getJwtSecret(): string | null {
   return value.length > 0 ? value : null;
 }
 
+function requiresVerifiedSessions(): boolean {
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return appEnv === "staging" || appEnv === "production";
+}
+
 function parseClaims(payloadSegment: string): PimJwtClaims | null {
   try {
     const payload = JSON.parse(fromBase64Url(payloadSegment).toString("utf8")) as Record<string, unknown>;
@@ -88,26 +93,22 @@ function verifyToken(token: string): PimJwtClaims | null {
   return claims;
 }
 
-function parseUnverifiedToken(token: string): PimJwtClaims | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) {
-    return null;
-  }
-  return parseClaims(parts[1]);
-}
-
 export async function getServerSessionClaims(): Promise<PimJwtClaims | null> {
   const cookieStore = await cookies();
   const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
   if (!token) {
     return null;
   }
+  const secret = getJwtSecret();
+  if (!secret) {
+    if (requiresVerifiedSessions()) {
+      throw new Error("JWT_SECRET or PIM_JWT_SECRET is required for verified web sessions.");
+    }
+    return null;
+  }
   const verified = verifyToken(token);
   if (verified) {
     return verified;
-  }
-  if (!getJwtSecret()) {
-    return parseUnverifiedToken(token);
   }
   return null;
 }

@@ -237,6 +237,26 @@ export interface WorkspaceUser {
   updatedAt: string;
 }
 
+export interface TenantAuthPolicy {
+  id: string | null;
+  tenantKey: string;
+  externalIdentityMode: boolean;
+  mfaRequired: boolean;
+  mfaGracePeriodDays: number;
+  sessionTimeoutMinutes: number;
+  allowedAuthMethods: Array<"password" | "oidc">;
+  isPersisted: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  runtimeApplied: {
+    sessionTimeout: true;
+    mfaEnrollment: false;
+    externalIdentity: false;
+  };
+}
+
 export type AccessScopeAssignmentSubjectType = "user" | "role";
 export type AccessScopeAssignmentScopeType = "category" | "brand" | "channel" | "connector_account";
 export type AccessScopeAssignmentAction =

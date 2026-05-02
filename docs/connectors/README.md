@@ -103,8 +103,9 @@ As of 2026-04-25:
 - legacy connector mapping path is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
 - broad rollout readiness is still blocked under `INC-08` rollout evidence
-- Amazon India, Flipkart, and Shopify are implemented as publish-capable connectors in `apps/api/src/connectors`
-- Meesho remains partial/export-oriented and does not implement direct product publish
+- Amazon India, Flipkart, and Shopify are implemented as `Live publish` connectors in `apps/api/src/connectors`
+- Meesho remains `Export/manual`, is partial/export-oriented, and does not implement direct product publish
+- ONDC remains `Experimental`, admin-only, and non-production when feature-enabled
 
 For implementation and current-state guidance, use:
 - `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`

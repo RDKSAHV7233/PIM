@@ -53,6 +53,7 @@ export default async function MappingManagerRedirectPage({
       "channel",
       normalizeChannel(query.channel, mapConnectorSlugToMarketplaceChannel(installation.slug)),
     );
+    target.set("installationId", installation.id);
     if (productId) {
       target.set("productId", productId);
     }

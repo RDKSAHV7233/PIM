@@ -52,8 +52,11 @@ function run() {
   );
   assert(
     roleBadgeSource.includes('reviewer: { label: "Reviewer"') &&
+      roleBadgeSource.includes('const manageRolesHref = pathname === "/admin/users" ? "#workspace-users" : "/admin/users#workspace-users";') &&
+      roleBadgeSource.includes('href={manageRolesHref}') &&
+      adminUsersSource.includes('id="workspace-users"') &&
       adminUsersSource.includes('{ role: "Reviewer"'),
-    "Reviewer role must be surfaced consistently in the badge and admin role matrix.",
+    "Reviewer role must be surfaced consistently in the badge and admin role matrix, and team-role navigation must deep-link to the live users table.",
   );
 
   console.log(

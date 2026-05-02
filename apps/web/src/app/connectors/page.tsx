@@ -39,6 +39,8 @@ interface ConnectorsPageProps {
 
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
+type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
   if (value === "installed") {
@@ -166,14 +168,23 @@ function connectorLaunchTone(stage: "live" | "manual" | "planned"): StatusTone {
   return "info";
 }
 
-function connectorLaunchLabel(stage: "live" | "manual" | "planned"): string {
+function connectorLaunchLabel(
+  stage: "live" | "manual" | "planned",
+  implementationStatus: string | undefined,
+): ConnectorMaturity {
+  if (stage === "live" && implementationStatus === "partial") {
+    return "Beta";
+  }
   if (stage === "manual") {
-    return "guided rollout";
+    return implementationStatus === "partial" ? "Export/manual" : "Beta";
   }
   if (stage === "planned") {
-    return "not seller-ready";
+    return "Experimental";
   }
-  return "live";
+  if (implementationStatus === "stub") {
+    return "Experimental";
+  }
+  return "Live publish";
 }
 
 function resolveInstalledStatusPresentation(
@@ -193,8 +204,27 @@ function resolveInstalledStatusPresentation(
   };
 }
 
+function formatCapabilityLabel(capability: string): string {
+  if (capability === "PUBLISH") {
+    return "Publish";
+  }
+  if (capability === "VALIDATE") {
+    return "Validate";
+  }
+  if (capability === "STATUS_SYNC") {
+    return "Status sync";
+  }
+  if (capability === "WEBHOOK_RECEIVE") {
+    return "Webhook receive";
+  }
+  if (capability === "EXCEL_EXPORT") {
+    return "Excel export";
+  }
+  return capability.replace(/_/g, " ").toLowerCase();
+}
+
 function formatCapabilityList(capabilities: string[]): string {
-  return capabilities.length > 0 ? capabilities.join(", ") : "-";
+  return capabilities.length > 0 ? capabilities.map(formatCapabilityLabel).join(", ") : "-";
 }
 
 function formatInstallFootprint(installations: ConnectorInstallation[]): string {
@@ -374,16 +404,16 @@ function summarizeDefinitionWorkspace(
   }
   if (definition.launchStage === "manual") {
     return {
-      label: "Guided rollout",
+      label: "Export/manual",
       tone: "warning",
-      description: "Operationally limited. Keep installs coordinated with the rollout owner.",
+      description: "Operationally limited. Use this connector for export-led or coordinated manual workflows only.",
     };
   }
   if (definition.launchStage === "planned") {
     return {
-      label: "Planned",
+      label: "Experimental",
       tone: "info",
-      description: "Tracked in the product roadmap but not open for seller self-serve install yet.",
+      description: "Visible for roadmap awareness only. This connector is not open for seller self-serve install.",
     };
   }
   if (definition.actions?.install.allowed) {
@@ -603,7 +633,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 href="#connector-catalog"
                 className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Guided rollout</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Manual and experimental</p>
                 <div className="mt-2 flex items-end justify-between gap-3">
                   <p className="text-2xl font-semibold text-slate-900">{manualDefinitions.length + plannedDefinitions.length}</p>
                   <StatusChip label="portfolio review" tone="info" />
@@ -622,7 +652,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
               <div>
                 <CardTitle>Channel catalog</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Review live connector lanes first so operators can install, map, and manage each Vexa connector from the same catalog workspace{portfolioContext}.
+                  Review live connector lanes first so operators can install, map, and manage each Vexa connector from the same catalog workspace{portfolioContext}. Maturity labels distinguish live publish lanes from export/manual and experimental connectors.
                 </p>
               </div>
               <StatusChip
@@ -673,7 +703,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusChip label={workspaceState.label} tone={workspaceState.tone} />
                         <StatusChip
-                          label={connectorLaunchLabel(definition.launchStage)}
+                          label={connectorLaunchLabel(definition.launchStage, definition.implementationStatus)}
                           tone={connectorLaunchTone(definition.launchStage)}
                         />
                       </div>
@@ -683,7 +713,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capability surface</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported operations</p>
                           <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(definition.capabilities)}</p>
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -741,9 +771,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           <Card className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Guided rollout</CardTitle>
+                <CardTitle>Export/manual</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Connectors with manual or partial operational paths that still matter for account planning.
+                  Connectors with partial or coordinated manual operating paths that still matter for account planning.
                 </p>
               </div>
               <StatusChip label={`${manualDefinitions.length} connectors`} tone="warning" />
@@ -766,7 +796,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
                       </div>
                       <StatusChip
-                        label={connectorLaunchLabel(item.definition.launchStage)}
+                        label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
                         tone={connectorLaunchTone(item.definition.launchStage)}
                       />
                     </div>
@@ -790,9 +820,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           <Card className="border-slate-200 bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Planned and research</CardTitle>
+                <CardTitle>Experimental</CardTitle>
                 <p className="text-sm text-slate-600">
-                  Future connector opportunities that are visible for roadmap awareness but not seller-ready.
+                  Future connector opportunities that are visible for roadmap awareness but not production rollout.
                 </p>
               </div>
               <StatusChip label={`${plannedDefinitions.length} connectors`} tone="info" />
@@ -815,7 +845,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
                       </div>
                       <StatusChip
-                        label={connectorLaunchLabel(item.definition.launchStage)}
+                        label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
                         tone={connectorLaunchTone(item.definition.launchStage)}
                       />
                     </div>
@@ -825,11 +855,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         {item.definition.launchNote}
                       </p>
                     ) : null}
-                    <p className="mt-2 text-xs text-slate-500">
-                      Capability surface: {formatCapabilityList(item.definition.capabilities)}
-                    </p>
+                    <p className="mt-2 text-xs text-slate-500">Supported operations: {formatCapabilityList(item.definition.capabilities)}</p>
                     <p className="mt-2 text-xs font-medium text-slate-500">
-                      Seller setup unlocks after the connector reaches live launch stage.
+                      Seller setup unlocks after the connector reaches the Live publish stage.
                     </p>
                   </div>
                 ))}
@@ -897,7 +925,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusChip label={displayStatus.label} tone={displayStatus.tone} />
                         <StatusChip
-                          label={connectorLaunchLabel(installation.launchStage)}
+                          label={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
                           tone={connectorLaunchTone(installation.launchStage)}
                         />
                       </div>
@@ -918,7 +946,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <p className="mt-2 text-sm text-slate-700">{installation.externalAccountRef || "Not recorded"}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capabilities</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported operations</p>
                         <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(installation.capabilities)}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white p-3">

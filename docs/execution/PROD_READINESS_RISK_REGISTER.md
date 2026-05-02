@@ -1,21 +1,22 @@
 # Vexa PIM Production Readiness Risk Register
 
-Last updated: 2026-03-24 (latest checked-in daily evidence + green staging reruns reconciled)
+Last updated: 2026-05-01 (latest live staging recovery, fresh rollout snapshot, green local validation reruns, and ledger reconciliation)
 
 ## P0 (Must close before production)
 
 ### RISK-P0-001: Rollout gates incomplete
 - Severity: P0
-- Status: In Progress
+- Status: Monitoring
 - Owner: Engineering Lead + DevOps
-- Description: Controlled rollout signoff is incomplete.
+- Description: Controlled-rollout gates are currently healthy again, but broad-rollout evidence has temporarily slipped back to `13 / 14` days in the latest live snapshot and must return to `14 / 14` before broad-production claims resume.
 - Evidence:
   - Completed: 2 consecutive E10 signoff artifacts recorded (`E10-ST-QA-001-RUN3`, `E10-ST-QA-001-RUN4`).
   - Completed: local staging-format signoff artifact recorded (`INC08-STAGING-SIGNOFF-LOCAL`).
   - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
   - Completed: live staging workflow run `23127921361` captured a healthy staging snapshot with `/api/v1/health` returning `env=staging`, queue runtime `backend=bullmq`, and `workerEnabled=true`.
   - Completed: artifact `staging-gate-artifacts-23127921361` uploaded with digest `sha256:c2de34cd35af3cbac223b77885c37c8755424e6cdc3ea64a5ae3599fb615d537`.
-  - Remaining: fresh consecutive E10 signoff continuity is not yet restored, and the 14-day/SLO broad-rollout evidence window remains incomplete at `8 / 14` days in the latest checked-in snapshot.
+  - Completed: earlier rollout snapshot `docs/execution/rollout/2026-05-01T05-03-41.080Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reported `healthOk = true`, `controlledPending = []`, and `broadPending = []`.
+  - Current live evidence: refreshed rollout snapshot `docs/execution/rollout/2026-05-01T13-17-06.355Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `healthOk = true`, `controlledPending = []`, and `broadPending = ["Controlled rollout observation window covers 13 of 14 required days."]`.
 - Exit criteria:
   1. Two consecutive E10 signoff artifacts recorded.
   2. `/api/v1/health` reports `env=staging` in staging.
@@ -25,9 +26,18 @@ Last updated: 2026-03-24 (latest checked-in daily evidence + green staging rerun
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
   - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
-  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/23423428444`
-  - Latest snapshot: `docs/execution/rollout/2026-03-23T05-50-17.608Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25151411868`
+  - Latest snapshot: `docs/execution/rollout/2026-04-30T06-43-54.789Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
+- Current status reconciliation (2026-05-01):
+  - Latest live snapshot shows:
+    - `health.ok = true`
+    - `controlledRollout.pending = []`
+    - `observationWindowDaysCovered = 13 / 14`
+    - `sloTrendDaysCovered = 14 / 14`
+  - Controlled-rollout evidence is healthy.
+  - Broad-rollout observation evidence is not yet complete again after the rolling window advanced.
+  - Remaining: record one more valid daily evidence day and refresh launch docs once the broad window returns to `14 / 14`.
 - Implementation update (2026-03-16):
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
   - The uploaded rollout snapshot shows `controlledRollout.pending = []`.

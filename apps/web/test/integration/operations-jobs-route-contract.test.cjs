@@ -31,7 +31,7 @@ function run() {
       source.includes("getSubmissions(") &&
       source.includes("status: statusFilter || undefined,") &&
       source.includes("connectorSlug: connectorSlug || undefined,") &&
-      source.includes("getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })"),
+      source.includes("getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader })"),
     "Operations jobs must fetch submissions and dead-letter records together from the shared auth context.",
   );
   assert(
@@ -43,10 +43,12 @@ function run() {
   );
   assert(
     source.includes("const statusCounts = submissions.reduce<Record<string, number>>(") &&
-      source.includes('label="Total Submissions"') &&
+      source.includes('label="Visible Submissions"') &&
+      source.includes("Latest ${visibleSubmissionLimit} matching jobs") &&
       source.includes('label="Pending"') &&
       source.includes('label="Rejected / Error"') &&
-      source.includes('label="Dead Letter"'),
+      source.includes('label="Dead Letter"') &&
+      source.includes("Latest ${deadLetterLimit} dead-letter jobs"),
     "Operations jobs must derive the jobs KPI cards from live normalized submission counts and dead-letter volume.",
   );
   assert(

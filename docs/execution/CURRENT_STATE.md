@@ -1,120 +1,104 @@
 # Vexa PIM Current State
 
-- Date: 2026-03-24
-- Repo HEAD: `0be8f44`
-- Scope: canonical snapshot of the current Vexa PIM implementation, execution ledger, and reviewer-facing documentation state
-- Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`, and some internal legacy docs still reference `TEJ`.
+- Date: 2026-05-01
+- Repo HEAD: `4645633`
+- Scope: current code, current validation output, and release-governance state after targeted production-readiness hardening and the latest live staging snapshot refresh
+- Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
-## 1. Canonical Source-of-Truth Files
+## 1. Current Truth Summary
+
+- Targeted code-level production-readiness blockers around web JWT/session fail-closed behavior, privileged internal route trust boundaries, web build/increment gate stability, submissions and DLQ count honesty, readiness proxy failure masking, and catalog products pagination have been closed in the current repo state.
+- The current local validation bundle is green for API lint/build, web lint/build/test, and the increment gate.
+- Fresh release-governance evidence is now checked in: the latest staging rollout snapshot reports `healthOk: true`, `controlledPending: []`, and `broadPending: ["Controlled rollout observation window covers 13 of 14 required days."]`.
+- `INC-08` remains complete in the execution ledger based on the earlier evidence bundle, but the newest live rollout snapshot should govern current launch claims. Broad-production signoff is not currently supportable until the rolling evidence window returns to `14 / 14`.
+
+## 2. Canonical Source-of-Truth Files
+
 - Product baseline: `docs/product/PRD.md`
-- Product source index: `docs/product/PRD_SOURCES.md`
 - Execution ledger: `docs/execution/INCREMENT_STATE.json`
-- Engineering backlog: `docs/execution/PRD_TO_ENGINEERING_BACKLOG.md`
-- OpenAPI references: `docs/openapi.yaml`, `docs/openapi.json`
-- User guide bundle: `docs/product/user-guide/`
+- Runtime state notes: this file
+- Release-risk documentation: `docs/execution/PROD_READINESS_RISK_REGISTER.md`
+- UI/UX pilot execution record: `docs/execution/VEXA_PIM_UIUX_PILOT_READINESS_EXECUTION_PLAN_2026-04-30.md`
+- Product/CTO review history: `docs/execution/VEXA_PIM_PRODUCT_CTO_UIUX_REVIEW_2026-04-30.md`
 
-## 2. Current Implemented Web Shell
-Source: `apps/web/src/components/nav/app-sidebar.tsx`
+## 3. Current Implemented Stack
 
-### Seller-facing primary sections currently implemented
-- `Dashboard`
-- `Products`
-- `Catalog`
-- `Channels`
-- `Quality`
-- `Operations`
-- `Settings`
+- Web: Next.js 15, React, TypeScript, Tailwind CSS
+- API: NestJS on Express
+- Database: PostgreSQL with Prisma
+- Queue/cache: BullMQ/Redis for staging and production, in-memory locally
+- Media: Cloudflare R2-compatible object storage
+- Connectors: Amazon India, Flipkart, Shopify, and partial Meesho export support
 
-### Hidden by default from normal production navigation
-- `Labs / Internal`
-  - `Developer`
-  - `AI Lab`
-  - `DAM`
-  - `ONDC`
+## 4. Current Release Posture
 
-## 3. Current Implemented Route Groups
-Source: `apps/web/src/app/`
+### Allowed to say
 
-- `admin/`
-- `ai/`
-- `api/`
-- `catalog/`
-- `channels/`
-- `connectors/`
-- `consent/`
-- `dashboard/`
-- `internal/`
-- `login/`
-- `media/`
-- `ondc/`
-- `operations/`
-- `products/`
-- `quality/`
-- `rejection/`
-- `reports/`
-- `settings/`
+- The targeted production-readiness code blockers listed above are closed in the current repo state.
+- The current local validation bundle is green.
+- Vexa PIM is controlled-rollout-ready from the current checked-in code and live release-governance evidence.
+- Enterprise-readiness remains out of scope for the current evidence bundle.
 
-## 4. Increment Status Snapshot
+### Not allowed to say
+
+- Enterprise-ready
+- All launch docs current before review
+- All historical review docs are current
+
+### Current decision
+
+- Demo readiness: allowed
+- Controlled pilot posture: allowed
+- Production signoff: blocked pending broad-rollout evidence closure
+- Enterprise signoff: blocked
+
+## 5. Validation Snapshot
+
+Most recent local validation rerun in this repo state:
+
+- `npm run lint --workspace @pim1/api` - pass
+- `npm run build --workspace @pim1/api` - pass
+- `npm run lint --workspace @pim1/web` - pass
+- `npm run build --workspace @pim1/web` - pass
+- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=84 failed=0`)
+- `npm run gate:run:increment` - pass
+
+Additional release-readiness checks to rerun during governance review:
+
+- `npm run gate:run:sprint`
+- `npm audit --omit=dev --audit-level=high`
+- `git diff --check`
+- `git status --short`
+- `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"`
+
+## 6. Increment Status Snapshot
+
 Source: `docs/execution/INCREMENT_STATE.json`
 
-| Increment | Name | Status | Notes |
+| Increment | Name | Status | Current interpretation |
 |---|---|---|---|
-| INC-01 | Seller Workflow Core | completed | locked stories present |
-| INC-02 | Catalog Throughput | completed | locked stories present |
-| INC-03 | Connector Reliability | completed | locked stories present |
-| INC-04 | Security and Isolation | completed | locked stories present |
-| INC-05 | Ops and Observability | completed | locked stories present; post-deploy verification risk closed |
-| INC-06 | Decision Dashboards | completed | locked stories present |
-| INC-07 | Governance and Compliance | completed | locked stories present |
-| INC-08 | Release Readiness | in_progress | delivery complete; latest checked-in evidence still blocks controlled rollout continuity and broad rollout evidence stands at 8/14 days (SLO 8/14) from the 2026-03-23 snapshot |
-| INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | locked stories present |
-| INC-10 | Flipkart Publish Connector v1 | completed | locked stories present; connector implementation complete |
-| INC-11 | Workspace Login and Tenant Discovery | completed | locked stories present |
-| INC-12 | Connector Access Stability | completed | locked stories present |
-| INC-13 | Connector Access Validation and Admin UX | completed | locked stories present |
-| INC-14 | Mappings Workflow UX Restructure | completed | locked stories present |
-| INC-15 | Hydration Stability for Form Primitives | completed | locked stories present |
-| INC-16 | Product Test Architecture and UI UX Acceptance | completed | locked stories present |
-| INC-17 | Catalog Delete UX | completed | locked stories present |
-| INC-18 | Playwright E2E Coverage and Workflow Stabilization | completed | locked stories present |
-| INC-19 | Performance Optimization Sprint | completed | locked stories present |
-| INC-20 | Audit Explorer UI | completed | locked stories present |
-| INC-21 | Billing Usage Read-Path Optimization | completed | locked stories present |
+| INC-01 through INC-07 | Core workflow through governance foundations | completed | locked and historically complete |
+| INC-08 | Release Readiness | completed | completed in the ledger, but current launch claims must still follow the newest live rollout evidence |
+| INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | code complete; do not overclaim runtime breadth from this alone |
+| INC-10 | Flipkart Publish Connector v1 | completed | increment completed, but runtime claims must still follow story/evidence truth |
+| INC-11 through INC-25 | Auth, UX, audit, access-policy, dependency, and alignment increments | completed | see ledger for story-level details |
 
-## 5. Pending Release Items
-Source: `docs/execution/INCREMENT_STATE.json` and `docs/execution/PROD_READINESS_RISK_REGISTER.md`
+## 7. Active Production-Signoff Blockers
 
-- `INC-05` / `RISK-P0-003`: post-deploy verification pipeline is now live and green on CI. Gate artifact recording is operational. Status: **closed** in the risk register.
-- `INC-08` / `RISK-P0-001`: latest checked-in evidence is snapshot `2026-03-23T05-50-17.608Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` from daily evidence run `23423428444`. It shows `health.ok = true`, `consecutiveE10SignoffRuns = 0`, and `controlledRollout.pending` still contains `Need at least 2 consecutive E10 gate signoff artifacts.` Broad rollout evidence is now **8 of 14 required days**, with production SLO trend evidence also at **8 of 14 required days**. The March 20 scheduled E2E failure has since been reconciled by green staging reruns (`23410221080`, `23410453415`); the remaining blocker is rollout evidence continuity plus the six remaining observation-window days.
-- `INC-10`: Flipkart connector implementation is complete in the increment ledger. It is no longer tracked as an open release item in `docs/execution/INCREMENT_STATE.json`.
+Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
 
-## 6. Current Documentation State
-- `docs/product/` is canonical for product scope and user-facing guidance.
-- `docs/architecture/enterprise-docs/` is a generated reference bundle, not the primary source of truth.
-- `docs/ports/` is historical transfer/reference material and should not be treated as the live implementation baseline.
-- `docs/design/TEJ_PIM_UI_Design_Review.html` is design/reference material and not the live route contract.
+1. Broad-rollout evidence is currently one day short of closure: the latest live staging snapshot reports `observationWindowDaysCovered = 13 / 14` with `controlledRollout.pending = []`.
+2. Historical April review documents remain useful context, but must not be treated as the current launch truth when they conflict with current code or the latest artifacts.
+3. The execution ledger still records `INC-08` as complete, but current external production claims should follow the latest live rollout snapshot rather than older green snapshots.
 
-## 7. Current Runtime Notes
-- Local API entrypoint: `npm run dev:api`
-- Local web entrypoint: `npm run dev:web`
-- When local Next.js runtime artifacts become stale, use `tools/dev/recover-web-runtime.ps1`
-- Local reviewer validation commonly uses:
-  - `npm run lint --workspace @pim1/web`
-  - `npm run build --workspace @pim1/web`
-  - `npm run build --workspace @pim1/api`
+## 8. Future-Scope And Follow-Up Items
 
-## 8. Recent Governance Events
-- `0be8f44` -- relock pending feedback rollout story after browser-level bulk import E2E validation
-- `ab57ba0` -- daily rollout evidence persisted the 2026-03-23 snapshot (`8/14` broad-window progress, E10 continuity still pending)
-- `df33091` -- browser validation for pending feedback on bulk import actions
-- `79c54a4` -- stabilize staging catalog and webhook checks; March 20 failing E2E checks are now closed
-- `6c954d1` -- daily rollout evidence persisted the 2026-03-22 snapshot (`7/14` broad-window progress, E10 continuity still pending)
-- `f47a64e` -- daily rollout evidence persisted the 2026-03-21 snapshot and confirmed controlled continuity remained open
-- `b6aa161` -- auth/privacy hardening: non-enumerating password reset, R2-backed export delivery, and fail-closed email delivery
-- `34dacc8` -- add `console` email mode for staging while keeping production email delivery `resend`-only
+- Add a dedicated backend path for hide-test-data filtered catalog totals if very large catalogs make the current slim-page scan too expensive.
+- Keep connector/runtime claims bounded to connector-specific evidence.
+- Do not expand enterprise-role UX claims beyond the current four-role frontend plus delegated-scope explanation until dedicated shells are implemented and validated.
 
 ## 9. Reviewer Guidance
-- For product review: start with `docs/product/PRD.md`
-- For execution/release review: use `docs/execution/CURRENT_STATE.md` + `docs/execution/INCREMENT_STATE.json`
-- For page-by-page usage review: use `docs/product/user-guide/PAGE_ACTION_PLAYBOOK_INDEX.md`
-- For API review: use `docs/openapi.yaml`
+
+- For code and release truth, prefer current code plus the latest validation output over older review prose.
+- Use `docs/execution/INCREMENT_STATE.json` to judge whether release governance is actually closed.
+- Treat April 2026 execution and review docs as historical context unless their claims are still reproduced by the current repo state.

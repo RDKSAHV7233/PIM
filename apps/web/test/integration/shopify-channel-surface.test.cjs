@@ -35,7 +35,11 @@ function run() {
   assert(apiChannels.includes('shopify: "shopify"'), "API channel-to-connector map must include Shopify");
   assert(marketplaceService.includes("displayName: \"Shopify\""), "marketplace channel packs must include Shopify");
   assert(connectorMappingService.includes("shopify: {"), "connector mapping defaults must include Shopify");
-  assert(serverSession.includes("parseUnverifiedToken"), "web session role resolver must handle deployments without local JWT verification");
+  assert(
+    serverSession.includes("requiresVerifiedSessions") &&
+      !serverSession.includes("return parseUnverifiedToken(token);"),
+    "web session role resolver must fail closed instead of trusting unverified JWT claims when local verification is unavailable",
+  );
   assert(
     catalogController.includes('@Roles("admin", "editor")') &&
       catalogController.includes('@Post("products")') &&
@@ -52,7 +56,7 @@ function run() {
           "shopify_available_in_api_mapping_channels",
           "shopify_system_mapping_pack_present",
           "shopify_connector_mapping_defaults_present",
-          "role_ui_fallback_present_for_web_runtime_without_jwt_secret",
+          "web_session_runtime_fails_closed_without_jwt_secret",
           "catalog_write_endpoints_have_backend_role_guards",
         ],
         checkedAt: new Date().toISOString(),
