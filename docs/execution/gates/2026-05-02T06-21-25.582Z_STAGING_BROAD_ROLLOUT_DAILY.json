@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "default",
+  "date": "2026-05-02T06:21:25.582Z",
+  "gitTag": "sha-b47e6a9",
+  "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25245687778",
+  "suite": "STAGING_BROAD_ROLLOUT_DAILY"
+}
