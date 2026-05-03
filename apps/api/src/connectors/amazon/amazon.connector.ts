@@ -109,6 +109,7 @@ type AmazonNotificationEnvelope = {
   };
 };
 
+const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_REFRESH_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const DEFAULT_OAUTH_BASE_URL = "https://api.amazon.com";
@@ -429,6 +430,7 @@ export class AmazonConnector implements ConnectorInterface {
     const endpoint = `${this.resolveOauthBaseUrl()}/auth/o2/token`;
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -897,6 +899,7 @@ export class AmazonConnector implements ConnectorInterface {
   ): Promise<Response> {
     let token = await this.resolveAccessToken(ctx);
     let response = await fetch(url, {
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       ...init,
       headers: {
         ...init.headers,
@@ -912,6 +915,7 @@ export class AmazonConnector implements ConnectorInterface {
     await this.invalidateAccessToken(ctx);
     token = await this.resolveAccessToken(ctx);
     response = await fetch(url, {
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       ...init,
       headers: {
         ...init.headers,

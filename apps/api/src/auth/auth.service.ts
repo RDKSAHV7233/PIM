@@ -398,6 +398,17 @@ export class AuthService implements OnModuleDestroy {
     const identity = await this.resolveLoginIdentity(dto.userId, workspace.tenantId);
     if (!identity) {
       const lockState = await this.recordFailedCredential(userKey, dto.userId, now);
+      await this.auditService.record({
+        actorId: dto.userId,
+        actorRole: "viewer",
+        action: "auth.login_failed",
+        resource: "auth.login",
+        tenantKey: workspace.tenantId,
+        metadata: {
+          reason: lockState.lockedUntilMs && lockState.lockedUntilMs > now ? "account_locked" : "invalid_credentials",
+          ipAddress,
+        },
+      });
       if (lockState.lockedUntilMs && lockState.lockedUntilMs > now) {
         return {
           type: "account_locked",
@@ -412,6 +423,17 @@ export class AuthService implements OnModuleDestroy {
     const credentialOk = await this.verifyPasswordForIdentity(dto.password, identity);
     if (!credentialOk) {
       const lockState = await this.recordFailedCredential(userKey, dto.userId, now);
+      await this.auditService.record({
+        actorId: identity.userId,
+        actorRole: identity.role,
+        action: "auth.login_failed",
+        resource: "auth.login",
+        tenantKey: identity.tenantId,
+        metadata: {
+          reason: lockState.lockedUntilMs && lockState.lockedUntilMs > now ? "account_locked" : "invalid_credentials",
+          ipAddress,
+        },
+      });
       if (lockState.lockedUntilMs && lockState.lockedUntilMs > now) {
         return {
           type: "account_locked",
@@ -423,6 +445,14 @@ export class AuthService implements OnModuleDestroy {
       return { type: "invalid_credentials", attemptsRemaining };
     }
     if (identity.lockedUntil && identity.lockedUntil.getTime() > now) {
+      await this.auditService.record({
+        actorId: identity.userId,
+        actorRole: identity.role,
+        action: "auth.login_failed",
+        resource: "auth.login",
+        tenantKey: identity.tenantId,
+        metadata: { reason: "account_locked", ipAddress },
+      });
       return {
         type: "account_locked",
         unlockAt: identity.lockedUntil.toISOString(),
@@ -458,6 +488,15 @@ export class AuthService implements OnModuleDestroy {
 
     await this.clearUserFailures(userKey);
 
+    await this.auditService.record({
+      actorId: identity.userId,
+      actorRole: identity.role,
+      action: "auth.login_success",
+      resource: "auth.login",
+      tenantKey: identity.tenantId,
+      metadata: { ipAddress, expiresInSeconds },
+    });
+
     return {
       type: "success",
       payload: {
@@ -475,6 +514,14 @@ export class AuthService implements OnModuleDestroy {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const ttlSeconds = Math.max(1, claims.exp - nowSeconds);
     await this.jwtBlocklistService.revoke(claims.jti, ttlSeconds);
+    await this.auditService.record({
+      actorId: claims.sub,
+      actorRole: claims.role ?? "viewer",
+      action: "auth.logout",
+      resource: "auth.session",
+      tenantKey: claims.tenantId,
+      metadata: { jti: claims.jti },
+    });
   }
 
   async issueStepUp(input: {

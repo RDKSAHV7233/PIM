@@ -68,6 +68,7 @@ type FlipkartPublishResponse = {
   }>;
 };
 
+const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_TOKEN_WARNING_MS = 7 * 24 * 60 * 60 * 1000;
@@ -475,6 +476,7 @@ export class FlipkartConnector implements ConnectorInterface {
     const endpoint = `${this.resolveOauthBaseUrl()}/oauth-service/oauth/token`;
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       headers: {
         Accept: "application/json",
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
@@ -747,6 +749,7 @@ export class FlipkartConnector implements ConnectorInterface {
     await this.delay(DEFAULT_REQUEST_DELAY_MS);
     let token = await this.resolveAccessToken(ctx);
     let response = await fetch(url, {
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       ...init,
       headers: {
         ...init.headers,
@@ -761,6 +764,7 @@ export class FlipkartConnector implements ConnectorInterface {
     token = await this.resolveAccessToken(ctx);
     await this.delay(DEFAULT_REQUEST_DELAY_MS);
     response = await fetch(url, {
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       ...init,
       headers: {
         ...init.headers,
