@@ -27,7 +27,8 @@ import { AuthExportStorageService } from "./auth-export-storage.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
-import { PimJwtClaims, StepUpScope, signPimJwt } from "./jwt";
+import { MfaService } from "./mfa.service";
+import { PimJwtClaims, StepUpScope, signPimJwt, verifyPimJwt } from "./jwt";
 
 const DEFAULT_LOGIN_EXPIRY_MINUTES = 4 * 60;
 const MAX_LOGIN_EXPIRY_MINUTES = 4 * 60;
@@ -42,6 +43,8 @@ const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
 const DEFAULT_STEP_UP_EXPIRY_SECONDS = 5 * 60;
 const MIN_STEP_UP_EXPIRY_SECONDS = 2;
+const MFA_PENDING_TOKEN_TTL_SECONDS = 5 * 60;
+const MFA_ENROLLMENT_TOKEN_TTL_SECONDS = 15 * 60;
 const MAX_STEP_UP_EXPIRY_SECONDS = 15 * 60;
 const PASSWORD_RESET_EXPIRY_MS = 30 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_BYTES = 24;
@@ -149,6 +152,16 @@ export type LoginResult =
       billingStatus: string;
       accessStatus: string;
       suspensionReason: string | null;
+    }
+  | {
+      type: "mfa_required";
+      pendingToken: string;
+      maskedEmail: string;
+    }
+  | {
+      type: "mfa_enrollment_required";
+      enrollmentToken: string;
+      maskedEmail: string;
     };
 
 export interface ResendUnlockResult {
@@ -354,6 +367,7 @@ export class AuthService implements OnModuleDestroy {
     private readonly authExportStorageService: AuthExportStorageService,
     private readonly planUsageService: PlanUsageService,
     private readonly authPolicyService: AuthPolicyService,
+    private readonly mfaService: MfaService,
   ) {
     this.queueService.process<AuthEmailJobPayload>(QUEUE_NAMES.AUTH_EMAIL, async (payload) => {
       await this.processAuthEmailJob(payload);
@@ -471,6 +485,32 @@ export class AuthService implements OnModuleDestroy {
       };
     }
 
+    const mfaPolicy = await this.authPolicyService.getEffectiveMfaPolicy(identity.tenantId);
+    if (mfaPolicy.mfaRequired) {
+      const maskedEmail = this.maskIdentity(identity.userId);
+      const hasEnrollment = await this.mfaService.hasActiveEnrollment(identity.userId, identity.tenantId);
+      if (!hasEnrollment) {
+        const enrollmentToken = signPimJwt({
+          sub: identity.userId,
+          tenantId: identity.tenantId,
+          role: identity.role,
+          assignedRoles: identity.assignedRoles,
+          tokenType: "mfa_enrollment",
+          expiresInSeconds: MFA_ENROLLMENT_TOKEN_TTL_SECONDS,
+        });
+        return { type: "mfa_enrollment_required", enrollmentToken, maskedEmail };
+      }
+      const pendingToken = signPimJwt({
+        sub: identity.userId,
+        tenantId: identity.tenantId,
+        role: identity.role,
+        assignedRoles: identity.assignedRoles,
+        tokenType: "mfa_pending",
+        expiresInSeconds: MFA_PENDING_TOKEN_TTL_SECONDS,
+      });
+      return { type: "mfa_required", pendingToken, maskedEmail };
+    }
+
     const policySessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(identity.tenantId);
     const maxSessionTimeoutMinutes = Math.min(MAX_LOGIN_EXPIRY_MINUTES, policySessionTimeoutMinutes);
     const expiryMinutes = Number.isFinite(dto.expiresInMinutes)
@@ -522,6 +562,54 @@ export class AuthService implements OnModuleDestroy {
       tenantKey: claims.tenantId,
       metadata: { jti: claims.jti },
     });
+  }
+
+  async verifyLoginMfa(
+    pendingToken: string,
+    code: string,
+  ): Promise<
+    | { type: "success"; payload: LoginResponse }
+    | { type: "invalid_token" }
+    | { type: "invalid_code" }
+  > {
+    const claims = verifyPimJwt(pendingToken);
+    if (!claims || claims.tokenType !== "mfa_pending") {
+      return { type: "invalid_token" };
+    }
+    const ok = await this.mfaService.verifyMfaForLogin(claims.sub, claims.tenantId, code);
+    if (!ok) {
+      return { type: "invalid_code" };
+    }
+    const sessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(claims.tenantId);
+    const expiresInSeconds = Math.min(MAX_LOGIN_EXPIRY_MINUTES, sessionTimeoutMinutes) * 60;
+    const accessToken = signPimJwt({
+      sub: claims.sub,
+      tenantId: claims.tenantId,
+      role: claims.role,
+      assignedRoles: claims.assignedRoles,
+      tokenType: "access",
+      expiresInSeconds,
+      minimumExpiresInSeconds: 60,
+    });
+    await this.auditService.record({
+      actorId: claims.sub,
+      actorRole: claims.role ?? "viewer",
+      action: "auth.login_success",
+      resource: "auth.login",
+      tenantKey: claims.tenantId,
+      metadata: { mfa: true, expiresInSeconds },
+    });
+    return {
+      type: "success",
+      payload: {
+        accessToken,
+        tokenType: "Bearer",
+        expiresInSeconds,
+        userId: claims.sub,
+        tenantId: claims.tenantId,
+        role: claims.role ?? resolveDefaultRole(),
+      },
+    };
   }
 
   async issueStepUp(input: {

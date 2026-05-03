@@ -77,6 +77,15 @@ export class AuthPolicyService {
     return this.normalizeSessionTimeoutMinutes(row?.sessionTimeoutMinutes);
   }
 
+  async getEffectiveMfaPolicy(tenantIdInput: string): Promise<{ mfaRequired: boolean }> {
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const row = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
+      where: { tenantKey: tenantId },
+      select: { mfaRequired: true },
+    });
+    return { mfaRequired: row?.mfaRequired ?? false };
+  }
+
   async updatePolicy(
     tenantIdInput: string,
     actorIdInput: string,
