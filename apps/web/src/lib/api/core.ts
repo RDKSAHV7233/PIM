@@ -251,9 +251,9 @@ export interface TenantAuthPolicy {
   createdAt: string | null;
   updatedAt: string | null;
   runtimeApplied: {
-    sessionTimeout: true;
-    mfaEnrollment: false;
-    externalIdentity: false;
+    sessionTimeout: boolean;
+    mfaEnrollment: boolean;
+    externalIdentity: boolean;
   };
 }
 
