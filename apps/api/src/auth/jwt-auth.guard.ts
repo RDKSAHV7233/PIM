@@ -148,6 +148,11 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException({ error: "USER_ID_REQUIRED" });
     }
 
+    const dbAuthRequired = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    if (!dbAuthRequired) {
+      return;
+    }
+
     const identity = await this.prisma.tenant(tenantKey).authIdentity.findFirst({
       where: {
         tenantKey,
@@ -159,7 +164,6 @@ export class JwtAuthGuard implements CanActivate {
       },
     });
 
-    const dbAuthRequired = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
     if (!identity) {
       if (dbAuthRequired) {
         throw new UnauthorizedException({ error: "USER_NOT_FOUND" });

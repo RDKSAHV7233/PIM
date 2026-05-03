@@ -44,9 +44,9 @@ export interface TenantAuthPolicyView {
   createdAt: string | null;
   updatedAt: string | null;
   runtimeApplied: {
-    sessionTimeout: true;
-    mfaEnrollment: false;
-    externalIdentity: false;
+    sessionTimeout: boolean;
+    mfaEnrollment: boolean;
+    externalIdentity: boolean;
   };
 }
 
@@ -67,6 +67,9 @@ export class AuthPolicyService {
   }
 
   async getEffectiveSessionTimeoutMinutes(tenantIdInput: string): Promise<number> {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return this.normalizeSessionTimeoutMinutes(undefined);
+    }
     const tenantId = normalizeTenantKey(tenantIdInput);
     const row = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
       where: { tenantKey: tenantId },
@@ -78,12 +81,27 @@ export class AuthPolicyService {
   }
 
   async getEffectiveMfaPolicy(tenantIdInput: string): Promise<{ mfaRequired: boolean }> {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return { mfaRequired: false };
+    }
     const tenantId = normalizeTenantKey(tenantIdInput);
     const row = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
       where: { tenantKey: tenantId },
       select: { mfaRequired: true },
     });
     return { mfaRequired: row?.mfaRequired ?? false };
+  }
+
+  async getEffectiveAllowedAuthMethods(tenantIdInput: string): Promise<AuthPolicyMethod[]> {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return this.normalizeAuthMethods(undefined);
+    }
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const row = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
+      where: { tenantKey: tenantId },
+      select: { allowedAuthMethods: true },
+    });
+    return this.normalizeAuthMethods(row?.allowedAuthMethods);
   }
 
   async updatePolicy(
@@ -192,7 +210,7 @@ export class AuthPolicyService {
       updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
       runtimeApplied: {
         sessionTimeout: true,
-        mfaEnrollment: false,
+        mfaEnrollment: String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db",
         externalIdentity: false,
       },
     };

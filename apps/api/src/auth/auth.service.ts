@@ -162,6 +162,10 @@ export type LoginResult =
       type: "mfa_enrollment_required";
       enrollmentToken: string;
       maskedEmail: string;
+    }
+  | {
+      type: "auth_method_not_allowed";
+      allowedMethods: string[];
     };
 
 export interface ResendUnlockResult {
@@ -483,6 +487,11 @@ export class AuthService implements OnModuleDestroy {
         accessStatus: commercialProfile.accessStatus,
         suspensionReason: commercialProfile.suspensionReason,
       };
+    }
+
+    const allowedAuthMethods = await this.authPolicyService.getEffectiveAllowedAuthMethods(identity.tenantId);
+    if (!allowedAuthMethods.includes("password")) {
+      return { type: "auth_method_not_allowed", allowedMethods: allowedAuthMethods };
     }
 
     const mfaPolicy = await this.authPolicyService.getEffectiveMfaPolicy(identity.tenantId);
@@ -910,16 +919,18 @@ export class AuthService implements OnModuleDestroy {
       policyVersion,
       purpose,
     };
-    await this.prisma.tenant(tenantId).accountConsentEvent.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        accepted: input.accepted,
-        policyVersion,
-        purpose,
-        consentRecordedAt: new Date(consentRecordedAt),
-      },
-    });
+    if (!this.isLocalAuthMode()) {
+      await this.prisma.tenant(tenantId).accountConsentEvent.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          accepted: input.accepted,
+          policyVersion,
+          purpose,
+          consentRecordedAt: new Date(consentRecordedAt),
+        },
+      });
+    }
 
     await this.auditService.record({
       actorId: userId,

@@ -270,6 +270,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return;
+    }
     await this.seedPlanLimits();
     this.startNightlyRollup();
   }
@@ -419,6 +422,26 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async getTenantPlanProfile(tenantKeyInput?: string): Promise<PlanProfileSummary> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      const now = new Date().toISOString();
+      return {
+        tenantKey,
+        planTier: "STARTER",
+        billingStatus: "active_paid",
+        accessStatus: "active",
+        effectiveFrom: now,
+        trialEndsAt: null,
+        paidThroughAt: null,
+        graceEndsAt: null,
+        cancelledAt: null,
+        suspendedAt: null,
+        suspensionReason: null,
+        billingContactEmail: null,
+        updatedBy: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
     return this.getOrCreateTenantPlanProfile(tenantKey);
   }
 

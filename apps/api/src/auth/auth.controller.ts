@@ -124,6 +124,16 @@ export class AuthController {
       );
     }
 
+    if (result.type === "auth_method_not_allowed") {
+      throw new HttpException(
+        {
+          error: "AUTH_METHOD_NOT_ALLOWED",
+          allowedMethods: result.allowedMethods,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     return result.payload;
   }
 

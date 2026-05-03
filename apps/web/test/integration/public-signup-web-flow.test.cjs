@@ -248,8 +248,31 @@ function stopProcess(proc) {
   proc.kill("SIGTERM");
 }
 
+function hasDatabaseAccess() {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    // Placeholder hostnames are all-uppercase single words (e.g. "HOST")
+    if (/^[A-Z][A-Z0-9_]*$/.test(parsed.hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function run() {
   prepareEnv();
+  if (!hasDatabaseAccess()) {
+    console.log(
+      JSON.stringify({
+        status: "skipped",
+        reason: "DATABASE_URL is not configured or is a placeholder; test requires a live Postgres database.",
+        checkedAt: new Date().toISOString(),
+      }, null, 2),
+    );
+    return;
+  }
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build`);
   }
