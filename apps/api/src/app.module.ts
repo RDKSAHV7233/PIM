@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.module";
 import { AuthModule } from "./auth/auth.module";
@@ -43,6 +44,7 @@ const FEATURE_ONDC_ENABLED =
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     LoggingModule,
     QueueModule,
     TenantDirectoryModule,
@@ -74,6 +76,10 @@ const FEATURE_ONDC_ENABLED =
   ],
   providers: [
     TenantContextMiddleware,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
