@@ -1,9 +1,10 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "./rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "./rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "./rbac/read-access-policy.decorator";
+import { Roles } from "./rbac/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
 
@@ -47,5 +48,20 @@ export class AppController {
         workerEnabled: this.queueService.isWorkerEnabled(),
       },
     };
+  }
+
+  @DisallowApiClient()
+  @AdminBoundaryAccess({ capability: "manage_security" })
+  @Roles("admin")
+  @Post("queue/:queueName/lanes/:laneKey/retry-failed")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Retry failed BullMQ jobs in a specific lane (admin only)" })
+  @ApiResponse({ status: 200, description: "Number of jobs re-queued" })
+  async retryFailedQueueJobs(
+    @Param("queueName") queueName: string,
+    @Param("laneKey") laneKey: string,
+  ) {
+    const retried = await this.queueService.retryFailedJobs(queueName, laneKey);
+    return { retried };
   }
 }

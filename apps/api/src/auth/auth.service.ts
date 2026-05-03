@@ -1595,7 +1595,7 @@ export class AuthService implements OnModuleDestroy {
     });
     const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
     const tenantPrisma = this.prisma.tenant(tenantId);
-    const [consents, exportRequests, deletionRequests, notifications, auditRows] = await Promise.all([
+    const [consents, exportRequests, deletionRequests, notifications, auditRows, mfaEnrollments] = await Promise.all([
       tenantPrisma.accountConsentEvent.findMany({
         where: { userId },
         orderBy: { consentRecordedAt: "desc" },
@@ -1667,6 +1667,19 @@ export class AuthService implements OnModuleDestroy {
         },
         take: 500,
       }),
+      tenantPrisma.userMfaEnrollment.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          method: true,
+          status: true,
+          enrolledAt: true,
+          verifiedAt: true,
+          lastUsedAt: true,
+          createdAt: true,
+        },
+      }),
     ]);
 
     return {
@@ -1732,6 +1745,15 @@ export class AuthService implements OnModuleDestroy {
       })),
       auditLog: auditRows.map((row) => ({
         ...row,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      mfaEnrollments: mfaEnrollments.map((row) => ({
+        id: row.id,
+        method: row.method,
+        status: row.status,
+        enrolledAt: toIsoStringOrNull(row.enrolledAt),
+        verifiedAt: toIsoStringOrNull(row.verifiedAt),
+        lastUsedAt: toIsoStringOrNull(row.lastUsedAt),
         createdAt: row.createdAt.toISOString(),
       })),
     };

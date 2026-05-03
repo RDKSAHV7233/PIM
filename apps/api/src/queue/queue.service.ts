@@ -46,12 +46,14 @@ export class QueueRateLimitError extends Error {
 export interface QueueMetrics {
   waiting: number;
   active: number;
+  failed: number;
   pausedLanes: number;
   lanes: Record<
     string,
     {
       waiting: number;
       active: number;
+      failed: number;
       pausedUntil: string | null;
     }
   >;
@@ -304,12 +306,14 @@ export class QueueService implements OnModuleDestroy {
         lanes[laneKey] = {
           waiting: lane.pending.length,
           active: lane.active,
+          failed: 0,
           pausedUntil,
         };
       }
       output[queueName] = {
         waiting,
         active,
+        failed: 0,
         pausedLanes,
         lanes,
       };
@@ -459,13 +463,16 @@ export class QueueService implements OnModuleDestroy {
       let active = 0;
       let pausedLanes = 0;
       const lanes: QueueMetrics["lanes"] = {};
+      let failed = 0;
       for (const [laneKey, lane] of registration.lanes.entries()) {
-        const counts = await lane.queue.getJobCounts("waiting", "active", "delayed", "prioritized");
+        const counts = await lane.queue.getJobCounts("waiting", "active", "delayed", "prioritized", "failed");
         const laneWaiting =
           Number(counts.waiting ?? 0) + Number(counts.delayed ?? 0) + Number(counts.prioritized ?? 0);
         const laneActive = Number(counts.active ?? 0);
+        const laneFailed = Number(counts.failed ?? 0);
         waiting += laneWaiting;
         active += laneActive;
+        failed += laneFailed;
         const pausedUntil =
           lane.pausedUntilMs && lane.pausedUntilMs > Date.now()
             ? new Date(lane.pausedUntilMs).toISOString()
@@ -476,17 +483,33 @@ export class QueueService implements OnModuleDestroy {
         lanes[laneKey] = {
           waiting: laneWaiting,
           active: laneActive,
+          failed: laneFailed,
           pausedUntil,
         };
       }
       output[queueName] = {
         waiting,
         active,
+        failed,
         pausedLanes,
         lanes,
       };
     }
     return output;
+  }
+
+  async retryFailedJobs(queueName: string, laneKey: string, limit = 100): Promise<number> {
+    const registration = this.registrations.get(queueName);
+    if (registration?.kind !== "bullmq") {
+      return 0;
+    }
+    const lane = registration.lanes.get(laneKey);
+    if (!lane) {
+      return 0;
+    }
+    const failedJobs = await lane.queue.getFailed(0, limit - 1);
+    await Promise.all(failedJobs.map((job: Job) => job.retry()));
+    return failedJobs.length;
   }
 
   private async enqueueToBullLane(
