@@ -75,6 +75,26 @@ export interface AuthCopy {
   resetError: string;
   resetInvalidToken: string;
   resetPasswordMismatch: string;
+  mfaChallengeTitle: string;
+  mfaChallengeSubtitle: string;
+  mfaChallengeCodeLabel: string;
+  mfaChallengeSubmit: string;
+  mfaChallengeSubmitting: string;
+  mfaChallengeInvalidCode: string;
+  mfaChallengeExpiredSession: string;
+  mfaEnrollTitle: string;
+  mfaEnrollSubtitle: string;
+  mfaEnrollScanInstruction: string;
+  mfaEnrollSecretLabel: string;
+  mfaEnrollCodeLabel: string;
+  mfaEnrollSubmit: string;
+  mfaEnrollSubmitting: string;
+  mfaEnrollInvalidCode: string;
+  mfaEnrollBackupCodesTitle: string;
+  mfaEnrollBackupCodesSubtitle: string;
+  mfaEnrollContinue: string;
+  mfaEnrollLoadError: string;
+  authMethodNotAllowed: string;
 }
 
 const EN_COPY: AuthCopy = {
@@ -152,6 +172,26 @@ const EN_COPY: AuthCopy = {
   resetError: "Unable to process your request right now. Please try again.",
   resetInvalidToken: "This reset link is invalid or has expired.",
   resetPasswordMismatch: "The password confirmation does not match.",
+  mfaChallengeTitle: "Two-factor verification",
+  mfaChallengeSubtitle: "Enter the 6-digit code from your authenticator app.",
+  mfaChallengeCodeLabel: "Verification code",
+  mfaChallengeSubmit: "Verify",
+  mfaChallengeSubmitting: "Verifying...",
+  mfaChallengeInvalidCode: "Invalid or expired code. Try again.",
+  mfaChallengeExpiredSession: "Your login session expired. Please sign in again.",
+  mfaEnrollTitle: "Set up two-factor authentication",
+  mfaEnrollSubtitle: "Scan the key URI with your authenticator app, or enter the secret manually.",
+  mfaEnrollScanInstruction: "Add this to your authenticator app using the URI or the manual entry key below.",
+  mfaEnrollSecretLabel: "Manual entry key",
+  mfaEnrollCodeLabel: "Confirm with a 6-digit code",
+  mfaEnrollSubmit: "Activate two-factor",
+  mfaEnrollSubmitting: "Activating...",
+  mfaEnrollInvalidCode: "Code did not match. Make sure your device clock is accurate and try again.",
+  mfaEnrollBackupCodesTitle: "Save your backup codes",
+  mfaEnrollBackupCodesSubtitle: "Each code can be used once if you lose access to your authenticator. Store these somewhere safe — they won't be shown again.",
+  mfaEnrollContinue: "Continue to sign in",
+  mfaEnrollLoadError: "Unable to start MFA setup. Please try signing in again.",
+  authMethodNotAllowed: "Password sign-in is not permitted for this workspace. Contact your administrator.",
 };
 
 const HI_COPY: AuthCopy = {
