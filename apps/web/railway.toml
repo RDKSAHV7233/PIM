@@ -1,0 +1,13 @@
+[build]
+# Railway sets rootDirectory to apps/web, so cd up to the monorepo root
+# so that npm workspaces resolve correctly.
+buildCommand = "cd ../.. && npm ci && npm run build --workspace @pim1/web"
+
+[deploy]
+# next binary is hoisted to monorepo root node_modules after npm ci from root.
+# next start without -p reads the PORT env var Railway injects (defaults to 3000).
+startCommand = "../../node_modules/.bin/next start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

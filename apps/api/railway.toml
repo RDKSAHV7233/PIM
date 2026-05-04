@@ -1,0 +1,11 @@
+[build]
+# Railway sets rootDirectory to apps/api, so cd up to the monorepo root
+# so that npm workspaces and Prisma schema resolution work correctly.
+buildCommand = "cd ../.. && npm ci && npx prisma generate --schema packages/db/prisma/schema.prisma && npm run build --workspace @pim1/api"
+
+[deploy]
+startCommand = "node dist/main.js"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
