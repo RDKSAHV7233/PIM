@@ -1,8 +1,5 @@
 [build]
-# Walk up from the Railway rootDirectory until we find the monorepo root
-# (identified by package-lock.json). Handles both rootDirectory=apps/api
-# and rootDirectory=repo-root configurations.
-buildCommand = "while [ ! -f package-lock.json ] && [ \"$(pwd)\" != \"/\" ]; do cd ..; done && npm ci && ./node_modules/.bin/prisma generate --schema packages/db/prisma/schema.prisma && npm run build --workspace @pim1/api"
+buildCommand = "cd \"$(git rev-parse --show-toplevel)\" && npm ci && ./node_modules/.bin/prisma generate --schema packages/db/prisma/schema.prisma && npm run build --workspace @pim1/api"
 
 [deploy]
 startCommand = "node dist/main.js"

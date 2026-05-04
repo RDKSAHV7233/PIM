@@ -1,15 +1,8 @@
 [build]
-# Walk up from the Railway rootDirectory until we find the monorepo root
-# (identified by package-lock.json). Handles both rootDirectory=apps/web
-# and rootDirectory=repo-root configurations.
-# NODE_OPTIONS increases heap for Next.js 15 build on memory-constrained containers.
-buildCommand = "while [ ! -f package-lock.json ] && [ \"$(pwd)\" != \"/\" ]; do cd ..; done && npm ci && NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build --workspace @pim1/web"
+buildCommand = "cd \"$(git rev-parse --show-toplevel)\" && npm ci && NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build --workspace @pim1/web"
 
 [deploy]
-# next binary is hoisted to the monorepo root node_modules after npm ci.
-# Relative path works when rootDirectory=apps/web; the -p flag reads PORT
-# env var Railway injects, defaulting to 3000.
-startCommand = "../../node_modules/.bin/next start"
+startCommand = "cd \"$(git rev-parse --show-toplevel)/apps/web\" && ../../node_modules/.bin/next start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
