@@ -5,7 +5,7 @@
 -- TenantAuthPolicy ---------------------------------------------------------------
 ALTER TABLE "TenantAuthPolicy" ENABLE ROW LEVEL SECURITY;
 
-DO $
+DO $$
 DECLARE
   tenant_expr TEXT := 'COALESCE(NULLIF(current_setting(''app.tenant_key'', true), ''''), ''default'')';
 BEGIN
@@ -19,12 +19,12 @@ BEGIN
       || ' USING ("tenantKey" = ' || tenant_expr || ')'
       || ' WITH CHECK ("tenantKey" = ' || tenant_expr || ')';
   END IF;
-END $;
+END $$;
 
 -- user_mfa_enrollments -----------------------------------------------------------
 ALTER TABLE "user_mfa_enrollments" ENABLE ROW LEVEL SECURITY;
 
-DO $
+DO $$
 DECLARE
   tenant_expr TEXT := 'COALESCE(NULLIF(current_setting(''app.tenant_key'', true), ''''), ''default'')';
 BEGIN
@@ -38,12 +38,12 @@ BEGIN
       || ' USING ("tenantKey" = ' || tenant_expr || ')'
       || ' WITH CHECK ("tenantKey" = ' || tenant_expr || ')';
   END IF;
-END $;
+END $$;
 
 -- user_mfa_backup_codes ----------------------------------------------------------
 ALTER TABLE "user_mfa_backup_codes" ENABLE ROW LEVEL SECURITY;
 
-DO $
+DO $$
 DECLARE
   tenant_expr TEXT := 'COALESCE(NULLIF(current_setting(''app.tenant_key'', true), ''''), ''default'')';
 BEGIN
@@ -57,4 +57,4 @@ BEGIN
       || ' USING ("tenantKey" = ' || tenant_expr || ')'
       || ' WITH CHECK ("tenantKey" = ' || tenant_expr || ')';
   END IF;
-END $;
+END $$;
