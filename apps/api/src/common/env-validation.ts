@@ -46,6 +46,8 @@ export interface ValidatedEnv {
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
+  SENTRY_DSN?: string;
+  OTEL_EXPORTER_OTLP_ENDPOINT?: string;
 }
 
 const UrlSchema = z.string().url();
@@ -106,6 +108,8 @@ const EnvSchema = z.object({
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),
+  SENTRY_DSN: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
 export function validateEnv(): ValidatedEnv {

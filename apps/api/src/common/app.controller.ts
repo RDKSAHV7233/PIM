@@ -1,8 +1,9 @@
-import { Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Controller, Get, Header, HttpCode, Param, Post } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "./rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "./rbac/api-client-policy.decorator";
+import { ObservabilityService } from "./observability/observability.service";
 import { AuthenticatedReadRoute } from "./rbac/read-access-policy.decorator";
 import { Roles } from "./rbac/roles";
 import { PrismaService } from "../prisma/prisma.service";
@@ -14,6 +15,7 @@ export class AppController {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly queueService: QueueService,
+    private readonly observability: ObservabilityService,
   ) {}
 
   @Public()
@@ -63,5 +65,17 @@ export class AppController {
   ) {
     const retried = await this.queueService.retryFailedJobs(queueName, laneKey);
     return { retried };
+  }
+
+  @DisallowApiClient()
+  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_security" })
+  @Roles("admin")
+  @Get("health/metrics")
+  @Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+  @ApiOperation({ summary: "Prometheus-format process metrics (admin only)" })
+  @ApiResponse({ status: 200, description: "Prometheus text exposition" })
+  healthMetrics() {
+    return this.observability.formatPrometheus();
   }
 }

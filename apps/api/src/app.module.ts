@@ -7,6 +7,7 @@ import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.modul
 import { AuthModule } from "./auth/auth.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 import { AuditModule } from "./audit/audit.module";
+import { ObservabilityModule } from "./common/observability/observability.module";
 import { BillingModule } from "./billing/billing.module";
 import { BulkEditModule } from "./bulk-edit/bulk-edit.module";
 import { BulkImportModule } from "./bulk-import/bulk-import.module";
@@ -46,6 +47,7 @@ const FEATURE_ONDC_ENABLED =
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     LoggingModule,
+    ObservabilityModule,
     QueueModule,
     TenantDirectoryModule,
     ApiKeysModule,

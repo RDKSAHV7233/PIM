@@ -1158,6 +1158,15 @@ export class AuthService implements OnModuleDestroy {
       },
     });
 
+    const isDbMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    if (isDbMode) {
+      await this.queueService.enqueue(
+        QUEUE_NAMES.ACCOUNT_DELETION_EXECUTION,
+        { ticketId, tenantId, userId },
+        { delayMs: 24 * 60 * 60 * 1000 },
+      );
+    }
+
     return result;
   }
 
