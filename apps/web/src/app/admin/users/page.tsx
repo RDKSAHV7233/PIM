@@ -249,6 +249,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                     <th className="py-2">User ID</th>
                     <th className="py-2">Role</th>
                     <th className="py-2">Status</th>
+                    <th className="py-2">MFA</th>
                     <th className="py-2">Locked Until</th>
                     <th className="py-2">Actions</th>
                   </tr>
@@ -295,6 +296,12 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                         </td>
                         <td className="py-2">
                           <StatusChip label={statusChip.label} tone={statusChip.tone} />
+                        </td>
+                        <td className="py-2">
+                          <StatusChip
+                            label={user.mfaEnrolled ? "enrolled" : "none"}
+                            tone={user.mfaEnrolled ? "success" : "neutral"}
+                          />
                         </td>
                         <td className="py-2 text-slate-600">{formatDateTime(user.lockedUntil)}</td>
                         <td className="py-2">

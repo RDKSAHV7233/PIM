@@ -6,14 +6,25 @@ import type { MfaStatus } from "@/lib/api";
 interface AccountSecurityClientProps {
   mfaStatus: MfaStatus | null;
   mfaRequired: boolean;
+  role: string;
+  assignedRoles: string[];
 }
 
-export function AccountSecurityClient({ mfaStatus, mfaRequired }: AccountSecurityClientProps) {
+const ROLE_CAPABILITY_MAP: Record<string, string> = {
+  admin: "Full workspace access — users, connectors, API keys, audit logs, and all content.",
+  editor: "Catalog write, import, bulk edit, connector setup, and quality triage.",
+  reviewer: "Read-only catalog and operations with approval/rejection authority.",
+  viewer: "Read-only access across catalog, channels, and operations.",
+};
+
+export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRoles }: AccountSecurityClientProps) {
   const enrolled = mfaStatus?.enrollmentStatus === "active";
   const [regenCode, setRegenCode] = useState("");
   const [regenSubmitting, setRegenSubmitting] = useState(false);
   const [regenError, setRegenError] = useState("");
   const [newBackupCodes, setNewBackupCodes] = useState<string[] | null>(null);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState("");
 
   async function onRegenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,11 +59,56 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired }: AccountSecurit
     }
   }
 
+  async function onSetupMfa() {
+    setSetupLoading(true);
+    setSetupError("");
+    try {
+      const response = await fetch("/api/auth/mfa/request-enrollment-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        setSetupError("Unable to start MFA setup. Please try again.");
+        return;
+      }
+      const data = (await response.json()) as { enrollmentToken?: string };
+      if (!data.enrollmentToken) {
+        setSetupError("Unable to start MFA setup. Please try again.");
+        return;
+      }
+      const params = new URLSearchParams({ token: data.enrollmentToken });
+      window.location.assign(`/login/enroll?${params.toString()}`);
+    } catch {
+      setSetupError("Network error. Check your connection and try again.");
+    } finally {
+      setSetupLoading(false);
+    }
+  }
+
+  const roleCapability = ROLE_CAPABILITY_MAP[role] ?? "Access defined by assigned role.";
+  const displayRole = role ? `${role.charAt(0).toUpperCase()}${role.slice(1)}` : "Unknown";
+  const foundationRole = assignedRoles.length > 0 ? assignedRoles[0] : null;
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account Security</h1>
-        <p className="mt-1 text-sm text-slate-500">Manage two-factor authentication for your account.</p>
+        <p className="mt-1 text-sm text-slate-500">Manage two-factor authentication and review your access role.</p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">Your Role &amp; Access</h2>
+        <div className="mt-3 flex items-start gap-3">
+          <span className="mt-0.5 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-800">
+            {displayRole}
+          </span>
+          {foundationRole ? (
+            <span className="mt-0.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+              {foundationRole}
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm text-slate-600">{roleCapability}</p>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -77,8 +133,25 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired }: AccountSecurit
 
         {!enrolled && !mfaRequired && (
           <p className="mt-3 text-sm text-slate-500">
-            MFA is not required for this workspace, but you can enable it for extra security by setting it up at your next sign-in.
+            MFA is not required for this workspace, but you can enable it now for extra security.
           </p>
+        )}
+
+        {!enrolled && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => { void onSetupMfa(); }}
+              disabled={setupLoading}
+              suppressHydrationWarning
+              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {setupLoading ? "Starting setup…" : "Set up two-factor authentication"}
+            </button>
+            {setupError && (
+              <p className="mt-2 text-sm text-red-700">{setupError}</p>
+            )}
+          </div>
         )}
 
         {enrolled && mfaStatus && (

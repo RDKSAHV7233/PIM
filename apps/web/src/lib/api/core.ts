@@ -232,6 +232,7 @@ export interface WorkspaceUser {
   isActive: boolean;
   lockedUntil: string | null;
   isLocked: boolean;
+  mfaEnrolled: boolean;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;

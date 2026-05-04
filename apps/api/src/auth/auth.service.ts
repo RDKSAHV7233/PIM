@@ -683,6 +683,18 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
+  issueEnrollmentToken(sub: string, tenantId: string, role: AppRole, assignedRoles: FoundationRole[]): { enrollmentToken: string; expiresInSeconds: number } {
+    const enrollmentToken = signPimJwt({
+      sub,
+      tenantId,
+      role,
+      assignedRoles,
+      tokenType: "mfa_enrollment",
+      expiresInSeconds: MFA_ENROLLMENT_TOKEN_TTL_SECONDS,
+    });
+    return { enrollmentToken, expiresInSeconds: MFA_ENROLLMENT_TOKEN_TTL_SECONDS };
+  }
+
   async resendUnlock(email: string, workspaceSlugInput: string): Promise<ResendUnlockResult> {
     const normalizedEmail = this.normalizeUserKey(email);
     const workspaceSlug =

@@ -2,7 +2,7 @@ import { AccountSecurityClient } from "@/components/settings/account-security-cl
 import { redirect } from "next/navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 import { getMfaStatus, getTenantAuthPolicy } from "@/lib/api";
 import { ApiHttpError } from "@/lib/api";
 
@@ -14,6 +14,7 @@ export default async function AccountSecurityPage() {
     redirect(buildLoginRedirect("/settings/security", 401));
   }
   const actorRole = await getServerActorRole();
+  const claims = await getServerSessionClaims();
   const requestOptions = { role: actorRole, authHeader };
 
   let mfaStatus = null;
@@ -38,6 +39,8 @@ export default async function AccountSecurityPage() {
     <AccountSecurityClient
       mfaStatus={mfaStatus}
       mfaRequired={mfaRequired}
+      role={actorRole}
+      assignedRoles={(claims?.assignedRoles ?? []) as string[]}
     />
   );
 }

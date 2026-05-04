@@ -19,6 +19,7 @@ type AuthenticatedRequest = Request & {
     sub?: string;
     tenantId?: string;
     role?: AppRole;
+    assignedRoles?: import("../common/rbac/roles").FoundationRole[];
   };
 };
 
@@ -37,6 +38,16 @@ export class MfaController {
   async getStatus(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.mfaService.getStatus(actor.userId, actor.tenantId);
+  }
+
+  @Post("request-enrollment-token")
+  @HttpCode(200)
+  @Roles(...APP_ROLES)
+  @AllowSuspendedTenant()
+  async requestEnrollmentToken(@Req() request: AuthenticatedRequest) {
+    const actor = this.requireActor(request);
+    const assignedRoles = request.pimJwtClaims?.assignedRoles ?? [];
+    return this.authService.issueEnrollmentToken(actor.userId, actor.tenantId, actor.role, assignedRoles);
   }
 
   @Post("enroll")

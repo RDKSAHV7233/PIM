@@ -95,6 +95,7 @@ export interface AuthCopy {
   mfaEnrollContinue: string;
   mfaEnrollLoadError: string;
   authMethodNotAllowed: string;
+  mfaSetupCta: string;
 }
 
 const EN_COPY: AuthCopy = {
@@ -192,6 +193,7 @@ const EN_COPY: AuthCopy = {
   mfaEnrollContinue: "Continue to sign in",
   mfaEnrollLoadError: "Unable to start MFA setup. Please try signing in again.",
   authMethodNotAllowed: "Password sign-in is not permitted for this workspace. Contact your administrator.",
+  mfaSetupCta: "Set up two-factor authentication",
 };
 
 const HI_COPY: AuthCopy = {

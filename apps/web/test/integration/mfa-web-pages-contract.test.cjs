@@ -24,6 +24,7 @@ function run() {
   const enrollRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/enroll/route.ts"));
   const verifyEnrollRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/verify-enrollment/route.ts"));
   const backupRegenRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/backup-codes/regenerate/route.ts"));
+  const requestEnrollTokenRoute = read(path.join(REPO_ROOT, "apps/web/src/app/api/auth/mfa/request-enrollment-token/route.ts"));
   const loginPageClient = read(path.join(REPO_ROOT, "apps/web/src/components/auth/login-page-client.tsx"));
   const authCopy = read(path.join(REPO_ROOT, "apps/web/src/components/auth/auth-copy.ts"));
   const securityPage = read(path.join(REPO_ROOT, "apps/web/src/app/settings/security/page.tsx"));
@@ -95,6 +96,13 @@ function run() {
   );
 
   assert(
+    requestEnrollTokenRoute.includes("pim_access_token") &&
+      requestEnrollTokenRoute.includes("/auth/mfa/request-enrollment-token") &&
+      requestEnrollTokenRoute.includes("UNAUTHENTICATED"),
+    "request-enrollment-token proxy must read pim_access_token cookie and forward to backend endpoint.",
+  );
+
+  assert(
     loginPageClient.includes("MFA_REQUIRED") &&
       loginPageClient.includes("mfaPendingToken") &&
       loginPageClient.includes("/login/mfa") &&
@@ -109,24 +117,31 @@ function run() {
     authCopy.includes("mfaChallengeTitle") &&
       authCopy.includes("mfaEnrollTitle") &&
       authCopy.includes("mfaEnrollBackupCodesTitle") &&
-      authCopy.includes("authMethodNotAllowed"),
-    "auth-copy must include MFA challenge, enrollment, backup codes, and auth method not allowed string keys.",
+      authCopy.includes("authMethodNotAllowed") &&
+      authCopy.includes("mfaSetupCta"),
+    "auth-copy must include MFA challenge, enrollment, backup codes, auth method not allowed, and setup CTA string keys.",
   );
 
   assert(
     securityPage.includes("getMfaStatus") &&
       securityPage.includes("getTenantAuthPolicy") &&
       securityPage.includes("AccountSecurityClient") &&
-      securityPage.includes('buildLoginRedirect("/settings/security"'),
-    "Account security page must load MFA status and auth policy, pass to AccountSecurityClient, and redirect unauthenticated requests.",
+      securityPage.includes('buildLoginRedirect("/settings/security"') &&
+      securityPage.includes("getServerSessionClaims") &&
+      securityPage.includes("assignedRoles"),
+    "Account security page must load MFA status, auth policy, session claims, pass role/assignedRoles to AccountSecurityClient, and redirect unauthenticated requests.",
   );
 
   assert(
     securityClient.includes("backupCodesRemaining") &&
       securityClient.includes("/api/auth/mfa/backup-codes/regenerate") &&
       securityClient.includes("enrollmentStatus") &&
-      securityClient.includes("mfaRequired"),
-    "Account security client must display MFA enrollment status, backup codes remaining, and regenerate form.",
+      securityClient.includes("mfaRequired") &&
+      securityClient.includes("/api/auth/mfa/request-enrollment-token") &&
+      securityClient.includes("window.location.assign") &&
+      securityClient.includes("role") &&
+      securityClient.includes("assignedRoles"),
+    "Account security client must display role/boundary, MFA enrollment status, backup codes remaining, regenerate form, and self-service enrollment CTA.",
   );
 
   assert(
@@ -148,10 +163,11 @@ function run() {
           "enroll_proxy_forwards_enrollment_token",
           "verify_enrollment_proxy_forwards_code",
           "backup_codes_regenerate_proxy_requires_auth",
+          "request_enrollment_token_proxy_requires_session_cookie",
           "login_client_handles_mfa_required_enrollment_required_method_not_allowed",
-          "auth_copy_includes_all_mfa_strings",
-          "account_security_page_loads_mfa_status",
-          "account_security_client_shows_status_and_regenerate",
+          "auth_copy_includes_all_mfa_strings_and_setup_cta",
+          "account_security_page_loads_mfa_status_and_passes_role",
+          "account_security_client_shows_role_status_regenerate_and_setup_cta",
           "sidebar_includes_account_security_link",
         ],
         checkedAt: new Date().toISOString(),

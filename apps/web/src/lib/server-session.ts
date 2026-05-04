@@ -7,6 +7,7 @@ interface PimJwtClaims {
   tenantId: string;
   jti: string;
   role?: AppRole;
+  assignedRoles?: string[];
   iat: number;
   exp: number;
 }
