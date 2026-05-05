@@ -1,0 +1,68 @@
+# ── Stage 1a: install all dependencies (needed for build) ────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Copy workspace manifests
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/db/package.json ./packages/db/
+
+# Install all workspace dependencies (including devDeps needed for build)
+RUN npm ci
+
+# ── Stage 1b: production-only dependencies ────────────────────────────────────
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/db/package.json ./packages/db/
+
+RUN npm ci --omit=dev
+
+# ── Stage 2: build ────────────────────────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Copy installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+
+# Copy full source
+COPY . .
+
+# Generate Prisma client (packages/db workspace)
+RUN npm run prisma:generate
+
+# Build the NestJS API (output → apps/api/dist/)
+RUN npm run build --workspace @pim1/api
+
+# ── Stage 3: production runner ────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy root package.json (needed by workspace tooling / npx)
+COPY package.json ./
+
+# Copy production-only node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/packages/db/node_modules ./packages/db/node_modules
+
+# Copy compiled API
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+
+# Copy Prisma schema (required by Prisma at runtime for migrate deploy)
+COPY --from=build /app/packages/db/prisma ./packages/db/prisma
+
+# Copy migration script
+COPY scripts/prisma-migrate-deploy.cjs ./scripts/prisma-migrate-deploy.cjs
+
+EXPOSE 4000
+
+CMD ["sh", "-c", "node scripts/prisma-migrate-deploy.cjs && node apps/api/dist/main.js"]
