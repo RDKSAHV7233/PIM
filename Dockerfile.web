@@ -1,0 +1,66 @@
+# ── Stage 1a: install all dependencies (needed for build) ────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Copy workspace manifests
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/db/package.json ./packages/db/
+
+# Install all workspace dependencies
+RUN npm ci
+
+# ── Stage 1b: production-only dependencies ────────────────────────────────────
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/db/package.json ./packages/db/
+
+RUN npm ci --omit=dev
+
+# ── Stage 2: build ────────────────────────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Copy installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+
+# Copy full monorepo source so Next.js output file tracing (outputFileTracingRoot) works
+COPY . .
+
+# NEXT_PUBLIC_API_URL must be available at build time so Next.js can bake it
+# into the client bundle.  Railway sets this as a build-time variable.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+# Build the Next.js web app
+RUN npm run build --workspace @pim1/web
+
+# ── Stage 3: production runner ────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy root package.json + workspace manifests (needed by `npm run start`)
+COPY package.json ./
+COPY apps/web/package.json ./apps/web/
+
+# Copy production-only web node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/apps/web/node_modules ./apps/web/node_modules
+
+# Copy the Next.js build output and public assets
+COPY --from=build /app/apps/web/.next ./apps/web/.next
+COPY --from=build /app/apps/web/public ./apps/web/public
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start", "--workspace", "@pim1/web"]
