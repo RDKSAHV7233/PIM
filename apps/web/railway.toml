@@ -1,8 +1,8 @@
 [build]
-buildCommand = "cd \"$(git rev-parse --show-toplevel)\" && npm ci && NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build --workspace @pim1/web"
+buildCommand = "npm ci --workspace @pim1/web && cd apps/web && NODE_OPTIONS=\"--max-old-space-size=4096\" ../../node_modules/.bin/next build"
 
 [deploy]
-startCommand = "cd \"$(git rev-parse --show-toplevel)/apps/web\" && ../../node_modules/.bin/next start"
+startCommand = "cd apps/web && ../../node_modules/.bin/next start -p ${PORT:-3000}"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
