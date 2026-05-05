@@ -46,6 +46,8 @@ export interface ValidatedEnv {
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
+  SENTRY_DSN?: string;
+  OTEL_EXPORTER_OTLP_ENDPOINT?: string;
 }
 
 const UrlSchema = z.string().url();
@@ -106,6 +108,8 @@ const EnvSchema = z.object({
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),
+  SENTRY_DSN: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
 export function validateEnv(): ValidatedEnv {
@@ -198,6 +202,30 @@ export function validateEnv(): ValidatedEnv {
     }
 
     if (data.APP_ENV === "staging" || data.APP_ENV === "production") {
+      // Reject known placeholder values that pass the min-length check but are not real secrets.
+      const KNOWN_PLACEHOLDERS = [
+        "replace-with-long-random-secret-at-least-32-chars",
+        "replace-with-base64-key",
+        "replace-me",
+        "changeme",
+        "change_me",
+        "todo",
+        "fixme",
+      ];
+      const sensitiveSecretKeys: Array<{ key: string; value: string }> = [
+        { key: "JWT_SECRET", value: String(envInput.JWT_SECRET ?? "").trim() },
+        { key: currentKeyName, value: currentKeyValue },
+      ];
+      for (const { key, value } of sensitiveSecretKeys) {
+        const lower = value.toLowerCase();
+        const isPlaceholder = KNOWN_PLACEHOLDERS.some(
+          (p) => lower === p || lower.startsWith(p) || lower.includes("replace") || lower.includes("placeholder"),
+        );
+        if (isPlaceholder) {
+          issues.push(`${key}: value appears to be a placeholder and must be replaced with a real secret in staging/production`);
+        }
+      }
+
       if (
         !String(data.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() &&
         !String(data.PIM_COMMERCIAL_CONTACT_EMAIL ?? "").trim()

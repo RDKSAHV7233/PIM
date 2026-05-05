@@ -232,6 +232,7 @@ export interface WorkspaceUser {
   isActive: boolean;
   lockedUntil: string | null;
   isLocked: boolean;
+  mfaEnrolled: boolean;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -251,9 +252,9 @@ export interface TenantAuthPolicy {
   createdAt: string | null;
   updatedAt: string | null;
   runtimeApplied: {
-    sessionTimeout: true;
-    mfaEnrollment: false;
-    externalIdentity: false;
+    sessionTimeout: boolean;
+    mfaEnrollment: boolean;
+    externalIdentity: boolean;
   };
 }
 

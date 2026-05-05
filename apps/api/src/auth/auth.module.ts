@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { TenantDirectoryModule } from "../common/tenant/tenant-directory.module";
+import { QueueModule } from "../queue/queue.module";
+import { AccountDeletionWorkerService } from "./account-deletion-worker.service";
 import { AuthPolicyController } from "./auth-policy.controller";
 import { AuthPolicyService } from "./auth-policy.service";
 import { AuthController } from "./auth.controller";
@@ -13,7 +15,7 @@ import { MfaService } from "./mfa.service";
 import { StepUpGuard } from "./step-up.guard";
 
 @Module({
-  imports: [AuditModule, TenantDirectoryModule],
+  imports: [AuditModule, TenantDirectoryModule, QueueModule],
   controllers: [AuthController, AuthPolicyController, MfaController],
   providers: [
     AuthService,
@@ -23,6 +25,7 @@ import { StepUpGuard } from "./step-up.guard";
     JwtBlocklistService,
     MfaService,
     StepUpGuard,
+    AccountDeletionWorkerService,
   ],
   exports: [
     AuthService,
@@ -32,6 +35,7 @@ import { StepUpGuard } from "./step-up.guard";
     JwtBlocklistService,
     MfaService,
     StepUpGuard,
+    AccountDeletionWorkerService,
   ],
 })
 export class AuthModule {}

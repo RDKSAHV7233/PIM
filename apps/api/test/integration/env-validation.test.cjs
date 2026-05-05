@@ -397,6 +397,29 @@ async function runCaseStagingRequiresCommercialOpsToken(baseEnv) {
   );
 }
 
+async function runCaseStagingRejectsPlaceholderJwtSecret(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5510 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "console",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+      PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+      // This is the exact placeholder from .env.example — it passes the min-32 length check
+      // but must be rejected in staging/production as a known insecure placeholder.
+      JWT_SECRET: "replace-with-long-random-secret-at-least-32-chars",
+    },
+    "placeholder",
+    "Expected staging startup to fail when JWT_SECRET is a known placeholder, but validation passed unexpectedly.",
+  );
+}
+
 async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
@@ -412,6 +435,7 @@ async function run() {
   await runCaseStagingRequiresCommercialContact(baseEnv);
   await runCaseStagingRequiresCommercialOpsToken(baseEnv);
   await runCaseProductionRejectsConsoleEmailProvider(baseEnv);
+  await runCaseStagingRejectsPlaceholderJwtSecret(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
 
   console.log(
@@ -428,6 +452,7 @@ async function run() {
           "staging_requires_commercial_contact_config",
           "staging_requires_commercial_ops_token",
           "production_requires_resend_email_provider",
+          "staging_rejects_placeholder_jwt_secret",
           "valid_env_starts_api",
         ],
         checkedAt: new Date().toISOString(),

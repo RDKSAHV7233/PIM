@@ -4,7 +4,6 @@ require("reflect-metadata");
 const fs = require("node:fs");
 const path = require("node:path");
 const { NestFactory } = require("@nestjs/core");
-const { FastifyAdapter } = require("@nestjs/platform-fastify");
 const { DocumentBuilder, SwaggerModule } = require("@nestjs/swagger");
 const { stringify: toYaml } = require("yaml");
 const { AppModule } = require("../apps/api/dist/app.module");
@@ -33,7 +32,7 @@ if (!process.env.DATABASE_URL_POOLED && process.env.DATABASE_URL) {
 }
 
 async function generate() {
-  const app = await NestFactory.create(AppModule, new FastifyAdapter(), {
+  const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn"],
     abortOnError: false,
   });

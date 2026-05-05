@@ -53,6 +53,7 @@ const ADMIN_BOUNDARY_EXPECTATIONS = {
   "GET /audit/logs": { capability: "manage_security" },
   "GET /audit/events": { capability: "manage_security" },
   "GET /audit/events/export": { capability: "manage_security" },
+  "GET /health/internal": { capability: "manage_security" },
   "GET /billing/plan-profile": { allowedRoles: ["system_admin", "super_admin"] },
   "POST /billing/billing-contact": { allowedRoles: ["system_admin", "super_admin"] },
   "GET /billing/upgrade-request": { allowedRoles: ["system_admin", "super_admin"] },

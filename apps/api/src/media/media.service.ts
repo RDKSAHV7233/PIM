@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
-import { promises as fs } from "node:fs";
 import { IncomingMessage } from "node:http";
 import { request as httpsRequest, RequestOptions as HttpsRequestOptions } from "node:https";
 import { isIP } from "node:net";
@@ -15,11 +14,13 @@ import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { parseMarketplaceChannel, type MarketplaceChannel } from "../marketplace/marketplace-channels";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkMediaAssociationDto, BulkMediaAssociationRowDto } from "./dto/bulk-media-association.dto";
 import { CreateMediaAssetDto } from "./dto/create-media-asset.dto";
 import { UpdateMediaAssetGovernanceDto } from "./dto/update-media-asset-governance.dto";
+import { MediaStorageService } from "./media-storage.service";
 
 type Channel = MarketplaceChannel;
 
@@ -171,6 +172,7 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly mediaStorage: MediaStorageService,
   ) {}
 
   async createAsset(dto: CreateMediaAssetDto, actor?: PolicyActor) {
@@ -537,10 +539,14 @@ export class MediaService {
     const assetId = randomUUID();
     const safeFileName = input.fileName.replace(/[^a-zA-Z0-9._-]+/g, "_");
     const extension = path.extname(safeFileName) || this.extensionFromMime(input.mimeType) || ".bin";
-    const storageDir = path.join(process.cwd(), "storage", "media");
-    await fs.mkdir(storageDir, { recursive: true });
-    const storagePath = path.join(storageDir, `${assetId}${extension}`);
-    await fs.writeFile(storagePath, fileBuffer);
+    const tenantId = getTenantKeyFromContext();
+    const storagePath = await this.mediaStorage.upload({
+      tenantId,
+      assetId,
+      extension,
+      buffer: fileBuffer,
+      mimeType: input.mimeType,
+    });
 
     if (input.isMain === true) {
       await this.clearSiblingMainFlags(assetId, input.entity.productId, input.entity.variantId);
