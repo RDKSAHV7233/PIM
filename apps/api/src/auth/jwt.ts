@@ -5,7 +5,7 @@ import { FOUNDATION_ROLES, type FoundationRole, APP_ROLES, AppRole } from "../co
 const DEFAULT_EXPIRY_SECONDS = 4 * 60 * 60;
 export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 export type StepUpScope = typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK;
-export type PimJwtTokenType = "access" | "step_up";
+export type PimJwtTokenType = "access" | "step_up" | "mfa_pending" | "mfa_enrollment";
 
 interface JwtHeader {
   alg: "HS256";
@@ -75,7 +75,7 @@ function isFoundationRole(value: unknown): value is FoundationRole {
 }
 
 function isTokenType(value: unknown): value is PimJwtTokenType {
-  return value === "access" || value === "step_up";
+  return value === "access" || value === "step_up" || value === "mfa_pending" || value === "mfa_enrollment";
 }
 
 function isStepUpScope(value: unknown): value is StepUpScope {

@@ -7,10 +7,72 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Service health"
+            "description": "Service is up"
           }
         },
-        "summary": "Health endpoint",
+        "summary": "Liveness check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/health/internal": {
+      "get": {
+        "operationId": "AppController_healthInternal",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Detailed internal health"
+          }
+        },
+        "summary": "Internal health — db pool, queue metrics, auth mode (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/queue/{queueName}/lanes/{laneKey}/retry-failed": {
+      "post": {
+        "operationId": "AppController_retryFailedQueueJobs",
+        "parameters": [
+          {
+            "name": "queueName",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "laneKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Number of jobs re-queued"
+          }
+        },
+        "summary": "Retry failed BullMQ jobs in a specific lane (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/health/metrics": {
+      "get": {
+        "operationId": "AppController_healthMetrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition"
+          }
+        },
+        "summary": "Prometheus-format process metrics (admin only)",
         "tags": [
           "System"
         ]
@@ -374,6 +436,156 @@
         },
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/api/v1/admin/auth-policy": {
+      "get": {
+        "operationId": "AuthPolicyController_getPolicy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AuthPolicy"
+        ]
+      },
+      "patch": {
+        "operationId": "AuthPolicyController_updatePolicy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAuthPolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "AuthPolicy"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa": {
+      "get": {
+        "operationId": "MfaController_getStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/request-enrollment-token": {
+      "post": {
+        "operationId": "MfaController_requestEnrollmentToken",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/enroll": {
+      "post": {
+        "operationId": "MfaController_beginEnrollment",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/verify-enrollment": {
+      "post": {
+        "operationId": "MfaController_verifyEnrollment",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMfaCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/verify-login": {
+      "post": {
+        "operationId": "MfaController_verifyLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMfaCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/backup-codes/regenerate": {
+      "post": {
+        "operationId": "MfaController_regenerateBackupCodes",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMfaCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mfa"
         ]
       }
     },
@@ -3541,6 +3753,39 @@
         ]
       }
     },
+    "/api/v1/media/assets/{id}/governance": {
+      "patch": {
+        "operationId": "MediaController_updateGovernance",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMediaAssetGovernanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
     "/api/v1/media/bulk-associations": {
       "post": {
         "operationId": "MediaController_bulkAssociate",
@@ -4095,6 +4340,14 @@
         "type": "object",
         "properties": {}
       },
+      "UpdateAuthPolicyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SubmitMfaCodeDto": {
+        "type": "object",
+        "properties": {}
+      },
       "PlanUsageCounterDto": {
         "type": "object",
         "properties": {
@@ -4420,6 +4673,7 @@
         "properties": {
           "item": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/PlanUpgradeRequestSummaryDto"
@@ -4608,6 +4862,10 @@
         "properties": {}
       },
       "CreateMediaAssetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMediaAssetGovernanceDto": {
         "type": "object",
         "properties": {}
       },

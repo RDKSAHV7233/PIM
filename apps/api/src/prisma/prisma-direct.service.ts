@@ -24,6 +24,9 @@ export class PrismaDirectService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return;
+    }
     await this.client.$connect();
   }
 

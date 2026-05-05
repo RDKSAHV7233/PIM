@@ -36,6 +36,7 @@ export interface WorkspaceUserRow {
   isActive: boolean;
   lockedUntil: string | null;
   isLocked: boolean;
+  mfaEnrolled: boolean;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -74,7 +75,22 @@ export class WorkspaceUsersService {
         updatedAt: true,
       },
     });
-    return rows.map((row) => this.mapWorkspaceUserRow(row));
+    const isDbMode = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    let enrolledUserIds = new Set<string>();
+    if (isDbMode && rows.length > 0) {
+      const userIds = rows.map((r) => r.userId);
+      const mfaRows = await this.prisma.tenant(normalizedTenantId).userMfaEnrollment.findMany({
+        where: {
+          tenantKey: normalizedTenantId,
+          userId: { in: userIds },
+          method: "totp",
+          status: "active",
+        },
+        select: { userId: true },
+      });
+      enrolledUserIds = new Set(mfaRows.map((r) => r.userId));
+    }
+    return rows.map((row) => this.mapWorkspaceUserRow(row, enrolledUserIds.has(row.userId)));
   }
 
   async createUser(
@@ -513,7 +529,7 @@ export class WorkspaceUsersService {
     return bcrypt.hash(sharedPassword, 12);
   }
 
-  private mapWorkspaceUserRow(row: AuthIdentityRecord): WorkspaceUserRow {
+  private mapWorkspaceUserRow(row: AuthIdentityRecord, mfaEnrolled = false): WorkspaceUserRow {
     const lockedUntil = row.lockedUntil ? new Date(row.lockedUntil) : null;
     const assignedRoles = Array.isArray(row.assignedRoles)
       ? row.assignedRoles
@@ -528,6 +544,7 @@ export class WorkspaceUsersService {
       isActive: row.isActive,
       lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
       isLocked: Boolean(lockedUntil && lockedUntil.getTime() > Date.now()),
+      mfaEnrolled,
       createdBy: row.createdBy,
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),

@@ -5,6 +5,7 @@ export const QUEUE_NAMES = {
   WEBHOOK_EVENT: "webhook-event",
   AUTH_EMAIL: "auth-email",
   ACCOUNT_EXPORT: "account-export",
+  ACCOUNT_DELETION_EXECUTION: "account-deletion-execution",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES] | string;

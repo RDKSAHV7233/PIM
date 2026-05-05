@@ -12,6 +12,22 @@ const EXPRESS_BODY_LIMIT = "10mb";
 
 async function bootstrap() {
   const env = validateEnv();
+
+  if (env.SENTRY_DSN) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+      const Sentry = require("@sentry/node");
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      Sentry.init({
+        dsn: env.SENTRY_DSN,
+        environment: env.APP_ENV,
+        tracesSampleRate: env.APP_ENV === "production" ? 0.1 : 1.0,
+      });
+    } catch {
+      // @sentry/node not installed — error tracking unavailable
+    }
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });

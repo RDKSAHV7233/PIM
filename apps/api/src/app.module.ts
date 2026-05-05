@@ -1,11 +1,13 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.module";
 import { AuthModule } from "./auth/auth.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 import { AuditModule } from "./audit/audit.module";
+import { ObservabilityModule } from "./common/observability/observability.module";
 import { BillingModule } from "./billing/billing.module";
 import { BulkEditModule } from "./bulk-edit/bulk-edit.module";
 import { BulkImportModule } from "./bulk-import/bulk-import.module";
@@ -43,7 +45,9 @@ const FEATURE_ONDC_ENABLED =
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     LoggingModule,
+    ObservabilityModule,
     QueueModule,
     TenantDirectoryModule,
     ApiKeysModule,
@@ -74,6 +78,10 @@ const FEATURE_ONDC_ENABLED =
   ],
   providers: [
     TenantContextMiddleware,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

@@ -28,6 +28,8 @@
     "tenant:apply-ondc-rls": "dotenv -o -e .env -- node scripts/apply-ondc-rls.cjs",
     "test:integration:rls-isolation": "dotenv -o -e .env -- node apps/api/test/integration/rls-isolation.test.cjs",
     "test:integration:auth-revocation": "dotenv -o -e .env -- node apps/api/test/integration/auth-revocation.test.cjs",
+    "test:integration:jwt-blocklist-contract": "node apps/api/test/integration/jwt-blocklist-contract.test.cjs",
+    "test:integration:auth-mfa-login-contract": "node apps/api/test/integration/auth-mfa-login-contract.test.cjs",
     "test:integration:auth-login-lockout": "dotenv -o -e .env -- node apps/api/test/integration/auth-login-lockout.test.cjs",
     "test:integration:auth-password-reset": "dotenv -o -e .env -- node apps/api/test/integration/auth-password-reset.test.cjs",
     "test:integration:public-signup": "dotenv -o -e .env -- node apps/api/test/integration/public-signup.test.cjs",

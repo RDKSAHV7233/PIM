@@ -1,5 +1,7 @@
 import { ConnectorIssue, ProductPayload } from "../../connector-framework/connector.interface";
 
+const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
+
 export const AMAZON_DEFAULT_REQUIRED_FIELDS = [
   "title",
   "brand",
@@ -99,6 +101,7 @@ export async function runAmazonAuthoritativeValidation(input: {
   try {
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

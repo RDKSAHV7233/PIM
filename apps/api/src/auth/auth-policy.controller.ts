@@ -33,6 +33,7 @@ export class AuthPolicyController {
   }
 
   @Patch()
+  @AdminBoundaryAccess({ capability: "manage_security" })
   updatePolicy(@Req() request: AuthenticatedRequest, @Body() dto: UpdateAuthPolicyDto) {
     const actor = this.requireActor(request);
     return this.authPolicyService.updatePolicy(actor.tenantId, actor.userId, actor.role, dto);

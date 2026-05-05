@@ -86,11 +86,11 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusChip label={policy.isPersisted ? "persisted" : "defaults"} tone={policy.isPersisted ? "success" : "info"} />
               <StatusChip label={`timeout ${policy.sessionTimeoutMinutes}m`} tone="info" />
-              <StatusChip label={policy.mfaRequired ? "mfa planned" : "mfa off"} tone={policy.mfaRequired ? "warning" : "neutral"} />
+              <StatusChip label={policy.mfaRequired ? "mfa required" : "mfa off"} tone={policy.mfaRequired ? "warning" : "neutral"} />
             </div>
             <p className="mt-3 text-sm text-slate-600">
-              This slice enforces session timeout immediately. MFA enrollment and external identity settings are stored and
-              audited here, but their runtime enforcement remains a follow-on Phase 1 delivery.
+              Session timeout and MFA enrollment enforcement are active in database mode. Allowed auth methods (password vs
+              OIDC gating) are enforced at login. External identity SSO is stored and audited for a follow-on delivery.
             </p>
           </Card>
 
@@ -230,7 +230,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                 Save Auth Policy
               </button>
               <span className="text-xs text-slate-500">
-                Session timeout takes effect now. MFA and OIDC settings are persisted and audited for follow-on enforcement.
+                Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. External identity SSO settings are persisted and audited for follow-on enforcement.
               </span>
             </div>
           </form>

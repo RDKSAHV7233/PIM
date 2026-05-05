@@ -1,0 +1,39 @@
+import { MfaChallengePageClient } from "@/components/auth/mfa-challenge-page-client";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
+import { sanitizeNextPath } from "@/lib/auth-redirect";
+
+export const dynamic = "force-dynamic";
+
+interface MfaChallengePageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function getString(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return String(value[0] ?? "");
+  return String(value ?? "");
+}
+
+export default async function MfaChallengePage({ searchParams }: MfaChallengePageProps) {
+  const params = await searchParams;
+  const token = getString(params.token).trim();
+  if (!token) {
+    redirect("/login");
+  }
+  const maskedEmail = getString(params.email).trim();
+  const workspaceSlug = getString(params.workspace).trim().toLowerCase();
+  const nextPath = sanitizeNextPath(getString(params.next));
+  const cookieStore = await cookies();
+  const locale = resolveLocale(getString(params.lang) || cookieStore.get(PIM_LOCALE_COOKIE)?.value);
+
+  return (
+    <MfaChallengePageClient
+      pendingToken={token}
+      maskedEmail={maskedEmail}
+      workspaceSlug={workspaceSlug}
+      nextPath={nextPath}
+      locale={locale}
+    />
+  );
+}
