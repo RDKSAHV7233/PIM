@@ -125,6 +125,7 @@ type ShopifyWebhookProductPayload = {
   }>;
 };
 
+const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE = "urn:shopify:params:oauth:token-type:offline-access-token";
 const DEFAULT_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
@@ -615,6 +616,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const endpoint = `${this.resolveTokenBaseUrl(shopDomain)}/admin/oauth/access_token`;
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -1131,6 +1133,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const endpoint = `${this.resolveAdminApiBaseUrl(input.shopDomain)}/admin/api/${this.resolveAdminApiVersion()}/graphql.json`;
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

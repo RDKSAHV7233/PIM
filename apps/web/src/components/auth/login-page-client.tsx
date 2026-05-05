@@ -129,7 +129,25 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       }
 
       if (response.status === 401) {
-        const payload = (await response.json().catch(() => ({}))) as { attemptsRemaining?: number };
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          attemptsRemaining?: number;
+          mfaPendingToken?: string;
+          maskedEmail?: string;
+        };
+        if (payload.error === "MFA_REQUIRED" && payload.mfaPendingToken) {
+          const mfaParams = new URLSearchParams({
+            token: payload.mfaPendingToken,
+            email: payload.maskedEmail ?? "",
+            workspace: normalizedWorkspaceSlug,
+            lang: locale,
+          });
+          if (safeNextPath && safeNextPath !== "/dashboard") {
+            mfaParams.set("next", safeNextPath);
+          }
+          router.push(`/login/mfa?${mfaParams.toString()}`);
+          return;
+        }
         const remaining = Number(payload.attemptsRemaining);
         setAttemptsRemaining(Number.isFinite(remaining) ? Math.max(0, Math.trunc(remaining)) : null);
         setErrorMessage(authCopy.invalidCredentials);
@@ -137,10 +155,33 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       }
 
       if (response.status === 403) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          enrollmentToken?: string;
+          maskedEmail?: string;
+          allowedMethods?: string[];
+        };
+        if (payload.error === "MFA_ENROLLMENT_REQUIRED" && payload.enrollmentToken) {
+          const enrollParams = new URLSearchParams({
+            token: payload.enrollmentToken,
+            email: payload.maskedEmail ?? "",
+            workspace: normalizedWorkspaceSlug,
+            lang: locale,
+          });
+          if (safeNextPath && safeNextPath !== "/dashboard") {
+            enrollParams.set("next", safeNextPath);
+          }
+          router.push(`/login/enroll?${enrollParams.toString()}`);
+          return;
+        }
         if (payload.error === "TENANT_SUSPENDED") {
           setAttemptsRemaining(null);
           setErrorMessage(authCopy.loginReasonTenantSuspended);
+          return;
+        }
+        if (payload.error === "AUTH_METHOD_NOT_ALLOWED") {
+          setAttemptsRemaining(null);
+          setErrorMessage(authCopy.authMethodNotAllowed);
           return;
         }
       }

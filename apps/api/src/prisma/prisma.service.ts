@@ -100,6 +100,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+      return;
+    }
     await this.tenant().$connect();
   }
 

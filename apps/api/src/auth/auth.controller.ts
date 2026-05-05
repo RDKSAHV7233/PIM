@@ -102,6 +102,38 @@ export class AuthController {
       );
     }
 
+    if (result.type === "mfa_required") {
+      throw new HttpException(
+        {
+          error: "MFA_REQUIRED",
+          mfaPendingToken: result.pendingToken,
+          maskedEmail: result.maskedEmail,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    if (result.type === "mfa_enrollment_required") {
+      throw new HttpException(
+        {
+          error: "MFA_ENROLLMENT_REQUIRED",
+          enrollmentToken: result.enrollmentToken,
+          maskedEmail: result.maskedEmail,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    if (result.type === "auth_method_not_allowed") {
+      throw new HttpException(
+        {
+          error: "AUTH_METHOD_NOT_ALLOWED",
+          allowedMethods: result.allowedMethods,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     return result.payload;
   }
 

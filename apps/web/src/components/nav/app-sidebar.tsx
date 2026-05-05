@@ -192,6 +192,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "admin" },
       { label: "Auth Policy", href: "/admin/auth-policy", icon: "shield", visibility: "admin" },
       { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "admin" },
+      { label: "Account Security", href: "/settings/security", icon: "shield" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
       { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "admin" },
     ],

@@ -7,6 +7,8 @@
     "clean": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true });\"",
     "build": "next build",
     "start": "next start -p 3000",
+    "build": "npm run clean && next build",
+    "start": "next start",
     "lint": "tsc --noEmit",
     "test": "node test/integration/run-all.cjs",
     "test:integration": "node test/integration/run-all.cjs"

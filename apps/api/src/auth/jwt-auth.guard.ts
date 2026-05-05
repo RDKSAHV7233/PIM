@@ -14,6 +14,7 @@ import { resolveDefaultRole, resolveEffectiveRoles } from "../common/rbac/role-u
 import { AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey, TENANT_HEADER } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { ALLOW_MFA_ENROLLMENT_TOKEN_KEY } from "./allow-mfa-enrollment.decorator";
 import { ALLOW_SUSPENDED_TENANT_KEY } from "./allow-suspended.decorator";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { PimJwtClaims, decodePimJwtFromAuthHeader } from "./jwt";
@@ -64,6 +65,18 @@ export class JwtAuthGuard implements CanActivate {
     if (claims) {
       if (claims.tokenType === "step_up") {
         throw new UnauthorizedException({ error: "STEP_UP_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+      }
+      if (claims.tokenType === "mfa_pending") {
+        throw new UnauthorizedException({ error: "MFA_PENDING_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+      }
+      if (claims.tokenType === "mfa_enrollment") {
+        const allowEnrollment = this.reflector.getAllAndOverride<boolean>(ALLOW_MFA_ENROLLMENT_TOKEN_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!allowEnrollment) {
+          throw new UnauthorizedException({ error: "MFA_ENROLLMENT_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+        }
       }
       const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
       if (revoked) {
@@ -135,6 +148,11 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException({ error: "USER_ID_REQUIRED" });
     }
 
+    const dbAuthRequired = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
+    if (!dbAuthRequired) {
+      return;
+    }
+
     const identity = await this.prisma.tenant(tenantKey).authIdentity.findFirst({
       where: {
         tenantKey,
@@ -146,7 +164,6 @@ export class JwtAuthGuard implements CanActivate {
       },
     });
 
-    const dbAuthRequired = String(process.env.AUTH_MODE ?? "").trim().toLowerCase() === "db";
     if (!identity) {
       if (dbAuthRequired) {
         throw new UnauthorizedException({ error: "USER_NOT_FOUND" });

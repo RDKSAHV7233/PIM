@@ -345,6 +345,58 @@ export class MfaService {
     }
   }
 
+  async hasActiveEnrollment(userIdInput: string, tenantIdInput: string): Promise<boolean> {
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const userId = normalizeUserId(userIdInput);
+    const row = await this.prisma.tenant(tenantId).userMfaEnrollment.findUnique({
+      where: {
+        tenantKey_userId_method: { tenantKey: tenantId, userId, method: MFA_METHOD_TOTP },
+      },
+      select: { status: true },
+    });
+    return row?.status === "active";
+  }
+
+  async verifyMfaForLogin(userIdInput: string, tenantIdInput: string, codeInput: string): Promise<boolean> {
+    const tenantId = normalizeTenantKey(tenantIdInput);
+    const userId = normalizeUserId(userIdInput);
+    const enrollment = await this.prisma.tenant(tenantId).userMfaEnrollment.findUnique({
+      where: {
+        tenantKey_userId_method: { tenantKey: tenantId, userId, method: MFA_METHOD_TOTP },
+      },
+      select: { id: true, status: true, secretEncrypted: true, secretKeyVersion: true },
+    });
+    if (!enrollment || enrollment.status !== "active") {
+      return false;
+    }
+    const secret = this.decryptSecret(enrollment.secretEncrypted, enrollment.secretKeyVersion);
+    if (this.verifyTotp(secret, codeInput)) {
+      await this.prisma.tenant(tenantId).userMfaEnrollment.update({
+        where: { id: enrollment.id },
+        data: { lastUsedAt: new Date() },
+      });
+      return true;
+    }
+    // Try backup code (single-use)
+    const codeHash = this.hashBackupCode(tenantId, userId, codeInput);
+    const backupCode = await this.prisma.tenant(tenantId).userMfaBackupCode.findFirst({
+      where: { enrollmentId: enrollment.id, codeHash },
+      select: { id: true },
+    });
+    if (!backupCode) {
+      return false;
+    }
+    const now = new Date();
+    await this.prisma.tenant(tenantId).$transaction([
+      this.prisma.tenant(tenantId).userMfaBackupCode.delete({ where: { id: backupCode.id } }),
+      this.prisma.tenant(tenantId).userMfaEnrollment.update({
+        where: { id: enrollment.id },
+        data: { lastUsedAt: now },
+      }),
+    ]);
+    return true;
+  }
+
   private async requireEnrollment(userId: string, tenantId: string) {
     const enrollment = await this.prisma.tenant(tenantId).userMfaEnrollment.findUnique({
       where: {
