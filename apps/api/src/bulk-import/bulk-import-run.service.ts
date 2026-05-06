@@ -263,7 +263,7 @@ export class BulkImportRunService implements OnModuleInit {
 
       // Detect duplicate skuCodes
       let duplicateCount = 0;
-      for (const [, rowNumbers] of skuCodesSeen.entries()) {
+      for (const rowNumbers of skuCodesSeen.values()) {
         if (rowNumbers.length > 1) {
           duplicateCount++;
           blockingIssueCount += rowNumbers.length - 1;

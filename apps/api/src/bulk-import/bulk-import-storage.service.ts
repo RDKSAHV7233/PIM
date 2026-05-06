@@ -48,7 +48,10 @@ export class BulkImportStorageService {
       Body: input.content,
       ContentType: "text/csv; charset=utf-8",
     });
-    await this.s3Client?.send(command);
+    if (!this.s3Client) {
+      throw new Error("S3/R2 client is not initialized");
+    }
+    await this.s3Client.send(command);
     return { storageKey: key };
   }
 
@@ -57,11 +60,14 @@ export class BulkImportStorageService {
       return createReadStream(storageKey, { encoding: "utf8" });
     }
 
+    if (!this.s3Client) {
+      throw new Error("S3/R2 client is not initialized");
+    }
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: storageKey,
     });
-    const response = await this.s3Client?.send(command);
+    const response = await this.s3Client.send(command);
     if (!response?.Body) {
       throw new Error(`Failed to read staged CSV from storage: ${storageKey}`);
     }

@@ -231,11 +231,11 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             <CardTitle>Large File Detected — Batch Import Mode</CardTitle>
             <div className="mt-3 space-y-2 text-sm text-slate-700">
               <p>
-                Your file contains more than 10 000 rows. It will be split into batches of 1 000
+                Your file contains more than 10,000 rows. It will be split into batches of 1,000
                 rows and processed in the background. You can track progress on this page.
               </p>
               <p className="text-xs text-slate-500">
-                Files exceeding 30 000 rows cannot be imported. Upload a smaller file or split
+                Files exceeding 30,000 rows cannot be imported. Upload a smaller file or split
                 your data into multiple imports.
               </p>
             </div>
