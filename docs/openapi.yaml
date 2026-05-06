@@ -2040,6 +2040,58 @@ paths:
           description: Review decision applied
       summary: Approve or reject an in-review product
       tags: *a19
+  /api/v1/catalog/products/{id}/review-comments:
+    post:
+      operationId: CatalogController_addApprovalComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApprovalCommentDto"
+      responses:
+        "201":
+          description: Comment added
+      summary: Add a comment to the approval thread for a product
+      tags: *a19
+    get:
+      operationId: CatalogController_listApprovalComments
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comments fetched
+      summary: List approval comments for a product
+      tags: *a19
+  /api/v1/catalog/products/{id}/activity:
+    get:
+      operationId: CatalogController_getProductActivity
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: limit
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity events fetched
+      summary: Get activity timeline for a product
+      tags: *a19
   /api/v1/catalog/products/{id}/purge:
     delete:
       operationId: CatalogController_purgeProduct
@@ -2994,6 +3046,9 @@ components:
       type: object
       properties: {}
     DecideProductReviewDto:
+      type: object
+      properties: {}
+    CreateApprovalCommentDto:
       type: object
       properties: {}
     CreateVariantDto:
