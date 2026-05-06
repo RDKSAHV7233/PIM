@@ -63,6 +63,18 @@ export class ProductsController {
     return this.catalogService.getProduct(id, this.resolveActor(request));
   }
 
+  @Get(":id/revisions")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_product_detail_redacted")
+  @ApiOperation({ summary: "Get product revision history" })
+  @ApiResponse({ status: 200, description: "Revisions fetched" })
+  getProductRevisions(
+    @Param("id") id: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.catalogService.getProductRevisions(id, this.resolveActor(request));
+  }
+
   @Patch(":id")
   @ApiClientScopes("catalog.write")
   @ApiOperation({ summary: "Update product" })

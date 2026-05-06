@@ -7,6 +7,7 @@ import { AppRole, Roles } from "../common/rbac/roles";
 import { BulkImportService } from "./bulk-import.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
+import { ImportValidateDto } from "./dto/import-validate.dto";
 import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 import { RequeueDlqDto } from "./dto/requeue-dlq.dto";
@@ -28,6 +29,20 @@ export class BulkImportController {
       actorId: request.pimUserId,
       actorRole: request.pimRole,
       tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Post("validate")
+  validateImport(
+    @Body() dto: ImportValidateDto,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportService.validateImport({
+      categoryId: dto.categoryId,
+      fileName: dto.fileName,
+      fileSize: dto.fileSize,
+      mimeType: dto.mimeType,
     });
   }
 
