@@ -79,6 +79,17 @@ enum BulkEditOperationStatus {
   failed
 }
 
+enum BulkImportRunStatus {
+  uploaded
+  validating
+  preflight_blocked
+  preflight_ready
+  processing
+  completed
+  repair_required
+  failed
+}
+
 enum BulkEditItemStatus {
   success
   failed
@@ -131,6 +142,7 @@ model Category {
   exportJobs           MarketplaceExportJob[]
   bulkImportJobs       BulkImportJob[]
   bulkImportTemplates  BulkImportTemplate[]
+  bulkImportRuns       BulkImportRun[]
   accessScopeAssignments AccessScopeAssignment[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -367,6 +379,12 @@ model BulkImportJob {
   tenantKey      String              @default("default")
   categoryId     String
   category       Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  runId          String?
+  run            BulkImportRun?      @relation(fields: [runId], references: [id], onDelete: SetNull)
+  batchIndex     Int?
+  rowStart       Int?
+  rowEnd         Int?
+  jobRole        String              @default("standard")
   sourceFormat   String
   sourceName     String?
   mapping        Json
@@ -385,28 +403,62 @@ model BulkImportJob {
   @@index([categoryId])
   @@index([status, updatedAt])
   @@index([tenantKey])
+  @@index([tenantKey, runId, status])
 }
 
 model BulkImportRow {
-  id            String              @id @default(cuid())
-  tenantKey     String              @default("default")
-  jobId         String
-  job           BulkImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  rowNumber     Int
-  payload       Json
-  status        BulkImportRowStatus @default(queued)
-  retryCount    Int                 @default(0)
-  errorMessage  String?
-  productId     String?
-  product       Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
-  lastAttemptAt DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  tenantKey          String              @default("default")
+  jobId              String
+  job                BulkImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  runId              String?
+  rowNumber          Int
+  rowNumberGlobal    Int?
+  rowNumberInBatch   Int?
+  payload            Json
+  status             BulkImportRowStatus @default(queued)
+  retryCount         Int                 @default(0)
+  errorMessage       String?
+  productId          String?
+  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  lastAttemptAt      DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@unique([jobId, rowNumber])
   @@index([jobId, status, rowNumber])
   @@index([productId])
   @@index([tenantKey])
+  @@index([tenantKey, runId, status])
+}
+
+model BulkImportRun {
+  id                   String               @id @default(cuid())
+  tenantKey            String               @default("default")
+  categoryId           String
+  category             Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status               BulkImportRunStatus  @default(uploaded)
+  sourceFileKey        String?
+  sourceName           String?
+  sourceFormat         String               @default("csv")
+  sourceFileSizeBytes  Int?
+  sourceExpiresAt      DateTime?
+  totalRows            Int?
+  acceptedRows         Int?
+  failedRows           Int?
+  deadLetterRows       Int?
+  blockingIssueCount   Int?
+  warningCount         Int?
+  estimatedBatchCount  Int?
+  effectiveMode        String?
+  preflightSummary     Json?
+  maxRetries           Int                  @default(3)
+  jobs                 BulkImportJob[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([tenantKey, status, createdAt])
+  @@index([tenantKey, categoryId, createdAt])
 }
 
 model BulkEditOperation {

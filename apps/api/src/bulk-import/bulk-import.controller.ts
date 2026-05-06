@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Header, Param, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, Header, Param, Post, Query, Req, Res, UseInterceptors, UploadedFile } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { BulkImportService } from "./bulk-import.service";
+import { BulkImportRunService } from "./bulk-import-run.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
+import { CreateBulkImportRunDto } from "./dto/create-bulk-import-run.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { ImportValidateDto } from "./dto/import-validate.dto";
 import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
@@ -17,7 +20,10 @@ import { SuggestMappingDto } from "./dto/suggest-mapping.dto";
 @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("bulk-import")
 export class BulkImportController {
-  constructor(private readonly bulkImportService: BulkImportService) {}
+  constructor(
+    private readonly bulkImportService: BulkImportService,
+    private readonly bulkImportRunService: BulkImportRunService,
+  ) {}
 
   @Roles("admin", "editor")
   @Post("jobs")
@@ -232,6 +238,124 @@ export class BulkImportController {
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     return this.bulkImportService.repairRow(jobId, rowId, dto, {
+      actorId: request?.pimUserId,
+      actorRole: request?.pimRole,
+      tenantId: request?.pimTenant,
+    });
+  }
+
+  // ── Run endpoints (Large Import Mode MVP) ────────────────────────────────────
+
+  @Roles("admin", "editor")
+  @Post("runs/upload")
+  @UseInterceptors(FileInterceptor("sourceFile"))
+  async uploadRun(
+    @Body() dto: CreateBulkImportRunDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    if (!file) {
+      throw new Error("sourceFile is required");
+    }
+    return this.bulkImportRunService.uploadRun(
+      dto,
+      file.buffer,
+      file.originalname,
+      file.size,
+      {
+        actorId: request.pimUserId,
+        actorRole: request.pimRole,
+        tenantId: request.pimTenant,
+      },
+    );
+  }
+
+  @Roles("admin", "editor")
+  @Get("runs")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
+  listRuns(
+    @Query("status") status?: string,
+    @Query() pagination?: CursorPaginationDto,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.listRuns(status, pagination, {
+      actorId: request?.pimUserId,
+      actorRole: request?.pimRole,
+      tenantId: request?.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Get("runs/:id")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
+  getRun(
+    @Param("id") runId: string,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.getRun(runId, {
+      actorId: request?.pimUserId,
+      actorRole: request?.pimRole,
+      tenantId: request?.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Post("runs/:id/validate")
+  validateRun(
+    @Param("id") runId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.validateRun(runId, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Post("runs/:id/start")
+  startRun(
+    @Param("id") runId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.startRun(runId, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Get("runs/:id/rows")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
+  listRunRows(
+    @Param("id") runId: string,
+    @Query("status") status?: string,
+    @Query() pagination?: CursorPaginationDto,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.listRunRows(runId, status, pagination, {
+      actorId: request?.pimUserId,
+      actorRole: request?.pimRole,
+      tenantId: request?.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
+  @Get("runs/:id/error-report")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiClientScopes("bulk_import.read")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async getRunErrorReport(
+    @Param("id") runId: string,
+    @Res({ passthrough: true }) response: Response,
+    @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    response.header("Content-Disposition", `attachment; filename="bulk-import-run-${runId}-errors.csv"`);
+    return this.bulkImportRunService.buildRunErrorReportCsv(runId, {
       actorId: request?.pimUserId,
       actorRole: request?.pimRole,
       tenantId: request?.pimTenant,

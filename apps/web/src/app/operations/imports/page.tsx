@@ -7,9 +7,11 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
+import type { BulkImportRun } from "@/lib/api/core";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
 // validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
-import { validateImportPreflight } from "@/lib/api/imports";
+import { validateImportPreflight, validateRunPreflight } from "@/lib/api/imports";
+import { uploadBulkImportRun, getBulkImportRun, startBulkImportRun, getBulkImportRuns, getBulkImportRunRows } from "@/lib/api/operations";
 
 // Export the preflight client type for wizard client components
 export type ImportPreflightClient = typeof validateImportPreflight;
@@ -218,6 +220,23 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               </p>
               <p className="text-xs text-slate-500">
                 Repair link: <Link href="/operations/repair" className="text-blue-700 hover:underline">Go to Repair Console</Link>
+              </p>
+            </div>
+          </Card>
+        </div>
+
+        {/* Large Import Mode banner — shown when file exceeds 10 000 rows */}
+        <div data-wizard-step="large-mode-banner" className="hidden">
+          <Card>
+            <CardTitle>Large File Detected — Batch Import Mode</CardTitle>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p>
+                Your file contains more than 10,000 rows. It will be split into batches of 1,000
+                rows and processed in the background. You can track progress on this page.
+              </p>
+              <p className="text-xs text-slate-500">
+                Files exceeding 30,000 rows cannot be imported. Upload a smaller file or split
+                your data into multiple imports.
               </p>
             </div>
           </Card>

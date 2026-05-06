@@ -1,5 +1,5 @@
-import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore } from "./core";
-import { fetchJson, postJson } from "./core";
+import type { AiAttributeEnrichment, AiCategorySuggestion, AiTitleSuggestion, ApiRequestOptions, BulkEditOperation, BulkEditPreview, BulkEditScope, BulkEditUpdates, BulkImportJob, BulkImportMappingSuggestion, BulkImportRow, BulkImportRowStatus, BulkImportRun, BulkImportRunRow, BulkImportRunStatus, BulkImportTemplate, BulkMediaAssociationResult, ConnectorSubmission, ConnectorSubmissionIssue, MarketplaceChannel, MarketplaceExportJob, MediaAsset, MediaValidation, OndcMapping, OndcSimulation, OndcVersionInfo, PaginatedResponse, RejectionIntelligenceScore } from "./core";
+import { fetchJson, postFormData, postJson } from "./core";
 
 export async function getSubmissions(
   filters?: {
@@ -286,6 +286,66 @@ export async function getAiAttributeEnrichment(productId: string, options?: ApiR
 export async function getAiCategorySuggestion(productId: string, options?: ApiRequestOptions) {
   return fetchJson<AiCategorySuggestion>(
     `/auto-suggestions/products/${encodeURIComponent(productId)}/category-suggestion`,
+    undefined,
+    options,
+  );
+}
+
+// ── Large Import Run helpers ─────────────────────────────────────────────────
+
+export async function uploadBulkImportRun(
+  categoryId: string,
+  file: File,
+  sourceName?: string,
+  options?: ApiRequestOptions,
+) {
+  const form = new FormData();
+  form.append("categoryId", categoryId);
+  form.append("sourceFile", file, file.name);
+  if (sourceName) form.append("sourceName", sourceName);
+  return postFormData<BulkImportRun>("/bulk-import/runs/upload", form, options);
+}
+
+export async function getBulkImportRuns(
+  status?: BulkImportRunStatus,
+  cursor?: string,
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (cursor) params.set("cursor", cursor);
+  const qs = params.toString();
+  return fetchJson<PaginatedResponse<BulkImportRun>>(
+    `/bulk-import/runs${qs ? `?${qs}` : ""}`,
+    undefined,
+    options,
+  );
+}
+
+export async function getBulkImportRun(runId: string, options?: ApiRequestOptions) {
+  return fetchJson<BulkImportRun>(`/bulk-import/runs/${encodeURIComponent(runId)}`, undefined, options);
+}
+
+export async function validateBulkImportRun(runId: string, options?: ApiRequestOptions) {
+  return postJson<BulkImportRun>(`/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {}, options);
+}
+
+export async function startBulkImportRun(runId: string, options?: ApiRequestOptions) {
+  return postJson<BulkImportRun>(`/bulk-import/runs/${encodeURIComponent(runId)}/start`, {}, options);
+}
+
+export async function getBulkImportRunRows(
+  runId: string,
+  status?: string,
+  cursor?: string,
+  options?: ApiRequestOptions,
+) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (cursor) params.set("cursor", cursor);
+  const qs = params.toString();
+  return fetchJson<PaginatedResponse<BulkImportRunRow>>(
+    `/bulk-import/runs/${encodeURIComponent(runId)}/rows${qs ? `?${qs}` : ""}`,
     undefined,
     options,
   );
