@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { decideProductReviewAction } from "@/app/actions";
-import { ApiHttpError, getIssueInbox, getProductList, getStats } from "@/lib/api";
+import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
+import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getStats } from "@/lib/api";
 import { getProductRevisions } from "@/lib/api/revisions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -81,6 +81,18 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           revisionsByProduct.set(product.id, revisions);
         } catch {
           // Graceful degradation — revision fetch failure does not block approval flow
+        }
+      }),
+    );
+
+    const commentsByProduct = new Map<string, Awaited<ReturnType<typeof getApprovalComments>>>();
+    await Promise.all(
+      inReviewProducts.map(async (product) => {
+        try {
+          const comments = await getApprovalComments(product.id, { role: actorRole, authHeader });
+          commentsByProduct.set(product.id, comments);
+        } catch {
+          // Graceful degradation — comment fetch failure does not block approval flow
         }
       }),
     );
@@ -248,6 +260,55 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                   ))}
                                 </div>
                               </details>
+                            );
+                          })()}
+                          {(() => {
+                            const comments = commentsByProduct.get(product.id) ?? [];
+                            return (
+                              <section aria-label="Review comments" className="mt-2">
+                                <details className="rounded-md border border-slate-200 bg-slate-50">
+                                  <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                                    Review Comments ({comments.length})
+                                  </summary>
+                                  <div className="border-t border-slate-200 px-3 py-2">
+                                    {comments.length > 0 ? (
+                                      <ul className="mb-2 space-y-2">
+                                        {comments.map((comment) => (
+                                          <li key={comment.id} className="text-xs text-slate-700">
+                                            <span className="font-medium capitalize">{comment.actorRole}</span>
+                                            {": "}
+                                            {comment.body}
+                                            <span className="ml-1 text-slate-400">
+                                              — {new Date(comment.createdAt).toLocaleString()}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="mb-2 text-xs text-slate-500">No comments yet.</p>
+                                    )}
+                                    <form action={addApprovalCommentAction} className="space-y-1">
+                                      <input type="hidden" name="productId" value={product.id} />
+                                      <label htmlFor={`comment-body-${product.id}`} className="text-xs font-medium text-slate-700">
+                                        Add comment
+                                      </label>
+                                      <textarea
+                                        id={`comment-body-${product.id}`}
+                                        name="body"
+                                        rows={2}
+                                        maxLength={2000}
+                                        className="w-full rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        placeholder="Write a review comment..."
+                                      />
+                                      <PendingSubmitButton
+                                        type="submit"
+                                        idleLabel="Post Comment"
+                                        pendingLabel="Posting..."
+                                      />
+                                    </form>
+                                  </div>
+                                </details>
+                              </section>
                             );
                           })()}
                         </td>

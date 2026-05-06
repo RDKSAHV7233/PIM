@@ -10,6 +10,7 @@ import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.deco
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
+import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { DecideProductReviewDto } from "./dto/decide-product-review.dto";
@@ -129,6 +130,47 @@ export class CatalogController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
   ) {
     return this.catalogService.decideProductReview(id, dto, this.resolveActor(request));
+  }
+
+  @Post("products/:id/review-comments")
+  @ApiClientScopes("catalog.write")
+  @Roles("admin", "editor", "reviewer")
+  @ApiOperation({ summary: "Add a comment to the approval thread for a product" })
+  @ApiResponse({ status: 201, description: "Comment added" })
+  addApprovalComment(
+    @Param("id") id: string,
+    @Body() dto: CreateApprovalCommentDto,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.addApprovalComment(id, dto, this.resolveActor(request));
+  }
+
+  @Get("products/:id/review-comments")
+  @FoundationRoleAccess("category_manager", "vendor")
+  @ApiClientScopes("catalog.read")
+  @Roles("admin", "editor", "reviewer", "viewer")
+  @ApiOperation({ summary: "List approval comments for a product" })
+  @ApiResponse({ status: 200, description: "Comments fetched" })
+  listApprovalComments(
+    @Param("id") id: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.listApprovalComments(id, this.resolveActor(request));
+  }
+
+  @Get("products/:id/activity")
+  @FoundationRoleAccess("category_manager", "vendor")
+  @ApiClientScopes("catalog.read")
+  @Roles("admin", "editor", "reviewer", "viewer")
+  @ApiOperation({ summary: "Get activity timeline for a product" })
+  @ApiResponse({ status: 200, description: "Activity events fetched" })
+  getProductActivity(
+    @Param("id") id: string,
+    @Query("limit") limit?: string,
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    const parsedLimit = limit ? Math.min(Number(limit), 100) : 50;
+    return this.catalogService.getProductActivity(id, this.resolveActor(request as Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] }), parsedLimit);
   }
 
   @Delete("products/:id")

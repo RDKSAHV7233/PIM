@@ -404,6 +404,34 @@ export interface AuditEventListResponse {
   limit: number;
 }
 
+export interface ApprovalComment {
+  id: string;
+  tenantKey: string;
+  productId: string;
+  actorId: string;
+  actorRole: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductActivityEvent {
+  id: string;
+  actorId: string;
+  actorRole: string;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ProductActivityResponse {
+  productId: string;
+  total: number;
+  events: ProductActivityEvent[];
+}
+
 export type ProductListQuery = {
   slim?: boolean;
   cursor?: string;

@@ -36,6 +36,7 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "AccountConsentEvent",
   "AccountExportRequest",
   "AccountDeletionRequest",
+  "ApprovalComment",
 ]);
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([
