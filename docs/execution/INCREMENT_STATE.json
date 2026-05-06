@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-05-01",
+    "lastUpdated": "2026-05-06",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -2645,7 +2645,7 @@
     },
     {
       "incrementId": "INC-31",
-      "name": "Phase 1 Enterprise Identity — Auth Policy, MFA, Session Hardening",
+      "name": "Phase 1 Enterprise Identity \u2014 Auth Policy, MFA, Session Hardening",
       "status": "completed",
       "deliveryStatus": "completed",
       "pendingReleaseItems": [
@@ -2740,7 +2740,7 @@
     },
     {
       "incrementId": "INC-32",
-      "name": "Production Hardening — Durable Media, Account Deletion, Backup/Restore, APM",
+      "name": "Production Hardening \u2014 Durable Media, Account Deletion, Backup/Restore, APM",
       "status": "completed",
       "deliveryStatus": "completed",
       "pendingReleaseItems": [
@@ -2749,8 +2749,8 @@
         "DB backup/restore drill requires pg_dump/pg_restore binaries and a live PostgreSQL target. Scripts are validated by contract test only.",
         "Sentry error tracking requires SENTRY_DSN env var. SDK loads dynamically via require(); absent = no-op.",
         "OTEL distributed tracing requires OTEL_EXPORTER_OTLP_ENDPOINT. No traces exported until set.",
-        "Gate integration tests (connector-idempotency, webhook-dedupe, rls-isolation, rejection-notification, metrics-kpi-trends, access-policy-remediation, delegated-access-scopes, product-workflow-transitions) FAIL in this environment — no DATABASE_URL provisioned. This is a pre-existing infra constraint, not a regression introduced by this increment.",
-        "postcss moderate advisory in nested Next.js dependency remains open (2 moderate, 0 high). Fix requires a breaking Next.js major bump — tracked in INC-25 pendingReleaseItems."
+        "Gate integration tests (connector-idempotency, webhook-dedupe, rls-isolation, rejection-notification, metrics-kpi-trends, access-policy-remediation, delegated-access-scopes, product-workflow-transitions) FAIL in this environment \u2014 no DATABASE_URL provisioned. This is a pre-existing infra constraint, not a regression introduced by this increment.",
+        "postcss moderate advisory in nested Next.js dependency remains open (2 moderate, 0 high). Fix requires a breaking Next.js major bump \u2014 tracked in INC-25 pendingReleaseItems."
       ],
       "evidence": [
         "apps/api/src/media/media-storage.service.ts",
@@ -2815,10 +2815,96 @@
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "gate_result": {
-            "gate:run:increment": "BLOCKED — connector-idempotency-semantics, webhook-dedupe-scope, rls-isolation, rejection-notification, metrics-kpi-trends, access-policy-remediation, delegated-access-scopes, product-workflow-transitions all require DATABASE_URL. No regression introduced by INC-32. Pre-existing infra constraint.",
-            "gate:run:sprint": "BLOCKED — same DATABASE_URL constraint. Non-database steps (lint, build, guards) all pass.",
+            "gate:run:increment": "BLOCKED \u2014 connector-idempotency-semantics, webhook-dedupe-scope, rls-isolation, rejection-notification, metrics-kpi-trends, access-policy-remediation, delegated-access-scopes, product-workflow-transitions all require DATABASE_URL. No regression introduced by INC-32. Pre-existing infra constraint.",
+            "gate:run:sprint": "BLOCKED \u2014 same DATABASE_URL constraint. Non-database steps (lint, build, guards) all pass.",
             "checkedAt": "2026-05-04"
           }
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-33",
+      "name": "Approval Evidence Track",
+      "status": "in_progress",
+      "locked": false,
+      "stories": [
+        {
+          "storyId": "ST-APPR-DIFF-001",
+          "title": "Add revision history API and approval diff workspace",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-34",
+      "name": "Import Preflight and Wizard Track",
+      "status": "in_progress",
+      "locked": false,
+      "stories": [
+        {
+          "storyId": "ST-IMP-PREFLIGHT-001",
+          "title": "Add import preflight API and 4-step import wizard",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-35",
+      "name": "Frontend Hardening Track",
+      "status": "in_progress",
+      "locked": false,
+      "stories": [
+        {
+          "storyId": "ST-FE-RESPONSIVE-001",
+          "title": "Add responsive fallback for version manager, validation panel, bulk-edit diff preview",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
+        },
+        {
+          "storyId": "ST-FE-A11Y-001",
+          "title": "Add field-linked error accessibility to admin and import forms",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-36",
+      "name": "Demo Proof and Release Gate Track",
+      "status": "in_progress",
+      "locked": false,
+      "stories": [
+        {
+          "storyId": "ST-E2E-DEMO-001",
+          "title": "Add full demo-tenant end-to-end Playwright spec",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
+        },
+        {
+          "storyId": "ST-E2E-RECOVERY-001",
+          "title": "Add publish failure recovery Playwright spec",
+          "status": "in_progress",
+          "locked": false,
+          "owner": "codex",
+          "commit": "",
+          "tests_passed": []
         }
       ]
     }
