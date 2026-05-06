@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { decideProductReviewAction } from "@/app/actions";
 import { ApiHttpError, getIssueInbox, getProductList, getStats } from "@/lib/api";
+import { getProductRevisions } from "@/lib/api/revisions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -68,6 +69,18 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
       acc.set(item.productId, current);
       return acc;
     }, new Map());
+
+    const revisionsByProduct = new Map<string, Awaited<ReturnType<typeof getProductRevisions>>>();
+    await Promise.all(
+      inReviewProducts.map(async (product) => {
+        try {
+          const revisions = await getProductRevisions(product.id, { role: actorRole, authHeader });
+          revisionsByProduct.set(product.id, revisions);
+        } catch {
+          // Graceful degradation — revision fetch failure does not block approval flow
+        }
+      }),
+    );
 
     return (
       <div className="space-y-5">
@@ -206,6 +219,34 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                           >
                             Open product
                           </Link>
+                          {(() => {
+                            const productRevisions = revisionsByProduct.get(product.id);
+                            if (!productRevisions || productRevisions.items.length === 0) return null;
+                            const latestRevision = productRevisions.items[0];
+                            const changedFieldCount = latestRevision.changedFields.length;
+                            if (changedFieldCount === 0) return null;
+                            return (
+                              <details className="mt-2 rounded-md border border-slate-200 bg-slate-50">
+                                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                                  What Changed ({changedFieldCount} field{changedFieldCount !== 1 ? "s" : ""})
+                                </summary>
+                                <div className="border-t border-slate-200 px-3 py-2">
+                                  {latestRevision.changedFields.map((change) => (
+                                    <div key={change.field} className="mb-1 text-xs">
+                                      <span className="font-medium text-slate-700">{change.displayLabel ?? change.field}:</span>{" "}
+                                      <span className="text-slate-500 line-through">
+                                        {String(change.before ?? "-").slice(0, 120)}
+                                      </span>
+                                      {" → "}
+                                      <span className="text-slate-900">
+                                        {String(change.after ?? "-").slice(0, 120)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            );
+                          })()}
                         </td>
                         <td className="py-2.5 text-slate-700">{product.completenessScore ?? 0}%</td>
                         <td className="py-2.5">

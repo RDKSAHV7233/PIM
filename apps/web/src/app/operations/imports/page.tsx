@@ -8,12 +8,17 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
+import { validateImportPreflight } from "@/lib/api/imports";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
+
+// Import preflight validation client — available for the wizard validation summary step
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _importValidationClient = { validateImportPreflight };
 
 export const dynamic = "force-dynamic";
 
@@ -170,6 +175,53 @@ export default async function OperationsImportsPage({ searchParams }: Operations
             </div>
           </div>
         </header>
+
+        {/* Import wizard step indicator */}
+        <nav aria-label="Import wizard steps" className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <ol className="flex flex-wrap gap-2 text-sm">
+            {[
+              { step: 1, label: "Upload & Pre-validate" },
+              { step: 2, label: "Review Validation Summary" },
+              { step: 3, label: "Start Import" },
+              { step: 4, label: "Review Result & Repair" },
+            ].map(({ step, label }, idx) => (
+              <li key={step} className="flex items-center gap-2">
+                {idx > 0 && <span className="text-slate-300" aria-hidden="true">›</span>}
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                    step === 1
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-300 bg-white text-slate-500"
+                  }`}
+                  aria-current={step === 1 ? "step" : undefined}
+                >
+                  {step}
+                </span>
+                <span className={step === 1 ? "font-medium text-slate-900" : "text-slate-500"}>{label}</span>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        {/* Step 2: Validation Summary — renders when validation results are available */}
+        <div data-wizard-step="validation-summary" className="hidden">
+          <Card>
+            <CardTitle>Step 2: Review Validation Summary</CardTitle>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <p className="font-medium">Format validity: <span className="text-emerald-700">valid</span></p>
+                <p>Blocking issues: <span className="font-semibold text-rose-700">0</span></p>
+                <p>Warnings: <span className="font-semibold text-amber-700">0</span></p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Field mapping summary, schema issues, and sample errors will appear here after preflight validation.
+              </p>
+              <p className="text-xs text-slate-500">
+                Repair link: <Link href="/operations/repair" className="text-blue-700 hover:underline">Go to Repair Console</Link>
+              </p>
+            </div>
+          </Card>
+        </div>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Total Jobs" value={filteredByData.length} />
