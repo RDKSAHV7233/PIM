@@ -166,8 +166,8 @@ export class CatalogController {
   @ApiResponse({ status: 200, description: "Activity events fetched" })
   getProductActivity(
     @Param("id") id: string,
-    @Query("limit") limit?: string,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Query("limit") limit?: string,
   ) {
     const parsedLimit = limit ? Math.min(Number(limit), 100) : 50;
     return this.catalogService.getProductActivity(id, this.resolveActor(request), parsedLimit);
