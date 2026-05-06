@@ -984,16 +984,15 @@ model OutboundWebhookDelivery {
 }
 
 model ApprovalComment {
-  id        String   @id @default(cuid())
-  tenantKey String   @default("default") @map("tenant_key")
-  productId String   @map("product_id")
-  authorId  String   @map("author_id")
-  body      String
-  decision  String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  tenantKey  String   @default("default") @map("tenant_key")
+  productId  String   @map("product_id")
+  actorId    String   @map("actor_id")
+  actorRole  String   @map("actor_role")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@index([tenantKey, productId, createdAt(sort: Desc)], map: "idx_approval_comments_tenant_product_created")
-  @@index([tenantKey], map: "idx_approval_comments_tenant_key")
   @@map("approval_comments")
 }

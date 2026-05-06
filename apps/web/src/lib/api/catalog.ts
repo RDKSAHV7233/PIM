@@ -1,5 +1,5 @@
-import type { ApiRequestOptions, AttributeDefinition, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ValidationIssue, Variant } from "./core";
-import { fetchJson } from "./core";
+import type { ApiRequestOptions, AttributeDefinition, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
+import { fetchJson, postJson } from "./core";
 
 export async function getCategories(options?: ApiRequestOptions) {
   return fetchJson<Category[]>("/taxonomy/categories", undefined, options);
@@ -120,4 +120,28 @@ export async function getCategoryAttributes(categoryId: string, options?: ApiReq
 
 export async function getProductIssues(productId: string, options?: ApiRequestOptions) {
   return fetchJson<ValidationIssue[]>(`/compliance/products/${productId}/issues`, undefined, options);
+}
+
+export async function getApprovalComments(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<ApprovalComment[]>(
+    `/catalog/products/${encodeURIComponent(productId)}/review-comments`,
+    undefined,
+    options,
+  );
+}
+
+export async function addApprovalComment(productId: string, body: string, options?: ApiRequestOptions) {
+  return postJson<ApprovalComment>(
+    `/catalog/products/${encodeURIComponent(productId)}/review-comments`,
+    { body },
+    options,
+  );
+}
+
+export async function getProductActivity(productId: string, limit = 50, options?: ApiRequestOptions) {
+  return fetchJson<ProductActivityResponse>(
+    `/catalog/products/${encodeURIComponent(productId)}/activity?limit=${limit}`,
+    undefined,
+    options,
+  );
 }

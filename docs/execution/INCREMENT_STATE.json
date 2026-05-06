@@ -2881,6 +2881,48 @@
           "tests_passed": []
         }
       ]
+    },
+    {
+      "incrementId": "INC-37",
+      "name": "P1 Sales Blockers — Approval Comments, Activity Timeline, Bulk-Edit Empty-Scope Fix",
+      "status": "completed",
+      "poSignOff": "docs/execution/PO_SIGNOFF_CONTROLLED_PILOT_2026-05-06.md",
+      "stories": [
+        {
+          "storyId": "ST-APPROVAL-COMMENTS-001",
+          "title": "Add ApprovalComment model, POST/GET review-comments API, and UI thread in approval workspace",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "HEAD",
+          "tests_passed": [
+            "node apps/api/test/integration/approval-comments.test.cjs",
+            "node apps/web/test/integration/approval-comments-ui.test.cjs"
+          ]
+        },
+        {
+          "storyId": "ST-ACTIVITY-TIMELINE-001",
+          "title": "Add GET /catalog/products/:id/activity endpoint from AuditLog",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "HEAD",
+          "tests_passed": [
+            "node apps/api/test/integration/product-activity-timeline.test.cjs"
+          ]
+        },
+        {
+          "storyId": "ST-BULK-EDIT-EMPTY-SCOPE-001",
+          "title": "Fix bulk-edit-empty-scope integration test — enforce 400 on empty scope in apply and preview",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "HEAD",
+          "tests_passed": [
+            "node apps/api/test/integration/bulk-edit-empty-scope.test.cjs"
+          ]
+        }
+      ]
     }
   ]
 }

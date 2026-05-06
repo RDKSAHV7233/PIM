@@ -345,7 +345,10 @@ export class BulkEditService {
   }) {
     const hasProductIds = Array.isArray(scope.productIds) && scope.productIds.length > 0;
     if (!scope.categoryId && !scope.status && !scope.brandContains && !hasProductIds) {
-      throw new BadRequestException("Bulk edit scope is required and cannot be empty.");
+      throw new BadRequestException({
+        code: "EMPTY_SCOPE",
+        message: "Bulk edit scope must include at least one selector (productIds, categoryId, status, or brand).",
+      });
     }
   }
 

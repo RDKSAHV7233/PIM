@@ -14,6 +14,7 @@ import {
 } from "../common/pagination/cursor-pagination";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
@@ -619,6 +620,56 @@ export class CatalogService {
     await this.notificationsService.emitApprovalDecision(product.id, dto.status);
 
     return product;
+  }
+
+  async addApprovalComment(productId: string, dto: CreateApprovalCommentDto, actor: ActorContext) {
+    await this.requireProduct(productId);
+    const comment = await this.prisma.tenant().approvalComment.create({
+      data: {
+        productId,
+        actorId: actor.id,
+        actorRole: actor.role,
+        body: dto.body.trim(),
+      },
+    });
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "APPROVAL_COMMENT_ADDED",
+      resource: "/api/v1/catalog/products/:id/review-comments",
+      resourceId: productId,
+      metadata: { model: "ApprovalComment", commentId: comment.id },
+    });
+    return comment;
+  }
+
+  async listApprovalComments(productId: string, actor: ActorContext) {
+    await this.requireProduct(productId);
+    return this.prisma.tenant().approvalComment.findMany({
+      where: { productId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+    });
+  }
+
+  async getProductActivity(productId: string, actor: ActorContext, limit = 50) {
+    await this.requireProduct(productId);
+    const logs = await this.prisma.tenant().auditLog.findMany({
+      where: { resourceId: productId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: Math.min(limit, 100),
+      select: {
+        id: true,
+        actorId: true,
+        actorRole: true,
+        action: true,
+        resource: true,
+        resourceId: true,
+        metadata: true,
+        createdAt: true,
+      },
+    });
+    return { productId, total: logs.length, events: logs };
   }
 
   async deleteProduct(productId: string, actor?: ActorContext) {

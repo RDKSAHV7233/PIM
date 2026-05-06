@@ -7,6 +7,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   ApiHttpError,
   type ApiRequestOptions,
+  addApprovalComment as addApprovalCommentRequest,
   applyBulkEdit as applyBulkEditRequest,
   decideProductReview as decideProductReviewRequest,
   deleteJson,
@@ -524,6 +525,17 @@ export async function decideProductReviewAction(formData: FormData) {
     const decisionError = message || "decision_failed";
     redirect(appendQueryParams(returnTo, { decisionError }));
   }
+}
+
+export async function addApprovalCommentAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!productId || !body) {
+    throw new Error("productId and body are required to add an approval comment.");
+  }
+  const options = await resolveActionOptions(formData);
+  await addApprovalCommentRequest(productId, body, options);
+  revalidatePath("/quality/approvals");
 }
 
 export async function createProductAction(formData: FormData) {
