@@ -167,10 +167,10 @@ export class CatalogController {
   getProductActivity(
     @Param("id") id: string,
     @Query("limit") limit?: string,
-    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     const parsedLimit = limit ? Math.min(Number(limit), 100) : 50;
-    return this.catalogService.getProductActivity(id, this.resolveActor(request as Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] }), parsedLimit);
+    return this.catalogService.getProductActivity(id, this.resolveActor(request), parsedLimit);
   }
 
   @Delete("products/:id")

@@ -296,6 +296,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                         id={`comment-body-${product.id}`}
                                         name="body"
                                         rows={2}
+                                        required
                                         maxLength={2000}
                                         className="w-full rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                                         placeholder="Write a review comment..."
