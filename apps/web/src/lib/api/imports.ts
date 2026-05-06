@@ -1,4 +1,4 @@
-import type { ApiRequestOptions } from "./core";
+import type { ApiRequestOptions, BulkImportRun } from "./core";
 import { fetchJson, postJson } from "./core";
 
 export interface ImportValidateRequest {
@@ -29,6 +29,11 @@ export interface ImportValidateResponse {
   warningCount: number;
   sampleErrors: ImportValidateSampleError[];
   fieldMappingSummary: ImportValidateFieldMapping[];
+  effectiveMode?: "standard" | "large" | null;
+  estimatedBatchCount?: number | null;
+  runId?: string | null;
+  mvpCeilingExceeded?: boolean | null;
+  skuCodeSummary?: { duplicateCount: number; collisionCount: number } | null;
 }
 
 export async function validateImportPreflight(
@@ -36,4 +41,11 @@ export async function validateImportPreflight(
   options?: ApiRequestOptions,
 ): Promise<ImportValidateResponse> {
   return postJson<ImportValidateResponse>("/bulk-import/validate", request, options);
+}
+
+export async function validateRunPreflight(
+  runId: string,
+  options?: ApiRequestOptions,
+): Promise<BulkImportRun> {
+  return postJson<BulkImportRun>(`/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {}, options);
 }

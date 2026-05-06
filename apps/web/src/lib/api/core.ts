@@ -965,6 +965,65 @@ export interface BulkImportTemplate {
   updatedAt: string;
 }
 
+export type BulkImportRunStatus =
+  | "uploaded"
+  | "validating"
+  | "preflight_blocked"
+  | "preflight_ready"
+  | "processing"
+  | "completed"
+  | "repair_required"
+  | "failed";
+
+export interface BulkImportRun {
+  id: string;
+  tenantKey: string;
+  categoryId: string;
+  status: BulkImportRunStatus;
+  sourceFileKey: string | null;
+  sourceName: string | null;
+  sourceFormat: string;
+  sourceFileSizeBytes: number | null;
+  sourceExpiresAt: string | null;
+  totalRows: number | null;
+  acceptedRows: number | null;
+  failedRows: number | null;
+  deadLetterRows: number | null;
+  blockingIssueCount: number | null;
+  warningCount: number | null;
+  estimatedBatchCount: number | null;
+  effectiveMode: "standard" | "large" | null;
+  preflightSummary: {
+    mapping?: Record<string, string>;
+    unmappedFields?: string[];
+    unusedHeaders?: string[];
+    sampleIssues?: Array<{ rowNumber: number; issues: string[]; severity: string }>;
+    canImport?: boolean;
+    skuCodeSummary?: { duplicateCount: number; collisionCount: number } | null;
+    mvpCeilingExceeded?: boolean;
+  } | null;
+  maxRetries: number;
+  category?: { id: string; path: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkImportRunRow {
+  id: string;
+  jobId: string;
+  runId: string | null;
+  rowNumber: number;
+  rowNumberGlobal: number | null;
+  payload: Record<string, unknown>;
+  status: BulkImportRowStatus;
+  retryCount: number;
+  errorMessage: string | null;
+  productId: string | null;
+  lastAttemptAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BulkEditScope {
   categoryId?: string;
   status?: CatalogStatus;
@@ -1276,6 +1335,32 @@ export async function postJson<T>(path: string, body: unknown, options?: ApiRequ
     method: "POST",
     body: JSON.stringify(body),
   }, options);
+}
+
+export async function postFormData<T>(path: string, formData: FormData, options?: ApiRequestOptions) {
+  const explicitAuthHeader = String(options?.authHeader ?? "").trim();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    body: formData,
+    headers: {
+      ...(explicitAuthHeader ? { Authorization: explicitAuthHeader } : {}),
+      ...(options?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const errorBody = await parseErrorBody(response);
+    throw new ApiHttpError(response.status, errorBody, `Request failed with status ${response.status}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(rawBody) as T;
 }
 
 export async function patchJson<T>(path: string, body: unknown, options?: ApiRequestOptions) {
