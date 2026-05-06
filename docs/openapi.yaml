@@ -1769,6 +1769,19 @@ paths:
         "200":
           description: ""
       tags: *a17
+  /api/v1/bulk-import/jobs/{id}/validate:
+    post:
+      operationId: BulkImportController_validateJob
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags: *a17
   /api/v1/bulk-import/jobs/{id}/process:
     post:
       operationId: BulkImportController_processJob

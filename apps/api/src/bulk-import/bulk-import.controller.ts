@@ -169,6 +169,19 @@ export class BulkImportController {
   }
 
   @Roles("admin", "editor")
+  @Post("jobs/:id/validate")
+  validateJob(
+    @Param("id") jobId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportService.preflightValidateJob(jobId, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
   @Post("jobs/:id/process")
   processJob(
     @Param("id") jobId: string,
