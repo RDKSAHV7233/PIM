@@ -982,3 +982,18 @@ model OutboundWebhookDelivery {
   @@index([tenantKey, eventType, status, createdAt(sort: Desc)], map: "idx_outbound_webhook_deliveries_event_status_created")
   @@map("outbound_webhook_deliveries")
 }
+
+model ApprovalComment {
+  id        String   @id @default(cuid())
+  tenantKey String   @default("default") @map("tenant_key")
+  productId String   @map("product_id")
+  authorId  String   @map("author_id")
+  body      String
+  decision  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantKey, productId, createdAt(sort: Desc)], map: "idx_approval_comments_tenant_product_created")
+  @@index([tenantKey], map: "idx_approval_comments_tenant_key")
+  @@map("approval_comments")
+}
