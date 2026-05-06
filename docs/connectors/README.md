@@ -111,3 +111,12 @@ For implementation and current-state guidance, use:
 - `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
 - `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 - `docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md`
+
+## Roadmap connectors (not yet implemented)
+
+The following connectors are on the roadmap but are not currently available:
+
+- **WooCommerce** — planned for a future release; not available in the current version
+- **Shopify (additional stores)** — additional Shopify account support is planned
+
+Do not present these as available in demos or sales materials until they are live.

@@ -583,6 +583,8 @@ Canonical fields for import:
 Important format rule:
 1. `attributes` must contain a JSON object for category-specific fields.
 
+> **Note:** Mapping suggestions are rule-based (header matching), not AI or LLM-generated. The `/bulk-import/mapping-suggestions` endpoint uses header-name heuristics to propose field mappings. No machine learning model is involved.
+
 Steps:
 1. Open `Operations -> Imports`
 2. Download a sample file if needed

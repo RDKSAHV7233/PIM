@@ -682,6 +682,113 @@ export class BulkImportService {
     return lines.join("\n");
   }
 
+  async preflightValidateJob(jobId: string, actor?: PolicyActor) {
+    const job = await this.prisma.tenant().bulkImportJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job) {
+      throw new NotFoundException("Bulk import job not found");
+    }
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", job.categoryId, "BulkImportJob", jobId);
+
+    const rows = await this.prisma.tenant().bulkImportRow.findMany({
+      where: { jobId },
+      orderBy: [{ rowNumber: "asc" }],
+    });
+
+    const skuSeen = new Map<string, number[]>();
+    const allMissingFields = new Set<string>();
+    const mappingGaps: number[] = [];
+    const rowBlockingErrors: Array<{ rowNumber: number; errors: string[] }> = [];
+
+    for (const row of rows) {
+      const data = this.asRowPayload(row.payload);
+      const rowErrors: string[] = [];
+
+      const isMappingGap =
+        !row.payload ||
+        (typeof row.payload === "object" &&
+          !Array.isArray(row.payload) &&
+          Object.keys(row.payload).length === 0);
+      if (isMappingGap) {
+        mappingGaps.push(row.rowNumber);
+        rowErrors.push("No mapped data for row");
+      }
+
+      const title = typeof data.title === "string" ? data.title.trim() : "";
+      if (!title) {
+        allMissingFields.add("title");
+        rowErrors.push("Missing required field: title");
+      }
+
+      const rawPayload = typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : {};
+      const skuCode = typeof rawPayload.skuCode === "string" ? rawPayload.skuCode.trim() : "";
+      if (!skuCode) {
+        allMissingFields.add("skuCode");
+        rowErrors.push("Missing required field: skuCode");
+      } else {
+        const existing = skuSeen.get(skuCode) ?? [];
+        existing.push(row.rowNumber);
+        skuSeen.set(skuCode, existing);
+      }
+
+      if (rowErrors.length > 0) {
+        rowBlockingErrors.push({ rowNumber: row.rowNumber, errors: rowErrors });
+      }
+    }
+
+    const duplicateSkuIssues = Array.from(skuSeen.entries())
+      .filter(([, rowNumbers]) => rowNumbers.length > 1)
+      .map(([skuCode, rowNumbers]) => ({ skuCode, rowNumbers }));
+
+    for (const { rowNumbers } of duplicateSkuIssues) {
+      for (const rowNumber of rowNumbers) {
+        const existing = rowBlockingErrors.find((entry) => entry.rowNumber === rowNumber);
+        if (existing) {
+          existing.errors.push("Duplicate skuCode within job");
+        } else {
+          rowBlockingErrors.push({ rowNumber, errors: ["Duplicate skuCode within job"] });
+        }
+      }
+    }
+
+    const blockingErrorRowNumbers = new Set(rowBlockingErrors.map((entry) => entry.rowNumber));
+    const acceptedRows = rows.filter((row) => !blockingErrorRowNumbers.has(row.rowNumber)).length;
+
+    const sampleRowErrors = rowBlockingErrors.slice(0, 5).map((entry) => ({
+      rowNumber: entry.rowNumber,
+      errors: entry.errors,
+    }));
+
+    const blockingErrors: string[] = [];
+    if (allMissingFields.has("title")) {
+      blockingErrors.push("One or more rows are missing required field: title");
+    }
+    if (allMissingFields.has("skuCode")) {
+      blockingErrors.push("One or more rows are missing required field: skuCode");
+    }
+    if (mappingGaps.length > 0) {
+      blockingErrors.push(`${mappingGaps.length} row(s) have no mapped data`);
+    }
+    if (duplicateSkuIssues.length > 0) {
+      blockingErrors.push(`${duplicateSkuIssues.length} duplicate skuCode(s) detected within the job`);
+    }
+
+    return {
+      jobId,
+      totalRows: rows.length,
+      acceptedRows,
+      blockingErrors,
+      warnings: [],
+      duplicateSkuIssues,
+      missingRequiredFields: Array.from(allMissingFields),
+      mappingGaps,
+      sampleRowErrors,
+    };
+  }
+
   private async processRow(
     job: {
       id: string;
