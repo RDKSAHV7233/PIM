@@ -3172,6 +3172,176 @@
         ]
       }
     },
+    "/api/v1/bulk-import/runs/upload": {
+      "post": {
+        "operationId": "BulkImportController_uploadRun",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBulkImportRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs": {
+      "get": {
+        "operationId": "BulkImportController_listRuns",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs/{id}": {
+      "get": {
+        "operationId": "BulkImportController_getRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs/{id}/validate": {
+      "post": {
+        "operationId": "BulkImportController_validateRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs/{id}/start": {
+      "post": {
+        "operationId": "BulkImportController_startRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs/{id}/rows": {
+      "get": {
+        "operationId": "BulkImportController_listRunRows",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
+    "/api/v1/bulk-import/runs/{id}/error-report": {
+      "get": {
+        "operationId": "BulkImportController_getRunErrorReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
     "/api/v1/bulk-edit/preview": {
       "post": {
         "operationId": "BulkEditController_preview",
@@ -4993,6 +5163,10 @@
         "properties": {}
       },
       "RepairBulkImportRowDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateBulkImportRunDto": {
         "type": "object",
         "properties": {}
       },
