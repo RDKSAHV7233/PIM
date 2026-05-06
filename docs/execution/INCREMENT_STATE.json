@@ -2923,6 +2923,35 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-38",
+      "name": "P2 Week 3 — Variant lifecycle UI, Meesho error map, OpenAPI freshness",
+      "status": "completed",
+      "poSignOff": "docs/execution/PO_SIGNOFF_CONTROLLED_PILOT_2026-05-06.md",
+      "stories": [
+        {
+          "storyId": "ST-VARIANT-LIFECYCLE-001",
+          "title": "Add variant edit/delete UI controls and confirmation to variants-tab.tsx",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex"
+        },
+        {
+          "storyId": "ST-MEESHO-ERROR-MAP-001",
+          "title": "Implement Meesho normaliseError() with real error code map",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex"
+        },
+        {
+          "storyId": "ST-OPENAPI-FRESHNESS-INC37-001",
+          "title": "Regenerate OpenAPI spec to include INC-37 review-comments and activity routes",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex"
+        }
+      ]
     }
   ]
 }
