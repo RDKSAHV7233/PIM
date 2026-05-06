@@ -702,6 +702,9 @@ export class BulkImportService {
     const rowBlockingErrors: Array<{ rowNumber: number; errors: string[] }> = [];
 
     for (const row of rows) {
+      const rawPayload = typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : {};
       const data = this.asRowPayload(row.payload);
       const rowErrors: string[] = [];
 
@@ -721,9 +724,6 @@ export class BulkImportService {
         rowErrors.push("Missing required field: title");
       }
 
-      const rawPayload = typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
-        ? (row.payload as Record<string, unknown>)
-        : {};
       const skuCode = typeof rawPayload.skuCode === "string" ? rawPayload.skuCode.trim() : "";
       if (!skuCode) {
         allMissingFields.add("skuCode");
