@@ -1549,6 +1549,8 @@ export class BulkImportService {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
     const ALLOWED_EXTENSIONS = new Set(["csv", "xlsx"]);
+    const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+    const ESTIMATED_BYTES_PER_ROW = 120;
 
     const formatValid = ALLOWED_MIME_TYPES.has(input.mimeType) ||
       ALLOWED_EXTENSIONS.has((input.fileName.split(".").pop() ?? "").toLowerCase());
@@ -1570,7 +1572,7 @@ export class BulkImportService {
       };
     }
 
-    if (input.fileSize > 8 * 1024 * 1024) {
+    if (input.fileSize > MAX_FILE_SIZE_BYTES) {
       schemaIssues.push("File exceeds maximum allowed size of 8 MB.");
     }
 
@@ -1586,7 +1588,7 @@ export class BulkImportService {
       categoryIssues.push("No category specified — import will use the default category assignment.");
     }
 
-    const estimatedRowCount = Math.floor(input.fileSize / 120);
+    const estimatedRowCount = Math.floor(input.fileSize / ESTIMATED_BYTES_PER_ROW);
     const blockingCount = schemaIssues.length;
     const warningCount = categoryIssues.length;
 

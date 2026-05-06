@@ -14,6 +14,9 @@ import { canDecideApproval } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
+/** Maximum characters to display for a diff field value in the "What Changed" section. */
+const MAX_DIFF_VALUE_LENGTH = 120;
+
 export const dynamic = "force-dynamic";
 
 interface QualityApprovalsPageProps {
@@ -235,11 +238,11 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                     <div key={change.field} className="mb-1 text-xs">
                                       <span className="font-medium text-slate-700">{change.displayLabel ?? change.field}:</span>{" "}
                                       <span className="text-slate-500 line-through">
-                                        {String(change.before ?? "-").slice(0, 120)}
+                                        {String(change.before ?? "-").slice(0, MAX_DIFF_VALUE_LENGTH)}
                                       </span>
                                       {" → "}
                                       <span className="text-slate-900">
-                                        {String(change.after ?? "-").slice(0, 120)}
+                                        {String(change.after ?? "-").slice(0, MAX_DIFF_VALUE_LENGTH)}
                                       </span>
                                     </div>
                                   ))}

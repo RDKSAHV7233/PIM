@@ -8,17 +8,17 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
+// validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
 import { validateImportPreflight } from "@/lib/api/imports";
+
+// Export the preflight client type for wizard client components
+export type ImportPreflightClient = typeof validateImportPreflight;
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
-
-// Import preflight validation client — available for the wizard validation summary step
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _importValidationClient = { validateImportPreflight };
 
 export const dynamic = "force-dynamic";
 

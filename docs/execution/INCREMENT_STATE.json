@@ -2825,86 +2825,106 @@
     {
       "incrementId": "INC-33",
       "name": "Approval Evidence Track",
-      "status": "in_progress",
-      "locked": false,
+      "status": "completed",
+      "locked": true,
       "stories": [
         {
           "storyId": "ST-APPR-DIFF-001",
           "title": "Add revision history API and approval diff workspace",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "node apps/api/test/integration/product-revision-history.test.cjs",
+            "node apps/web/test/integration/approval-diff-workspace.test.cjs",
+            "node apps/web/test/integration/quality-approvals-route-contract.test.cjs"
+          ]
         }
       ]
     },
     {
       "incrementId": "INC-34",
       "name": "Import Preflight and Wizard Track",
-      "status": "in_progress",
-      "locked": false,
+      "status": "completed",
+      "locked": true,
       "stories": [
         {
           "storyId": "ST-IMP-PREFLIGHT-001",
           "title": "Add import preflight API and 4-step import wizard",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "node apps/api/test/integration/import-preflight.test.cjs",
+            "node apps/web/test/integration/import-preflight-wizard.test.cjs",
+            "node apps/web/test/integration/operations-imports-route-contract.test.cjs"
+          ]
         }
       ]
     },
     {
       "incrementId": "INC-35",
       "name": "Frontend Hardening Track",
-      "status": "in_progress",
-      "locked": false,
+      "status": "completed",
+      "locked": true,
       "stories": [
         {
           "storyId": "ST-FE-RESPONSIVE-001",
           "title": "Add responsive fallback for version manager, validation panel, bulk-edit diff preview",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "node apps/web/test/integration/version-manager-responsive.test.cjs",
+            "node apps/web/test/integration/validation-issue-panel-responsive.test.cjs",
+            "node apps/web/test/integration/bulk-edit-diff-preview-responsive.test.cjs"
+          ]
         },
         {
           "storyId": "ST-FE-A11Y-001",
           "title": "Add field-linked error accessibility to admin and import forms",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "node apps/web/test/integration/admin-form-accessibility.test.cjs",
+            "node apps/web/test/integration/admin-users-route-contract.test.cjs",
+            "node apps/web/test/integration/admin-webhooks-route-contract.test.cjs"
+          ]
         }
       ]
     },
     {
       "incrementId": "INC-36",
       "name": "Demo Proof and Release Gate Track",
-      "status": "in_progress",
-      "locked": false,
+      "status": "completed",
+      "locked": true,
       "stories": [
         {
           "storyId": "ST-E2E-DEMO-001",
           "title": "Add full demo-tenant end-to-end Playwright spec",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "apps/web/test/e2e/demo-tenant-end-to-end.spec.js"
+          ]
         },
         {
           "storyId": "ST-E2E-RECOVERY-001",
           "title": "Add publish failure recovery Playwright spec",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "",
-          "tests_passed": []
+          "commit": "be3a16b",
+          "tests_passed": [
+            "apps/web/test/e2e/publish-failure-recovery.spec.js"
+          ]
         }
       ]
     }
