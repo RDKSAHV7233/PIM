@@ -1169,4 +1169,48 @@ export class CatalogService {
   private isEmpty(value: unknown) {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
+
+  async getProductRevisions(productId: string, actor?: ActorContext) {
+    const product = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      select: { id: true },
+    });
+    if (!product) {
+      throw new NotFoundException(`Product ${productId} not found`);
+    }
+
+    const auditLogs = await this.prisma.tenant().auditLog.findMany({
+      where: {
+        resource: "product",
+        resourceId: productId,
+        action: { in: ["product.created", "product.updated", "product.status_changed"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const items = auditLogs.map((log) => {
+      const metadata = (log.metadata ?? {}) as Record<string, unknown>;
+      const changes = Array.isArray(metadata.changes) ? (metadata.changes as Array<Record<string, unknown>>) : [];
+
+      const changedFields = changes.map((change) => ({
+        field: String(change.field ?? ""),
+        displayLabel: change.label != null ? String(change.label) : undefined,
+        before: change.before,
+        after: change.after,
+      }));
+
+      return {
+        revisionId: log.id,
+        productId,
+        createdAt: log.createdAt.toISOString(),
+        actorId: log.actorId || null,
+        actorLabel: log.actorId || null,
+        changedFields,
+        summary: { changedSectionCount: changedFields.length },
+      };
+    });
+
+    return { items };
+  }
 }

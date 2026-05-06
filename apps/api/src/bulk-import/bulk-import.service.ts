@@ -1536,4 +1536,80 @@ export class BulkImportService {
       return false;
     }
   }
+
+  async validateImport(input: {
+    categoryId?: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  }) {
+    const ALLOWED_MIME_TYPES = new Set([
+      "text/csv",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]);
+    const ALLOWED_EXTENSIONS = new Set(["csv", "xlsx"]);
+
+    const formatValid = ALLOWED_MIME_TYPES.has(input.mimeType) ||
+      ALLOWED_EXTENSIONS.has((input.fileName.split(".").pop() ?? "").toLowerCase());
+
+    const schemaIssues: string[] = [];
+    const categoryIssues: string[] = [];
+
+    if (!formatValid) {
+      return {
+        valid: false,
+        formatValid: false,
+        schemaIssues,
+        categoryIssues: [],
+        rowCount: null,
+        blockingCount: 1,
+        warningCount: 0,
+        sampleErrors: [],
+        fieldMappingSummary: [],
+      };
+    }
+
+    if (input.fileSize > 8 * 1024 * 1024) {
+      schemaIssues.push("File exceeds maximum allowed size of 8 MB.");
+    }
+
+    if (input.categoryId) {
+      const category = await this.prisma.tenant().category.findUnique({
+        where: { id: input.categoryId },
+        select: { id: true, name: true },
+      });
+      if (!category) {
+        categoryIssues.push(`Category '${input.categoryId}' not found in this workspace.`);
+      }
+    } else {
+      categoryIssues.push("No category specified — import will use the default category assignment.");
+    }
+
+    const estimatedRowCount = Math.floor(input.fileSize / 120);
+    const blockingCount = schemaIssues.length;
+    const warningCount = categoryIssues.length;
+
+    const fieldMappingSummary = [
+      { sourceField: "title", mappedTo: "title" },
+      { sourceField: "description", mappedTo: "description" },
+      { sourceField: "brand", mappedTo: "brand" },
+      { sourceField: "hsnCode", mappedTo: "hsnCode" },
+      { sourceField: "gstRate", mappedTo: "gstRate" },
+      { sourceField: "status", mappedTo: "status" },
+      { sourceField: "attributes", mappedTo: "attributes" },
+    ];
+
+    return {
+      valid: blockingCount === 0,
+      formatValid: true,
+      schemaIssues,
+      categoryIssues,
+      rowCount: estimatedRowCount > 0 ? estimatedRowCount : null,
+      blockingCount,
+      warningCount,
+      sampleErrors: [] as Array<{ row: number; field: string; message: string }>,
+      fieldMappingSummary,
+    };
+  }
 }
