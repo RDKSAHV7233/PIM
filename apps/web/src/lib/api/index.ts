@@ -9,3 +9,5 @@ export * from './channels';
 export * from './connectors';
 export * from './admin';
 export * from './operations';
+export * from './revisions';
+export * from './imports';

@@ -1643,6 +1643,20 @@ paths:
         "200":
           description: ""
       tags: *a17
+  /api/v1/bulk-import/validate:
+    post:
+      operationId: BulkImportController_validateImport
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportValidateDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a17
   /api/v1/bulk-import/templates:
     post:
       operationId: BulkImportController_createTemplate
@@ -2146,6 +2160,20 @@ paths:
         "200":
           description: Product updated
       summary: Update product
+      tags: *a20
+  /api/v1/products/{id}/revisions:
+    get:
+      operationId: ProductsController_getProductRevisions
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Revisions fetched
+      summary: Get product revision history
       tags: *a20
   /api/v1/media/assets:
     post:
@@ -2920,6 +2948,9 @@ components:
       type: object
       properties: {}
     CreateBulkImportJobDto:
+      type: object
+      properties: {}
+    ImportValidateDto:
       type: object
       properties: {}
     CreateBulkImportTemplateDto:

@@ -2794,6 +2794,30 @@
         ]
       }
     },
+    "/api/v1/bulk-import/validate": {
+      "post": {
+        "operationId": "BulkImportController_validateImport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportValidateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
     "/api/v1/bulk-import/templates": {
       "post": {
         "operationId": "BulkImportController_createTemplate",
@@ -3649,6 +3673,30 @@
           }
         },
         "summary": "Update product",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/api/v1/products/{id}/revisions": {
+      "get": {
+        "operationId": "ProductsController_getProductRevisions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revisions fetched"
+          }
+        },
+        "summary": "Get product revision history",
         "tags": [
           "Products"
         ]
@@ -4810,6 +4858,10 @@
         "properties": {}
       },
       "CreateBulkImportJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ImportValidateDto": {
         "type": "object",
         "properties": {}
       },

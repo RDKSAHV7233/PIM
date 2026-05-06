@@ -214,14 +214,29 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                 <input
                   type="text"
                   name="userId"
+                  id="admin-user-id"
                   placeholder="name@example.com"
                   className="rounded-md border border-slate-300 px-3 py-2"
                   required
+                  aria-required="true"
+                  aria-invalid={status === "user-error" ? "true" : undefined}
+                  aria-describedby={status === "user-error" ? "admin-user-id-error" : undefined}
                 />
+                {status === "user-error" ? (
+                  <span id="admin-user-id-error" className="text-xs text-rose-600">{errorMessage || "Unable to update workspace user."}</span>
+                ) : null}
               </label>
               <label className="grid gap-1 text-sm">
                 <span className="font-medium text-slate-700">Role</span>
-                <select name="role" defaultValue="viewer" className="rounded-md border border-slate-300 px-3 py-2">
+                <select
+                  name="role"
+                  id="admin-user-role"
+                  defaultValue="viewer"
+                  className="rounded-md border border-slate-300 px-3 py-2"
+                  aria-required="true"
+                  aria-invalid={status === "user-error" ? "true" : undefined}
+                  aria-describedby={status === "user-error" ? "admin-user-id-error" : undefined}
+                >
                   <option value="editor">Editor</option>
                   <option value="reviewer">Reviewer</option>
                   <option value="viewer">Viewer</option>

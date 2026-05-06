@@ -119,20 +119,36 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                 <input
                   type="url"
                   name="targetUrl"
+                  id="webhook-target-url"
                   required
                   className="w-full rounded-md border border-slate-200 px-3 py-2"
                   placeholder="https://example.com/webhooks/vexa-pim"
+                  aria-required="true"
+                  aria-invalid={status === "webhook-error" ? "true" : undefined}
+                  aria-describedby={status === "webhook-error" ? "webhook-url-error" : "webhook-url-hint"}
                 />
+                {status === "webhook-error" ? (
+                  <span id="webhook-url-error" className="text-xs text-rose-600">{errorMessage || "Unable to update webhook endpoint."}</span>
+                ) : (
+                  <span id="webhook-url-hint" className="text-xs text-slate-500">Must be a valid HTTPS URL.</span>
+                )}
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-slate-600">Signing secret</span>
                 <input
                   type="password"
                   name="signingSecret"
+                  id="webhook-signing-secret"
                   required
                   className="w-full rounded-md border border-slate-200 px-3 py-2"
                   placeholder="minimum 16 characters"
+                  aria-required="true"
+                  aria-invalid={status === "webhook-error" ? "true" : undefined}
+                  aria-describedby={status === "webhook-error" ? "webhook-url-error" : "webhook-secret-hint"}
                 />
+                {status !== "webhook-error" ? (
+                  <span id="webhook-secret-hint" className="text-xs text-slate-500">Minimum 16 characters.</span>
+                ) : null}
               </label>
               <div className="md:col-span-2 xl:col-span-4 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 <span>

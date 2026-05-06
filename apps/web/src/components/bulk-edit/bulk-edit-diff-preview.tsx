@@ -94,7 +94,8 @@ export function BulkEditDiffPreview({
         {requestedCount} products will be updated.
       </p>
 
-      <div className="overflow-x-auto">
+      {/* Desktop table — hidden on small screens */}
+      <div className="hidden sm:block overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="text-xs uppercase text-slate-500">
             <tr>
@@ -127,6 +128,24 @@ export function BulkEditDiffPreview({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile stacked diff cards — shown below sm breakpoint */}
+      <div className="flex flex-col space-y-3 sm:hidden">
+        {previewRows.map((product) => (
+          <div key={`mobile-${product.id}`} className="rounded-lg border border-border p-3 text-sm">
+            <p className="font-mono text-xs font-semibold text-slate-700">{product.firstSku}</p>
+            {changedFields.map((field) => (
+              <div key={`mobile-${product.id}-${field}`} className="mt-2 space-y-1">
+                <p className="text-xs font-medium text-slate-600">{FIELD_LABELS[field] ?? field}</p>
+                <div className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-500 line-through">{currentValue(product, field)}</span>
+                  <span className="text-slate-900">→ {nextValue(updates[field])}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
 
       {requestedCount > previewRows.length && (
