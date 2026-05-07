@@ -19,6 +19,7 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
+import { startBulkImportRun, uploadBulkImportRun, validateBulkImportRun } from "@/lib/api/operations";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -1459,7 +1460,25 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv or json.");
   }
 
+  const actionOptions = await resolveActionOptions(formData);
+  let linkedRunId: string | undefined;
+  if (sourceFormat === "csv" && sourceFile) {
+    const run = await uploadBulkImportRun(categoryId, sourceFile, sourceName || sourceFile.name, actionOptions);
+    const validatedRun = await validateBulkImportRun(run.id, actionOptions);
+    if (validatedRun.effectiveMode === "large") {
+      if (validatedRun.status === "preflight_ready") {
+        await startBulkImportRun(validatedRun.id, actionOptions);
+      }
+      redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
+    }
+    if (validatedRun.status !== "preflight_ready") {
+      throw new Error("Import file failed pre-validation. Fix the CSV and try again.");
+    }
+    linkedRunId = validatedRun.id;
+  }
+
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {
+    runId: linkedRunId,
     categoryId,
     sourceFormat,
     sourceName: sourceName || undefined,

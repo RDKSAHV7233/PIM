@@ -2,16 +2,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createBulkImportJobAction, processBulkImportJobAction } from "@/app/actions";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
-import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
-import type { BulkImportRun } from "@/lib/api/core";
+import type { BulkImportRun, BulkImportRunRow } from "@/lib/api/core";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
 // validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
-import { validateImportPreflight, validateRunPreflight } from "@/lib/api/imports";
-import { uploadBulkImportRun, getBulkImportRun, startBulkImportRun, getBulkImportRuns, getBulkImportRunRows } from "@/lib/api/operations";
+import { validateImportPreflight } from "@/lib/api/imports";
+import { getBulkImportRun, getBulkImportRunRows, getBulkImportRuns } from "@/lib/api/operations";
 
 // Export the preflight client type for wizard client components
 export type ImportPreflightClient = typeof validateImportPreflight;
@@ -83,7 +82,18 @@ interface OperationsImportsPageProps {
     status?: string;
     hideTestData?: string;
     bulkJobId?: string;
+    bulkRunId?: string;
   }>;
+}
+
+function normalizeCollection<T>(value: T[] | { items: T[] } | null | undefined): T[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value && Array.isArray(value.items)) {
+    return value.items;
+  }
+  return [];
 }
 
 function resolveHideTestData(value: string | undefined): boolean {
@@ -102,6 +112,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const hideTestData = resolveHideTestData(query.hideTestData);
   const selectedStatus = String(query.status ?? "").trim().toLowerCase();
   const selectedBulkJobId = String(query.bulkJobId ?? "").trim();
+  const selectedBulkRunId = String(query.bulkRunId ?? "").trim();
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const canWrite = canEditWorkspace(actorRole);
@@ -111,6 +122,9 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       getBulkImportJobs({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
     ]);
+    const runCollection = await getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader });
+    const runs = normalizeCollection<BulkImportRun>(runCollection);
+    const largeRuns = runs.filter((run) => run.effectiveMode === "large");
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
       selectedStatus.length > 0
@@ -131,6 +145,25 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRowsNeedingRepair = selectedRows.filter((row) => row.status !== "success");
     const selectedSuccessfulRows = selectedRows.filter((row) => row.status === "success");
     const selectedAttentionRows = (selectedRowCounts.failed ?? 0) + (selectedRowCounts.dead_letter ?? 0);
+    const selectedRun =
+      selectedBulkRunId
+        ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
+          (await getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader }))
+        : null;
+    const selectedRunRows = selectedBulkRunId
+      ? normalizeCollection<BulkImportRunRow>(
+          await getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader }),
+        )
+      : [];
+    const selectedRunRowCounts = selectedRunRows.reduce<Record<string, number>>((accumulator, row) => {
+      const key = String(row.status ?? "").toLowerCase() || "unknown";
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const selectedRunRowsNeedingRepair = selectedRunRows.filter((row) => row.status !== "success");
+    const selectedRunSuccessfulRows = selectedRunRows.filter((row) => row.status === "success");
+    const selectedRunProcessedRows =
+      (selectedRun?.acceptedRows ?? 0) + (selectedRun?.failedRows ?? 0) + (selectedRun?.deadLetterRows ?? 0);
 
     const statusCounts = filteredByData.reduce<Record<string, number>>((accumulator, job) => {
       const key = String(job.status ?? "").toLowerCase() || "unknown";
@@ -138,7 +171,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       return accumulator;
     }, {});
 
-  const hideToggleHref = hideTestData
+    const hideToggleHref = hideTestData
       ? "/operations/imports?hideTestData=false"
       : "/operations/imports";
     const buildImportsHref = (bulkJobId?: string) => {
@@ -151,6 +184,21 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       }
       if (bulkJobId) {
         search.set("bulkJobId", bulkJobId);
+      }
+      const queryString = search.toString();
+      return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
+    };
+
+    const buildRunHref = (bulkRunId?: string) => {
+      const search = new URLSearchParams();
+      if (selectedStatus) {
+        search.set("status", selectedStatus);
+      }
+      if (!hideTestData) {
+        search.set("hideTestData", "false");
+      }
+      if (bulkRunId) {
+        search.set("bulkRunId", bulkRunId);
       }
       const queryString = search.toString();
       return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
@@ -484,6 +532,136 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           )}
         </Card>
 
+        {largeRuns.length > 0 ? (
+          <Card aria-live="polite" aria-atomic="true">
+            <CardTitle>Large Import Runs</CardTitle>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2">Run</th>
+                    <th className="py-2">Category</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Rows</th>
+                    <th className="py-2">Batches</th>
+                    <th className="py-2">Needs Attention</th>
+                    <th className="py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {largeRuns.map((run) => {
+                    const processedRows =
+                      (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
+                    return (
+                      <tr key={run.id} className="border-t border-border">
+                        <td className="py-2 font-mono text-xs">{run.id}</td>
+                        <td className="py-2">{run.category?.path ?? run.categoryId}</td>
+                        <td className="py-2">{translateJobStatus(run.status)}</td>
+                        <td className="py-2">
+                          {processedRows}/{run.totalRows ?? 0}
+                        </td>
+                        <td className="py-2">{run.estimatedBatchCount ?? "-"}</td>
+                        <td className="py-2">{(run.failedRows ?? 0) + (run.deadLetterRows ?? 0)}</td>
+                        <td className="py-2">
+                          <Link
+                            href={buildRunHref(run.id)}
+                            className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+                          >
+                            View run
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ) : null}
+
+        {selectedBulkRunId && selectedRun ? (
+          <Card aria-live="polite" aria-atomic="true">
+            <CardTitle>Large Import Run ({selectedBulkRunId})</CardTitle>
+            <div className="mt-3 space-y-4">
+              <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                Large file mode enabled. Vexa will process this file in safe background batches.
+              </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <KpiCard label="Rows processed" value={`${selectedRunProcessedRows}/${selectedRun.totalRows ?? 0}`} />
+                <KpiCard label="Successful rows" value={selectedRun.acceptedRows ?? selectedRunSuccessfulRows.length} tone={(selectedRun.acceptedRows ?? selectedRunSuccessfulRows.length) > 0 ? "success" : "default"} />
+                <KpiCard label="Failed rows" value={selectedRun.failedRows ?? (selectedRunRowCounts.failed ?? 0)} tone={(selectedRun.failedRows ?? (selectedRunRowCounts.failed ?? 0)) > 0 ? "danger" : "success"} />
+                <KpiCard label="Dead-letter rows" value={selectedRun.deadLetterRows ?? (selectedRunRowCounts.dead_letter ?? 0)} tone={(selectedRun.deadLetterRows ?? (selectedRunRowCounts.dead_letter ?? 0)) > 0 ? "warning" : "default"} />
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <KpiCard label="Estimated batches" value={selectedRun.estimatedBatchCount ?? 0} />
+                <KpiCard label="Blocking issues" value={selectedRun.blockingIssueCount ?? 0} tone={(selectedRun.blockingIssueCount ?? 0) > 0 ? "danger" : "success"} />
+                <KpiCard label="Warnings" value={selectedRun.warningCount ?? 0} tone={(selectedRun.warningCount ?? 0) > 0 ? "warning" : "default"} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report`}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Download combined error report
+                </Link>
+                <Link
+                  href="/operations/repair"
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Open repair console
+                </Link>
+              </div>
+
+              {selectedRunRows.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  {selectedRun.status === "preflight_blocked"
+                    ? "Preflight blocked this large import run before batch processing started."
+                    : "No row-level result data is available for this large import run yet."}
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[920px] text-left text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Row</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Catalog result</th>
+                        <th className="px-3 py-2">Error</th>
+                        <th className="px-3 py-2">Attempts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedRunRows.map((row) => {
+                        const translatedError = translateError(extractErrorCode(row.errorMessage));
+                        return (
+                          <tr key={row.id} className="border-t border-slate-200">
+                            <td className="px-3 py-2.5 font-mono text-xs">{row.rowNumberGlobal ?? row.rowNumber}</td>
+                            <td className="px-3 py-2.5">{translateJobStatus(row.status)}</td>
+                            <td className="px-3 py-2.5">
+                              {row.productId ? (
+                                <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
+                                  View product
+                                </Link>
+                              ) : (
+                                <span className="text-slate-500">No product created</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-600">
+                              {row.errorMessage ? `${translatedError.title}: ${translatedError.description}` : "None"}
+                            </td>
+                            <td className="px-3 py-2.5">{row.retryCount}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </Card>
+        ) : null}
+
         {selectedBulkJobId ? (
           <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Selected Import Result ({selectedBulkJobId})</CardTitle>
@@ -589,6 +767,38 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                       </div>
                     );
                   })}
+              </div>
+            )}
+          </Card>
+        ) : null}
+
+        {selectedBulkRunId && selectedRun ? (
+          <Card aria-live="polite" aria-atomic="true">
+            <CardTitle>Unified Row Repair Console ({selectedBulkRunId})</CardTitle>
+            {selectedRunRowsNeedingRepair.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No rows require repair for this large import run.</p>
+            ) : (
+              <div className="space-y-3">
+                {selectedRunRowsNeedingRepair.map((row) => {
+                  const translatedError = translateError(extractErrorCode(row.errorMessage));
+                  return (
+                    <div key={row.id} className="rounded-lg border border-slate-200 p-3">
+                      <p className="text-sm font-medium text-slate-900">
+                        Row {row.rowNumberGlobal ?? row.rowNumber} | {translateJobStatus(row.status)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {translatedError.title} - {translatedError.description}
+                      </p>
+                      {canWrite ? (
+                        <div className="mt-3">
+                          <RowRepairForm row={row} jobId={row.jobId} />
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">This action is read-only for your role.</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>

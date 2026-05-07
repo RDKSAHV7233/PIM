@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { BulkImportJobStatus, BulkImportRowStatus, Prisma, RecordStatus } from "@prisma/client";
+import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
@@ -135,6 +135,27 @@ export class BulkImportService {
 
   suggestMapping(headers: string[]) {
     return this.suggestMappingFromHeaders(headers);
+  }
+
+  parseCsvLineForImport(line: string) {
+    return this.parseCsvLine(line);
+  }
+
+  normalizeCanonicalPayloadForImport(
+    input: Record<string, unknown>,
+    mapping: Record<string, string>,
+  ): CanonicalRowPayload {
+    return this.normalizeCanonicalPayload(input, mapping);
+  }
+
+  async processSystemManagedRow(jobId: string, rowId: string) {
+    const job = await this.requireJob(jobId);
+    const row = await this.requireRow(jobId, rowId);
+    if (row.status === BulkImportRowStatus.success) {
+      return row;
+    }
+    await this.processRow(job, row);
+    return this.requireRow(jobId, rowId);
   }
 
   async createTemplate(dto: CreateBulkImportTemplateDto, actor?: PolicyActor) {
@@ -333,6 +354,10 @@ export class BulkImportService {
   async createJob(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
     await this.requireCategory(dto.categoryId);
+    const linkedRunId = String(dto.runId ?? "").trim() || null;
+    if (linkedRunId) {
+      await this.assertLinkedStandardRun(linkedRunId, dto.categoryId, actor);
+    }
 
     const sourceRows = (() => {
       if (dto.sourceFormat === "csv") {
@@ -372,6 +397,8 @@ export class BulkImportService {
       const job = await tx.bulkImportJob.create({
         data: {
           categoryId: dto.categoryId,
+          runId: linkedRunId,
+          jobRole: "standard",
           sourceFormat: dto.sourceFormat,
           sourceName: dto.sourceName?.trim() || null,
           mapping: suggestion.mapping as unknown as Prisma.JsonObject,
@@ -385,7 +412,10 @@ export class BulkImportService {
       await tx.bulkImportRow.createMany({
         data: normalizedRows.map((row, index) => ({
           jobId: job.id,
+          runId: linkedRunId,
           rowNumber: index + 1,
+          rowNumberGlobal: linkedRunId ? index + 1 : null,
+          rowNumberInBatch: linkedRunId ? index + 1 : null,
           payload: row as Prisma.JsonObject,
           status: BulkImportRowStatus.queued,
         })),
@@ -399,9 +429,10 @@ export class BulkImportService {
   async listJobs(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {
     const where = status
       ? {
+          runId: null,
           status: this.parseJobStatus(status),
         }
-      : undefined;
+      : { runId: null as null };
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
       const token = decodeCursorToken(pagination?.cursor);
@@ -917,6 +948,75 @@ export class BulkImportService {
         await this.notificationsService.emitImportStatus(jobId, "dead_letter");
       }
     }
+
+    if (updated.runId) {
+      await this.syncLinkedRunFromStandardJob(updated);
+    }
+  }
+
+  private async assertLinkedStandardRun(runId: string, categoryId: string, actor?: PolicyActor) {
+    const run = await this.prisma.tenant().bulkImportRun.findUnique({
+      where: { id: runId },
+      select: {
+        id: true,
+        categoryId: true,
+        status: true,
+        effectiveMode: true,
+      },
+    });
+    if (!run) {
+      throw new NotFoundException("Bulk import run not found");
+    }
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", run.categoryId, "BulkImportRun", runId);
+    if (run.categoryId !== categoryId) {
+      throw new BadRequestException("Bulk import run category does not match the requested job category.");
+    }
+    if (run.effectiveMode && run.effectiveMode !== "standard") {
+      throw new BadRequestException("Only standard-mode bulk import runs can be linked to standard jobs.");
+    }
+    if (run.status !== BulkImportRunStatus.preflight_ready) {
+      throw new BadRequestException("Bulk import run must complete preflight before creating a standard job.");
+    }
+  }
+
+  private async syncLinkedRunFromStandardJob(job: {
+    runId: string | null;
+    totalRows: number;
+    processedRows: number;
+    successRows: number;
+    failedRows: number;
+    deadLetterRows: number;
+    status: BulkImportJobStatus;
+  }) {
+    if (!job.runId) {
+      return;
+    }
+    let runStatus: BulkImportRunStatus;
+    if (job.status === BulkImportJobStatus.failed) {
+      runStatus = BulkImportRunStatus.failed;
+    } else if (job.status === BulkImportJobStatus.completed) {
+      runStatus =
+        job.failedRows > 0 || job.deadLetterRows > 0
+          ? BulkImportRunStatus.repair_required
+          : BulkImportRunStatus.completed;
+    } else if (job.status === BulkImportJobStatus.dead_letter) {
+      runStatus = BulkImportRunStatus.repair_required;
+    } else {
+      runStatus = BulkImportRunStatus.processing;
+    }
+
+    await this.prisma.tenant().bulkImportRun.update({
+      where: { id: job.runId },
+      data: {
+        effectiveMode: "standard",
+        estimatedBatchCount: 1,
+        totalRows: job.totalRows,
+        acceptedRows: job.successRows,
+        failedRows: job.failedRows,
+        deadLetterRows: job.deadLetterRows,
+        status: runStatus,
+      },
+    });
   }
 
   private suggestMappingFromHeaders(headersInput: string[], provided?: Record<string, string>) {

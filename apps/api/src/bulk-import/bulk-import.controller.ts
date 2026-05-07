@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Post, Query, Req, Res, UseInterceptors, UploadedFile } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query, Req, Res, UseInterceptors, UploadedFile } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
@@ -255,7 +255,7 @@ export class BulkImportController {
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     if (!file) {
-      throw new Error("sourceFile is required");
+      throw new BadRequestException("sourceFile is required");
     }
     return this.bulkImportRunService.uploadRun(
       dto,

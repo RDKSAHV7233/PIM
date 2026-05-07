@@ -18,6 +18,19 @@ const ERROR_REPORT_ROUTE = path.join(
   "error-report",
   "route.ts",
 );
+const RUN_ERROR_REPORT_ROUTE = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "api",
+  "bulk-import",
+  "runs",
+  "[runId]",
+  "error-report",
+  "route.ts",
+);
 const BULK_IMPORT_CONTROLLER = path.join(REPO_ROOT, "apps", "api", "src", "bulk-import", "bulk-import.controller.ts");
 
 function assert(condition, message) {
@@ -29,6 +42,7 @@ function assert(condition, message) {
 function run() {
   const pageSource = fs.readFileSync(IMPORTS_PAGE, "utf8");
   const routeSource = fs.readFileSync(ERROR_REPORT_ROUTE, "utf8");
+  const runRouteSource = fs.readFileSync(RUN_ERROR_REPORT_ROUTE, "utf8");
   const controllerSource = fs.readFileSync(BULK_IMPORT_CONTROLLER, "utf8");
 
   assert(
@@ -65,6 +79,18 @@ function run() {
     "Operations imports must keep failed-row repair visible for selected jobs.",
   );
   assert(
+    pageSource.includes("<CardTitle>Large Import Run") &&
+      pageSource.includes("Large file mode enabled. Vexa will process this file in safe background batches.") &&
+      pageSource.includes("Download combined error report") &&
+      pageSource.includes("Unified Row Repair Console"),
+    "Operations imports must expose a parent-run summary and repair path for large import mode.",
+  );
+  assert(
+    pageSource.includes("/api/bulk-import/runs/${encodeURIComponent(selectedBulkRunId)}/error-report") &&
+      pageSource.includes("<RowRepairForm row={row} jobId={row.jobId} />"),
+    "Large import mode must expose a combined error-report proxy and repair rows by internal batch job id.",
+  );
+  assert(
     controllerSource.includes('@Get("jobs/:id/error-report")') &&
       controllerSource.includes('attachment; filename="bulk-import-${jobId}-errors.csv"'),
     "Backend bulk import error-report route must exist before exposing the web download link.",
@@ -75,6 +101,13 @@ function run() {
       routeSource.includes('Accept: "text/csv"') &&
       routeSource.includes('"Content-Disposition"'),
     "Web error-report route must proxy the authenticated backend CSV without exposing credentials.",
+  );
+  assert(
+    runRouteSource.includes("resolveBearerToken(request)") &&
+      runRouteSource.includes("/bulk-import/runs/${encodeURIComponent(runId)}/error-report") &&
+      runRouteSource.includes('Accept: "text/csv"') &&
+      runRouteSource.includes('"Content-Disposition"'),
+    "Large-run error-report route must proxy the authenticated backend CSV without exposing credentials.",
   );
 
   console.log(
@@ -88,6 +121,8 @@ function run() {
           "bulk_import_error_report_download_is_exposed",
           "bulk_import_failed_rows_stay_repairable",
           "bulk_import_error_report_proxy_is_authenticated",
+          "bulk_import_large_run_summary_and_repair_are_visible",
+          "bulk_import_large_run_error_report_proxy_is_authenticated",
         ],
         checkedAt: new Date().toISOString(),
       },

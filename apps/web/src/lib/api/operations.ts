@@ -315,7 +315,7 @@ export async function getBulkImportRuns(
   if (status) params.set("status", status);
   if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
-  return fetchJson<PaginatedResponse<BulkImportRun>>(
+  return fetchJson<BulkImportRun[] | PaginatedResponse<BulkImportRun>>(
     `/bulk-import/runs${qs ? `?${qs}` : ""}`,
     undefined,
     options,
@@ -344,7 +344,7 @@ export async function getBulkImportRunRows(
   if (status) params.set("status", status);
   if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
-  return fetchJson<PaginatedResponse<BulkImportRunRow>>(
+  return fetchJson<BulkImportRunRow[] | PaginatedResponse<BulkImportRunRow>>(
     `/bulk-import/runs/${encodeURIComponent(runId)}/rows${qs ? `?${qs}` : ""}`,
     undefined,
     options,

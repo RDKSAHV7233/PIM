@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { BulkImportRunStatus, BulkImportRowStatus, BulkImportJobStatus, Prisma, RecordStatus } from "@prisma/client";
+import { BulkImportRunStatus, BulkImportRowStatus, BulkImportJobStatus, Prisma } from "@prisma/client";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { PrismaService } from "../prisma/prisma.service";
@@ -219,7 +219,17 @@ export class BulkImportRunService implements OnModuleInit {
       let blockingIssueCount = 0;
       let warningCount = 0;
       const sampleIssues: Array<{ rowNumber: number; issues: string[]; severity: string }> = [];
+      const blockedRowNumbers = new Set<number>();
       const skuCodesSeen = new Map<string, number[]>();
+      const brandsSeen = new Set<string>();
+      let containsWorkflowStatus = false;
+      let mappingSuggestion:
+        | {
+            mapping: Record<string, string>;
+            unmappedFields: string[];
+            unusedHeaders: string[];
+          }
+        | null = null;
 
       for await (const line of rl) {
         const trimmed = line.trim();
@@ -228,23 +238,33 @@ export class BulkImportRunService implements OnModuleInit {
         }
 
         if (lineNumber === 0) {
-          headers = this.parseCsvLine(trimmed);
+          headers = this.bulkImportService.parseCsvLineForImport(trimmed);
+          mappingSuggestion =
+            headers.length > 0
+              ? this.bulkImportService.suggestMapping(headers)
+              : { mapping: {}, unmappedFields: [], unusedHeaders: [] };
           lineNumber++;
           continue;
         }
 
         totalRows++;
-        const values = this.parseCsvLine(trimmed);
+        const values = this.bulkImportService.parseCsvLineForImport(trimmed);
         const row: Record<string, unknown> = {};
         headers.forEach((header, idx) => {
           row[header] = values[idx] ?? "";
         });
 
+        const normalizedRow = this.bulkImportService.normalizeCanonicalPayloadForImport(
+          row,
+          mappingSuggestion?.mapping ?? {},
+        );
+
         const rowIssues: string[] = [];
-        const title = typeof row.title === "string" ? row.title.trim() : String(row.title ?? "").trim();
+        const title = typeof normalizedRow.title === "string" ? normalizedRow.title.trim() : "";
         if (!title) {
           rowIssues.push("Missing required field: title");
           blockingIssueCount++;
+          blockedRowNumbers.add(totalRows);
         }
 
         const skuCode = typeof row.skuCode === "string" ? row.skuCode.trim() : "";
@@ -252,6 +272,14 @@ export class BulkImportRunService implements OnModuleInit {
           const existing = skuCodesSeen.get(skuCode) ?? [];
           existing.push(totalRows);
           skuCodesSeen.set(skuCode, existing);
+        }
+
+        const brand = typeof normalizedRow.brand === "string" ? normalizedRow.brand.trim() : "";
+        if (brand) {
+          brandsSeen.add(brand);
+        }
+        if (typeof normalizedRow.status === "string" && normalizedRow.status.trim()) {
+          containsWorkflowStatus = true;
         }
 
         if (rowIssues.length > 0 && sampleIssues.length < 10) {
@@ -267,10 +295,40 @@ export class BulkImportRunService implements OnModuleInit {
         if (rowNumbers.length > 1) {
           duplicateCount++;
           blockingIssueCount += rowNumbers.length - 1;
+          rowNumbers.forEach((rowNumber) => blockedRowNumbers.add(rowNumber));
           if (sampleIssues.length < 10) {
             sampleIssues.push({
               rowNumber: rowNumbers[0],
               issues: [`Duplicate skuCode across ${rowNumbers.length} rows`],
+              severity: "blocking",
+            });
+          }
+        }
+      }
+
+      let collisionCount = 0;
+      const skuCodeValues = [...skuCodesSeen.keys()];
+      for (let index = 0; index < skuCodeValues.length; index += 1000) {
+        const chunk = skuCodeValues.slice(index, index + 1000);
+        if (chunk.length === 0) {
+          continue;
+        }
+        const existingVariants = await this.prisma.tenant().variant.findMany({
+          where: { skuCode: { in: chunk } },
+          select: { skuCode: true },
+        });
+        for (const variant of existingVariants) {
+          const rowNumbers = skuCodesSeen.get(variant.skuCode) ?? [];
+          if (rowNumbers.length === 0) {
+            continue;
+          }
+          collisionCount += rowNumbers.length;
+          blockingIssueCount += rowNumbers.length;
+          rowNumbers.forEach((rowNumber) => blockedRowNumbers.add(rowNumber));
+          if (sampleIssues.length < 10) {
+            sampleIssues.push({
+              rowNumber: rowNumbers[0],
+              issues: [`skuCode already exists in catalog: ${variant.skuCode}`],
               severity: "blocking",
             });
           }
@@ -282,6 +340,39 @@ export class BulkImportRunService implements OnModuleInit {
       if (totalRows > LARGE_IMPORT_ROW_CEILING) {
         mvpCeilingExceeded = true;
         blockingIssueCount++;
+        if (sampleIssues.length < 10) {
+          sampleIssues.push({
+            rowNumber: LARGE_IMPORT_ROW_CEILING + 1,
+            issues: [`Large import mode supports at most ${LARGE_IMPORT_ROW_CEILING} CSV rows in MVP.`],
+            severity: "blocking",
+          });
+        }
+      }
+
+      if (headers.length === 0 || totalRows === 0) {
+        blockingIssueCount++;
+        if (sampleIssues.length < 10) {
+          sampleIssues.push({
+            rowNumber: 0,
+            issues: ["CSV must include a header row and at least one data row."],
+            severity: "blocking",
+          });
+        }
+      }
+
+      if (containsWorkflowStatus) {
+        await this.accessPolicy.assertBulkImportAllowed(actor ?? {}, {
+          fields: ["status"],
+          resourceId: runId,
+        });
+      }
+      for (const brand of brandsSeen) {
+        await this.accessPolicy.assertRequestedProductScopeAllowed(actor ?? {}, "import", {
+          resource: "BulkImportRun",
+          resourceId: runId,
+          categoryId: run.categoryId,
+          brand,
+        });
       }
 
       // Determine effective mode
@@ -304,17 +395,16 @@ export class BulkImportRunService implements OnModuleInit {
         estimatedBatchCount = Math.ceil(totalRows / LARGE_IMPORT_BATCH_SIZE);
       }
 
-      const mappingSuggestion = headers.length > 0
-        ? this.bulkImportService.suggestMapping(headers)
-        : { mapping: {}, unmappedFields: [], unusedHeaders: [] };
+      const acceptedRows = Math.max(0, totalRows - blockedRowNumbers.size);
+      const failedRows = blockedRowNumbers.size;
 
       const preflightSummary = {
-        mapping: mappingSuggestion.mapping,
-        unmappedFields: mappingSuggestion.unmappedFields,
-        unusedHeaders: mappingSuggestion.unusedHeaders,
+        mapping: mappingSuggestion?.mapping ?? {},
+        unmappedFields: mappingSuggestion?.unmappedFields ?? [],
+        unusedHeaders: mappingSuggestion?.unusedHeaders ?? [],
         sampleIssues,
-        canImport: blockingIssueCount === 0,
-        skuCodeSummary: duplicateCount > 0 ? { duplicateCount, collisionCount: 0 } : null,
+        canImport: blockingIssueCount === 0 && totalRows > 0,
+        skuCodeSummary: duplicateCount > 0 || collisionCount > 0 ? { duplicateCount, collisionCount } : null,
         mvpCeilingExceeded,
       };
 
@@ -323,6 +413,8 @@ export class BulkImportRunService implements OnModuleInit {
         data: {
           status: newStatus,
           totalRows,
+          acceptedRows,
+          failedRows,
           blockingIssueCount,
           warningCount,
           estimatedBatchCount,
@@ -336,7 +428,12 @@ export class BulkImportRunService implements OnModuleInit {
     } catch (error: unknown) {
       await this.prisma.tenant().bulkImportRun.update({
         where: { id: runId },
-        data: { status: BulkImportRunStatus.failed },
+        data: {
+          status:
+            error instanceof BadRequestException || error instanceof ForbiddenException
+              ? BulkImportRunStatus.preflight_blocked
+              : BulkImportRunStatus.failed,
+        },
       });
       throw error;
     }
@@ -450,7 +547,7 @@ export class BulkImportRunService implements OnModuleInit {
       const page = hasNext ? rows.slice(0, limit) : rows;
       const last = page[page.length - 1];
 
-      return {
+      return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, {
         items: page,
         limit,
         nextCursor:
@@ -460,17 +557,17 @@ export class BulkImportRunService implements OnModuleInit {
                 id: last.id,
               })
             : null,
-      };
+      });
     }
 
-    return this.prisma.tenant().bulkImportRow.findMany({
+    return this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, await this.prisma.tenant().bulkImportRow.findMany({
       where: {
         runId,
         ...(statusFilter ? { status: statusFilter } : {}),
       },
       orderBy: [{ rowNumberGlobal: "asc" }, { rowNumber: "asc" }],
       take: 200,
-    });
+    }));
   }
 
   async buildRunErrorReportCsv(runId: string, actor?: PolicyActor): Promise<string> {
@@ -491,14 +588,15 @@ export class BulkImportRunService implements OnModuleInit {
     ];
 
     for (const row of rows) {
+      const visibleRow = this.accessPolicy.applyBulkImportRowVisibility(actor ?? {}, row) as typeof row;
       lines.push(
         [
-          String(row.rowNumber),
-          String(row.rowNumberGlobal ?? ""),
-          String(row.status),
-          String(row.retryCount),
-          row.errorMessage ?? "",
-          row.productId ?? "",
+          String(visibleRow.rowNumber),
+          String(visibleRow.rowNumberGlobal ?? ""),
+          String(visibleRow.status),
+          String(visibleRow.retryCount),
+          visibleRow.errorMessage ?? "",
+          visibleRow.productId ?? "",
         ]
           .map(this.toCsvCell)
           .join(","),
@@ -534,6 +632,13 @@ export class BulkImportRunService implements OnModuleInit {
 
     const rowStart = job.rowStart ?? (batchIndex * LARGE_IMPORT_BATCH_SIZE + 1);
     const rowEnd = job.rowEnd ?? ((batchIndex + 1) * LARGE_IMPORT_BATCH_SIZE);
+    const runPreflight = run.preflightSummary && typeof run.preflightSummary === "object"
+      ? (run.preflightSummary as Record<string, unknown>)
+      : {};
+    const runMapping =
+      runPreflight.mapping && typeof runPreflight.mapping === "object" && !Array.isArray(runPreflight.mapping)
+        ? (runPreflight.mapping as Record<string, string>)
+        : {};
 
     try {
       const stream = await this.storageService.readStagedCsvStream(run.sourceFileKey);
@@ -546,14 +651,13 @@ export class BulkImportRunService implements OnModuleInit {
       let lineNumber = 0;
       let dataRowNumber = 0;
       let headers: string[] = [];
-      let rowsProcessed = 0;
 
       for await (const line of rl) {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
         if (lineNumber === 0) {
-          headers = this.parseCsvLine(trimmed);
+          headers = this.bulkImportService.parseCsvLineForImport(trimmed);
           lineNumber++;
           continue;
         }
@@ -568,16 +672,16 @@ export class BulkImportRunService implements OnModuleInit {
           break;
         }
 
-        const values = this.parseCsvLine(trimmed);
+        const values = this.bulkImportService.parseCsvLineForImport(trimmed);
         const rawRow: Record<string, unknown> = {};
         headers.forEach((header, idx) => {
           rawRow[header] = values[idx] ?? "";
         });
+        const normalizedRow = this.bulkImportService.normalizeCanonicalPayloadForImport(rawRow, runMapping);
 
         const rowNumberInBatch = dataRowNumber - rowStart + 1;
         const rowId = randomUUID();
 
-        // Mark row as processing
         await this.prisma.tenant().bulkImportRow.create({
           data: {
             id: rowId,
@@ -586,14 +690,12 @@ export class BulkImportRunService implements OnModuleInit {
             rowNumber: rowNumberInBatch,
             rowNumberGlobal: dataRowNumber,
             rowNumberInBatch,
-            payload: rawRow as Prisma.JsonObject,
-            status: BulkImportRowStatus.processing,
-            lastAttemptAt: new Date(),
+            payload: normalizedRow as Prisma.JsonObject,
+            status: BulkImportRowStatus.queued,
           },
         });
 
-        await this.processBatchRow(job, rowId, rawRow, dataRowNumber);
-        rowsProcessed++;
+        await this.bulkImportService.processSystemManagedRow(jobId, rowId);
         lineNumber++;
       }
 
@@ -608,75 +710,6 @@ export class BulkImportRunService implements OnModuleInit {
         data: { status: BulkImportJobStatus.failed },
       });
       await this.refreshRunCounters(runId);
-    }
-  }
-
-  private async processBatchRow(
-    job: { id: string; categoryId: string; maxRetries: number },
-    rowId: string,
-    rawRow: Record<string, unknown>,
-    rowNumberGlobal: number,
-  ) {
-    try {
-      const title = typeof rawRow.title === "string" ? rawRow.title.trim() : String(rawRow.title ?? "").trim();
-      if (!title) {
-        throw new BadRequestException("title is required");
-      }
-
-      const gstRateRaw = rawRow.gstRate !== undefined ? Number(rawRow.gstRate) : undefined;
-      const gstRate = gstRateRaw !== undefined && Number.isFinite(gstRateRaw) ? gstRateRaw : null;
-      const attributesRaw = rawRow.attributes;
-      let attributes: Record<string, unknown> = {};
-      if (attributesRaw && typeof attributesRaw === "object" && !Array.isArray(attributesRaw)) {
-        attributes = attributesRaw as Record<string, unknown>;
-      } else if (typeof attributesRaw === "string" && attributesRaw.trim()) {
-        try {
-          const parsed = JSON.parse(attributesRaw);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            attributes = parsed as Record<string, unknown>;
-          }
-        } catch {
-          // ignore parse errors, use empty attributes
-        }
-      }
-
-      const product = await this.prisma.tenant().product.create({
-        data: {
-          title,
-          description: typeof rawRow.description === "string" ? rawRow.description.trim() : "",
-          brand: typeof rawRow.brand === "string" ? rawRow.brand.trim() : "",
-          categoryId: job.categoryId,
-          hsnCode: typeof rawRow.hsnCode === "string" && rawRow.hsnCode.trim() ? rawRow.hsnCode.trim() : null,
-          gstRate,
-          attributes: attributes as Prisma.JsonObject,
-          status: RecordStatus.draft,
-        },
-      });
-
-      await this.prisma.tenant().bulkImportRow.update({
-        where: { id: rowId },
-        data: {
-          status: BulkImportRowStatus.success,
-          errorMessage: null,
-          productId: product.id,
-        },
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Row processing failed.";
-      const row = await this.prisma.tenant().bulkImportRow.findUnique({
-        where: { id: rowId },
-        select: { retryCount: true },
-      });
-      const retryCount = (row?.retryCount ?? 0) + 1;
-
-      await this.prisma.tenant().bulkImportRow.update({
-        where: { id: rowId },
-        data: {
-          status: retryCount >= job.maxRetries ? BulkImportRowStatus.dead_letter : BulkImportRowStatus.failed,
-          retryCount,
-          errorMessage: message,
-        },
-      });
     }
   }
 
@@ -726,14 +759,16 @@ export class BulkImportRunService implements OnModuleInit {
     let totalFailed = 0;
     let totalDead = 0;
     let pendingJobs = 0;
+    let failedJobs = 0;
 
     for (const job of jobs) {
       totalSuccess += job.successRows;
       totalFailed += job.failedRows;
       totalDead += job.deadLetterRows;
-      if (
+      if (job.status === BulkImportJobStatus.failed) {
+        failedJobs++;
+      } else if (
         job.status !== BulkImportJobStatus.completed &&
-        job.status !== BulkImportJobStatus.failed &&
         job.status !== BulkImportJobStatus.dead_letter
       ) {
         pendingJobs++;
@@ -741,7 +776,9 @@ export class BulkImportRunService implements OnModuleInit {
     }
 
     let runStatus: BulkImportRunStatus;
-    if (pendingJobs > 0) {
+    if (failedJobs > 0) {
+      runStatus = BulkImportRunStatus.failed;
+    } else if (pendingJobs > 0) {
       runStatus = BulkImportRunStatus.processing;
     } else if (totalDead > 0 || totalFailed > 0) {
       runStatus = BulkImportRunStatus.repair_required;

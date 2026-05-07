@@ -15,6 +15,10 @@ import {
 const SOURCE_FORMATS = ["csv", "json"] as const;
 
 export class CreateBulkImportJobDto {
+  @IsOptional()
+  @IsString()
+  runId?: string;
+
   @IsString()
   categoryId!: string;
 
