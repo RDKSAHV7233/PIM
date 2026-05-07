@@ -207,6 +207,21 @@ function runCommand(command, args, options) {
   }
 }
 
+function runCommandCapture(command, args, options) {
+  const result = childProcess.spawnSync(command, args, {
+    cwd: options.cwd,
+    env: options.env,
+    encoding: "utf8",
+  });
+
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    error: result.error ?? null,
+  };
+}
+
 function isRetryableRailwayDeployError(error) {
   const combined = [
     error instanceof Error ? error.message : String(error),
@@ -265,6 +280,39 @@ function runDeployCommandWithRetry(command, options) {
   }
 }
 
+function emitRailwayServiceDiscoveryHint(config, env = process.env) {
+  const linkResult = runCommandCapture(
+    config.railwayBin,
+    ["link", "--project", config.projectId, "--environment", config.environmentName, "--json"],
+    { cwd: config.repoRoot, env },
+  );
+
+  if (linkResult.error || linkResult.status !== 0) {
+    console.error("[railway-deploy] Railway service discovery could not link the project/environment.");
+    if (linkResult.stdout) {
+      process.stdout.write(linkResult.stdout);
+    }
+    if (linkResult.stderr) {
+      process.stderr.write(linkResult.stderr);
+    }
+    return;
+  }
+
+  const statusResult = runCommandCapture(
+    config.railwayBin,
+    ["service", "status", "--all", "--environment", config.environmentName, "--json"],
+    { cwd: config.repoRoot, env },
+  );
+
+  if (statusResult.stdout) {
+    console.error("[railway-deploy] Railway service discovery output:");
+    process.stdout.write(statusResult.stdout);
+  }
+  if (statusResult.stderr) {
+    process.stderr.write(statusResult.stderr);
+  }
+}
+
 function emitActionableDeployHint(error, config) {
   const combined = [
     error instanceof Error ? error.message : String(error),
@@ -287,6 +335,7 @@ function emitActionableDeployHint(error, config) {
     console.error(
       `[railway-deploy] Railway could resolve project '${config.projectId}' but none of the configured service targets matched. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
     );
+    emitRailwayServiceDiscoveryHint(config, process.env);
   }
 }
 
