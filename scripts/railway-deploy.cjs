@@ -29,8 +29,8 @@ function requireOneOfEnv(names, env = process.env) {
 
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
-  const apiServiceTarget = requireOneOfEnv(["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], env);
-  const webServiceTarget = requireOneOfEnv(["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], env);
+  const apiServiceTarget = requireOneOfEnv(["RAILWAY_API_SERVICE_ID", "RAILWAY_API_SERVICE"], env);
+  const webServiceTarget = requireOneOfEnv(["RAILWAY_WEB_SERVICE_ID", "RAILWAY_WEB_SERVICE"], env);
   const environmentName = String(env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
   const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".tmp/railway-web-service").trim());
