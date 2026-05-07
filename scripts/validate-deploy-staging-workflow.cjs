@@ -96,7 +96,7 @@ function main() {
   requireStepOrder(steps, "Install Railway CLI", "Deploy to staging");
 
   const deployStep = requireStep(steps, "Deploy to staging");
-  requireEnvVar(deployStep, "RAILWAY_TOKEN", "Deploy to staging");
+  requireAnyEnvVar(deployStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");

@@ -37,6 +37,12 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   const railwayBin = String(env.RAILWAY_CLI_BIN ?? "railway").trim() || "railway";
   const deployRetries = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRIES ?? "3"), 10);
   const deployRetryDelayMs = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRY_DELAY_MS ?? "5000"), 10);
+  const railwayToken = optionalEnv("RAILWAY_TOKEN", env);
+  const railwayApiToken = optionalEnv("RAILWAY_API_TOKEN", env);
+
+  if (!railwayToken && !railwayApiToken) {
+    throw new Error("Missing Railway credentials: set RAILWAY_TOKEN (project token) or RAILWAY_API_TOKEN (account/workspace token).");
+  }
 
   return {
     repoRoot,
@@ -226,6 +232,27 @@ function runDeployCommandWithRetry(command, options) {
   }
 }
 
+function emitActionableDeployHint(error, config) {
+  const combined = [
+    error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.stdout ?? "") : "",
+    error && typeof error === "object" ? String(error.stderr ?? "") : "",
+    error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+
+  if (combined.includes("project not found")) {
+    console.error(
+      `[railway-deploy] Railway could not resolve project '${config.projectId}'. Verify that the active token has access to the project and matches the correct token type: use RAILWAY_TOKEN for a project token or RAILWAY_API_TOKEN for an account/workspace token.`,
+    );
+  } else if (combined.includes("unauthorized")) {
+    console.error(
+      "[railway-deploy] Railway authentication failed. Verify the token has not expired/revoked and is scoped to the target project or workspace.",
+    );
+  }
+}
+
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
@@ -288,6 +315,12 @@ if (require.main === module) {
   try {
     main(process.env);
   } catch (error) {
+    try {
+      const config = resolveConfig(process.env);
+      emitActionableDeployHint(error, config);
+    } catch {
+      // Ignore secondary config-resolution failures and print the primary error below.
+    }
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
