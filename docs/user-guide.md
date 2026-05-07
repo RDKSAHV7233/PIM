@@ -54,3 +54,19 @@ Use Quality pages to review completeness, issue inbox items, approval queues, re
 
 Use Operations pages for bulk imports, job visibility, bulk edit, and repair actions. Long-running marketplace work is processed by queue workers; staging and production require BullMQ.
 
+Current import boundary:
+
+- Standard mode:
+  - CSV or JSON
+  - up to `10,000` rows
+  - uses the existing bulk import job flow
+- Large import mode:
+  - CSV only
+  - `10,001` to `30,000` rows
+  - automatically stages a parent import run with internal background batches
+  - shows one run, one progress view, one repair surface, and one combined error report
+- Out of scope today:
+  - `>30,000` rows
+  - `.xlsx` / `.xls`
+  - direct browser-to-object-storage upload
+

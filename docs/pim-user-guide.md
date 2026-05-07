@@ -23,7 +23,7 @@ In day-to-day use, teams can:
 1. Create and edit products and variants.
 2. Organize the catalog with categories and category-specific attributes.
 3. Upload and validate product media.
-4. Import products in bulk from CSV, JSON, and spreadsheet files.
+4. Import products in bulk from CSV and JSON files, including staged large CSV imports up to 30,000 rows.
 5. Run bulk edits across many products.
 6. Review quality issues, completeness, and approval queues.
 7. Install channel connectors, configure mappings, and queue channel export or publish jobs.
@@ -568,8 +568,6 @@ What the page supports today:
 Accepted file types:
 1. `.csv`
 2. `.json`
-3. `.xlsx`
-4. `.xls`
 
 Canonical fields for import:
 1. `title`
@@ -590,11 +588,17 @@ Steps:
 2. Download a sample file if needed
 3. Choose `Category`
 4. Choose `Source File`
-5. Review or adjust `Chunk Size`
+5. Review or adjust `Chunk Size` for standard imports up to `10,000` rows
 6. Review or adjust `Max Retries`
 7. Click `Upload Import File`
-8. In `Import Jobs`, click `Start import` for queued jobs
-9. If rows fail, open `View rows` and use `Save and retry this row` in the repair console
+8. If the CSV is `10,001` to `30,000` rows, Vexa automatically enables `Large file mode` and processes it in internal `1,000`-row background batches
+9. In `Import Jobs`, click `Start import` for queued standard jobs, or open the parent run for large imports
+10. If rows fail, open `View rows` and use `Save and retry this row` in the repair console
+
+Large import mode notes:
+1. Large import mode is CSV-only in the current product.
+2. Files above `30,000` rows are blocked in the MVP.
+3. Child batches are internal; the operator sees one parent run, one progress view, one repair queue, and one combined error report.
 
 ### B. Export or publish to a channel
 

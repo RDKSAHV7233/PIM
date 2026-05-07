@@ -7,8 +7,11 @@ const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
 
 function resolveDatabaseUrl(fileEnv) {
-  const localDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/pim1?schema=public";
+  const localDatabaseUrl =
+    process.env.PLAYWRIGHT_DATABASE_URL ||
+    "postgresql://postgres:postgres@localhost:5432/pim1?schema=playwright_e2e";
   const resolved = String(
+    process.env.PLAYWRIGHT_DATABASE_URL ||
     process.env.DATABASE_URL_POOLED ||
       process.env.DATABASE_URL_DIRECT ||
       process.env.DATABASE_URL ||
@@ -64,6 +67,7 @@ function loadEnvFile(filePath) {
 
 const fileEnv = loadEnvFile(envFile);
 const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
+const usingPlaywrightFallbackDatabase = /schema=playwright_e2e/i.test(databaseUrl);
 const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
 const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const identityDirectory =
@@ -96,6 +100,29 @@ const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/api"], {
 
 if (build.status !== 0) {
   process.exit(build.status ?? 1);
+}
+
+const schemaSync = spawnSync(
+  "npx",
+  usingPlaywrightFallbackDatabase
+    ? ["prisma", "db", "push", "--schema", "packages/db/prisma/schema.prisma", "--skip-generate", "--accept-data-loss"]
+    : ["prisma", "migrate", "deploy", "--schema", "packages/db/prisma/schema.prisma"],
+  {
+    cwd: root,
+    shell: true,
+    stdio: "inherit",
+    env: {
+      ...fileEnv,
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      DATABASE_URL_POOLED: databaseUrl,
+      DATABASE_URL_DIRECT: databaseUrl,
+    },
+  },
+);
+
+if (schemaSync.status !== 0) {
+  process.exit(schemaSync.status ?? 1);
 }
 
 const env = {

@@ -6,7 +6,7 @@ const {
   deleteCategory,
   loginViaUi,
   uniqueName,
-} = require("./helpers/tej-pim.cjs");
+} = require("./helpers/vexa-pim.cjs");
 
 const DEFAULT_MAPPING = {
   title: "title",
@@ -14,7 +14,6 @@ const DEFAULT_MAPPING = {
   brand: "brand",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
-  status: "status",
   attributes: "attributes",
 };
 
@@ -48,7 +47,7 @@ test("editor sees pending feedback while uploading and starting an import", asyn
 
   try {
     await loginViaUi(page, "editor");
-    await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
+    await page.goto("/operations/imports?hideTestData=false", { waitUntil: "domcontentloaded" });
 
     const uploadForm = page.locator("form", {
       has: page.locator('input[name="sourceFile"]'),
@@ -56,8 +55,8 @@ test("editor sees pending feedback while uploading and starting an import", asyn
     const uploadButton = uploadForm.locator('button[type="submit"]').first();
     const startButtonLabel = "Starting import...";
     const uploadRows = [
-      "title,description,brand,hsnCode,gstRate,status,attributes",
-      `"${uniqueName("e2e-pending-upload")}","upload pending proof","TEJ PIM","62046200",18,"draft","{}"`,
+      "title,description,brand,hsnCode,gstRate,attributes",
+      `"${uniqueName("e2e-pending-upload")}","upload pending proof","Vexa PIM","62046200",18,"{}"`,
     ].join("\n");
 
     await page.locator('select[name="categoryId"]').selectOption(categoryId);
@@ -89,10 +88,9 @@ test("editor sees pending feedback while uploading and starting an import", asyn
         {
           title: uniqueName("e2e-pending-start"),
           description: "start pending proof",
-          brand: "TEJ PIM",
+          brand: "Vexa PIM",
           hsnCode: "62046200",
           gstRate: 18,
-          status: "draft",
           attributes: {},
         },
       ],
@@ -101,7 +99,7 @@ test("editor sees pending feedback while uploading and starting an import", asyn
       maxRetries: 1,
     });
 
-    await page.goto(`/operations/imports?bulkJobId=${queuedJob.id}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/operations/imports?bulkJobId=${queuedJob.id}&hideTestData=false`, { waitUntil: "domcontentloaded" });
     const queuedRow = page.locator("tbody tr", { hasText: queuedJob.id }).first();
     const startButton = queuedRow.locator('button[type="submit"]').first();
     await expect(startButton).toBeVisible();
