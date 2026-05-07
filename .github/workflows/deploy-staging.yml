@@ -68,6 +68,8 @@ jobs:
           RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
           RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_NAME: Staging
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           node scripts/railway-deploy.cjs

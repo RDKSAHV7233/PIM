@@ -27,10 +27,45 @@ function requireOneOfEnv(names, env = process.env) {
   throw new Error(`Missing required environment variable: one of ${names.join(", ")}`);
 }
 
+function dedupe(values) {
+  return Array.from(new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean)));
+}
+
+function deriveRailwayHostSlug(urlValue) {
+  const value = String(urlValue ?? "").trim();
+  if (!value) {
+    return "";
+  }
+  try {
+    const hostname = new URL(value).hostname.trim().toLowerCase();
+    if (!hostname.endsWith(".up.railway.app")) {
+      return "";
+    }
+    return hostname.replace(/\.up\.railway\.app$/i, "");
+  } catch {
+    return "";
+  }
+}
+
+function resolveServiceTargets(primaryNames, fallbackUrl, env = process.env) {
+  return dedupe([
+    ...primaryNames.map((name) => optionalEnv(name, env)),
+    deriveRailwayHostSlug(fallbackUrl),
+  ]);
+}
+
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
-  const apiServiceTarget = requireOneOfEnv(["RAILWAY_API_SERVICE_ID", "RAILWAY_API_SERVICE"], env);
-  const webServiceTarget = requireOneOfEnv(["RAILWAY_WEB_SERVICE_ID", "RAILWAY_WEB_SERVICE"], env);
+  const apiServiceTargets = resolveServiceTargets(
+    ["RAILWAY_API_SERVICE_ID", "RAILWAY_API_SERVICE"],
+    optionalEnv("STAGING_BASE_URL", env),
+    env,
+  );
+  const webServiceTargets = resolveServiceTargets(
+    ["RAILWAY_WEB_SERVICE_ID", "RAILWAY_WEB_SERVICE"],
+    optionalEnv("STAGING_WEB_URL", env),
+    env,
+  );
   const environmentName = String(env.RAILWAY_ENVIRONMENT_NAME ?? "staging").trim() || "staging";
   const apiSourcePath = path.resolve(repoRoot, String(env.RAILWAY_API_SOURCE_PATH ?? ".tmp/railway-api-service").trim());
   const webSourcePath = path.resolve(repoRoot, String(env.RAILWAY_WEB_SOURCE_PATH ?? ".tmp/railway-web-service").trim());
@@ -43,12 +78,18 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   if (!railwayToken && !railwayApiToken) {
     throw new Error("Missing Railway credentials: set RAILWAY_TOKEN (project token) or RAILWAY_API_TOKEN (account/workspace token).");
   }
+  if (apiServiceTargets.length === 0) {
+    throw new Error("Missing Railway API service target. Set RAILWAY_API_SERVICE_ID or RAILWAY_API_SERVICE.");
+  }
+  if (webServiceTargets.length === 0) {
+    throw new Error("Missing Railway web service target. Set RAILWAY_WEB_SERVICE_ID or RAILWAY_WEB_SERVICE.");
+  }
 
   return {
     repoRoot,
     projectId,
-    apiServiceTarget,
-    webServiceTarget,
+    apiServiceTargets,
+    webServiceTargets,
     environmentName,
     apiSourcePath,
     webSourcePath,
@@ -64,33 +105,13 @@ function buildDeployCommands(config) {
   return [
     {
       label: "API",
-      args: [
-        "up",
-        apiRelative,
-        "--service",
-        config.apiServiceTarget,
-        "--project",
-        config.projectId,
-        "--environment",
-        config.environmentName,
-        "--path-as-root",
-        "--ci",
-      ],
+      pathArg: apiRelative,
+      serviceTargets: config.apiServiceTargets,
     },
     {
       label: "Web",
-      args: [
-        "up",
-        webRelative,
-        "--service",
-        config.webServiceTarget,
-        "--project",
-        config.projectId,
-        "--environment",
-        config.environmentName,
-        "--path-as-root",
-        "--ci",
-      ],
+      pathArg: webRelative,
+      serviceTargets: config.webServiceTargets,
     },
   ];
 }
@@ -204,6 +225,18 @@ function isRetryableRailwayDeployError(error) {
   );
 }
 
+function isServiceNotFoundRailwayError(error) {
+  const combined = [
+    error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.stdout ?? "") : "",
+    error && typeof error === "object" ? String(error.stderr ?? "") : "",
+    error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return combined.includes("service not found");
+}
+
 function sleep(ms) {
   if (ms <= 0) {
     return;
@@ -250,7 +283,58 @@ function emitActionableDeployHint(error, config) {
     console.error(
       "[railway-deploy] Railway authentication failed. Verify the token has not expired/revoked and is scoped to the target project or workspace.",
     );
+  } else if (combined.includes("service not found")) {
+    console.error(
+      `[railway-deploy] Railway could resolve project '${config.projectId}' but none of the configured service targets matched. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
+    );
   }
+}
+
+function buildDeployArgs(config, pathArg, serviceTarget) {
+  return [
+    "up",
+    pathArg,
+    "--service",
+    serviceTarget,
+    "--project",
+    config.projectId,
+    "--environment",
+    config.environmentName,
+    "--path-as-root",
+    "--ci",
+  ];
+}
+
+function runDeployCommandAcrossServiceTargets(command, options) {
+  let lastError = null;
+  for (const serviceTarget of command.serviceTargets) {
+    try {
+      runDeployCommandWithRetry(
+        {
+          binary: options.railwayBin,
+          args: buildDeployArgs(options.config, command.pathArg, serviceTarget),
+          label: `Railway ${command.label} deploy`,
+        },
+        {
+          cwd: options.cwd,
+          env: options.env,
+          maxAttempts: options.maxAttempts,
+          retryDelayMs: options.retryDelayMs,
+        },
+      );
+      if (serviceTarget !== command.serviceTargets[0]) {
+        console.log(`[railway-deploy] ${command.label} deploy succeeded using fallback service target '${serviceTarget}'.`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isServiceNotFoundRailwayError(error) || serviceTarget === command.serviceTargets[command.serviceTargets.length - 1]) {
+        throw error;
+      }
+      console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
+    }
+  }
+  throw lastError ?? new Error(`No Railway ${command.label} service targets were available.`);
 }
 
 function main(env = process.env) {
@@ -295,15 +379,13 @@ function main(env = process.env) {
       continue;
     }
     console.log(`[railway-deploy] Deploying ${command.label} service...`);
-    runDeployCommandWithRetry(
-      {
-        binary: config.railwayBin,
-        args: command.args,
-        label: `Railway ${command.label} deploy`,
-      },
+    runDeployCommandAcrossServiceTargets(
+      command,
       {
         cwd: repoRoot,
         env,
+        config,
+        railwayBin: config.railwayBin,
         maxAttempts: config.deployRetries,
         retryDelayMs: config.deployRetryDelayMs,
       },
@@ -331,7 +413,9 @@ module.exports = {
   classifyDeployTargets,
   getChangedFiles,
   isRetryableRailwayDeployError,
+  isServiceNotFoundRailwayError,
   main,
   resolveConfig,
+  resolveServiceTargets,
   runDeployCommandWithRetry,
 };
