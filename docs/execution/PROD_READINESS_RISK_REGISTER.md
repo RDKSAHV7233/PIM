@@ -176,6 +176,27 @@ Last updated: 2026-05-01 (latest live staging recovery, fresh rollout snapshot, 
 
 ## P1 (Before scale / broad pilot)
 
+### RISK-P1-000: Large import claim boundary drift
+- Severity: P1
+- Status: Monitoring
+- Owner: Product + CTO
+- Description: Large Import Mode MVP is now implemented, but the safe claim boundary is narrower than a generic "large import" marketing statement. Overclaiming beyond CSV-only `30,000`-row support would create sales, support, and launch-risk drift.
+- Exit criteria:
+  1. Product docs, user guides, and release notes consistently state the current boundary.
+  2. Browser proof exists for the visible parent-run workflow.
+  3. No public-facing copy claims `50k`, XLSX support, direct browser-to-R2 upload, or enterprise-scale import.
+- Validation evidence (2026-05-07):
+  - Import docs updated to state:
+    - standard CSV/JSON mode up to `10,000` rows
+    - large CSV mode from `10,001` to `30,000` rows
+    - `>30,000` blocked in MVP
+  - Targeted Playwright proof exists for:
+    - `pending-feedback.spec.js`
+    - `large-import-mode.spec.js`
+  - Operator runbook added: `docs/runbooks/large-import-mode-operator-guide.md`
+- Remaining:
+  - Keep future commercial wording bounded until higher-scale evidence exists.
+
 ### RISK-P1-001: ONDC domain drift
 - Severity: P1
 - Status: Closed

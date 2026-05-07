@@ -2,6 +2,22 @@
 
 ---
 
+## May 2026
+
+### Week of May 7
+
+**Large Import Mode MVP**
+Vexa now supports single-file CSV imports from `10,001` up to `30,000` rows through `Large file mode`. These uploads are staged first, validated server-side, and then processed in safe internal `1,000`-row background batches behind one visible parent import run.
+
+**One progress view for large imports**
+Large CSV imports now surface one parent progress experience in `Operations -> Imports` instead of forcing operators to manage child processing batches directly. Repair rows and row-level outcomes stay unified at the run level.
+
+**Combined error reporting**
+When a large import run fails rows, operators can download one combined error report across the run instead of collecting separate reports from each internal batch.
+
+**Safer import boundary handling**
+CSV uploads above `30,000` rows are explicitly blocked in the MVP, and `Large file mode` remains CSV-only. JSON imports continue to use the existing standard import path.
+
 ## March 2026
 
 ### Week of March 19

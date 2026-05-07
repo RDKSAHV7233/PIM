@@ -74,6 +74,12 @@ Any trigger below moves release status back to controlled mode until mitigated:
 4. Payload governance enforcement executed with policy evidence artifact (90-day redaction, 365-day purge).
 5. Daily rollout snapshot automation is available via `npm run rollout:snapshot` (artifacts under `docs/execution/rollout/`).
 6. Web production build now enforces real type/lint gate behavior; Next.js ignore-bypass settings are removed.
+7. Large Import Mode MVP is implemented for controlled-pilot use with these boundaries:
+   - CSV only
+   - `10,001` to `30,000` rows
+   - one parent run
+   - unified repair rows
+   - one combined error report
 
 ### Remaining for controlled rollout
 1. No remaining controlled-rollout blockers in the latest checked-in snapshot.
