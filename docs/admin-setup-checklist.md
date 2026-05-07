@@ -143,15 +143,21 @@ Preferred route for a new catalog: `/operations/imports`
 2. Download a sample file if needed
 3. Choose the target `Category`
 4. Upload the source file
-5. Click `Upload Import File`
-6. In `Import Jobs`, click `Start import` for queued jobs
-7. Repair failed rows if required
+5. Run preflight validation
+6. If the file stays in standard mode, click `Upload Import File` and then `Start import` for the queued job
+7. If the CSV is above `10,000` rows and at or below `30,000`, Vexa enables `Large file mode` automatically
+8. Open the parent run for large imports, or the queued job for standard imports
+9. Repair failed rows if required
 
 Accepted file types:
 1. `.csv`
 2. `.json`
-3. `.xlsx`
-4. `.xls`
+
+Current import limits:
+1. standard mode: CSV or JSON up to `10,000` rows
+2. large mode: CSV only from `10,001` to `30,000` rows
+3. files above `30,000` rows are blocked in the MVP
+4. `.xlsx` and `.xls` are not supported in the current product
 
 Canonical import fields:
 1. `title`
