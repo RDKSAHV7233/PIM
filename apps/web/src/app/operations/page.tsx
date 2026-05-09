@@ -41,9 +41,11 @@ function resolveResponseTotal<T>(value: T[] | { items: T[] } | null | undefined)
 
 export const dynamic = "force-dynamic";
 
+const OPERATIONS_SUBMISSION_WINDOW_LIMIT = 200;
+
 export default async function OperationsPage() {
-  const submissionWindowLimit = 500;
-  const deadLetterWindowLimit = 500;
+  const submissionWindowLimit = OPERATIONS_SUBMISSION_WINDOW_LIMIT;
+  const deadLetterWindowLimit = OPERATIONS_SUBMISSION_WINDOW_LIMIT;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
   const canRunWriteOperations = canEditWorkspace(actorRole);

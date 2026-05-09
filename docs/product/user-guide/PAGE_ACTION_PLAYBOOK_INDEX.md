@@ -11,7 +11,7 @@ This index focuses on **how to perform actions** page-by-page.
 | `/admin/privacy` | Information not available in TEJ PIM project. | [admin__privacy_playbook.md](./playbooks/admin__privacy_playbook.md) | Read-only / navigation |
 | `/admin/users` | Users & Roles | [admin__users_playbook.md](./playbooks/admin__users_playbook.md) | Live management surface — invite user, change role, lock, unlock, deactivate. Admin role required. |
 | `/admin/workspace` | Workspace Settings | [admin__workspace_playbook.md](./playbooks/admin__workspace_playbook.md) | Read-only / navigation |
-| `/ai` | AI Optimization | [ai_playbook.md](./playbooks/ai_playbook.md) | `applyAiRepairAction` |
+| `/ai` | Smart Suggestions | [ai_playbook.md](./playbooks/ai_playbook.md) | `applyAiRepairAction` |
 | `/catalog/attributes` | Attributes | [catalog__attributes_playbook.md](./playbooks/catalog__attributes_playbook.md) | `createAttributeDefinitionAction` |
 | `/catalog/categories` | Catalog Categories | [catalog__categories_playbook.md](./playbooks/catalog__categories_playbook.md) | `createCategoryAction` |
 | `/catalog/media` | Information not available in TEJ PIM project. | [catalog__media_playbook.md](./playbooks/catalog__media_playbook.md) | Read-only / navigation |

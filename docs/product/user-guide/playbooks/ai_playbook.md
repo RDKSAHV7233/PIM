@@ -3,7 +3,7 @@
 ## Page
 - Route: `/ai`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/ai/page.tsx`
-- Title: AI Optimization
+- Title: Smart Suggestions
 
 ## What this page is used for
 - Execute operational workflows and mutations listed below.
@@ -16,7 +16,7 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Action runbooks
-### Apply ai repair (`applyAiRepairAction`)
+### Apply suggested repair (`applyAiRepairAction`)
 1. Open this page and review the relevant section for the action.
 2. Fill the required fields shown on screen: `Product`.
 3. Review preview/diff (if shown), then submit update/apply.

@@ -60,9 +60,9 @@ export default async function AiPage({ searchParams }: AiPageProps) {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">AI Optimization</h1>
+        <h1 className="text-2xl font-semibold">Smart Suggestions</h1>
         <p className="text-sm text-slate-600">
-          Title optimization, attribute enrichment, smart category suggestion, and repair automation.
+          Rule-based title suggestions, attribute suggestions, category suggestions, and repair guidance.
         </p>
       </header>
 
@@ -83,7 +83,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
 
       {repairStatus === "applied" && (
         <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
-          AI repair automation applied successfully.
+          Suggested repair applied successfully.
         </div>
       )}
 
@@ -112,7 +112,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
       {productId && titleSuggestion && attributeSuggestion && categorySuggestion && (
         <>
           <Card>
-            <CardTitle>AI Title Optimization</CardTitle>
+            <CardTitle>Suggested Title Optimization</CardTitle>
             <p className="text-sm">
               <strong>Original:</strong> {titleSuggestion.originalTitle}
             </p>
@@ -123,7 +123,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
           </Card>
 
           <Card>
-            <CardTitle>AI Attribute Enrichment</CardTitle>
+            <CardTitle>Rule-based Attribute Suggestions</CardTitle>
             <div className="grid gap-3 lg:grid-cols-2">
               <pre className="overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
                 {JSON.stringify(attributeSuggestion.existingAttributes, null, 2)}
@@ -144,11 +144,11 @@ export default async function AiPage({ searchParams }: AiPageProps) {
           </Card>
 
           <Card>
-            <CardTitle>Catalog Repair Automation</CardTitle>
+            <CardTitle>Suggested Catalog Repair</CardTitle>
             <form action={applyAiRepairAction} className="space-y-2">
               <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="productId" value={productId} />
-              <Button type="submit">Apply AI repair</Button>
+              <Button type="submit">Apply suggested repair</Button>
             </form>
           </Card>
         </>

@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
-- Date: 2026-05-07
-- Repo HEAD: `e808d93`
-- Scope: current code, current validation output, and release-governance state after targeted production-readiness hardening, Large Import Mode MVP follow-up, and the latest live staging snapshot refresh
+- Date: 2026-05-09
+- Repo HEAD: `56b29e6`
+- Scope: current code, current validation output, and release-governance state after the P0 regression fixes, rollout-health contract restoration, and the latest checked-in remote rollout evidence review
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -10,9 +10,9 @@
 - Targeted code-level production-readiness blockers around web JWT/session fail-closed behavior, privileged internal route trust boundaries, web build/increment gate stability, submissions and DLQ count honesty, readiness proxy failure masking, and catalog products pagination have been closed in the current repo state.
 - Large Import Mode MVP is now implemented as an additive path for single-file CSV imports from `10,001` to `30,000` rows, with one parent run, one unified repair/result flow, and one combined error report.
 - The safe claim boundary for imports is now explicit: standard CSV/JSON imports remain capped at `10,000` rows; large mode is CSV-only and blocks files above `30,000` rows.
-- The current local validation bundle is green for API lint/build, web lint/build/test, and the increment gate.
-- Fresh release-governance evidence is now checked in: the latest staging rollout snapshot reports `healthOk: true`, `controlledPending: []`, and `broadPending: ["Controlled rollout observation window covers 13 of 14 required days."]`.
-- `INC-08` remains complete in the execution ledger based on the earlier evidence bundle, but the newest live rollout snapshot should govern current launch claims. Broad-production signoff is not currently supportable until the rolling evidence window returns to `14 / 14`.
+- The current local validation bundle is green for API lint/build, web lint/build/test, both targeted Playwright proofs, and both repo gate suites.
+- Fresh release-governance evidence is checked in on remote `main`: the latest staging rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `healthOk: true`, `controlledPending: ["Health endpoint env mismatch: expected 'staging', got 'unset'."]`, and `broadPending: []`.
+- `INC-08` remains complete in the execution ledger based on earlier evidence bundles, but the newest live rollout snapshot should govern current launch claims. Broad-rollout observation is complete again; the remaining blocker is the controlled-rollout health-contract mismatch on deployed staging.
 
 ## 2. Canonical Source-of-Truth Files
 
@@ -39,7 +39,7 @@
 - The targeted production-readiness code blockers listed above are closed in the current repo state.
 - The current local validation bundle is green.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Vexa PIM is controlled-rollout-ready from the current checked-in code and live release-governance evidence.
+- Local code validation is green again, but the checked-in rollout evidence is stale and must be refreshed before controlled-pilot or broader release-governance claims are restored.
 - Enterprise-readiness remains out of scope for the current evidence bundle.
 
 ### Not allowed to say
@@ -51,8 +51,8 @@
 ### Current decision
 
 - Demo readiness: allowed
-- Controlled pilot posture: allowed
-- Production signoff: blocked pending broad-rollout evidence closure
+- Controlled pilot posture: pending fresh rollout evidence
+- Production signoff: blocked pending fresh controlled-rollout evidence on deployed staging
 - Enterprise signoff: blocked
 
 ## 5. Validation Snapshot
@@ -93,9 +93,9 @@ Source: `docs/execution/INCREMENT_STATE.json`
 
 Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
 
-1. Broad-rollout evidence is currently one day short of closure: the latest live staging snapshot reports `observationWindowDaysCovered = 13 / 14` with `controlledRollout.pending = []`.
-2. Historical April review documents remain useful context, but must not be treated as the current launch truth when they conflict with current code or the latest artifacts.
-3. The execution ledger still records `INC-08` as complete, but current external production claims should follow the latest live rollout snapshot rather than older green snapshots.
+1. The latest checked-in rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` is still blocked for launch-governance use: it shows `controlledRollout.pending = ["Health endpoint env mismatch: expected 'staging', got 'unset'."]` even though `broadRollout.criteria.observationWindowDaysCovered = 15 / 14`.
+2. Historical April and early-May review documents remain useful context, but must not be treated as the current launch truth when they conflict with current code or the latest artifacts.
+3. The execution ledger still records `INC-08` as complete, but current external production claims should follow a fresh healthy rollout snapshot rather than older green snapshots.
 
 ## 8. Future-Scope And Follow-Up Items
 

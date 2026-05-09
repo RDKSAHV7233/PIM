@@ -90,6 +90,11 @@ enum BulkImportRunStatus {
   failed
 }
 
+enum BulkImportJobRole {
+  standard
+  large_batch
+}
+
 enum BulkEditItemStatus {
   success
   failed
@@ -384,7 +389,7 @@ model BulkImportJob {
   batchIndex     Int?
   rowStart       Int?
   rowEnd         Int?
-  jobRole        String              @default("standard")
+  jobRole        BulkImportJobRole   @default(standard)
   sourceFormat   String
   sourceName     String?
   mapping        Json

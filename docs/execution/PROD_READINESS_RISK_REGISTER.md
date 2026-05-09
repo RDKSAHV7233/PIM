@@ -1,6 +1,6 @@
 # Vexa PIM Production Readiness Risk Register
 
-Last updated: 2026-05-01 (latest live staging recovery, fresh rollout snapshot, green local validation reruns, and ledger reconciliation)
+Last updated: 2026-05-09 (green local validation reruns after P0 regression fixes; checked-in rollout evidence still needs refresh)
 
 ## P0 (Must close before production)
 
@@ -8,36 +8,39 @@ Last updated: 2026-05-01 (latest live staging recovery, fresh rollout snapshot, 
 - Severity: P0
 - Status: Monitoring
 - Owner: Engineering Lead + DevOps
-- Description: Controlled-rollout gates are currently healthy again, but broad-rollout evidence has temporarily slipped back to `13 / 14` days in the latest live snapshot and must return to `14 / 14` before broad-production claims resume.
+- Description: Local validation and both repo gate suites are green again, but the latest checked-in rollout snapshot is still blocked for launch-governance use because deployed staging does not yet expose the expected public health environment marker. Rollout evidence must be refreshed after deploy before controlled-pilot or broader-production claims resume.
 - Evidence:
   - Completed: 2 consecutive E10 signoff artifacts recorded (`E10-ST-QA-001-RUN3`, `E10-ST-QA-001-RUN4`).
   - Completed: local staging-format signoff artifact recorded (`INC08-STAGING-SIGNOFF-LOCAL`).
   - Completed: rollout snapshot logic preserves E10 continuity across interleaved non-E10 signoff suites and now blocks controlled rollout when staging health is unavailable or mismatched.
   - Completed: live staging workflow run `23127921361` captured a healthy staging snapshot with `/api/v1/health` returning `env=staging`, queue runtime `backend=bullmq`, and `workerEnabled=true`.
   - Completed: artifact `staging-gate-artifacts-23127921361` uploaded with digest `sha256:c2de34cd35af3cbac223b77885c37c8755424e6cdc3ea64a5ae3599fb615d537`.
-  - Completed: earlier rollout snapshot `docs/execution/rollout/2026-05-01T05-03-41.080Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reported `healthOk = true`, `controlledPending = []`, and `broadPending = []`.
-  - Current live evidence: refreshed rollout snapshot `docs/execution/rollout/2026-05-01T13-17-06.355Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `healthOk = true`, `controlledPending = []`, and `broadPending = ["Controlled rollout observation window covers 13 of 14 required days."]`.
+  - Completed: earlier rollout snapshots reached a clean `14 / 14` broad window.
+  - Current checked-in evidence: `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `controlledRollout.pending = ["Health endpoint env mismatch: expected 'staging', got 'unset'."]`, `broadRollout.pending = []`, and `observationWindowDaysCovered = 15 / 14`.
+  - Current repo validation: `npm run gate:run:increment` and `npm run gate:run:sprint` passed on 2026-05-09 after the `/operations` and connector-idempotency fixes.
+  - Current repo code now restores the public `/api/v1/health` environment marker and queue runtime fields expected by the rollout tooling, but that fix is not yet deployed to staging.
 - Exit criteria:
   1. Two consecutive E10 signoff artifacts recorded.
   2. `/api/v1/health` reports `env=staging` in staging.
   3. Updated rollout snapshot has no controlled gate blockers.
+  4. Repo docs reference the refreshed snapshot instead of stale point-in-time wording.
 - Validation commands:
   - `node scripts/record-gate-signoff.cjs --suite E10-... --tenantId SMOKE_TENANT_LOCAL --runUrl ...`
   - `node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId SMOKE_TENANT_LOCAL`
   - Live proof: `gh run view 23127921361 --repo RDKSAHV7233/PIM1 --json status,conclusion,url,headSha,jobs`
   - Live artifact: `gh api repos/RDKSAHV7233/PIM1/actions/runs/23127921361/artifacts`
-  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25151411868`
-  - Latest snapshot: `docs/execution/rollout/2026-04-30T06-43-54.789Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
+  - Latest daily evidence run: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25594154154`
+  - Latest snapshot: `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
   - Latest signoff: artifact bundle `staging-gate-artifacts-23127921361` -> `gates/2026-03-16T04-31-32.674Z_STAGING_DEPLOY_POSTCHECK.json`
-- Current status reconciliation (2026-05-01):
+- Current status reconciliation (2026-05-09):
   - Latest live snapshot shows:
-    - `health.ok = true`
-    - `controlledRollout.pending = []`
-    - `observationWindowDaysCovered = 13 / 14`
-    - `sloTrendDaysCovered = 14 / 14`
-  - Controlled-rollout evidence is healthy.
-  - Broad-rollout observation evidence is not yet complete again after the rolling window advanced.
-  - Remaining: record one more valid daily evidence day and refresh launch docs once the broad window returns to `14 / 14`.
+    - `healthEndpointHealthy = false`
+    - `controlledRollout.pending = ["Health endpoint env mismatch: expected 'staging', got 'unset'."]`
+    - `observationWindowDaysCovered = 15 / 14`
+    - `sloTrendDaysCovered = 15 / 14`
+  - Controlled-rollout evidence is not currently fresh enough for launch claims.
+  - Broad-rollout observation evidence is complete in the latest checked-in snapshot.
+  - Remaining: deploy the restored public health contract, capture a fresh healthy rollout snapshot, and refresh launch docs from that evidence.
 - Implementation update (2026-03-16):
   - Live GitHub Actions run `23127921361` passed end-to-end on Railway `Staging`.
   - The uploaded rollout snapshot shows `controlledRollout.pending = []`.

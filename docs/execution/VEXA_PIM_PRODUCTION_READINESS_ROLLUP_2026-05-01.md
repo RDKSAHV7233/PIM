@@ -5,6 +5,8 @@ Repo HEAD: `4645633`
 Scope: amended production-readiness rollup after targeted code-hardening closure and latest live staging evidence refresh  
 Source of truth: current code, current validation output, `docs/execution/INCREMENT_STATE.json`, `docs/execution/CURRENT_STATE.md`, `docs/execution/PROD_READINESS_RISK_REGISTER.md`, and `docs/execution/rollout/2026-05-01T13-17-06.355Z_CONTROLLED_ROLLOUT_SNAPSHOT.json`
 
+Historical note: this rollup is accurate only as of `2026-05-01`. It is superseded by the latest checked-in rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` and the green local validation reruns recorded on `2026-05-09`. Do not use this file as the current launch-truth summary.
+
 ## 1. Executive Verdict
 
 **Verdict: Controlled-rollout ready. Broad production blocked. Not enterprise-ready.**

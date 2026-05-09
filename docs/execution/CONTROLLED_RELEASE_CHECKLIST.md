@@ -82,7 +82,7 @@ Any trigger below moves release status back to controlled mode until mitigated:
    - one combined error report
 
 ### Remaining for controlled rollout
-1. No remaining controlled-rollout blockers in the latest checked-in snapshot.
+1. The latest checked-in rollout snapshot still reports `Health endpoint env mismatch: expected 'staging', got 'unset'.`
 
 ### Remaining for broad rollout
-1. The latest live rollout snapshot still reports `Controlled rollout observation window covers 13 of 14 required days.`
+1. No remaining broad-rollout blockers in the latest checked-in snapshot.

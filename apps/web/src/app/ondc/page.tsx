@@ -105,7 +105,7 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
           Rejection Intelligence
         </Link>
         <Link className="rounded-md border border-border px-3 py-2" href={`/ai`}>
-          AI Optimization
+          Smart Suggestions
         </Link>
       </div>
 

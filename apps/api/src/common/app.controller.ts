@@ -22,8 +22,17 @@ export class AppController {
   @Get("health")
   @ApiOperation({ summary: "Liveness check" })
   @ApiResponse({ status: 200, description: "Service is up" })
-  health() {
-    return { status: "ok" };
+  async health() {
+    const queueMetrics = await this.queueService.getMetrics();
+    return {
+      status: "ok",
+      env: process.env.APP_ENV ?? "development",
+      queues: queueMetrics,
+      queueRuntime: {
+        backend: this.queueService.getBackend(),
+        workerEnabled: this.queueService.isWorkerEnabled(),
+      },
+    };
   }
 
   @DisallowApiClient()

@@ -422,7 +422,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   async getTenantPlanProfile(tenantKeyInput?: string): Promise<PlanProfileSummary> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
-    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
+    const databaseUrl = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
+    if (!databaseUrl) {
       const now = new Date().toISOString();
       return {
         tenantKey,

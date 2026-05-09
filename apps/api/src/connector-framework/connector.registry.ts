@@ -29,9 +29,6 @@ export class ConnectorRegistry implements OnModuleInit {
   }
 
   async onModuleInit() {
-    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
-      return;
-    }
     await this.refreshFromDefinitions();
   }
 
