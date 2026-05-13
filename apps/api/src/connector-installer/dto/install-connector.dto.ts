@@ -30,4 +30,9 @@ export class InstallConnectorDto {
   @IsString()
   @MaxLength(2048)
   refreshToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  accessToken?: string;
 }

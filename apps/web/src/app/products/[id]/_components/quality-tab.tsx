@@ -33,6 +33,8 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
               <input type="hidden" name="categoryId" value={data.product.categoryId} />
               <input type="hidden" name="expectedVersion" value={data.product.version} />
               <input type="hidden" name="attributes" value={JSON.stringify(data.productAttributes)} />
+              <input type="hidden" name="hsnCode" value={data.product.hsnCode ?? ""} />
+              <input type="hidden" name="gstRate" value={data.product.gstRate ?? ""} />
               <input type="hidden" name="status" value="in_review" />
               <input type="hidden" name="currentTab" value="quality" />
               <PendingSubmitButton idleLabel="Submit for review" pendingLabel="Submitting…" />

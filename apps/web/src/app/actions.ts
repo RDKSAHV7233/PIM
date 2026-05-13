@@ -522,7 +522,8 @@ export async function decideProductReviewAction(formData: FormData) {
     redirect(appendQueryParams(returnTo, { decisionStatus: status }));
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const message = error instanceof ApiHttpError ? String((error.body as Record<string, unknown> | null)?.error ?? "") : "";
+    const body = error instanceof ApiHttpError ? (error.body as Record<string, unknown> | null) : null;
+    const message = String(body?.code ?? body?.error ?? "").trim();
     const decisionError = message || "decision_failed";
     redirect(appendQueryParams(returnTo, { decisionError }));
   }
@@ -1002,6 +1003,7 @@ export async function installConnectorAction(formData: FormData) {
   const clientId = String(formData.get("clientId") ?? "").trim();
   const clientSecret = String(formData.get("clientSecret") ?? "").trim();
   const refreshToken = String(formData.get("refreshToken") ?? "").trim();
+  const accessToken = String(formData.get("accessToken") ?? "").trim();
   const returnTo = String(formData.get("returnTo") ?? "").trim() || "/channels/connectors";
   if (!slug) {
     throw new Error("Connector slug is required.");
@@ -1015,6 +1017,7 @@ export async function installConnectorAction(formData: FormData) {
       clientId: clientId || undefined,
       clientSecret: clientSecret || undefined,
       refreshToken: refreshToken || undefined,
+      accessToken: accessToken || undefined,
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);

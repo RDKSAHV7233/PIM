@@ -328,6 +328,17 @@ export class ConnectorInstallerService {
             installationId,
             shopDomain: requestedShopDomain,
           });
+          const accessToken = String(dto.accessToken ?? "").trim();
+          if (accessToken) {
+            const runtimeRecord = await this.requireInstallationRuntimeRecord(installationId, tenantKey);
+            const connector = this.connectorRegistry.getConnector("shopify");
+            if (connector.handleOAuthCallback) {
+              await connector.handleOAuthCallback(this.buildConnectorContext(runtimeRecord), {
+                accessToken,
+                shopDomain: requestedShopDomain ?? "",
+              });
+            }
+          }
         } catch (error) {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;

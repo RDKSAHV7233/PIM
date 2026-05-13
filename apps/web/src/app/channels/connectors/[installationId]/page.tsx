@@ -693,6 +693,12 @@ export default async function ChannelConnectorDetailPage({
     const metadataShopId = readMetadataValue(installation.metadata, "shopId");
     const metadataTokenMode = readMetadataValue(installation.metadata, "tokenMode");
     const metadataAuthMode = readMetadataValue(installation.metadata, "authMode");
+    const metadataConnectionStage = readMetadataValue(installation.metadata, "connectionStage");
+    const shopifyConnectionComplete =
+      installation.slug !== "shopify"
+        ? true
+        : metadataConnectionStage === "connected" ||
+          (metadataConnectionStage === null && Boolean(metadataTokenMode || metadataAuthMode));
     const attributeSummary =
       focusAttributes.length === 0
         ? "No category attributes returned yet"
@@ -1009,6 +1015,20 @@ export default async function ChannelConnectorDetailPage({
 
         {selectedTab === "overview" ? (
           <div className="space-y-4">
+            {installation.slug === "shopify" && !shopifyConnectionComplete ? (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${toneClassForBanner("warning")}`}>
+                <p className="font-medium">Shopify OAuth is not yet complete.</p>
+                <p className="mt-1">
+                  This account is waiting for the managed install handoff. Publishing and channel refresh will not work until authorization finishes.{" "}
+                  <a
+                    href={buildDetailHref(installation.id, "credentials")}
+                    className="underline hover:no-underline"
+                  >
+                    See the Managed Install Handoff checklist on the Credentials tab.
+                  </a>
+                </p>
+              </div>
+            ) : null}
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Profile</CardTitle>
@@ -1172,12 +1192,18 @@ export default async function ChannelConnectorDetailPage({
                         ))}
                       </ul>
                     ) : null}
-                    <Link
-                      href={buildDetailHref(installation.id, "credentials")}
-                      className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                    >
-                      Refresh publication channels →
-                    </Link>
+                    {shopifyConnectionComplete ? (
+                      <Link
+                        href={buildDetailHref(installation.id, "credentials")}
+                        className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Refresh publication channels →
+                      </Link>
+                    ) : (
+                      <p className="text-xs text-amber-700">
+                        Complete Shopify authorization before refreshing channels.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
@@ -1228,6 +1254,14 @@ export default async function ChannelConnectorDetailPage({
 
         {selectedTab === "credentials" ? (
           <div className="space-y-4">
+            {installation.slug === "shopify" && !shopifyConnectionComplete ? (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${toneClassForBanner("warning")}`}>
+                <p className="font-medium">Shopify OAuth is not yet complete.</p>
+                <p className="mt-1">
+                  OAuth has not been finalized for this account. The Managed Install Handoff checklist below shows exactly which steps remain. Complete the handoff before refreshing publication channels or publishing products.
+                </p>
+              </div>
+            ) : null}
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardTitle>Account Connection</CardTitle>
@@ -1395,13 +1429,13 @@ export default async function ChannelConnectorDetailPage({
                     publicationTargets.length === 0 ? (
                       <div className="mt-2 space-y-3">
                         <p className="text-sm text-slate-600">
-                          Shopify publication targets are not loaded yet. Visit the Credentials tab to trigger a refresh.
+                          No publication channels were returned from your Shopify store. Each time this tab loads, Vexa fetches the latest channels directly from Shopify. If the list is still empty, check that your store has at least one sales channel or publication enabled in Shopify Admin.
                         </p>
                         <Link
                           href={buildDetailHref(installation.id, "credentials")}
                           className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
                         >
-                          Refresh publication channels →
+                          Reload to refetch channels →
                         </Link>
                       </div>
                     ) : (
@@ -1419,6 +1453,15 @@ export default async function ChannelConnectorDetailPage({
                         ))}
                       </ul>
                     )
+                  ) : !shopifyConnectionComplete ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-sm text-slate-600">
+                        Complete Shopify authorization before configuring publication channels. See the Managed Install Handoff checklist above.
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        Complete Shopify authorization before refreshing channels.
+                      </p>
+                    </div>
                   ) : (
                     <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
                       <input type="hidden" name="installationId" value={installation.id} />

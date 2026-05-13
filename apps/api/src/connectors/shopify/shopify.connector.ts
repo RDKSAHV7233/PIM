@@ -125,6 +125,13 @@ type ShopifyWebhookProductPayload = {
   }>;
 };
 
+type ShopifyBulkUpdateVariantResponse = {
+  productVariantsBulkUpdate?: {
+    productVariants?: Array<{ id?: string; price?: string }>;
+    userErrors?: Array<{ field?: string[]; message?: string }>;
+  } | null;
+};
+
 const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE = "urn:shopify:params:oauth:token-type:offline-access-token";
@@ -170,6 +177,12 @@ export class ShopifyConnector implements ConnectorInterface {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(
         `Missing credential encryption key for current version ${this.currentKeyVersion}.`,
+      );
+    }
+    if (!String(process.env.PIM_SHOPIFY_CLIENT_ID ?? "").trim()) {
+      this.logger.warn(
+        "PIM_SHOPIFY_CLIENT_ID is not set. Shopify OAuth flows will fail at runtime.",
+        { connector: "shopify" },
       );
     }
   }
@@ -292,6 +305,25 @@ export class ShopifyConnector implements ConnectorInterface {
           severity: "error",
         });
       }
+    }
+
+    const numericSellingPrice = Number.isFinite(product.sellingPrice) ? Number(product.sellingPrice) : NaN;
+    if (!Number.isFinite(numericSellingPrice) || numericSellingPrice <= 0) {
+      warnings.push({
+        code: "SELLING_PRICE_ZERO_OR_MISSING",
+        fieldPath: "sellingPrice",
+        sellerMessage: "Selling price is zero or missing. Set a positive price before syncing to Shopify.",
+        severity: "warning",
+      });
+    }
+
+    if (typeof product.description === "string" && product.description.trim().length === 0 && product.description.length > 0) {
+      warnings.push({
+        code: "DESCRIPTION_WHITESPACE_ONLY",
+        fieldPath: "description",
+        sellerMessage: "Description contains only whitespace. Add meaningful content before syncing to Shopify.",
+        severity: "warning",
+      });
     }
 
     if (this.isEmpty(this.getFieldValue(product, "brand"))) {
@@ -1025,7 +1057,7 @@ export class ShopifyConnector implements ConnectorInterface {
       taxable: true,
       inventoryItem: { tracked: false, ...(sku ? { sku } : {}) },
     };
-    await this.graphqlRequest({
+    const variantResponse = await this.graphqlRequest<ShopifyBulkUpdateVariantResponse>({
       shopDomain,
       accessToken,
       query: `
@@ -1038,6 +1070,16 @@ export class ShopifyConnector implements ConnectorInterface {
       `,
       variables: { productId: shopifyProductId, variants: [variantInput] },
     });
+    const variantErrors = (
+      Array.isArray(variantResponse.productVariantsBulkUpdate?.userErrors)
+        ? variantResponse.productVariantsBulkUpdate?.userErrors
+        : []
+    )
+      .map((issue) => String(issue?.message ?? "").trim())
+      .filter((message) => message.length > 0);
+    if (variantErrors.length > 0) {
+      throw new Error(`Shopify variant update failed: ${variantErrors.join(" | ")}`);
+    }
   }
 
   private async publishToPublication(

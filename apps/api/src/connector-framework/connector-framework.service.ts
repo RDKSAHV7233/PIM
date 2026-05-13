@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { LoggerService } from "../common/logging/logger.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -64,6 +65,7 @@ export class ConnectorFrameworkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: ConnectorRegistry,
+    private readonly logger: LoggerService,
   ) {}
 
   private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
@@ -74,7 +76,7 @@ export class ConnectorFrameworkService {
     }
   }
 
-  async getInstallation(tenantKey: string, slug: string): Promise<ConnectorInstallationRecord | null> {
+  async getInstallation(tenantKey: string, slug: string, installationId?: string): Promise<ConnectorInstallationRecord | null> {
     const connectorDefinition = await this.prisma.tenant(tenantKey).connectorDefinition.findFirst({
       where: { slug },
       select: {
@@ -88,8 +90,18 @@ export class ConnectorFrameworkService {
       return null;
     }
 
+    const installationCount = await this.prisma.tenant(tenantKey).connectorInstallation.count({
+      where: { connectorId: connectorDefinition.id, status: { not: "DISABLED" } },
+    });
+    if (installationCount > 1 && !installationId) {
+      this.logger.warn(
+        "Multiple active installations found for connector; using most recently installed.",
+        { slug: connectorDefinition.slug, count: installationCount },
+      );
+    }
+
     const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
-      where: { connectorId: connectorDefinition.id },
+      where: { connectorId: connectorDefinition.id, ...(installationId ? { id: installationId } : {}) },
       orderBy: [{ installedAt: "desc" }],
       select: {
         id: true,
@@ -133,8 +145,8 @@ export class ConnectorFrameworkService {
     };
   }
 
-  async requireInstallation(tenantKey: string, slug: string): Promise<ConnectorInstallationRecord> {
-    const installation = await this.getInstallation(tenantKey, slug);
+  async requireInstallation(tenantKey: string, slug: string, installationId?: string): Promise<ConnectorInstallationRecord> {
+    const installation = await this.getInstallation(tenantKey, slug, installationId);
     if (!installation) {
       throw new InstallationNotFoundError(slug);
     }

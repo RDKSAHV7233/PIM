@@ -1,4 +1,4 @@
-import type { ApiRequestOptions, AttributeDefinition, BulkImportValidationSummary, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ProductRevision, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
+import type { ApiRequestOptions, AttributeDefinition, BulkImportValidationSummary, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
 import { fetchJson, postJson } from "./core";
 
 export async function getCategories(options?: ApiRequestOptions) {
@@ -87,13 +87,6 @@ export async function getProduct(productId: string, options?: ApiRequestOptions)
   return fetchJson<Product>(`/catalog/products/${productId}`, undefined, options);
 }
 
-export async function getProductRevisions(productId: string, options?: ApiRequestOptions) {
-  return fetchJson<ProductRevision[]>(
-    `/catalog/products/${encodeURIComponent(productId)}/revisions`,
-    undefined,
-    options,
-  );
-}
 
 export async function searchCatalogProducts(
   input: { q: string; limit?: number },

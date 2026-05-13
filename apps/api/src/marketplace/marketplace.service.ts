@@ -594,7 +594,7 @@ export class MarketplaceService implements OnModuleInit {
     const connectorSlug = this.mapChannelToConnectorSlug(channel);
     try {
       const tenantKey = this.connectorFramework.getCurrentTenantKey();
-      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug);
+      const installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug, dto.installationId);
       if (!installation.capabilities.includes("PUBLISH")) {
         throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
       }
@@ -2356,23 +2356,20 @@ export class MarketplaceService implements OnModuleInit {
       return attributeUrl;
     }
 
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ storagePath: string | null }>>(
-      `
-        SELECT storage_path AS "storagePath"
-        FROM media_assets
-        WHERE tenant_key = $1
-          AND product_id = $2
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1
-      `,
-      tenantKey,
-      productId,
-    );
-    const storagePath = String(rows[0]?.storagePath ?? "").trim();
+    const asset = await this.prisma.tenant().mediaAsset.findFirst({
+      where: { productId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { storagePath: true },
+    });
+    const storagePath = String(asset?.storagePath ?? "").trim();
     const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
-    if (!storagePath || !publicBase) {
+    if (!storagePath) {
+      return "";
+    }
+    if (!publicBase) {
+      this.logger.warn("R2_PUBLIC_URL is not configured; media asset image URL cannot be resolved for connector payload.", {
+        productId,
+      });
       return "";
     }
     return `${publicBase}/${storagePath.replace(/^\/+/, "").replace(/\\/g, "/")}`;

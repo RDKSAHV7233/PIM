@@ -8,7 +8,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
-import type { ProductRevision } from "@/lib/api";
+import type { ProductRevision } from "@/lib/api/revisions";
 
 interface ApprovalEvidenceDrawerProps {
   productTitle: string;
@@ -29,13 +29,6 @@ function formatRevisionValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function summarizeDecisionNote(note: string | null | undefined): string | null {
-  const normalized = String(note ?? "").trim();
-  if (!normalized) {
-    return null;
-  }
-  return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
-}
 
 function formatRevisionTimestamp(value: string): string {
   const date = new Date(value);
@@ -53,13 +46,13 @@ export function ApprovalEvidenceDrawer({
   const [open, setOpen] = useState(false);
   const latestRevision = revisions[0] ?? null;
   const latestFields = latestRevision?.changedFields.slice(0, 2) ?? [];
-  const latestNote = summarizeDecisionNote(latestRevision?.decisionNote);
+  const latestNote = null;
 
   const historyTimeline = useMemo<TimelineItem[]>(
     () =>
       revisions.map((revision): TimelineItem => ({
         id: revision.revisionId,
-        title: `${revision.action} by ${revision.actorLabel} (${revision.actorRole})`,
+        title: `Updated by ${revision.actorLabel ?? "Unknown"}`,
         meta: formatRevisionTimestamp(revision.createdAt),
         description:
           revision.changedFields.length > 0
@@ -67,16 +60,14 @@ export function ApprovalEvidenceDrawer({
                 .slice(0, 3)
                 .map(
                   (field) =>
-                    `${field.label}: ${formatRevisionValue(field.before)} to ${formatRevisionValue(field.after)}`,
+                    `${field.displayLabel ?? field.field}: ${formatRevisionValue(field.before)} to ${formatRevisionValue(field.after)}`,
                 )
                 .join(" | ")
             : "No field-level changes recorded in this revision entry.",
         tone:
-          revision.action === "REVIEW_DECISION"
-            ? "info"
-            : revision.summary.changedSectionCount > 1
-              ? "warning"
-              : "neutral",
+          (revision.summary?.changedSectionCount ?? 0) > 1
+            ? "warning"
+            : "neutral",
       })),
     [revisions],
   );
@@ -126,19 +117,19 @@ export function ApprovalEvidenceDrawer({
           <CardTitle>Latest Revision Summary</CardTitle>
           <div className="space-y-3 text-sm text-slate-700">
             <p>
-              <strong>Reviewer activity:</strong> {latestRevision.actorLabel} ({latestRevision.actorRole})
+              <strong>Reviewer activity:</strong> {latestRevision.actorLabel ?? "Unknown"}
             </p>
             <p>
               <strong>Recorded at:</strong> {formatRevisionTimestamp(latestRevision.createdAt)}
             </p>
             <div className="flex flex-wrap gap-2">
               <StatusChip
-                label={`${latestRevision.summary.changedFieldCount} changed fields`}
-                tone={latestRevision.summary.changedFieldCount > 0 ? "info" : "neutral"}
+                label={`${latestRevision.changedFields.length} changed fields`}
+                tone={latestRevision.changedFields.length > 0 ? "info" : "neutral"}
               />
               <StatusChip
-                label={`${latestRevision.summary.changedSectionCount} changed sections`}
-                tone={latestRevision.summary.changedSectionCount > 1 ? "warning" : "neutral"}
+                label={`${latestRevision.summary?.changedSectionCount ?? 0} changed sections`}
+                tone={(latestRevision.summary?.changedSectionCount ?? 0) > 1 ? "warning" : "neutral"}
               />
             </div>
             {latestNote ? (
@@ -150,8 +141,8 @@ export function ApprovalEvidenceDrawer({
               <p className="font-medium text-slate-900">Changed fields summary</p>
               <ul className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 {latestRevision.changedFields.map((field) => (
-                  <li key={`${latestRevision.revisionId}-${field.path}`} className="space-y-1 text-sm text-slate-700">
-                    <p className="font-medium text-slate-900">{field.label}</p>
+                  <li key={`${latestRevision.revisionId}-${field.field}`} className="space-y-1 text-sm text-slate-700">
+                    <p className="font-medium text-slate-900">{field.displayLabel ?? field.field}</p>
                     <p>
                       <span className="font-medium">Before:</span> {formatRevisionValue(field.before)}
                     </p>
@@ -218,28 +209,28 @@ export function ApprovalEvidenceDrawer({
       {latestRevision ? (
         <div className="space-y-2">
           <p className="text-sm font-medium text-slate-900">
-            {latestRevision.summary.changedFieldCount} change(s) in {latestRevision.summary.changedSectionCount} section(s)
+            {latestRevision.changedFields.length} change(s) in {latestRevision.summary?.changedSectionCount ?? 0} section(s)
           </p>
           <p className="text-xs text-slate-500">
-            Latest activity by {latestRevision.actorLabel} ({latestRevision.actorRole}) on{" "}
+            Latest activity by {latestRevision.actorLabel ?? "Unknown"} on{" "}
             {formatRevisionTimestamp(latestRevision.createdAt)}
           </p>
           <div className="flex flex-wrap gap-2">
             <StatusChip
-              label={`${latestRevision.summary.changedFieldCount} changed fields`}
-              tone={latestRevision.summary.changedFieldCount > 0 ? "info" : "neutral"}
+              label={`${latestRevision.changedFields.length} changed fields`}
+              tone={latestRevision.changedFields.length > 0 ? "info" : "neutral"}
             />
             <StatusChip
-              label={`${latestRevision.summary.changedSectionCount} changed sections`}
-              tone={latestRevision.summary.changedSectionCount > 1 ? "warning" : "neutral"}
+              label={`${latestRevision.summary?.changedSectionCount ?? 0} changed sections`}
+              tone={(latestRevision.summary?.changedSectionCount ?? 0) > 1 ? "warning" : "neutral"}
             />
           </div>
           {latestNote ? <p className="text-xs text-slate-600">Latest reviewer note: {latestNote}</p> : null}
           {latestFields.length > 0 ? (
             <ul className="space-y-1 text-xs text-slate-600">
               {latestFields.map((field) => (
-                <li key={`${latestRevision.revisionId}-${field.path}`}>
-                  <span className="font-medium">{field.label}:</span> {formatRevisionValue(field.before)} to{" "}
+                <li key={`${latestRevision.revisionId}-${field.field}`}>
+                  <span className="font-medium">{field.displayLabel ?? field.field}:</span> {formatRevisionValue(field.before)} to{" "}
                   {formatRevisionValue(field.after)}
                 </li>
               ))}

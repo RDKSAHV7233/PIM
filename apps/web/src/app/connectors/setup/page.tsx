@@ -289,7 +289,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     return (
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Shopify uses managed install. Create the Vexa connector account with store-domain context here; managed-install lanes continue in the provider callback and connector detail workflow before publishing.
+          Enter your store domain and Admin API access token to complete setup immediately. The access token is your custom app&apos;s SHPAT (starts with <code>shpat_</code>) — find it in Shopify Admin → Apps → your custom app → API credentials. Client ID is optional and only needed for managed OAuth installs.
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -300,6 +300,29 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
             name="shopDomain"
             autoComplete="off"
             placeholder="demo-store.myshopify.com"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-access-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Admin API Access Token (SHPAT)
+          </label>
+          <Input
+            id={`install-access-token-${definitionId}`}
+            name="accessToken"
+            type="password"
+            autoComplete="new-password"
+            placeholder="shpat_xxxxxxxxxxxxxxxxxxxx"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Client ID <span className="font-normal text-slate-400">(optional — managed OAuth only)</span>
+          </label>
+          <Input
+            id={`install-client-id-${definitionId}`}
+            name="clientId"
+            autoComplete="off"
+            placeholder="Leave blank for custom app / SHPAT installs"
           />
         </div>
       </>
@@ -564,7 +587,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
                       <p className="text-xs text-slate-500">
                         {definition.slug === "shopify"
-                          ? "Create the Shopify account here, then continue in connector detail to complete the managed install, token exchange, and publication target setup."
+                          ? "Provide store domain and SHPAT to complete setup now, or leave the token blank to finish via managed install in connector detail."
                           : "Install here, then return to the portfolio to open mappings, detail, or catalog account operations."}
                       </p>
                       <PendingSubmitButton
