@@ -9,6 +9,20 @@ import type { DetailTab } from "./product-detail-types";
 
 export { mapMarketplaceChannelToConnectorSlug };
 
+const BLOCKER_MESSAGES: Record<string, string> = {
+  connector_not_active: "Shopify connector is not active. Visit Connections to check the installation.",
+  no_active_connector: "No active connector is installed for this channel.",
+  product_blocking_issues_open:
+    "Product has blocking quality issues - fix them on the Quality tab before queuing.",
+  fallback_ack_required:
+    "A fallback mapping is in use. Select 'Acknowledge fallback usage' in the form below.",
+  no_mapping_for_category:
+    "No channel mapping exists for this category. Visit Channel Mappings to configure one.",
+  product_not_approved: "Product must be approved before it can be queued for export.",
+  credentials_expired: "Connector credentials have expired. Re-authenticate on the Credentials tab.",
+  category_scope_mismatch: "This product's category does not match the mapping scope.",
+};
+
 export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "content", label: "Content" },
@@ -37,6 +51,10 @@ export function normalizeChannel(value: string | undefined): MarketplaceChannel 
 export function normalizeTemplateId(value: string | undefined): string | undefined {
   const trimmed = String(value ?? "").trim();
   return trimmed || undefined;
+}
+
+export function translateReadinessBlocker(code: string): string {
+  return BLOCKER_MESSAGES[code] ?? code;
 }
 
 export function lifecycleStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {

@@ -48,7 +48,19 @@ type ShopifyGraphQlEnvelope<T> = {
   data?: T;
   errors?: Array<{
     message?: string;
+    extensions?: { code?: string };
   }>;
+  extensions?: {
+    cost?: {
+      requestedQueryCost?: number;
+      actualQueryCost?: number;
+      throttleStatus?: {
+        maximumAvailable?: number;
+        currentlyAvailable?: number;
+        restoreRate?: number;
+      };
+    };
+  };
 };
 
 type ShopifyShopIdentity = {
@@ -1219,43 +1231,114 @@ export class ShopifyConnector implements ConnectorInterface {
     variables?: Record<string, unknown>;
   }): Promise<T> {
     const endpoint = `${this.resolveAdminApiBaseUrl(input.shopDomain)}/admin/api/${this.resolveAdminApiVersion()}/graphql.json`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": input.accessToken,
-      },
-      body: JSON.stringify({
-        query: input.query,
-        variables: input.variables ?? {},
-      }),
-    });
+    const MAX_RETRIES = 3;
 
-    const text = await response.text();
-    let parsed: ShopifyGraphQlEnvelope<T> = {};
-    try {
-      parsed = text ? (JSON.parse(text) as ShopifyGraphQlEnvelope<T>) : {};
-    } catch {
-      parsed = {};
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": input.accessToken,
+        },
+        body: JSON.stringify({
+          query: input.query,
+          variables: input.variables ?? {},
+        }),
+      });
+
+      // HTTP 429 — Shopify REST-level rate limit
+      if (response.status === 429) {
+        const retryAfterRaw = response.headers.get("Retry-After");
+        const retryAfterSec = retryAfterRaw ? parseFloat(retryAfterRaw) : 2;
+        const waitMs = Math.min(Math.ceil(retryAfterSec * 1000), 60_000);
+        this.logger.warn("Shopify rate limit hit (HTTP 429). Backing off before retry.", {
+          shopDomain: input.shopDomain,
+          attempt,
+          retryAfterSec,
+          waitMs,
+        });
+        if (attempt < MAX_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          continue;
+        }
+        throw new Error(
+          `Shopify rate limit exceeded after ${MAX_RETRIES} retries. ` +
+          `The store is receiving too many API requests. Try again in a few seconds.`,
+        );
+      }
+
+      const text = await response.text();
+      let parsed: ShopifyGraphQlEnvelope<T> = {};
+      try {
+        parsed = text ? (JSON.parse(text) as ShopifyGraphQlEnvelope<T>) : {};
+      } catch {
+        parsed = {};
+      }
+
+      // GraphQL THROTTLED error — query cost exceeded the leaky-bucket limit
+      const isThrottled = Array.isArray(parsed.errors) &&
+        parsed.errors.some((e) => e?.extensions?.code === "THROTTLED");
+      if (isThrottled) {
+        const bucket = parsed.extensions?.cost?.throttleStatus;
+        const restoreRate = bucket?.restoreRate ?? 50;
+        const needed = parsed.extensions?.cost?.requestedQueryCost ?? 0;
+        const available = bucket?.currentlyAvailable ?? 0;
+        // Wait long enough for the bucket to restore the needed cost
+        const waitMs = Math.min(Math.ceil(((needed - available) / restoreRate) * 1000) + 200, 60_000);
+        this.logger.warn("Shopify GraphQL query throttled. Waiting for bucket to restore.", {
+          shopDomain: input.shopDomain,
+          attempt,
+          requestedQueryCost: needed,
+          currentlyAvailable: available,
+          restoreRate,
+          waitMs,
+        });
+        if (attempt < MAX_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          continue;
+        }
+        throw new Error(
+          `Shopify API query cost throttled after ${MAX_RETRIES} retries. ` +
+          `Bucket available: ${available}/${bucket?.maximumAvailable ?? "?"}, requested: ${needed}. ` +
+          `Reduce concurrent exports or wait before retrying.`,
+        );
+      }
+
+      // Log a warning when the bucket is running low (below 20% capacity)
+      const throttleStatus = parsed.extensions?.cost?.throttleStatus;
+      if (throttleStatus) {
+        const { currentlyAvailable = 0, maximumAvailable = 1 } = throttleStatus;
+        if (currentlyAvailable / maximumAvailable < 0.2) {
+          this.logger.warn("Shopify API rate limit bucket is running low.", {
+            shopDomain: input.shopDomain,
+            currentlyAvailable,
+            maximumAvailable,
+            restoreRate: throttleStatus.restoreRate,
+          });
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`Shopify GraphQL request failed with status ${response.status}.`);
+      }
+      if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+        const message = parsed.errors
+          .map((issue) => String(issue?.message ?? "").trim())
+          .filter((value) => value.length > 0)
+          .join(" | ");
+        throw new Error(message || "Shopify GraphQL request returned errors.");
+      }
+      if (!parsed.data) {
+        throw new Error("Shopify GraphQL response did not include data.");
+      }
+
+      return parsed.data;
     }
 
-    if (!response.ok) {
-      throw new Error(`Shopify GraphQL request failed with status ${response.status}.`);
-    }
-    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
-      const message = parsed.errors
-        .map((issue) => String(issue?.message ?? "").trim())
-        .filter((value) => value.length > 0)
-        .join(" | ");
-      throw new Error(message || "Shopify GraphQL request returned errors.");
-    }
-    if (!parsed.data) {
-      throw new Error("Shopify GraphQL response did not include data.");
-    }
-
-    return parsed.data;
+    // Unreachable — loop always returns or throws
+    throw new Error("Shopify GraphQL request failed: exhausted retry attempts.");
   }
 
   private verifyWebhookSignature(rawBody: Buffer, headers: Record<string, string>): boolean {

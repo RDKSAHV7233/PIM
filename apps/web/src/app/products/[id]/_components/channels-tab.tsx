@@ -15,7 +15,11 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { translateExportStatus } from "@/lib/errors";
 import type { ConnectorSubmission } from "@/lib/api";
-import { lifecycleStatusTone, RoleHiddenInput } from "./product-detail-shared";
+import {
+  lifecycleStatusTone,
+  RoleHiddenInput,
+  translateReadinessBlocker,
+} from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 function submissionStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
@@ -151,7 +155,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             {data.readinessBlockers.length > 0 ? (
               <ul className="mt-2 list-disc pl-5">
                 {data.readinessBlockers.map((blocker) => (
-                  <li key={`readiness-blocker-${blocker}`}>{blocker}</li>
+                  <li key={`readiness-blocker-${blocker}`}>{translateReadinessBlocker(blocker)}</li>
                 ))}
               </ul>
             ) : (
@@ -222,6 +226,11 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
               <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
+              <input
+                type="hidden"
+                name="installationId"
+                value={data.mappingManagerInstallation?.id ?? ""}
+              />
               <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-channel">
                   Channel
@@ -258,24 +267,30 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-fallback-ack">
                   Fallback confirmation
                 </label>
-                <Select
-                  id="export-fallback-ack"
-                  name="fallbackAcknowledged"
-                  defaultValue={data.fallbackAckRequired ? "false" : "true"}
-                >
-                  <option value="false">Not acknowledged</option>
-                  <option value="true">Acknowledge fallback usage</option>
-                </Select>
+                {data.fallbackAckRequired ? (
+                  <Select
+                    id="export-fallback-ack"
+                    name="fallbackAcknowledged"
+                    defaultValue="false"
+                  >
+                    <option value="false">Not acknowledged</option>
+                    <option value="true">Acknowledge fallback usage</option>
+                  </Select>
+                ) : (
+                  <>
+                    <input type="hidden" name="fallbackAcknowledged" value="true" />
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      No fallback acknowledgement is required for this export.
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Submit</label>
-                <PendingSubmitButton
-                  type="submit"
-                  disabled={!data.canQueueExportWithAck}
-                  idleLabel="Queue channel export"
-                  pendingLabel="Queueing export..."
-                />
-              </div>
+              <PendingSubmitButton
+                type="submit"
+                disabled={!data.canQueueExportWithAck}
+                idleLabel="Queue channel export"
+                pendingLabel="Queueing export..."
+              />
             </form>
           ) : data.canWrite ? (
             <p className="text-sm text-slate-600">
@@ -517,23 +532,6 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 render: (s: ConnectorSubmission) => (
                   <StatusChip label={String(s.status ?? "").toUpperCase()} tone={submissionStatusTone(s.status)} />
                 ),
-              },
-              {
-                key: "externalRef",
-                header: "Shopify / External Ref",
-                cellClassName: "font-mono text-xs text-slate-700",
-                render: (s: ConnectorSubmission) => {
-                  if (!s.externalRef) return <span className="text-slate-400">—</span>;
-                  const gidMatch = s.externalRef.match(/gid:\/\/shopify\/Product\/(\d+)/);
-                  if (gidMatch) {
-                    return (
-                      <span title={s.externalRef}>
-                        shopify:{gidMatch[1]}
-                      </span>
-                    );
-                  }
-                  return <span title={s.externalRef}>{s.externalRef.slice(0, 40)}</span>;
-                },
               },
               {
                 key: "attemptNumber",

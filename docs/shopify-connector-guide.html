@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shopify Connector — Setup &amp; Publishing Guide</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f8f9fb;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+
+    /* ── Page wrapper ── */
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    /* ── Cover ── */
+    .cover {
+      background: linear-gradient(135deg, #5c2d91 0%, #96bf48 100%);
+      border-radius: 16px;
+      padding: 56px 48px 48px;
+      color: #fff;
+      margin-bottom: 48px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover::after {
+      content: "";
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 280px; height: 280px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+    }
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 24px;
+      padding: 4px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .cover h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 14px;
+    }
+    .cover p {
+      font-size: 1.05rem;
+      opacity: 0.88;
+      max-width: 560px;
+    }
+    .cover-meta {
+      margin-top: 32px;
+      font-size: 0.82rem;
+      opacity: 0.7;
+      display: flex;
+      gap: 24px;
+    }
+
+    /* ── Section heading ── */
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #7c3aed;
+      margin-bottom: 6px;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 20px;
+    }
+
+    /* ── Prerequisite box ── */
+    .prereq {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #7c3aed;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 40px;
+    }
+    .prereq h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #5c2d91;
+      margin-bottom: 10px;
+    }
+    .prereq ul {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 24px;
+    }
+    .prereq ul li {
+      font-size: 0.9rem;
+      color: #374151;
+      padding-left: 20px;
+      position: relative;
+    }
+    .prereq ul li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #7c3aed;
+      font-weight: 700;
+    }
+
+    /* ── Steps ── */
+    .steps { counter-reset: step; }
+
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 0 20px;
+      margin-bottom: 28px;
+      position: relative;
+    }
+    .step:not(:last-child)::before {
+      content: "";
+      position: absolute;
+      left: 27px;
+      top: 56px;
+      bottom: -28px;
+      width: 2px;
+      background: #e9d5ff;
+    }
+
+    .step-num {
+      counter-increment: step;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7c3aed, #5c2d91);
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+      position: relative;
+      z-index: 1;
+    }
+    .step-num::after {
+      content: counter(step);
+    }
+
+    .step-body {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .step-body h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+    .step-body p {
+      font-size: 0.9rem;
+      color: #4b5563;
+      margin-bottom: 10px;
+    }
+    .step-body p:last-child { margin-bottom: 0; }
+
+    /* Tags */
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+    }
+    .tag-setup    { background: #ede9fe; color: #6d28d9; }
+    .tag-shopify  { background: #dcfce7; color: #166534; }
+    .tag-publish  { background: #fef3c7; color: #92400e; }
+    .tag-verify   { background: #dbeafe; color: #1e40af; }
+
+    /* Code / path */
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.82rem;
+      background: #f3f0ff;
+      color: #5c2d91;
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+
+    /* Callout */
+    .callout {
+      display: flex;
+      gap: 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 10px;
+    }
+    .callout-icon { font-size: 1rem; flex-shrink: 0; line-height: 1.5; }
+    .callout p { font-size: 0.85rem; color: #78350f; margin: 0; }
+
+    .callout-info {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
+    .callout-info p { color: #1e40af; }
+
+    .callout-success {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+    }
+    .callout-success p { color: #166534; }
+
+    /* Phase divider */
+    .phase {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 40px 0 28px;
+    }
+    .phase-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6d28d9;
+      background: #f5f3ff;
+      border: 1px solid #ddd6fe;
+      border-radius: 20px;
+      padding: 4px 14px;
+      white-space: nowrap;
+    }
+    .phase-line { flex: 1; height: 1px; background: #e9d5ff; }
+
+    /* Footer */
+    .footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    /* ── Print ── */
+    @media print {
+      body { background: #fff; font-size: 11pt; }
+      .page { padding: 0; max-width: 100%; }
+      .cover { border-radius: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .step:not(:last-child)::before { display: none; }
+      .step-body { box-shadow: none; break-inside: avoid; }
+      .step { break-inside: avoid; }
+      .phase { break-after: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-badge">User Guide · v1.0</div>
+    <h1>Shopify Connector<br>Setup &amp; Publishing Guide</h1>
+    <p>Connect your Vexa PIM to Shopify in minutes using a custom app token, then publish products directly from PIM to your store.</p>
+    <div class="cover-meta">
+      <span>Vexa PIM</span>
+      <span>·</span>
+      <span>Shopify Integration</span>
+      <span>·</span>
+      <span>May 2026</span>
+    </div>
+  </div>
+
+  <!-- Prerequisites -->
+  <div class="prereq">
+    <h3>Before You Begin — Prerequisites</h3>
+    <ul>
+      <li>Admin or Manager role in Vexa PIM</li>
+      <li>Shopify store with Admin access</li>
+      <li>Custom app created in Shopify Admin</li>
+      <li>Admin API Access Token (SHPAT) from that app</li>
+      <li>At least one sales channel / publication in Shopify</li>
+      <li>Products in <em>Approved</em> or <em>In Review</em> status in PIM</li>
+    </ul>
+  </div>
+
+  <!-- Phase 1 -->
+  <div class="phase">
+    <div class="phase-label">Phase 1 — Install the Connector</div>
+    <div class="phase-line"></div>
+  </div>
+
+  <div class="steps">
+
+    <!-- Step 1 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-shopify">Shopify Admin</span>
+        <h3>Create a Custom App in Shopify</h3>
+        <p>In Shopify Admin, go to <strong>Apps → Develop apps → Create an app</strong>. Give it a name (e.g. <em>Vexa PIM</em>). Under <strong>Configuration → Admin API access scopes</strong>, enable at minimum: <code>read_products</code>, <code>write_products</code>, <code>read_publications</code>, <code>write_publications</code>.</p>
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <p>You only need to create this custom app once per Shopify store.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-shopify">Shopify Admin</span>
+        <h3>Generate the Admin API Access Token (SHPAT)</h3>
+        <p>Inside your new app, click <strong>API credentials → Install app</strong>. After installation, click <strong>Reveal token once</strong> under <em>Admin API access token</em>. Copy the token — it starts with <code>shpat_</code>.</p>
+        <div class="callout">
+          <span class="callout-icon">⚠️</span>
+          <p>Shopify shows this token only once. Store it in a password manager before leaving the page.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Open the Connector Setup Page</h3>
+        <p>In Vexa PIM, navigate to <strong>Channels → Connectors</strong> in the left sidebar. Find the <em>Shopify</em> tile and click <strong>Set Up</strong> (or <strong>Install</strong>). You will land on the connector setup form.</p>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Enter an Account Alias</h3>
+        <p>In the <strong>Account Alias</strong> field, type a short, human-readable name for this Shopify store (e.g. <code>main-store</code> or <code>vishaltest112</code>). This label appears in connector lists and export history.</p>
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <p>Use lowercase letters, numbers, and hyphens only. Avoid spaces.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Enter Your Store Domain</h3>
+        <p>In the <strong>Store Domain</strong> field, type your Shopify store's myshopify domain, e.g. <code>your-store.myshopify.com</code>. Do not include <code>https://</code> — just the hostname.</p>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Paste the Admin API Access Token (SHPAT)</h3>
+        <p>In the <strong>Admin API Access Token (SHPAT)</strong> field, paste the <code>shpat_…</code> token you copied in Step 2. The field is masked for security. Leave the <em>Client ID</em> field blank — it is only needed for managed OAuth installs.</p>
+        <div class="callout callout-success">
+          <span class="callout-icon">✅</span>
+          <p>Providing the SHPAT completes authorization immediately — no OAuth redirect required.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Submit the Setup Form</h3>
+        <p>Click <strong>Install Connector</strong> (or <strong>Save</strong>). Vexa PIM sends the credentials to the API, creates the installation record, and calls back Shopify to validate the token. On success you are redirected to the connector's <strong>Overview</strong> tab.</p>
+        <div class="callout">
+          <span class="callout-icon">⚠️</span>
+          <p>If you see an error, double-check that the store domain matches the store where you created the custom app, and that the SHPAT was copied in full.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /phase 1 steps -->
+
+  <!-- Phase 2 -->
+  <div class="phase">
+    <div class="phase-label">Phase 2 — Verify &amp; Configure</div>
+    <div class="phase-line"></div>
+  </div>
+
+  <div class="steps">
+
+    <!-- Step 8 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-verify">Verify</span>
+        <h3>Confirm Connection on the Overview Tab</h3>
+        <p>On the connector <strong>Overview</strong> tab, confirm that <strong>no amber warning banner</strong> appears at the top of the page. A warning banner means OAuth has not been finalized — go back to Step 6 and re-enter the SHPAT. If the page is clean, the connector is fully authorized.</p>
+      </div>
+    </div>
+
+    <!-- Step 9 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Open the Credentials Tab</h3>
+        <p>Click the <strong>Credentials</strong> tab. This tab performs a live fetch of your Shopify publication channels each time it loads. Wait a moment for the list to populate.</p>
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <p>If no channels appear, reload the page. The tab header reads <em>Reload to refetch channels →</em> — click it to trigger a fresh fetch from Shopify.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 10 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-setup">Vexa PIM</span>
+        <h3>Select a Publication Target</h3>
+        <p>From the list of channels fetched from Shopify (e.g. <em>Online Store</em>, <em>Point of Sale</em>), tick the checkbox next to the channel you want to publish products to. Click <strong>Save publication targets</strong>. The selected channel will be shown with a <em>selected</em> chip.</p>
+        <div class="callout callout-success">
+          <span class="callout-icon">✅</span>
+          <p>Your connector is now fully configured and ready to receive product exports.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /phase 2 steps -->
+
+  <!-- Phase 3 -->
+  <div class="phase">
+    <div class="phase-label">Phase 3 — Publish a Product</div>
+    <div class="phase-line"></div>
+  </div>
+
+  <div class="steps">
+
+    <!-- Step 11 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-publish">Publishing</span>
+        <h3>Open a Product in Vexa PIM</h3>
+        <p>Navigate to <strong>Products</strong> in the sidebar. Find a product in <em>Approved</em> or <em>In Review</em> status. Click its title to open the product detail page.</p>
+      </div>
+    </div>
+
+    <!-- Step 12 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-publish">Publishing</span>
+        <h3>Check the Quality Tab</h3>
+        <p>Click the <strong>Quality</strong> tab. Review the <em>Compliance Validation</em> section. Ensure there are zero <strong>blocking errors</strong> for Shopify. Warnings are informational and do not prevent publishing.</p>
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <p>Common blocking issues: missing primary HTTPS image (<code>mainImageUrl</code>), missing title, missing SKU. Fix these before proceeding.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 13 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-publish">Publishing</span>
+        <h3>Trigger a Shopify Export Job</h3>
+        <p>On the product detail page, click <strong>Export to Shopify</strong> (or the channel publish button). Confirm the target connector shows the alias you set up (e.g. <code>main-store</code>). Click <strong>Submit</strong>. A job is queued immediately.</p>
+      </div>
+    </div>
+
+    <!-- Step 14 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-verify">Verify</span>
+        <h3>Monitor the Export Job</h3>
+        <p>The job status transitions: <code>QUEUED</code> → <code>PROCESSING</code> → <code>SUCCESS</code> (or <code>ERROR</code>). You can watch progress in the <strong>Submission History</strong> panel on the product page or in <strong>Jobs</strong> from the sidebar. Processing typically completes within 10–30 seconds.</p>
+        <div class="callout">
+          <span class="callout-icon">⚠️</span>
+          <p>If the status is <code>ERROR</code>, click the job row to see the full error message. Common causes: zero selling price, duplicate SKU in Shopify, or rate-limit retry in progress.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 15 -->
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <span class="tag tag-verify">Verify</span>
+        <h3>Confirm the Product in Shopify Admin</h3>
+        <p>In <strong>Shopify Admin → Products</strong>, search for the product by title or handle. Confirm:</p>
+        <p>• Status is <strong>Active</strong> &nbsp;·&nbsp; Correct price and SKU &nbsp;·&nbsp; Published to your chosen channel &nbsp;·&nbsp; Primary image present</p>
+        <div class="callout callout-success">
+          <span class="callout-icon">🎉</span>
+          <p>Your product is live in Shopify. Repeat Steps 11–15 for each product, or use Bulk Edit to queue multiple exports at once.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /phase 3 steps -->
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>Vexa PIM — Shopify Connector User Guide v1.0</span>
+    <span>© 2026 Vexa PIM. For support, contact your workspace administrator.</span>
+  </div>
+
+</div>
+</body>
+</html>

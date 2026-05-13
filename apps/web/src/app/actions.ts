@@ -7,7 +7,6 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   ApiHttpError,
   type ApiRequestOptions,
-  addApprovalComment as addApprovalCommentRequest,
   applyBulkEdit as applyBulkEditRequest,
   decideProductReview as decideProductReviewRequest,
   deleteJson,
@@ -19,7 +18,6 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
-import { startBulkImportRun, uploadBulkImportRun, validateBulkImportRun } from "@/lib/api/operations";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -529,17 +527,6 @@ export async function decideProductReviewAction(formData: FormData) {
   }
 }
 
-export async function addApprovalCommentAction(formData: FormData) {
-  const productId = String(formData.get("productId") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
-  if (!productId || !body) {
-    throw new Error("productId and body are required to add an approval comment.");
-  }
-  const options = await resolveActionOptions(formData);
-  await addApprovalCommentRequest(productId, body, options);
-  revalidatePath("/quality/approvals");
-}
-
 export async function createProductAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
@@ -813,26 +800,17 @@ export async function createVariantAction(formData: FormData) {
     throw new Error("Product and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
-  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  try {
-    await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
-      skuCode,
-      attributes,
-      mrp: parseNumber(formData.get("mrp")),
-      sellingPrice: parseNumber(formData.get("sellingPrice")),
-      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-      status: String(formData.get("status") ?? "draft"),
-    });
-    revalidatePath(`/products/${productId}`);
-  } catch (error: unknown) {
-    rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : String(error ?? "");
-    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error", updateError: "CONTENT_LOCKED" }));
-    }
-    redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error" }));
-  }
+  await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
+    skuCode,
+    attributes,
+    mrp: parseNumber(formData.get("mrp")),
+    sellingPrice: parseNumber(formData.get("sellingPrice")),
+    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+    status: String(formData.get("status") ?? "draft"),
+  });
+
+  revalidatePath(`/products/${productId}`);
 }
 
 export async function updateVariantAction(formData: FormData) {
@@ -843,26 +821,17 @@ export async function updateVariantAction(formData: FormData) {
     throw new Error("Product, variant, and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
-  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  try {
-    await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
-      skuCode,
-      attributes,
-      mrp: parseNumber(formData.get("mrp")),
-      sellingPrice: parseNumber(formData.get("sellingPrice")),
-      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-      status: String(formData.get("status") ?? "draft"),
-    });
-    revalidatePath(`/products/${productId}`);
-  } catch (error: unknown) {
-    rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : String(error ?? "");
-    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
-      redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error", updateError: "CONTENT_LOCKED" }));
-    }
-    redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error" }));
-  }
+  await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
+    skuCode,
+    attributes,
+    mrp: parseNumber(formData.get("mrp")),
+    sellingPrice: parseNumber(formData.get("sellingPrice")),
+    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+    status: String(formData.get("status") ?? "draft"),
+  });
+
+  revalidatePath(`/products/${productId}`);
 }
 
 export async function deleteVariantAction(formData: FormData) {
@@ -1190,6 +1159,7 @@ export async function createExportJobAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   const channel = String(formData.get("channel") ?? "").trim();
   const templateId = String(formData.get("templateId") ?? "").trim();
+  const installationId = String(formData.get("installationId") ?? "").trim();
   const maxRetries = parseNumber(formData.get("maxRetries"));
   const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
   if (!productId || !channel) {
@@ -1199,6 +1169,7 @@ export async function createExportJobAction(formData: FormData) {
     await postJsonForAction(formData, `/marketplace/products/${productId}/export-jobs`, {
       channel,
       templateId: templateId || undefined,
+      installationId: installationId || undefined,
       maxRetries,
       fallbackAcknowledged,
     });
@@ -1210,6 +1181,13 @@ export async function createExportJobAction(formData: FormData) {
     throw error;
   }
   revalidatePath(`/products/${productId}`);
+  redirect(
+    replaceQueryParams(`/products/${encodeURIComponent(productId)}`, {
+      tab: "channels",
+      channel,
+      updateStatus: "export-queued",
+    }),
+  );
 }
 
 export async function createConnectorMappingVersionAction(formData: FormData) {
@@ -1417,6 +1395,8 @@ export async function retrySubmissionAction(formData: FormData) {
 
 export async function createBulkImportJobAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const runId = String(formData.get("runId") ?? "").trim();
+  const effectiveMode = String(formData.get("effectiveMode") ?? "").trim().toLowerCase();
   let sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
   let sourceName = String(formData.get("sourceName") ?? "").trim();
   const csvContent = String(formData.get("csvContent") ?? "");
@@ -1428,6 +1408,13 @@ export async function createBulkImportJobAction(formData: FormData) {
 
   if (!categoryId) {
     throw new Error("Category is required for bulk import.");
+  }
+
+  if (runId && effectiveMode === "large") {
+    await postJsonForAction(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/start`, {});
+    revalidatePath("/");
+    revalidatePath("/operations/imports");
+    redirect(`/operations/imports?bulkRunId=${encodeURIComponent(runId)}`);
   }
 
   const sourceFile =
@@ -1481,26 +1468,9 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv or json.");
   }
 
-  const actionOptions = await resolveActionOptions(formData);
-  let linkedRunId: string | undefined;
-  if (sourceFormat === "csv" && sourceFile) {
-    const run = await uploadBulkImportRun(categoryId, sourceFile, sourceName || sourceFile.name, actionOptions);
-    const validatedRun = await validateBulkImportRun(run.id, actionOptions);
-    if (validatedRun.effectiveMode === "large") {
-      if (validatedRun.status === "preflight_ready") {
-        await startBulkImportRun(validatedRun.id, actionOptions);
-      }
-      redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
-    }
-    if (validatedRun.status !== "preflight_ready") {
-      throw new Error("Import file failed pre-validation. Fix the CSV and try again.");
-    }
-    linkedRunId = validatedRun.id;
-  }
-
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {
-    runId: linkedRunId,
     categoryId,
+    runId: runId || undefined,
     sourceFormat,
     sourceName: sourceName || undefined,
     csvContent: sourceFormat === "csv" ? csvContent : undefined,

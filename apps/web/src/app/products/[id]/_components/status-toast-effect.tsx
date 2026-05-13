@@ -20,6 +20,10 @@ export function StatusToastEffect({ updateStatus }: StatusToastEffectProps) {
       toast.success("Product updated");
       return;
     }
+    if (updateStatus === "export-queued") {
+      toast.success("Export job queued successfully.");
+      return;
+    }
     if (updateStatus === "error" || updateStatus === "conflict") {
       toast.error("Update failed");
     }

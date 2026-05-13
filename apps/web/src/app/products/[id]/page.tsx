@@ -94,10 +94,33 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     mediaAssetsPromise,
   ]);
 
+  const publishCapableSlugs = new Set(
+    installedConnectors
+      .filter(
+        (connector) =>
+          connector.status === "ACTIVE" &&
+          connector.capabilities.some((capability) => capability === "PUBLISH"),
+      )
+      .map((connector) => connector.slug),
+  );
+  const firstPublishableChannel = channels.find((channel) =>
+    publishCapableSlugs.has(mapMarketplaceChannelToConnectorSlug(channel.channel)),
+  )?.channel;
+  const effectiveSelectedChannel =
+    !query.channel && firstPublishableChannel ? firstPublishableChannel : selectedChannel;
+  const effectiveReadiness =
+    effectiveSelectedChannel !== selectedChannel
+      ? await evaluateConnectorPublishReadiness(
+          mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
+          { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
+          { role: actorRole, authHeader },
+        )
+      : readiness;
+
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
     params.set("tab", tab);
-    if (selectedChannel) params.set("channel", selectedChannel);
+    if (effectiveSelectedChannel) params.set("channel", effectiveSelectedChannel);
     if (selectedTemplateId) params.set("templateId", selectedTemplateId);
     if (returnTo) params.set("returnTo", returnTo);
     return `/products/${encodeURIComponent(id)}?${params.toString()}`;
@@ -131,9 +154,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         ruleCode.includes("media")
       );
     }).length ?? 0;
-  const selectedChannelConfig = channels.find((channel) => channel.channel === selectedChannel) ?? null;
+  const selectedChannelConfig =
+    channels.find((channel) => channel.channel === effectiveSelectedChannel) ?? null;
   const selectedConnectorInstallation =
-    installedConnectors.find((connector) => connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel)) ?? null;
+    installedConnectors.find(
+      (connector) =>
+        connector.slug === mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
+    ) ?? null;
   const latestExportJob = [...exportJobs].sort((left, right) =>
     new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
   )[0] ?? null;
@@ -171,24 +198,24 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
   })();
   const mappingReadiness = (() => {
-    if ((readiness.blockers ?? []).length > 0) {
+    if ((effectiveReadiness.blockers ?? []).length > 0) {
       return {
         label: "Blocked",
         tone: "danger" as const,
-        detail: `${readiness.blockers.length} publish blocker${readiness.blockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? selectedChannel}.`,
+        detail: `${effectiveReadiness.blockers.length} publish blocker${effectiveReadiness.blockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
       };
     }
-    if ((readiness.warnings ?? []).length > 0) {
+    if ((effectiveReadiness.warnings ?? []).length > 0) {
       return {
         label: "Warnings",
         tone: "warning" as const,
-        detail: `${readiness.warnings.length} readiness warning${readiness.warnings.length === 1 ? "" : "s"} remain.`,
+        detail: `${effectiveReadiness.warnings.length} readiness warning${effectiveReadiness.warnings.length === 1 ? "" : "s"} remain.`,
       };
     }
     return {
       label: "Ready",
       tone: "success" as const,
-      detail: `Selected ${selectedChannelConfig?.displayName ?? selectedChannel} mapping is clear.`,
+      detail: `Selected ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel} mapping is clear.`,
     };
   })();
   const mediaReadiness = (() => {
@@ -250,8 +277,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     ...(blockingIssueCount > 0
       ? [{ label: `Fix ${blockingIssueCount} quality blocker${blockingIssueCount === 1 ? "" : "s"}`, href: tabHref("quality") }]
       : []),
-    ...((readiness.blockers ?? []).length > 0
-      ? [{ label: `Clear ${readiness.blockers.length} publish blocker${readiness.blockers.length === 1 ? "" : "s"}`, href: tabHref("channels") }]
+    ...((effectiveReadiness.blockers ?? []).length > 0
+      ? [{ label: `Clear ${effectiveReadiness.blockers.length} publish blocker${effectiveReadiness.blockers.length === 1 ? "" : "s"}`, href: tabHref("channels") }]
       : []),
     ...(imageAssetCount === 0 || mediaIssueCount > 0
       ? [{ label: imageAssetCount === 0 ? "Add product media" : "Review media issues", href: tabHref("media") }]
@@ -347,7 +374,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (product.status === "approved") {
-      if ((readiness.blockers ?? []).length > 0 || (readiness.warnings ?? []).length > 0) {
+      if ((effectiveReadiness.blockers ?? []).length > 0 || (effectiveReadiness.warnings ?? []).length > 0) {
         return {
           title: "Map remaining attributes to go live",
           detail: "Channel mapping still needs attention before this approved product is ready for publish and export.",
@@ -435,7 +462,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </Card>
       ) : null}
       {activeTab === "overview" ? <WorkflowStepper steps={workflowSteps} /> : null}
-      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
+      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? effectiveSelectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
       <Suspense fallback={<ProductDetailDeferredLoading />}>
         <ProductDetailDeferredSection
           productId={id}
@@ -445,8 +472,9 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           installedConnectors={installedConnectors}
           exportJobs={exportJobs}
           mediaAssets={mediaAssets}
-          selectedChannel={selectedChannel}
+          selectedChannel={effectiveSelectedChannel}
           selectedTemplateId={selectedTemplateId}
+          readiness={effectiveReadiness}
           actorRole={actorRole}
           authHeader={authHeader}
           canWrite={canWrite}
