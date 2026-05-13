@@ -524,6 +524,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           workspaceState: summarizeDefinitionWorkspace(definition, installedForDefinition),
         };
       })
+      .filter((item) => item.definition.launchStage !== "planned")
       .filter((item) => connectorMatchesQuery(normalizedSearch, item.definition, item.installedForDefinition))
       .sort((left, right) => {
         const installedDelta = right.installedForDefinition.length - left.installedForDefinition.length;

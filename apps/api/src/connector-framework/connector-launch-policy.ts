@@ -25,10 +25,10 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === "meesho") {
     return {
-      launchStage: "manual",
+      launchStage: "planned",
       launchNote:
-        "Meesho is still a guided manual/export workflow. Keep it out of seller self-serve onboarding until the managed export path is complete.",
-      surfacedCapabilities: capabilities.filter((capability) => capability === "VALIDATE"),
+        "Meesho managed export (Excel/ExcelJS) is not yet complete. Hidden from operator UI until P5-S4 is shipped.",
+      surfacedCapabilities: [],
     };
   }
 

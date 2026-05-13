@@ -6,7 +6,11 @@ import {
 
 export type ReadinessStatus = "ready" | "warnings" | "errors" | "loading" | "unknown";
 
-const BASE_READINESS_CHANNELS: MarketplaceChannel[] = [...MARKETPLACE_CHANNELS];
+// Exclude channels that are not yet live (planned/stub only) from readiness polling
+const HIDDEN_READINESS_CHANNELS = new Set<MarketplaceChannel>(["meesho"]);
+const BASE_READINESS_CHANNELS: MarketplaceChannel[] = MARKETPLACE_CHANNELS.filter(
+  (ch) => !HIDDEN_READINESS_CHANNELS.has(ch),
+);
 
 function resolveStubReadinessChannels(): Set<MarketplaceChannel> {
   const values = String(process.env.NEXT_PUBLIC_CONNECTOR_STUB_SLUGS ?? "")
