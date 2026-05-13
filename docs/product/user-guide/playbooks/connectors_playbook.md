@@ -57,10 +57,10 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Account Alias`, `External Account Ref`, `Confirm permanent delete`
 - Field names (technical): `slug`, `installationId`, `connectorSlug`, `confirmDelete`, `accountAlias`, `externalAccountRef`
-- Select names: Information not available in TEJ PIM project.
+- Select names: Information not available in Vexa PIM project.
 - Placeholders: `Optional`
 - Links: `/admin/connectors`, `/admin/plan`
 

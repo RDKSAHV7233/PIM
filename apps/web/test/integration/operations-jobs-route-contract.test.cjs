@@ -69,7 +69,9 @@ function run() {
     source.includes('className={`border-t border-slate-200 ${') &&
       source.includes('selectedSubmissionId === submission.id ? "bg-amber-50" : "hover:bg-slate-50/50"') &&
       source.includes("CardTitle>Selected Submission Detail</CardTitle>") &&
-      source.includes("selectedSubmission.channelErrors.length === 0 ? ("),
+      source.includes("selectedSubmission.channelErrors.length === 0 ? (") &&
+      source.includes('text-sm font-medium text-slate-900">Submission recovery timeline</p>') &&
+      source.includes("Timeline className=\"mt-3\" items={submissionTimelineItems(selectedSubmission)}"),
     "Operations jobs must highlight the selected submission row and surface a detail panel with honest channel-error handling.",
   );
   assert(

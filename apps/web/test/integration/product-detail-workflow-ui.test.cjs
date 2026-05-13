@@ -35,6 +35,8 @@ function run() {
   assert(
     channelsSource.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
       channelsSource.includes("Queue channel export") &&
+      channelsSource.includes("Export confirmation") &&
+      channelsSource.includes("Latest export result summary") &&
       !channelsSource.includes("Publish to a channel"),
     "Product detail must use truthful queued-export language before diagnostics.",
   );

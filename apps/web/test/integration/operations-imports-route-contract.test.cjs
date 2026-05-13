@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const IMPORTS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "operations", "imports", "page.tsx");
+const PREFLIGHT_FORM = path.join(REPO_ROOT, "apps", "web", "src", "components", "operations", "import-preflight-form.tsx");
 const ROLE_CAPABILITIES = path.join(REPO_ROOT, "apps", "web", "src", "lib", "role-capabilities.ts");
 
 function assert(condition, message) {
@@ -15,6 +16,7 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(IMPORTS_PAGE, "utf8");
+  const preflightSource = fs.readFileSync(PREFLIGHT_FORM, "utf8");
   const roleSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
 
   assert(
@@ -62,11 +64,18 @@ function run() {
   );
   assert(
     source.includes("<RefreshOnInterval intervalMs={30_000} />") &&
-      source.includes("form action={createBulkImportJobAction}") &&
+      source.includes("<CardTitle>Operator import flow</CardTitle>") &&
+      source.includes("Upload and pre-validate") &&
+      source.includes("Review validation summary") &&
+      source.includes("Start import") &&
+      source.includes("Review result and repair rows") &&
+      source.includes("<WorkflowStepper steps={operatorWorkflowSteps} />") &&
+      source.includes("<ImportPreflightForm") &&
+      source.includes("submitAction={createBulkImportJobAction}") &&
       source.includes("form action={processBulkImportJobAction}") &&
-      source.includes('idleLabel="Upload Import File"') &&
-      source.includes('pendingLabel="Uploading and starting import..."'),
-    "Operations imports must auto-refresh and wire both create/process server actions through pending-submit controls.",
+      preflightSource.includes("Validate import file") &&
+      preflightSource.includes("Start validated import"),
+    "Operations imports must auto-refresh, expose the strict four-step import workflow, validate before upload, and wire both create/process actions through the current workflow.",
   );
   assert(
     source.includes('href="/api/imports/templates/sample.csv"') &&
@@ -78,6 +87,7 @@ function run() {
     source.includes('actorRole === "viewer"') &&
       source.includes('"No import jobs are visible for this scope."') &&
       source.includes('"No import jobs match this filter."') &&
+      source.includes("Select an import job from Stage 3 to open the result summary") &&
       source.includes('redirect(buildLoginRedirect("/operations/imports", error));'),
     "Operations imports must differentiate viewer/read-write empty states and redirect auth failures through the shared login helper.",
   );
@@ -93,7 +103,7 @@ function run() {
           "operations_imports_route_filters_test_data_and_status_scope",
           "operations_imports_route_fetches_row_detail_only_for_selected_job",
           "operations_imports_route_preserves_filter_scope_in_job_links",
-          "operations_imports_route_wires_create_and_process_server_actions",
+          "operations_imports_route_wires_preflight_create_and_process_server_actions",
           "operations_imports_route_exposes_sample_files_and_json_preview",
           "operations_imports_route_handles_empty_states_and_auth_redirects",
         ],

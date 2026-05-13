@@ -1,66 +1,147 @@
-/* eslint-disable no-console */
 const { test, expect } = require("@playwright/test");
 const {
   apiLogin,
+  apiRequest,
+  createCategory,
+  createProduct,
+  deleteCategory,
+  deleteProduct,
   loginViaUi,
+  purgeProduct,
+  uniqueName,
+  updateProduct,
 } = require("./helpers/vexa-pim.cjs");
 
-/**
- * Demo-tenant end-to-end golden buyer journey spec.
- * Covers the full operator path from dashboard to audit log.
- * Uses seeded/default demo flows. Does not rebuild any existing spec scope.
- */
+const DEFAULT_MAPPING = {
+  title: "title",
+  description: "description",
+  brand: "brand",
+  hsnCode: "hsnCode",
+  gstRate: "gstRate",
+  status: "status",
+  attributes: "attributes",
+};
 
-test.describe("Demo-tenant end-to-end operator journey", () => {
-  test("full operator journey — dashboard to audit", async ({ page }) => {
-    // 1. Login
+test("admin can walk the core demo-tenant operator journey end to end", async ({ page }) => {
+  const adminToken = await apiLogin("admin");
+  const reviewerToken = await apiLogin("reviewer");
+  const category = await createCategory(adminToken, uniqueName("TEST-demo-tenant-cat"));
+  const product = await createProduct(adminToken, {
+    title: uniqueName("TEST-demo-tenant-product"),
+    brand: "Vexa PIM",
+    description: "TEST demo tenant journey product",
+    categoryId: category.id,
+    status: "draft",
+    hsnCode: "62046200",
+    gstRate: 18,
+    attributes: {
+      color: "Black",
+      size: "M",
+    },
+  });
+  const importJob = await apiRequest("POST", "/bulk-import/jobs", adminToken, {
+    categoryId: category.id,
+    sourceFormat: "json",
+    sourceName: `${uniqueName("TEST-demo-import")}.json`,
+    rows: [
+      {
+        title: uniqueName("TEST-demo-import-row"),
+        description: "TEST demo import row",
+        brand: "Vexa PIM",
+        status: "draft",
+        hsnCode: "62046200",
+        gstRate: 18,
+        attributes: { color: "Blue" },
+      },
+    ],
+    mapping: DEFAULT_MAPPING,
+    chunkSize: 1,
+    maxRetries: 1,
+  });
+
+  let importedProductId = null;
+
+  try {
+    await apiRequest("POST", `/bulk-import/jobs/${encodeURIComponent(importJob.id)}/process`, adminToken, { chunkSize: 1 });
+    const refreshedImport = await apiRequest("GET", `/bulk-import/jobs/${encodeURIComponent(importJob.id)}`, adminToken);
+    importedProductId = refreshedImport.rows?.find((row) => row.productId)?.productId ?? null;
+
+    await updateProduct(adminToken, product.id, {
+      expectedVersion: product.version,
+      title: product.title,
+      description: product.description,
+      brand: product.brand,
+      categoryId: product.categoryId,
+      hsnCode: product.hsnCode,
+      gstRate: product.gstRate,
+      attributes: product.attributes,
+      status: "in_review",
+    });
+
     await loginViaUi(page, "admin");
 
-    // 2. Dashboard — verify KPI cards render
     await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    // At least one KPI card or stat tile should be present
-    const kpiOrStat = page.locator("[data-testid^='kpi'], .kpi-card, h1").first();
-    await expect(kpiOrStat).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-    // 3. Navigate to products — verify product list renders
-    await page.goto("/products", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    // Page should render without error (no crash state)
-    await expect(page.locator("body")).not.toContainText("Application error");
+    await page.goto(`/operations/imports?bulkJobId=${encodeURIComponent(importJob.id)}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Operations Imports" })).toBeVisible();
+    await expect(page.getByText("Import result summary")).toBeVisible();
 
-    // 4. Navigate to imports — verify import wizard step 1 renders
-    await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    // Wizard step indicator should be present
-    const wizardStep = page.locator('[aria-label="Import wizard steps"]');
-    await expect(wizardStep).toBeVisible();
-    await expect(wizardStep).toContainText("Upload & Pre-validate");
-
-    // 5. Navigate to quality/issues — verify issue inbox
     await page.goto("/quality/issues", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("Application error");
+    await expect(page.getByRole("heading", { name: "Issue Inbox" })).toBeVisible();
+    await expect(page.getByText("Grouped Impact")).toBeVisible();
 
-    // 6. Navigate to quality/approvals — verify approval queue + "What Changed" availability
     await page.goto("/quality/approvals", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    // The page renders without crashing. "What Changed" may not appear if no revisions exist.
-    await expect(page.locator("body")).not.toContainText("Application error");
+    await expect(page.getByRole("heading", { name: "Approval Queue" })).toBeVisible();
+    await expect(page.getByText("Revision Evidence Coverage")).toBeVisible();
 
-    // 7. Navigate to channels/mappings — verify mapping list
-    await page.goto("/channels/mappings", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("Application error");
+    await page.goto(`/channels/mappings?channel=flipkart&categoryId=${encodeURIComponent(category.id)}&productId=${encodeURIComponent(product.id)}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page.getByRole("heading", { name: "Mapping Workbench" })).toBeVisible();
 
-    // 8. Navigate to operations — verify operations cockpit
-    await page.goto("/operations", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("Application error");
+    await page.goto("/connectors", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();
+    await expect(page.getByText("Connector capability matrix").first()).toBeVisible();
 
-    // 9. Navigate to audit — verify audit log renders
+    await page.goto(`/products/${encodeURIComponent(product.id)}?tab=channels`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Export confirmation")).toBeVisible();
+    await expect(page.getByText("Latest export result summary")).toBeVisible();
+
+    await page.goto("/operations/jobs", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
+    await expect(page.getByText("Use Jobs vs Submissions")).toBeVisible();
+
     await page.goto("/admin/audit", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("Application error");
-  });
+    await expect(page.getByRole("heading", { name: "Audit Logs" })).toBeVisible();
+    await expect(page.getByText("Governance summary")).toBeVisible();
+
+    await page.goto("/admin/users", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Users & Roles" })).toBeVisible();
+    await expect(page.getByText("Access Review Checklist")).toBeVisible();
+  } finally {
+    if (importedProductId) {
+      try {
+        await deleteProduct(adminToken, importedProductId);
+      } catch {}
+      try {
+        await purgeProduct(adminToken, importedProductId);
+      } catch {}
+    }
+    try {
+      await apiRequest("POST", `/catalog/products/${encodeURIComponent(product.id)}/review-decision`, reviewerToken, {
+        status: "rejected",
+        note: "playwright cleanup",
+      });
+    } catch {}
+    try {
+      await deleteProduct(adminToken, product.id);
+    } catch {}
+    try {
+      await purgeProduct(adminToken, product.id);
+    } catch {}
+    try {
+      await deleteCategory(adminToken, category.id);
+    } catch {}
+  }
 });

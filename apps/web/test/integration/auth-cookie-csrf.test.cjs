@@ -6,6 +6,8 @@ const { spawn, execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
+const WEB_DIR = path.join(REPO_ROOT, "apps", "web");
+const WEB_BUILD_ID = path.join(WEB_DIR, ".next", "BUILD_ID");
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -76,6 +78,17 @@ async function waitForHttp(url, timeoutMs) {
     await sleep(500);
   }
   throw new Error(`Service did not become ready: ${url}`);
+}
+
+function ensureWebBuild() {
+  if (fs.existsSync(WEB_BUILD_ID)) {
+    return;
+  }
+  execFileSync("cmd.exe", ["/d", "/s", "/c", "npm run build"], {
+    cwd: WEB_DIR,
+    stdio: "inherit",
+    env: process.env,
+  });
 }
 
 function getSetCookieHeaders(response) {
@@ -164,6 +177,7 @@ async function run() {
   if (!fs.existsSync(API_ENTRY)) {
     throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build`);
   }
+  ensureWebBuild();
 
   const runId = Date.now().toString();
   const apiPort = 5600 + Math.floor(Math.random() * 100);
@@ -217,7 +231,7 @@ async function run() {
     "cmd.exe",
     ["/d", "/s", "/c", `npx next start -p ${webPort} -H 127.0.0.1`],
     {
-      cwd: path.join(REPO_ROOT, "apps", "web"),
+      cwd: WEB_DIR,
       env: webEnv,
       stdio: ["ignore", "pipe", "pipe"],
     },

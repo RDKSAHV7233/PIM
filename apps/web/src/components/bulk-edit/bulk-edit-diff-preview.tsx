@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AppDialog } from "@/components/ui/app-dialog";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import type { AppRole, CatalogStatus } from "@/lib/api";
 
 interface BulkEditPreviewProduct {
@@ -71,6 +73,22 @@ function nextValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function renderValueList(product: BulkEditPreviewProduct, fields: string[]) {
+  return fields.map((field) => (
+    <p key={`${product.id}-current-${field}`}>
+      <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span> {currentValue(product, field)}
+    </p>
+  ));
+}
+
+function renderNextValueList(product: BulkEditPreviewProduct, fields: string[], updates: Record<string, unknown>) {
+  return fields.map((field) => (
+    <p key={`${product.id}-next-${field}`}>
+      <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span> {nextValue(updates[field])}
+    </p>
+  ));
+}
+
 export function BulkEditDiffPreview({
   actorRole,
   requestedCount,
@@ -87,66 +105,44 @@ export function BulkEditDiffPreview({
   const previewRows = products.slice(0, 5);
   const modalRows = products.slice(0, visibleCount);
   const hasMore = visibleCount < products.length;
+  const columns: Column<BulkEditPreviewProduct>[] = [
+    {
+      key: "firstSku",
+      header: "SKU Code",
+      cellClassName: "font-mono text-xs",
+      render: (product) => product.firstSku,
+    },
+    {
+      key: "currentValue",
+      header: "Current value",
+      cellClassName: "text-xs",
+      render: (product) => renderValueList(product, changedFields),
+    },
+    {
+      key: "nextValue",
+      header: "New value",
+      cellClassName: "text-xs",
+      render: (product) => renderNextValueList(product, changedFields, updates),
+    },
+  ];
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-700">
-        {requestedCount} products will be updated.
-      </p>
-
-      {/* Desktop table — hidden on small screens */}
-      <div className="hidden sm:block overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="text-xs uppercase text-slate-500">
-            <tr>
-              <th className="py-2">SKU Code</th>
-              <th className="py-2">Current value</th>
-              <th className="py-2">New value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {previewRows.map((product) => (
-              <tr key={product.id} className="border-t border-border align-top">
-                <td className="py-2 font-mono text-xs">{product.firstSku}</td>
-                <td className="py-2 text-xs">
-                  {changedFields.map((field) => (
-                    <p key={`${product.id}-current-${field}`}>
-                      <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span>{" "}
-                      {currentValue(product, field)}
-                    </p>
-                  ))}
-                </td>
-                <td className="py-2 text-xs">
-                  {changedFields.map((field) => (
-                    <p key={`${product.id}-next-${field}`}>
-                      <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span>{" "}
-                      {nextValue(updates[field])}
-                    </p>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        <p className="font-medium text-slate-900">{requestedCount} products will be updated.</p>
+        <p className="mt-1">
+          Review the changed fields below before applying the batch. Mobile and tablet views keep the changed values stacked so no preview action depends on horizontal scroll.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {changedFields.map((field) => (
+            <span key={field} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+              {FIELD_LABELS[field] ?? field}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* Mobile stacked diff cards — shown below sm breakpoint */}
-      <div className="flex flex-col space-y-3 sm:hidden">
-        {previewRows.map((product) => (
-          <div key={`mobile-${product.id}`} className="rounded-lg border border-border p-3 text-sm">
-            <p className="font-mono text-xs font-semibold text-slate-700">{product.firstSku}</p>
-            {changedFields.map((field) => (
-              <div key={`mobile-${product.id}-${field}`} className="mt-2 space-y-1">
-                <p className="text-xs font-medium text-slate-600">{FIELD_LABELS[field] ?? field}</p>
-                <div className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-500 line-through">{currentValue(product, field)}</span>
-                  <span className="text-slate-900">→ {nextValue(updates[field])}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      <DataGrid columns={columns} rows={previewRows} getRowKey={(product) => product.id} rowClassName="align-top" caption="Bulk edit preview" />
 
       {requestedCount > previewRows.length && (
         <Button type="button" variant="secondary" onClick={() => setShowAll(true)}>
@@ -179,61 +175,28 @@ export function BulkEditDiffPreview({
         </div>
       </form>
 
-      {showAll && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="max-h-[80vh] w-full max-w-5xl overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg">
-            <div className="flex items-center justify-between border-b border-slate-200 p-3">
-              <p className="text-sm font-semibold text-slate-900">All matched products ({products.length})</p>
-              <Button type="button" variant="secondary" onClick={() => setShowAll(false)}>
-                Close
+      <AppDialog
+        open={showAll}
+        title={`All matched products (${products.length})`}
+        description="Review the full preview list in a stacked mobile-safe layout before applying the batch."
+        onClose={() => setShowAll(false)}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="max-h-[60vh] overflow-y-auto overflow-x-hidden">
+            <DataGrid columns={columns} rows={modalRows} getRowKey={(product) => `${product.id}-modal`} rowClassName="align-top" caption="All matched products preview" />
+          </div>
+          <div className="flex justify-end">
+            {hasMore ? (
+              <Button type="button" variant="secondary" onClick={() => setVisibleCount((count) => count + 50)}>
+                Load 50 more
               </Button>
-            </div>
-            <div className="max-h-[60vh] overflow-auto p-3">
-              <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">SKU Code</th>
-                    <th className="py-2">Current value</th>
-                    <th className="py-2">New value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modalRows.map((product) => (
-                    <tr key={`${product.id}-modal`} className="border-t border-border align-top">
-                      <td className="py-2 font-mono text-xs">{product.firstSku}</td>
-                      <td className="py-2 text-xs">
-                        {changedFields.map((field) => (
-                          <p key={`${product.id}-modal-current-${field}`}>
-                            <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span>{" "}
-                            {currentValue(product, field)}
-                          </p>
-                        ))}
-                      </td>
-                      <td className="py-2 text-xs">
-                        {changedFields.map((field) => (
-                          <p key={`${product.id}-modal-next-${field}`}>
-                            <span className="font-medium">{FIELD_LABELS[field] ?? field}:</span>{" "}
-                            {nextValue(updates[field])}
-                          </p>
-                        ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-t border-slate-200 p-3">
-              {hasMore ? (
-                <Button type="button" variant="secondary" onClick={() => setVisibleCount((count) => count + 50)}>
-                  Load 50 more
-                </Button>
-              ) : (
-                <p className="text-xs text-slate-500">All rows loaded.</p>
-              )}
-            </div>
+            ) : (
+              <p className="text-xs text-slate-500">All rows loaded.</p>
+            )}
           </div>
         </div>
-      )}
+      </AppDialog>
     </div>
   );
 }

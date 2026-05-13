@@ -16,7 +16,7 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Status`, `Connector Slug`
 - Field names (technical): `connectorSlug`
 - Select names: `status`

@@ -824,6 +824,44 @@ async function run() {
     );
     assertStatus(createVariant, 201, "create publish-ready variant");
 
+    // Approval gate (added in eager-mendeleev): product must be approved before publish
+    const publishReadyVersion = Number(createPublishReadyProduct.payload?.version ?? 1);
+    const submitPublishReadyForReview = await apiRequest(
+      baseUrl,
+      "PATCH",
+      `/catalog/products/${encodeURIComponent(publishReadyProductId)}`,
+      editorToken,
+      {
+        expectedVersion: publishReadyVersion,
+        title: `Webhook Publish Product ${runId}`,
+        description: "Real publish initiation test for outbound webhook success delivery.",
+        brand: "Vexa PIM",
+        categoryId,
+        hsnCode: "62046200",
+        gstRate: 12,
+        attributes: {
+          color: "black",
+          size: "M",
+          mainImageUrl: "https://cdn.example.com/products/p1.jpg",
+          packageWeight: 600,
+          packageLength: 300,
+          packageBreadth: 220,
+          packageHeight: 45,
+        },
+        status: "in_review",
+      },
+    );
+    assertStatus(submitPublishReadyForReview, 200, "submit publish-ready product for review");
+
+    const approvePublishReadyProduct = await apiRequest(
+      baseUrl,
+      "POST",
+      `/catalog/products/${encodeURIComponent(publishReadyProductId)}/review-decision`,
+      adminToken,
+      { status: "approved", note: "approve for publish_succeeded webhook test" },
+    );
+    assertStatus(approvePublishReadyProduct, 201, "approve publish-ready product");
+
     const successExportJob = await apiRequest(
       baseUrl,
       "POST",

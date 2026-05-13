@@ -1,5 +1,5 @@
 ---
-title: TEJ PIM On-Call and Monitoring Guide
+title: Vexa PIM On-Call and Monitoring Guide
 audience: internal-ops
 status: active
 last_updated: 2026-03-26
@@ -61,7 +61,7 @@ The on-call engineer should verify these items each morning:
 
 Railway alert webhook: [FILL: Railway alert webhook URL]  
 PagerDuty service key: [FILL: PagerDuty service key]  
-Slack webhook: [FILL: Slack webhook for #TEJ PIM-alerts]
+Slack webhook: [FILL: Slack webhook for #Vexa PIM-alerts]
 
 Recommended alerts to configure:
 - API service restart count greater than 2 in 10 minutes -> P0
@@ -73,7 +73,7 @@ Recommended alerts to configure:
 
 ## 5. Controlled rollout evidence maintenance
 
-TEJ PIM's controlled-rollout gate depends on consecutive green staging evidence.
+Vexa PIM's controlled-rollout gate depends on consecutive green staging evidence.
 
 The on-call owner is responsible for:
 - Keeping staging deploy verification healthy so the evidence window does not reset.

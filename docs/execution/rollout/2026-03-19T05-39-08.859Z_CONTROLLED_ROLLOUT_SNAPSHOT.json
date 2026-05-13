@@ -18,7 +18,7 @@
         "active": 0,
         "idle": 1,
         "waiting": 0,
-        "applicationName": "TEJ PIM-api"
+        "applicationName": "Vexa PIM-api"
       },
       "queues": {
         "webhook-event": {

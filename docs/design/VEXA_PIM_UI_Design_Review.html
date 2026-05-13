@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vexa PIM — UI Design Review</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap');
+
+  :root {
+    --ink: #0f0f14;
+    --ink-mid: #2d2d3a;
+    --ink-soft: #6b6b80;
+    --ink-ghost: #a0a0b4;
+    --paper: #f7f6f2;
+    --paper-warm: #eeecea;
+    --paper-mid: #e3e0dc;
+    --accent: #e8450a;
+    --accent-soft: #f5d5c8;
+    --accent-2: #1a56db;
+    --accent-2-soft: #dbeafe;
+    --success: #059669;
+    --success-soft: #d1fae5;
+    --warn: #d97706;
+    --warn-soft: #fef3c7;
+    --critical: #dc2626;
+    --critical-soft: #fee2e2;
+    --neutral: #64748b;
+    --radius: 6px;
+    --radius-lg: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 80px 64px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,69,10,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .hero-label::before { content: ''; display: block; width: 32px; height: 1px; background: var(--accent); }
+  .hero h1 {
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: var(--accent); }
+  .hero-sub {
+    font-size: 17px;
+    color: rgba(247,246,242,0.6);
+    max-width: 580px;
+    font-weight: 300;
+    margin-bottom: 40px;
+  }
+  .hero-meta {
+    display: flex; gap: 32px; flex-wrap: wrap;
+  }
+  .hero-meta-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: rgba(247,246,242,0.45);
+  }
+  .hero-meta-item strong {
+    color: rgba(247,246,242,0.85);
+    display: block;
+    font-size: 14px;
+    font-family: 'Sora', sans-serif;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 64px; }
+
+  /* ── SECTION ── */
+  .section { padding: 72px 0 0; }
+  .section:last-child { padding-bottom: 80px; }
+
+  .section-header {
+    display: flex; align-items: baseline; gap: 16px;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--paper-mid);
+  }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    min-width: 28px;
+  }
+  .section-title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .section-subtitle {
+    font-size: 14px;
+    color: var(--ink-soft);
+    font-weight: 400;
+    margin-left: auto;
+  }
+
+  /* ── VERDICT STRIP ── */
+  .verdict-strip {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 48px 64px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-top: 3px solid var(--accent);
+  }
+  .verdict-item {
+    padding: 0 32px 0 0;
+    border-right: 1px solid rgba(247,246,242,0.1);
+  }
+  .verdict-item:first-child { padding-left: 0; }
+  .verdict-item:last-child { border-right: none; padding-right: 0; }
+  .verdict-score {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .verdict-score.warn { color: var(--warn); }
+  .verdict-score.critical { color: var(--accent); }
+  .verdict-score.ok { color: #4ade80; }
+  .verdict-label {
+    font-size: 12px;
+    color: rgba(247,246,242,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .verdict-desc {
+    font-size: 13px;
+    color: rgba(247,246,242,0.65);
+    margin-top: 8px;
+    font-weight: 300;
+  }
+
+  /* ── SCREEN GRID ── */
+  .screen-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  .screen-card {
+    background: white;
+    border: 1px solid var(--paper-mid);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .screen-card.full { grid-column: 1 / -1; }
+
+  .screen-label {
+    padding: 14px 20px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .screen-label .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  .badge-critical { background: var(--accent); color: white; }
+  .badge-warn { background: var(--warn); color: white; }
+  .badge-ok { background: var(--success); color: white; }
+  .badge-info { background: var(--accent-2); color: white; }
+
+  .screen-body { padding: 20px; }
+
+  /* ── MOCK UI SCREENS ── */
+  .mock {
+    background: #f9fafb;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    font-size: 11px;
+  }
+  .mock-bar {
+    background: #1e293b;
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mock-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .mock-dot.r { background: #ef4444; }
+  .mock-dot.y { background: #f59e0b; }
+  .mock-dot.g { background: #22c55e; }
+  .mock-url {
+    margin-left: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    padding: 3px 10px;
+    color: rgba(255,255,255,0.5);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
+  /* ── FINDING CARDS ── */
+  .findings { display: flex; flex-direction: column; gap: 20px; }
+  .finding {
+    background: white;
+    border: 1px solid var(--paper-mid);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .finding-header {
+    padding: 18px 24px;
+    display: flex; align-items: flex-start; gap: 16px;
+    border-bottom: 1px solid var(--paper-mid);
+  }
+  .finding-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .finding-icon.critical { background: var(--critical-soft); }
+  .finding-icon.warn { background: var(--warn-soft); }
+  .finding-icon.info { background: var(--accent-2-soft); }
+  .finding-icon.ok { background: var(--success-soft); }
+
+  .finding-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+  }
+  .finding-where {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-ghost);
+    letter-spacing: 0.05em;
+  }
+  .finding-severity {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .sev-critical { background: var(--critical-soft); color: var(--critical); }
+  .sev-warn { background: var(--warn-soft); color: var(--warn); }
+  .sev-low { background: var(--accent-2-soft); color: var(--accent-2); }
+  .sev-good { background: var(--success-soft); color: var(--success); }
+
+  .finding-body { padding: 20px 24px; }
+  .finding-problem {
+    font-size: 13.5px;
+    color: var(--ink-mid);
+    margin-bottom: 14px;
+    line-height: 1.65;
+  }
+  .finding-fix {
+    background: var(--paper);
+    border-left: 3px solid var(--accent-2);
+    padding: 12px 16px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .finding-fix strong {
+    color: var(--ink);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── COMPARISON TABLE ── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .compare-table th {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .compare-table th:first-child { border-radius: 6px 0 0 0; }
+  .compare-table th:last-child { border-radius: 0 6px 0 0; }
+  .compare-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--paper-mid);
+    vertical-align: top;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:nth-child(even) td { background: var(--paper); }
+  .compare-table tr:nth-child(odd) td { background: white; }
+  .compare-table .screen-name {
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-mid);
+  }
+  .compare-table .now { color: var(--critical); }
+  .compare-table .should { color: var(--success); }
+
+  /* ── MOCK SCREENS (visual reconstructions) ── */
+
+  /* Dashboard mock */
+  .m-dashboard {
+    background: white;
+    min-height: 280px;
+  }
+  .m-nav {
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0 16px;
+    display: flex; align-items: center; gap: 0;
+    height: 44px;
+  }
+  .m-nav-logo {
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--ink);
+    margin-right: 24px;
+    letter-spacing: -0.03em;
+  }
+  .m-nav-item {
+    padding: 0 12px;
+    height: 44px;
+    display: flex; align-items: center;
+    font-size: 11px;
+    color: var(--ink-soft);
+    border-bottom: 2px solid transparent;
+    cursor: default;
+  }
+  .m-nav-item.active { color: var(--accent-2); border-color: var(--accent-2); font-weight: 500; }
+  .m-main { padding: 16px; }
+  .m-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .m-stat {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .m-stat-val { font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
+  .m-stat-label { font-size: 10px; color: var(--ink-ghost); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.07em; }
+  .m-stat-change { font-size: 10px; color: var(--success); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .m-stat-change.down { color: var(--critical); }
+  .m-table { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+  .m-table-head { display: grid; grid-template-columns: 1fr 1fr 80px 80px 90px; padding: 8px 12px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+  .m-table-head span { font-size: 10px; color: var(--ink-ghost); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .m-table-row { display: grid; grid-template-columns: 1fr 1fr 80px 80px 90px; padding: 9px 12px; border-bottom: 1px solid #f3f4f6; align-items: center; }
+  .m-table-row:last-child { border-bottom: none; }
+  .m-cell { font-size: 11px; color: var(--ink-mid); }
+  .m-cell.sku { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-ghost); }
+  .m-badge {
+    display: inline-flex; align-items: center;
+    font-size: 9px; font-weight: 600;
+    padding: 2px 7px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .m-badge.active { background: #dcfce7; color: #166534; }
+  .m-badge.draft { background: #f3f4f6; color: #6b7280; }
+  .m-badge.warning { background: #fef3c7; color: #92400e; }
+  .m-channel-dots { display: flex; gap: 4px; }
+  .m-ch { width: 18px; height: 18px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: white; }
+  .m-ch.amz { background: #f90; color: #111; }
+  .m-ch.fk { background: #2874f0; }
+  .m-ch.ms { background: #e8450a; }
+
+  /* Product form mock */
+  .m-form { padding: 16px; }
+  .m-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .m-field { display: flex; flex-direction: column; gap: 4px; }
+  .m-label { font-size: 10px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.07em; }
+  .m-input {
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 11px;
+    color: var(--ink);
+    background: white;
+    font-family: 'Sora', sans-serif;
+  }
+  .m-input.error { border-color: var(--critical); background: #fff5f5; }
+  .m-input.ok { border-color: var(--success); }
+  .m-error-msg { font-size: 10px; color: var(--critical); display: flex; align-items: center; gap: 4px; }
+  .m-validation-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .m-vp-header {
+    background: #f9fafb;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .m-vp-item {
+    padding: 9px 12px;
+    display: flex; align-items: flex-start; gap: 8px;
+    border-bottom: 1px solid #f9fafb;
+    font-size: 10px;
+  }
+  .m-vp-item:last-child { border-bottom: none; }
+  .m-vp-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 2px; flex-shrink: 0; }
+  .m-vp-dot.err { background: var(--critical); }
+  .m-vp-dot.wrn { background: var(--warn); }
+  .m-vp-text { color: var(--ink-mid); line-height: 1.5; }
+  .m-vp-text b { color: var(--ink); }
+  .m-vp-channel {
+    margin-left: auto;
+    font-size: 9px;
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--ink-ghost);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+  }
+
+  /* Bulk import mock */
+  .m-bulk { padding: 16px; }
+  .m-upload-zone {
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    margin-bottom: 14px;
+  }
+  .m-upload-icon { font-size: 22px; margin-bottom: 6px; }
+  .m-upload-title { font-size: 12px; font-weight: 600; color: var(--ink-mid); }
+  .m-upload-sub { font-size: 10px; color: var(--ink-ghost); margin-top: 3px; }
+  .m-progress-wrap { margin-bottom: 14px; }
+  .m-progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .m-progress-label { font-size: 10px; color: var(--ink-soft); min-width: 80px; }
+  .m-progress-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+  .m-progress-fill { height: 100%; border-radius: 3px; }
+  .m-progress-fill.green { background: var(--success); width: 100%; }
+  .m-progress-fill.red { background: var(--critical); width: 12%; }
+  .m-progress-fill.orange { background: var(--warn); width: 4%; }
+  .m-progress-val { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--ink-soft); min-width: 32px; text-align: right; }
+  .m-error-grid { border: 1px solid #fee2e2; border-radius: 6px; overflow: hidden; }
+  .m-error-grid-head { display: grid; grid-template-columns: 50px 1fr 100px 1fr; gap: 0; background: #fef2f2; padding: 7px 10px; border-bottom: 1px solid #fee2e2; }
+  .m-error-grid-head span { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--critical); }
+  .m-error-row { display: grid; grid-template-columns: 50px 1fr 100px 1fr; gap: 0; padding: 8px 10px; border-bottom: 1px solid #fff5f5; align-items: start; }
+  .m-error-row:last-child { border-bottom: none; }
+  .m-error-row span { font-size: 10px; color: var(--ink-mid); }
+  .m-error-row .row-num { font-family: 'JetBrains Mono', monospace; color: var(--ink-ghost); }
+  .m-error-row .col-name { font-family: 'JetBrains Mono', monospace; color: var(--accent-2); font-weight: 500; }
+  .m-error-row .err-reason { color: var(--critical); }
+  .m-repair-input { border: 1px solid var(--accent-2); border-radius: 3px; padding: 4px 7px; font-size: 10px; color: var(--ink); background: #eff6ff; font-family: 'JetBrains Mono', monospace; }
+
+  /* Channel simulator mock */
+  .m-sim { padding: 16px; }
+  .m-channel-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .m-ch-tab {
+    padding: 6px 14px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    border: 1px solid #e5e7eb; background: white; cursor: default; color: var(--ink-soft);
+  }
+  .m-ch-tab.active.amz { background: #fffbeb; border-color: #fbbf24; color: #92400e; }
+  .m-ch-tab.active.fk { background: #eff6ff; border-color: #3b82f6; color: #1e40af; }
+  .m-ch-tab.active.ms { background: #fff1ec; border-color: var(--accent); color: var(--accent); }
+  .m-risk-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    border: 1px solid;
+  }
+  .m-risk-bar.high { background: #fef2f2; border-color: #fecaca; }
+  .m-risk-bar.med { background: var(--warn-soft); border-color: #fde68a; }
+  .m-risk-bar.low { background: var(--success-soft); border-color: #a7f3d0; }
+  .m-risk-score { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; }
+  .m-risk-bar.high .m-risk-score { color: var(--critical); }
+  .m-risk-bar.med .m-risk-score { color: var(--warn); }
+  .m-risk-bar.low .m-risk-score { color: var(--success); }
+  .m-risk-info { font-size: 11px; }
+  .m-risk-info b { font-size: 12px; display: block; }
+  .m-issues-list { display: flex; flex-direction: column; gap: 6px; }
+  .m-issue {
+    padding: 9px 12px;
+    border-radius: 5px;
+    border: 1px solid;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 11px;
+  }
+  .m-issue.err { background: #fef2f2; border-color: #fecaca; }
+  .m-issue.wrn { background: var(--warn-soft); border-color: #fde68a; }
+  .m-issue-icon { font-size: 13px; flex-shrink: 0; }
+  .m-issue-text { flex: 1; color: var(--ink-mid); }
+  .m-issue-field { font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-left: auto; color: var(--ink-ghost); background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+
+  /* ── REDESIGN PROPOSALS ── */
+  .proposal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+  .proposal {
+    background: white;
+    border: 1px solid var(--paper-mid);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .proposal-header {
+    padding: 16px 20px;
+    background: var(--ink-mid);
+    color: white;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .proposal-title { font-size: 13px; font-weight: 600; }
+  .proposal-tag { font-size: 10px; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+  .proposal-body { padding: 20px; }
+  .proposal-item { margin-bottom: 10px; font-size: 13px; color: var(--ink-mid); padding-left: 16px; position: relative; line-height: 1.5; }
+  .proposal-item::before { content: '→'; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+
+  /* ── PRIORITY TABLE ── */
+  .priority-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .priority-table th {
+    background: var(--ink);
+    color: rgba(247,246,242,0.7);
+    padding: 11px 16px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .priority-table td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--paper-mid);
+    color: var(--ink-mid);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .priority-table tr:last-child td { border-bottom: none; }
+  .priority-table tr:nth-child(even) td { background: var(--paper); }
+  .priority-table tr:nth-child(odd) td { background: white; }
+  .p-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--accent); font-size: 14px; }
+  .p-effort { display: inline-flex; gap: 3px; }
+  .p-pip { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+  .p-pip.empty { background: var(--paper-mid); }
+  .p-impact {
+    display: inline-flex; align-items: center;
+    font-size: 10px; font-weight: 700; padding: 3px 8px;
+    border-radius: 3px; text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .p-impact.high { background: var(--critical-soft); color: var(--critical); }
+  .p-impact.med { background: var(--warn-soft); color: var(--warn); }
+  .p-impact.low { background: var(--accent-2-soft); color: var(--accent-2); }
+
+  /* ── INDIA CONTEXT BOX ── */
+  .india-box {
+    background: linear-gradient(135deg, #fff7ed 0%, #fff1ec 100%);
+    border: 1px solid #fed7aa;
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    margin-bottom: 48px;
+  }
+  .india-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 10px; color: var(--ink); }
+  .india-box p { font-size: 13.5px; color: var(--ink-mid); line-height: 1.7; }
+  .india-box ul { margin-top: 12px; padding-left: 20px; }
+  .india-box li { font-size: 13px; color: var(--ink-mid); margin-bottom: 6px; line-height: 1.6; }
+
+  /* ── OVERALL VERDICT ── */
+  .overall-verdict {
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+    margin-top: 48px;
+  }
+  .overall-verdict h2 { font-size: 22px; font-weight: 700; margin-bottom: 16px; letter-spacing: -0.02em; }
+  .overall-verdict p { font-size: 14px; color: rgba(247,246,242,0.65); line-height: 1.8; max-width: 700px; }
+  .overall-verdict p + p { margin-top: 12px; }
+  .overall-verdict strong { color: var(--paper); }
+
+  hr.section-rule { border: none; border-top: 1px solid var(--paper-mid); margin: 0; }
+
+  @media (max-width: 768px) {
+    .hero { padding: 48px 24px 40px; }
+    .hero h1 { font-size: 32px; }
+    .container { padding: 0 24px; }
+    .screen-grid { grid-template-columns: 1fr; }
+    .verdict-strip { grid-template-columns: 1fr 1fr; padding: 32px 24px; gap: 24px; }
+    .verdict-item { border-right: none; padding: 0; border-bottom: 1px solid rgba(247,246,242,0.1); padding-bottom: 20px; }
+    .verdict-item:last-child { border-bottom: none; padding-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-label">Design Review</div>
+  <h1>Vexa PIM UI<br><span>Design Audit</span></h1>
+  <p class="hero-sub">A screen-by-screen critique of every interface inferred from Phase 1–4 implementation specs. Reviewed as a product designer who has watched Indian sellers use SaaS tools.</p>
+  <div class="hero-meta">
+    <div class="hero-meta-item"><strong>Reviewer lens</strong>Product Designer</div>
+    <div class="hero-meta-item"><strong>Stack</strong>Next.js 15 · Tailwind · shadcn-style</div>
+    <div class="hero-meta-item"><strong>Screens reviewed</strong>6 primary screens</div>
+    <div class="hero-meta-item"><strong>Date</strong>2026-02-28</div>
+  </div>
+</div>
+
+<!-- VERDICT STRIP -->
+<div class="verdict-strip">
+  <div class="verdict-item">
+    <div class="verdict-score warn">C+</div>
+    <div class="verdict-label">Overall UX</div>
+    <div class="verdict-desc">Functional but feels like a developer console. Not a seller tool yet.</div>
+  </div>
+  <div class="verdict-item">
+    <div class="verdict-score critical">D</div>
+    <div class="verdict-label">Information Hierarchy</div>
+    <div class="verdict-desc">Most critical actions and errors compete equally with everything else.</div>
+  </div>
+  <div class="verdict-item">
+    <div class="verdict-score ok">B+</div>
+    <div class="verdict-label">Data Coverage</div>
+    <div class="verdict-desc">All the right data surfaces exist. The model is complete.</div>
+  </div>
+  <div class="verdict-item">
+    <div class="verdict-score warn">C</div>
+    <div class="verdict-label">India Readiness</div>
+    <div class="verdict-desc">No Hindi labels, no INR formatting, rejection language is too technical.</div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- INDIA CONTEXT BOX -->
+<div class="section">
+<div class="india-box">
+  <h3>🇮🇳 The Lens That Matters Most</h3>
+  <p>This review is written for one user: a catalog manager at a mid-size Indian brand, managing 2,000 SKUs across Amazon, Flipkart, and Meesho, running operations from a Windows laptop, on a 4G connection, with a sale event in 48 hours. They are not a designer. They are not a developer. They are tired, slightly panicked, and they need the UI to tell them exactly what is wrong and exactly how to fix it — in plain language, without ambiguity.</p>
+  <ul>
+    <li>They expect to see numbers in INR (₹), not USD or unitless values</li>
+    <li>They will paste data from Tally, Excel, or WhatsApp — the UI must be forgiving</li>
+    <li>They use Chrome on Windows — mobile is reference, not primary workflow</li>
+    <li>Technical jargon (DLQ, VERSION_CONFLICT, entity_type) must never reach them</li>
+    <li>They will judge the product on two questions: <em>"Does it tell me what's wrong?"</em> and <em>"Does it tell me how to fix it?"</em></li>
+  </ul>
+</div>
+</div>
+
+<!-- SCREEN RECONSTRUCTIONS -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <span class="section-title">Screen Reconstructions (inferred from specs)</span>
+    <span class="section-subtitle">What the UI most likely looks like based on implementation docs</span>
+  </div>
+
+  <div class="screen-grid">
+
+    <!-- Dashboard -->
+    <div class="screen-card">
+      <div class="screen-label">
+        Dashboard / Product List
+        <span class="badge badge-warn">Needs Work</span>
+      </div>
+      <div class="screen-body">
+        <div class="mock">
+          <div class="mock-bar">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+            <span class="mock-url">localhost:3000</span>
+          </div>
+          <div class="m-dashboard">
+            <div class="m-nav">
+              <span class="m-nav-logo">Vexa PIM</span>
+              <span class="m-nav-item active">Products</span>
+              <span class="m-nav-item">Categories</span>
+              <span class="m-nav-item">Bulk Import</span>
+              <span class="m-nav-item">Compliance</span>
+              <span class="m-nav-item">Channels</span>
+            </div>
+            <div class="m-main">
+              <div class="m-stats">
+                <div class="m-stat">
+                  <div class="m-stat-val">1,086</div>
+                  <div class="m-stat-label">Total Products</div>
+                  <div class="m-stat-change">↑ 124 this week</div>
+                </div>
+                <div class="m-stat">
+                  <div class="m-stat-val">34</div>
+                  <div class="m-stat-label">Validation Errors</div>
+                  <div class="m-stat-change down">↑ 8 new today</div>
+                </div>
+                <div class="m-stat">
+                  <div class="m-stat-val">892</div>
+                  <div class="m-stat-label">Active SKUs</div>
+                  <div class="m-stat-change">82% of catalog</div>
+                </div>
+                <div class="m-stat">
+                  <div class="m-stat-val">156</div>
+                  <div class="m-stat-label">Draft SKUs</div>
+                  <div class="m-stat-change down">14% not ready</div>
+                </div>
+              </div>
+              <div class="m-table">
+                <div class="m-table-head">
+                  <span>Product</span><span>SKU</span><span>Status</span><span>Channels</span><span>Issues</span>
+                </div>
+                <div class="m-table-row">
+                  <div class="m-cell">Men's Slim Kurta</div>
+                  <div class="m-cell sku">SKU-00412</div>
+                  <div class="m-cell"><span class="m-badge active">Active</span></div>
+                  <div class="m-cell"><div class="m-channel-dots"><span class="m-ch amz">A</span><span class="m-ch fk">F</span></div></div>
+                  <div class="m-cell">—</div>
+                </div>
+                <div class="m-table-row">
+                  <div class="m-cell">Cotton Saree (6m)</div>
+                  <div class="m-cell sku">SKU-00413</div>
+                  <div class="m-cell"><span class="m-badge warning">Issues</span></div>
+                  <div class="m-cell"><div class="m-channel-dots"><span class="m-ch fk">F</span><span class="m-ch ms">M</span></div></div>
+                  <div class="m-cell" style="color:var(--critical);font-weight:600;font-size:10px">3 errors</div>
+                </div>
+                <div class="m-table-row">
+                  <div class="m-cell">Embroidered Dupatta</div>
+                  <div class="m-cell sku">SKU-00414</div>
+                  <div class="m-cell"><span class="m-badge draft">Draft</span></div>
+                  <div class="m-cell">—</div>
+                  <div class="m-cell" style="color:var(--warn);font-weight:600;font-size:10px">2 warnings</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Form -->
+    <div class="screen-card">
+      <div class="screen-label">
+        Product Create / Edit Form
+        <span class="badge badge-critical">Critical Issues</span>
+      </div>
+      <div class="screen-body">
+        <div class="mock">
+          <div class="mock-bar">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+            <span class="mock-url">localhost:3000/products/new</span>
+          </div>
+          <div class="m-form">
+            <div class="m-form-grid">
+              <div class="m-field">
+                <span class="m-label">Product Title *</span>
+                <input class="m-input" value="Men's Slim Fit Kurta - Blue" readonly>
+              </div>
+              <div class="m-field">
+                <span class="m-label">Brand *</span>
+                <input class="m-input" value="Manyavar" readonly>
+              </div>
+              <div class="m-field">
+                <span class="m-label">HSN Code *</span>
+                <input class="m-input error" value="620" readonly>
+                <span class="m-error-msg">⚠ HSN must be 4, 6 or 8 digits</span>
+              </div>
+              <div class="m-field">
+                <span class="m-label">GST Rate *</span>
+                <input class="m-input ok" value="12%" readonly>
+              </div>
+              <div class="m-field">
+                <span class="m-label">Category *</span>
+                <input class="m-input" value="Apparel > Men > Kurtas" readonly>
+              </div>
+              <div class="m-field">
+                <span class="m-label">Status</span>
+                <input class="m-input" value="draft" readonly>
+              </div>
+            </div>
+            <div class="m-validation-panel">
+              <div class="m-vp-header">
+                <span>Validation Issues (3)</span>
+                <span style="color:var(--critical);font-weight:700">2 errors · 1 warning</span>
+              </div>
+              <div class="m-vp-item">
+                <div class="m-vp-dot err"></div>
+                <div class="m-vp-text"><b>HSN Code</b> — must be 4, 6, or 8 digits. "620" is 3 digits.</div>
+                <span class="m-vp-channel">ALL CHANNELS</span>
+              </div>
+              <div class="m-vp-item">
+                <div class="m-vp-dot err"></div>
+                <div class="m-vp-text"><b>Fabric Composition</b> — required for Amazon Apparel. Missing.</div>
+                <span class="m-vp-channel">AMAZON</span>
+              </div>
+              <div class="m-vp-item">
+                <div class="m-vp-dot wrn"></div>
+                <div class="m-vp-text"><b>Description</b> — below 100 characters. Amazon recommends 200+.</div>
+                <span class="m-vp-channel">AMAZON</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk Import -->
+    <div class="screen-card">
+      <div class="screen-label">
+        Bulk Import — Job + Error Repair
+        <span class="badge badge-warn">Needs Clarity</span>
+      </div>
+      <div class="screen-body">
+        <div class="mock">
+          <div class="mock-bar">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+            <span class="mock-url">localhost:3000/bulk-import</span>
+          </div>
+          <div class="m-bulk">
+            <div class="m-upload-zone">
+              <div class="m-upload-icon">📁</div>
+              <div class="m-upload-title">Drop Excel or CSV file here</div>
+              <div class="m-upload-sub">.xlsx · .xls · .csv — max 10MB — up to 1,000 SKUs per job</div>
+            </div>
+            <div class="m-progress-wrap">
+              <div class="m-progress-row">
+                <span class="m-progress-label">Processed</span>
+                <div class="m-progress-bar"><div class="m-progress-fill green"></div></div>
+                <span class="m-progress-val">880</span>
+              </div>
+              <div class="m-progress-row">
+                <span class="m-progress-label">Failed</span>
+                <div class="m-progress-bar"><div class="m-progress-fill red"></div></div>
+                <span class="m-progress-val">108</span>
+              </div>
+              <div class="m-progress-row">
+                <span class="m-progress-label">Retrying</span>
+                <div class="m-progress-bar"><div class="m-progress-fill orange"></div></div>
+                <span class="m-progress-val">12</span>
+              </div>
+            </div>
+            <div class="m-error-grid">
+              <div class="m-error-grid-head">
+                <span>Row</span><span>Error</span><span>Field</span><span>Fix it here</span>
+              </div>
+              <div class="m-error-row">
+                <span class="row-num">14</span>
+                <span class="err-reason">HSN must be 4–8 digits</span>
+                <span class="col-name">hsn_code</span>
+                <input class="m-repair-input" value="62071990" readonly>
+              </div>
+              <div class="m-error-row">
+                <span class="row-num">27</span>
+                <span class="err-reason">MRP cannot be 0</span>
+                <span class="col-name">mrp</span>
+                <input class="m-repair-input" value="849" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel Simulator -->
+    <div class="screen-card">
+      <div class="screen-label">
+        Channel Rejection Simulator
+        <span class="badge badge-ok">Good Foundation</span>
+      </div>
+      <div class="screen-body">
+        <div class="mock">
+          <div class="mock-bar">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+            <span class="mock-url">localhost:3000/products/[id]#simulator</span>
+          </div>
+          <div class="m-sim">
+            <div class="m-channel-tabs">
+              <div class="m-ch-tab active amz">Amazon.in</div>
+              <div class="m-ch-tab">Flipkart</div>
+              <div class="m-ch-tab">Meesho</div>
+            </div>
+            <div class="m-risk-bar high">
+              <div class="m-risk-score">72</div>
+              <div class="m-risk-info">
+                <b>High Rejection Risk</b>
+                3 errors · 2 warnings · This listing will likely be rejected
+              </div>
+            </div>
+            <div class="m-issues-list">
+              <div class="m-issue err">
+                <span class="m-issue-icon">🚫</span>
+                <span class="m-issue-text">Fabric composition is required for Apparel on Amazon. Missing value.</span>
+                <span class="m-issue-field">material_composition</span>
+              </div>
+              <div class="m-issue err">
+                <span class="m-issue-icon">🚫</span>
+                <span class="m-issue-text">HSN code "620" is invalid. Amazon requires 8-digit HSN for Apparel.</span>
+                <span class="m-issue-field">hsn_code</span>
+              </div>
+              <div class="m-issue wrn">
+                <span class="m-issue-icon">⚠️</span>
+                <span class="m-issue-text">Product title is 48 chars. Amazon recommends 80–200 characters.</span>
+                <span class="m-issue-field">title</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<hr class="section-rule">
+
+<!-- FINDINGS -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <span class="section-title">Design Findings</span>
+    <span class="section-subtitle">10 issues across 6 screens, ranked by seller impact</span>
+  </div>
+
+  <div class="findings">
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon critical">🏥</div>
+        <div>
+          <div class="finding-title">No "Seller Command Centre" — the dashboard is a data table, not a decision surface</div>
+          <div class="finding-where">SCREEN: Dashboard · ALL SELLERS · First impression</div>
+        </div>
+        <span class="finding-severity sev-critical">Critical</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The dashboard shows stats + a product list. What it doesn't answer: <em>What needs my attention right now?</em> A seller arriving at 9am has one question: "What is broken, and on which channel?" The current layout treats a product with 3 Amazon errors the same as a healthy product. There is no visual triage. The seller has to read every row. At 1,000 SKUs, this is unusable.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Replace the generic stats strip with a "Today's Action Required" panel. Segment products into: Blocked (errors blocking publish), At Risk (warnings that caused rejections in this category before), and Ready. Sort the product list by worst channel health first, not by creation date. Add a single "Fix All Amazon Issues" entry point above the list.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon critical">🔤</div>
+        <div>
+          <div class="finding-title">Technical error language reaches the seller ("VERSION_CONFLICT", "DLQ", "entity_type")</div>
+          <div class="finding-where">SCREEN: Product Edit · Bulk Import · Error States</div>
+        </div>
+        <span class="finding-severity sev-critical">Critical</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The concurrency conflict path surfaces a "VERSION_CONFLICT" error. The dead-letter queue is labelled "DLQ" in UI. The audit log references "entity_type". These are internal system identifiers — they are meaningless and anxiety-inducing to a catalog manager. When a seller's edit fails because someone else saved first, the message they need is: <em>"Someone else updated this product while you were editing. Here's what changed. Reload to see the latest version."</em> Not a 409 code.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Create a plain-language error message map. Every system error code must have a seller-facing translation. "VERSION_CONFLICT" → "This product was updated by [user] while you were editing." "Dead letter" → "These rows couldn't be fixed automatically. Review them below." "entity_type" should never appear in the UI at all.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon critical">📊</div>
+        <div>
+          <div class="finding-title">Bulk import progress has no real-time feedback during the 18-second benchmark window</div>
+          <div class="finding-where">SCREEN: Bulk Import · Job Status</div>
+        </div>
+        <span class="finding-severity sev-critical">Critical</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The 1,000-SKU benchmark completes in ~18 seconds. The UI shows job status (completed / retrying / dead_letter) and counters. But there is no live progress animation. From the seller's perspective, they upload a file, see "processing", and wait. If nothing moves for 18 seconds they will assume it has crashed and hit refresh — breaking the job. The "process next chunk" button in the web console suggests manual chunk progression may be required in some flows, which is completely unacceptable for production use.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Add a polling progress bar that auto-updates every 1.5 seconds while a job is in progress. Show: rows processed / total, current throughput (rows/sec), estimated time remaining. Remove any manual "process chunk" trigger from the seller-facing flow — that is an internal debug control and must be hidden behind an admin/developer toggle. The seller's job should process automatically end-to-end.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon warn">🗺️</div>
+        <div>
+          <div class="finding-title">Column mapping UI has no visual feedback — sellers don't know if suggestions are correct</div>
+          <div class="finding-where">SCREEN: Bulk Import · Smart Mapping Step</div>
+        </div>
+        <span class="finding-severity sev-warn">High</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The header-similarity mapping suggestion returns a confidence score, but the spec doesn't describe that score being shown to the user. A seller uploading a file with headers like "prod_name", "SKU_code", "price_MRP" will see suggested mappings but won't know if "prod_name" → "title" is a 98% match or a 45% guess. Low-confidence mappings accepted silently cause 1,000-row imports with systematically wrong data — one of the worst possible outcomes.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Show confidence visually on each mapping: green dot (>80%), yellow dot (50–80%), red dot (needs review, &lt;50%). High-confidence mappings pre-fill and are collapsed by default. Low-confidence mappings are expanded and highlighted with a warning banner: "We're not sure about these — please verify before importing."
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon warn">🧭</div>
+        <div>
+          <div class="finding-title">Validation panel is a list — there's no anchor navigation to jump to the broken field</div>
+          <div class="finding-where">SCREEN: Product Edit · Validation Panel</div>
+        </div>
+        <span class="finding-severity sev-warn">High</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The validation panel lists all issues. The backlog spec says "field anchors" are required in acceptance criteria (P2-US-005). The implementation description doesn't confirm this was built — it only confirms the panel exists and issues are filterable. If clicking a validation issue doesn't scroll the page to the broken input field and highlight it, the seller has to manually hunt for "material_composition" in a form with 20+ dynamic attribute fields. That hunting adds minutes per product, multiplied by 34 errors in the catalog.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Clicking any validation issue must: (1) scroll to the relevant form field, (2) highlight it with a coloured border and pulsing animation, (3) show the remediation text inline below the field. The validation panel click is a navigation action, not a passive display. Test with a timer: a seller should reach any flagged field within 3 seconds of seeing the error.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon warn">🇮🇳</div>
+        <div>
+          <div class="finding-title">No India-specific data formatting — prices show without ₹, HSN codes without digit grouping</div>
+          <div class="finding-where">SCREEN: Dashboard · Product List · Product Form</div>
+        </div>
+        <span class="finding-severity sev-warn">High</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The canonical model stores MRP, selling_price, and inventory_qty. The implementation shows these as raw values. In India, prices are displayed as ₹1,999 (not 1999 or INR 1999). Large numbers use Indian comma formatting: ₹12,00,000 (not ₹1,200,000). Without this, the dashboard looks like a foreign tool. A catalog manager checking MRP across 10 variants who sees "1999" vs "2499" vs "14999" has to do mental arithmetic that ₹1,999 / ₹2,499 / ₹14,999 eliminates instantly.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Add a global `formatINR()` utility that formats all monetary values with the ₹ symbol and Indian number grouping. Apply to every price display in the product list, product form, variant table, and bulk import preview. This is a 2-hour engineering change with outsized trust impact.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon warn">🚦</div>
+        <div>
+          <div class="finding-title">Channel readiness has no single summary — sellers check three tabs instead of one status</div>
+          <div class="finding-where">SCREEN: Product Detail · Channel Simulator</div>
+        </div>
+        <span class="finding-severity sev-warn">Medium</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The channel simulator requires the seller to select Amazon, then Flipkart, then Meesho separately and read three results. A product may be ready for Flipkart but blocked on Amazon. The current tab-per-channel design hides this cross-channel view. A seller preparing for a Flipkart flash sale shouldn't have to mentally track which channels are clear and which are blocked across three tab switches.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Add a "Channel Readiness Summary" bar at the top of the product page — visible without opening the simulator. Three inline badges: Amazon [✓ Ready / ⚠ 2 warnings / ✗ 3 errors], Flipkart [...], Meesho [...]. Clicking a badge opens the full simulator pre-filtered to that channel. The summary should be computed on save, not on demand.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon warn">🔧</div>
+        <div>
+          <div class="finding-title">Bulk edit preview shows "affected count" but no sample of what actually changes</div>
+          <div class="finding-where">SCREEN: Bulk Edit · Preview Step</div>
+        </div>
+        <span class="finding-severity sev-warn">Medium</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The bulk edit preview returns "affected count + sample set". The spec says "preview confirms affected records before apply." If the preview shows "482 products will be updated" with a list of names, a seller still cannot verify correctness — they need to see the before/after diff for at least the first 5 records. "482 products: title will change from [old] to [new]" is the verification step. Without it, sellers will accept previews blindly, leading to bulk mistakes they then need to undo via the history log.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Preview must show a before/after diff table for the first 5 affected records. Each row: [SKU code] | [field name] | [current value → new value]. A "Show all 482" secondary link expands the full list. This pattern, borrowed from database migration tools, turns a scary "apply to 482" confirmation into a verifiable action.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon info">🔐</div>
+        <div>
+          <div class="finding-title">RBAC role indicator is missing — viewers don't know they can't edit until they try</div>
+          <div class="finding-where">SCREEN: All screens · Role = viewer</div>
+        </div>
+        <span class="finding-severity sev-low">Medium</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">The RBAC implementation correctly hides write controls for viewers. But the spec says "write controls hidden/blocked for viewer" — hidden is the right choice, but without a role indicator in the navigation, a viewer who has been given access to check a listing will wonder if the product page is broken because they can't find any edit button. They will file a support ticket or ask an admin. The role should be explicit and persistent in the UI.</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Show the current role as a persistent badge in the navigation bar: "Viewing as: Editor" or "Viewing as: Read Only". For viewer role, add a tooltip on hover of any disabled area: "You have view-only access. Contact your account admin to request edit permissions." This eliminates a category of confused support requests.
+        </div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="finding-header">
+        <div class="finding-icon info">📱</div>
+        <div>
+          <div class="finding-title">Empty states and loading states are unspecified — likely blank white screens</div>
+          <div class="finding-where">SCREEN: Product List · Bulk Import · Channel Simulator</div>
+        </div>
+        <span class="finding-severity sev-low">Low</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-problem">P1-US-006 acceptance criteria specify "Empty and error states are implemented." The Phase 1 implementation doc doesn't confirm what these look like. Based on standard Next.js + shadcn patterns, they are most likely a default empty state (blank area or generic "No results") and a white flash during loading. For a product catalog tool, an empty product list on first login should guide the seller to their first action: Import your catalog. An empty channel simulator should explain why it's empty (no product selected).</div>
+        <div class="finding-fix">
+          <strong>Fix</strong>
+          Design three states for every major surface: empty (first-time or no-results with clear CTA), loading (skeleton screens, not spinners), and error (what went wrong + what to do next). For the first-login empty state: a persistent "Get started" guide with three steps: (1) Create your first product or import a CSV, (2) Map to your channels, (3) Check your rejection risk.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<hr class="section-rule">
+
+<!-- SCREEN-BY-SCREEN COMPARISON -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <span class="section-title">Screen-by-Screen: Now vs Should Be</span>
+    <span class="section-subtitle">What the spec implies vs what a seller tool needs</span>
+  </div>
+  <div style="background:white;border:1px solid var(--paper-mid);border-radius:var(--radius-lg);overflow:hidden;">
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th style="width:140px">Screen</th>
+          <th>What the spec implies it is</th>
+          <th>What a seller tool needs it to be</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="screen-name">Dashboard</td>
+          <td class="now">Stats strip + sortable product table with search, filters, pagination. Status badges. Channel dots.</td>
+          <td class="should">Triage dashboard: "Needs Action Today" band at top. Products sorted by urgency (errors first). Quick-fix actions inline on rows. Bulk-select for channel operations. Import shortcut always visible.</td>
+        </tr>
+        <tr>
+          <td class="screen-name">Product Form</td>
+          <td class="now">Form with dynamic fields per category. GST/HSN fields. Validation panel below. Save draft + publish-ready states. Version conflict banner on stale save.</td>
+          <td class="should">Split layout: form (left 60%) + live validation sidebar (right 40%) that updates as you type. Clicking a validation issue scrolls and highlights the field. Compliance and channel issues in same panel, tabbed by channel. Status progression bar (Draft → Valid → Channel-Ready → Published) at top.</td>
+        </tr>
+        <tr>
+          <td class="screen-name">Bulk Import</td>
+          <td class="now">File upload zone. Mapping step (header suggestions). Job status counters. Row-level error grid. JSON repair input. Requeue button. Template save/load.</td>
+          <td class="should">Guided wizard: Step 1 Upload, Step 2 Map Columns (with confidence colour coding), Step 3 Validate Preview (sample of what will be created), Step 4 Import (live progress bar). Errors surface as a prioritised repair grid post-completion — not during. Error language in plain Hindi/English. No raw JSON editing for sellers.</td>
+        </tr>
+        <tr>
+          <td class="screen-name">Channel Simulator</td>
+          <td class="now">Channel tab selector. Risk score + risk band. List of missing fields and channel issues. Mapped payload preview. Template selection. Export job queue button.</td>
+          <td class="should">Risk score with plain-language verdict ("This listing will likely be rejected"). Issues sorted: errors (will block) then warnings (may reduce visibility). One-click "Fix this field" that opens the product form scrolled to that field. Visual readiness progress bar: 7/10 fields complete. Save and rerun button.</td>
+        </tr>
+        <tr>
+          <td class="screen-name">Bulk Edit</td>
+          <td class="now">Filter scope form. Preview (affected count + sample). Apply button. History table (operation totals + item outcomes).</td>
+          <td class="should">Filter builder with human-readable summary ("You're about to update title for 482 Apparel products"). Before/after diff preview (first 5 rows). Confirmation checkbox: "I've checked the preview and I'm ready to apply." History table with undo link per operation (within 24h). Status filter on history: all / applied / failed.</td>
+        </tr>
+        <tr>
+          <td class="screen-name">Category / Taxonomy</td>
+          <td class="now">Category tree CRUD. Parent-child hierarchy. Attribute definition management per category. Admin-only governance controls.</td>
+          <td class="should">Visual tree navigator (expandable nodes, not a flat list). Attribute count badge per category. Quick-add attribute inline. Warning when changing required attributes on a category that has 100+ existing products. Admin badge persistent in nav so non-admins understand why they can't access this screen.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr class="section-rule">
+
+<!-- PRIORITY ACTION PLAN -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <span class="section-title">Priority Action Plan for the Design Backlog</span>
+    <span class="section-subtitle">Ranked by seller impact × implementation effort</span>
+  </div>
+  <div style="background:white;border:1px solid var(--paper-mid);border-radius:var(--radius-lg);overflow:hidden;">
+    <table class="priority-table">
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th>Change</th>
+          <th style="width:120px">Screen</th>
+          <th style="width:90px">Impact</th>
+          <th style="width:100px">Dev Effort</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="p-num">1</td>
+          <td>Add ₹ formatting and Indian number grouping to all monetary values. <code>formatINR(1999)</code> → <code>₹1,999</code></td>
+          <td>All screens</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~2hrs</td>
+        </tr>
+        <tr>
+          <td class="p-num">2</td>
+          <td>Replace all system error codes with plain-language messages. Map: VERSION_CONFLICT, DLQ, dead_letter, entity_type → seller-readable text.</td>
+          <td>Bulk Import · Edit Form</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~4hrs</td>
+        </tr>
+        <tr>
+          <td class="p-num">3</td>
+          <td>Auto-poll bulk import job status every 1.5s. Replace manual "process chunk" with automatic processing. Add animated progress bar with rows/sec counter.</td>
+          <td>Bulk Import</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~1 day</td>
+        </tr>
+        <tr>
+          <td class="p-num">4</td>
+          <td>Validation panel: clicking an issue scrolls to and highlights the broken field. Add smooth scroll + pulse animation.</td>
+          <td>Product Form</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~1 day</td>
+        </tr>
+        <tr>
+          <td class="p-num">5</td>
+          <td>Add channel readiness summary badges to product list rows and product detail page header. Compute on save, show inline.</td>
+          <td>Dashboard · Product Detail</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~2 days</td>
+        </tr>
+        <tr>
+          <td class="p-num">6</td>
+          <td>Dashboard "Needs Action Today" band: products sorted by error count descending. Add urgency ring on product rows with errors.</td>
+          <td>Dashboard</td>
+          <td><span class="p-impact high">High</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~2 days</td>
+        </tr>
+        <tr>
+          <td class="p-num">7</td>
+          <td>Bulk import column mapping: show confidence dots (green/yellow/red) per mapping. Auto-expand low-confidence rows with warning banner.</td>
+          <td>Bulk Import</td>
+          <td><span class="p-impact med">Medium</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~1 day</td>
+        </tr>
+        <tr>
+          <td class="p-num">8</td>
+          <td>Bulk edit preview: before/after diff table for first 5 rows. Field-level change display: [current value] → [new value].</td>
+          <td>Bulk Edit</td>
+          <td><span class="p-impact med">Medium</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~1 day</td>
+        </tr>
+        <tr>
+          <td class="p-num">9</td>
+          <td>Persistent role badge in nav. Tooltip on disabled controls for viewer: "View-only access." Remove edit button entirely for viewer (don't disable it).</td>
+          <td>Global Nav</td>
+          <td><span class="p-impact med">Medium</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~3hrs</td>
+        </tr>
+        <tr>
+          <td class="p-num">10</td>
+          <td>Design empty states for: new account (first-login guide), no search results, no import jobs, and empty channel simulator. Each with a clear next action CTA.</td>
+          <td>All screens</td>
+          <td><span class="p-impact low">Low</span></td>
+          <td><div class="p-effort"><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip"></div><div class="p-pip empty"></div><div class="p-pip empty"></div></div> ~2 days</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr class="section-rule">
+
+<!-- OVERALL VERDICT -->
+<div class="section">
+<div class="overall-verdict">
+  <h2>Designer's Verdict</h2>
+  <p>Vexa PIM's UI is at the <strong>"developer-built v1" stage</strong>: the right data is on the right screens, the core flows are functional, and the technical implementation is sound. But it is built for engineers to validate — not for catalog managers to operate under pressure.</p>
+  <p>The gap between current state and "seller tool" is not a redesign. It is <strong>10 targeted improvements, most under a day each</strong>. The biggest ROI items are: INR formatting (2 hours, instant trust), plain-language error messages (4 hours, eliminates a category of confusion), and live import progress (1 day, prevents the most common stress moment in the primary workflow).</p>
+  <p>Before onboarding real sellers — which the review has flagged as the most urgent business priority — the <strong>top 6 items from this list</strong> should be resolved. A real catalog manager's first session will expose every one of these gaps within 15 minutes. The technical foundation is strong enough to hold the weight of a real user. The UI surface is not yet.</p>
+</div>
+</div>
+
+</div><!-- /container -->
+
+</body>
+</html>

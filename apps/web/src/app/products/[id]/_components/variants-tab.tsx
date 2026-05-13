@@ -1,7 +1,9 @@
 import { createVariantAction, deleteVariantAction, updateVariantAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,11 +12,138 @@ import { lifecycleStatusTone, RoleHiddenInput } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function VariantsTab({ data }: { data: ProductDetailPageData }) {
+  const variantColumns: Column<(typeof data.variants)[number]>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        return data.canWrite ? (
+          <Input form={editFormId} name="skuCode" defaultValue={variant.skuCode} required />
+        ) : (
+          variant.skuCode
+        );
+      },
+    },
+    {
+      key: "attributes",
+      header: "Attributes",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        const attributesDefault = JSON.stringify(variant.attributes, null, 2);
+        return data.canWrite ? (
+          <Textarea form={editFormId} name="attributes" rows={4} className="w-full min-w-0 text-xs" defaultValue={attributesDefault} />
+        ) : (
+          <JsonPreview value={attributesDefault} className="max-w-[360px] p-2" />
+        );
+      },
+    },
+    {
+      key: "mrp",
+      header: "MRP",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        return data.canWrite ? (
+          <Input form={editFormId} name="mrp" type="number" min={0} step="0.01" defaultValue={variant.mrp ?? ""} />
+        ) : (
+          formatINR(variant.mrp)
+        );
+      },
+    },
+    {
+      key: "sellingPrice",
+      header: "Selling Price",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        return data.canWrite ? (
+          <Input form={editFormId} name="sellingPrice" type="number" min={0} step="0.01" defaultValue={variant.sellingPrice ?? ""} />
+        ) : (
+          formatINR(variant.sellingPrice)
+        );
+      },
+    },
+    {
+      key: "inventory",
+      header: "Inventory",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        return data.canWrite ? (
+          <Input form={editFormId} name="inventoryQty" type="number" min={0} defaultValue={variant.inventoryQty} required />
+        ) : (
+          variant.inventoryQty
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        return data.canWrite ? (
+          <Select form={editFormId} name="status" defaultValue={variant.status}>
+            <option value="draft">draft</option>
+            <option value="active">active</option>
+            <option value="archived">archived</option>
+          </Select>
+        ) : (
+          <StatusChip label={variant.status} tone={lifecycleStatusTone(variant.status)} />
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (variant) => {
+        const editFormId = `variant-edit-${variant.id}`;
+        const removeFormId = `variant-remove-${variant.id}`;
+        return (
+          <div className="px-0 py-0" data-variant-lifecycle-actions="true">
+            {data.canWrite && !["approved", "active", "archived"].includes(data.product.status) ? (
+              <div className="space-y-3">
+                <form id={editFormId} action={updateVariantAction} className="space-y-2">
+                  <RoleHiddenInput role={data.actorRole} />
+                  <input type="hidden" name="productId" value={data.productId} />
+                  <input type="hidden" name="variantId" value={variant.id} />
+                  <Button type="submit" variant="secondary" size="sm">
+                    Update variant
+                  </Button>
+                </form>
+                <details className="rounded-md border border-red-200 bg-red-50 p-2">
+                  <summary className="cursor-pointer text-xs font-semibold text-red-700">Remove variant</summary>
+                  <form id={removeFormId} action={deleteVariantAction} className="mt-2 space-y-2">
+                    <RoleHiddenInput role={data.actorRole} />
+                    <input type="hidden" name="productId" value={data.productId} />
+                    <input type="hidden" name="variantId" value={variant.id} />
+                    <label className="flex items-start gap-2 text-xs text-red-800">
+                      <input type="checkbox" name="confirmRemove" value="yes" required className="mt-0.5 h-4 w-4 rounded border-red-300" />
+                      Confirm removal of this variant from the product.
+                    </label>
+                    <Button type="submit" variant="destructive" size="sm">
+                      Remove variant
+                    </Button>
+                  </form>
+                </details>
+              </div>
+            ) : data.canWrite ? (
+              <p className="text-xs text-amber-700">Product is {data.product.status} — revert to draft to edit variants.</p>
+            ) : (
+              <p className="text-xs text-slate-500">Read-only</p>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <>
       <Card hidden={data.activeTab !== "variants"}>
         <CardTitle>Add Variant</CardTitle>
-        {data.canWrite ? (
+        {data.canWrite && ["approved", "active", "archived"].includes(data.product.status) ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Product is {data.product.status} — revert to draft to add or edit variants.
+          </p>
+        ) : data.canWrite ? (
           <form action={createVariantAction} className="grid gap-3 md:grid-cols-2">
             <RoleHiddenInput role={data.actorRole} />
             <input type="hidden" name="productId" value={data.productId} />
@@ -64,140 +193,20 @@ export function VariantsTab({ data }: { data: ProductDetailPageData }) {
               Create variant
             </Button>
           </form>
-        ) : (
+        ) : !data.canWrite ? (
           <p className="text-sm text-slate-600">Your role cannot create variants.</p>
-        )}
+        ) : null}
       </Card>
 
       <Card hidden={data.activeTab !== "variants"}>
         <CardTitle>Variants</CardTitle>
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-3 py-2">SKU</th>
-                <th className="px-3 py-2">Attributes</th>
-                <th className="px-3 py-2">MRP</th>
-                <th className="px-3 py-2">Selling Price</th>
-                <th className="px-3 py-2">Inventory</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.variants.length > 0 ? (
-                data.variants.map((variant) => {
-                  const editFormId = `variant-edit-${variant.id}`;
-                  const removeFormId = `variant-remove-${variant.id}`;
-                  const attributesDefault = JSON.stringify(variant.attributes, null, 2);
-
-                  return (
-                    <tr key={variant.id} className="border-t border-slate-200 align-top hover:bg-slate-50/50">
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Input form={editFormId} name="skuCode" defaultValue={variant.skuCode} required />
-                        ) : (
-                          variant.skuCode
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Textarea
-                            form={editFormId}
-                            name="attributes"
-                            rows={4}
-                            className="min-w-[280px] text-xs"
-                            defaultValue={attributesDefault}
-                          />
-                        ) : (
-                          <pre className="max-w-[360px] overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-                            {attributesDefault}
-                          </pre>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Input form={editFormId} name="mrp" type="number" min={0} step="0.01" defaultValue={variant.mrp ?? ""} />
-                        ) : (
-                          formatINR(variant.mrp)
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Input
-                            form={editFormId}
-                            name="sellingPrice"
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            defaultValue={variant.sellingPrice ?? ""}
-                          />
-                        ) : (
-                          formatINR(variant.sellingPrice)
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Input form={editFormId} name="inventoryQty" type="number" min={0} defaultValue={variant.inventoryQty} required />
-                        ) : (
-                          variant.inventoryQty
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {data.canWrite ? (
-                          <Select form={editFormId} name="status" defaultValue={variant.status}>
-                            <option value="draft">draft</option>
-                            <option value="active">active</option>
-                            <option value="archived">archived</option>
-                          </Select>
-                        ) : (
-                          <StatusChip label={variant.status} tone={lifecycleStatusTone(variant.status)} />
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5" data-variant-lifecycle-actions="true">
-                        {data.canWrite ? (
-                          <div className="space-y-3">
-                            <form id={editFormId} action={updateVariantAction} className="space-y-2">
-                              <RoleHiddenInput role={data.actorRole} />
-                              <input type="hidden" name="productId" value={data.productId} />
-                              <input type="hidden" name="variantId" value={variant.id} />
-                              <Button type="submit" variant="secondary" size="sm">
-                                Update variant
-                              </Button>
-                            </form>
-                            <details className="rounded-md border border-red-200 bg-red-50 p-2">
-                              <summary className="cursor-pointer text-xs font-semibold text-red-700">Remove variant</summary>
-                              <form id={removeFormId} action={deleteVariantAction} className="mt-2 space-y-2">
-                                <RoleHiddenInput role={data.actorRole} />
-                                <input type="hidden" name="productId" value={data.productId} />
-                                <input type="hidden" name="variantId" value={variant.id} />
-                                <label className="flex items-start gap-2 text-xs text-red-800">
-                                  <input type="checkbox" name="confirmRemove" value="yes" required className="mt-0.5 h-4 w-4 rounded border-red-300" />
-                                  Confirm removal of this variant from the product.
-                                </label>
-                                <Button type="submit" variant="destructive" size="sm">
-                                  Remove variant
-                                </Button>
-                              </form>
-                            </details>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500">Read-only</p>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr className="border-t border-slate-200">
-                  <td className="px-3 py-6 text-sm text-slate-500" colSpan={7}>
-                    No variants yet. Add the first variant to enable inventory and price differentiation.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {data.variants.length > 0 ? (
+          <DataGrid columns={variantColumns} rows={data.variants} getRowKey={(variant) => variant.id} rowClassName="align-top" />
+        ) : (
+          <div className="rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">
+            No variants yet. Add the first variant to enable inventory and price differentiation.
+          </div>
+        )}
       </Card>
     </>
   );

@@ -53,7 +53,8 @@ function run() {
     "Operations imports must derive selected job, row counts, successful rows, and repair rows from row-level results.",
   );
   assert(
-    pageSource.includes("<CardTitle>Selected Import Result") &&
+    pageSource.includes("<CardTitle>Stage 4 | Review result and repair rows") &&
+      pageSource.includes("Import result summary") &&
       pageSource.includes("Rows processed") &&
       pageSource.includes("Successful rows") &&
       pageSource.includes("Failed rows") &&

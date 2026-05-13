@@ -25,31 +25,31 @@ Older execution snapshots, imported planning files, and transfer artifacts are h
 ## Active canonical structure
 - `docs/connectors/`
   - `README.md` (canonical connector-documentation entry point)
-  - `TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md` (developer-facing connector guide)
-  - `TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md` (repo-first connector implementation guide)
-  - `TEJ_PIM_CONNECTOR_RECIPES.md` (connector workflow examples)
-  - `TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md` (compatibility pointer retained to avoid broken links)
+  - `VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md` (developer-facing connector guide)
+  - `VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md` (repo-first connector implementation guide)
+  - `VEXA_PIM_CONNECTOR_RECIPES.md` (connector workflow examples)
+  - `VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md` (compatibility pointer retained to avoid broken links)
 - `docs/product/`
   - `PRD.md`
   - `PRD_SOURCES.md`
   - `FIRST_SELLER_ONBOARDING_PLAYBOOK.md`
 - `docs/architecture/`
-  - `TEJ_PIM_Final_Architecture_March2026_v3.docx`
-  - `TEJ_PIM_Connector_First_Redesign_March2026.docx`
+  - `VEXA_PIM_Final_Architecture_March2026_v3.docx`
+  - `VEXA_PIM_Connector_First_Redesign_March2026.docx`
   - `enterprise-docs/` (generated reference bundle; useful reviewer material, not canonical source-of-truth)
 - `docs/execution/`
   - `CURRENT_STATE.md`
   - `INCREMENT_STATE.json`
   - `INCREMENT_EXECUTION_MODEL.md`
-  - `TEJ_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
+  - `VEXA_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
   - `PRD_TO_ENGINEERING_BACKLOG.md`
   - execution evidence files under `E*.md`
   - gate artifacts under `gates/`
   - rollout artifacts under `rollout/`
 - `docs/strategy/`
-  - `TEJ_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
+  - `VEXA_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
 - `docs/design/`
-  - `TEJ_PIM_UI_Design_Review.html` (reference design review, not the live route/source contract)
+  - `VEXA_PIM_UI_Design_Review.html` (reference design review, not the live route/source contract)
 - `docs/product/user-guide/`
   - generated operational guide bundle
   - regenerated against the current mapping lifecycle and canonical `/channels/mappings` flow

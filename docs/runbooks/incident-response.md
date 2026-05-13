@@ -1,5 +1,5 @@
 ---
-title: TEJ PIM Incident Response Runbook
+title: Vexa PIM Incident Response Runbook
 audience: internal-ops
 status: active
 last_updated: 2026-03-26
@@ -96,7 +96,7 @@ Escalation: [FILL: CTO contact]
    - Fix the connector-side cause first.
    - Lanes resume after the configured pause window when the circuit breaker closes.
 4. If queues are not paused but work is not moving, verify Redis health and BullMQ worker registration.
-   - Confirm Redis keys with the `TEJ PIM--` prefix are present.
+   - Confirm Redis keys with the `Vexa PIM--` prefix are present.
    - Confirm the worker service actually booted with worker mode enabled.
 5. If the queue is unhealthy immediately after deploy, compare the deployed env vars with `env-validation.ts` and re-check Railway restart logs.
 

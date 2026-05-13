@@ -3,7 +3,9 @@ import { applyBulkEditAction } from "@/app/actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -203,6 +205,14 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     let previewErrorCode: string | null = null;
     let previewErrorMessage: string | null = null;
     let parsedUpdates: Record<string, unknown> = {};
+    const operationColumns: Column<(typeof operations)[number]>[] = [
+      { key: "operation", header: "Operation", render: (operation) => <span className="font-mono text-xs">{operation.id}</span> },
+      { key: "status", header: "Status", render: (operation) => translateJobStatus(operation.status) },
+      { key: "requested", header: "Requested", render: (operation) => operation.requestedCount },
+      { key: "applied", header: "Applied", render: (operation) => operation.appliedCount },
+      { key: "failed", header: "Failed", render: (operation) => operation.failedCount },
+      { key: "updates", header: "Updates", render: (operation) => <span className="text-xs">{JSON.stringify(operation.updates)}</span> },
+    ];
 
     if (shouldPreviewBulkEdit) {
       try {
@@ -357,7 +367,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
                 </div>
                 <div className="rounded-md border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated update payload</p>
-                  <pre className="mt-2 overflow-auto text-xs text-slate-700">{structuredUpdatesText}</pre>
+                  <JsonPreview value={structuredUpdatesText} className="mt-2 border-0 bg-transparent p-0" />
                 </div>
                 <Button type="submit" className="w-fit" name="bulkEditMode" value="structured">
                   Preview affected products
@@ -428,32 +438,12 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
           {operations.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No bulk edit operations found yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Operation</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Requested</th>
-                    <th className="py-2">Applied</th>
-                    <th className="py-2">Failed</th>
-                    <th className="py-2">Updates</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {operations.slice(0, 50).map((operation) => (
-                    <tr key={operation.id} className="border-t border-border align-top">
-                      <td className="py-2 font-mono text-xs">{operation.id}</td>
-                      <td className="py-2">{translateJobStatus(operation.status)}</td>
-                      <td className="py-2">{operation.requestedCount}</td>
-                      <td className="py-2">{operation.appliedCount}</td>
-                      <td className="py-2">{operation.failedCount}</td>
-                      <td className="py-2 text-xs">{JSON.stringify(operation.updates)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataGrid
+              columns={operationColumns}
+              rows={operations.slice(0, 50)}
+              getRowKey={(operation) => operation.id}
+              rowClassName="align-top"
+            />
           )}
         </Card>
       </div>

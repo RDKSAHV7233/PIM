@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid } from "@/components/ui/data-grid";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
+import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
@@ -53,6 +55,49 @@ function statusTone(status: string): "neutral" | "success" | "warning" | "danger
   return "neutral";
 }
 
+function submissionTimelineItems(submission: {
+  id: string;
+  status: string;
+  attemptNumber: number;
+  submittedAt: string;
+  resolvedAt: string | null;
+  channelErrors: Array<{ sellerMessage: string }>;
+}): TimelineItem[] {
+  const items: TimelineItem[] = [
+    {
+      id: `${submission.id}-submitted`,
+      title: "Submitted to channel",
+      description: "The latest product payload entered the outbound channel queue.",
+      meta: new Date(submission.submittedAt).toLocaleString(),
+      tone: "info",
+    },
+  ];
+
+  if (submission.attemptNumber > 1) {
+    items.push({
+      id: `${submission.id}-retry`,
+      title: `Attempt ${submission.attemptNumber}`,
+      description: "This submission has retried at least once before reaching its latest state.",
+      tone: "warning",
+    });
+  }
+
+  const normalized = normalizeStatus(submission.status);
+  items.push({
+    id: `${submission.id}-status`,
+    title: normalized === "SUCCESS" ? "Accepted by channel" : `Latest status ${normalized}`,
+    description:
+      submission.channelErrors[0]?.sellerMessage ||
+      (normalized === "SUCCESS"
+        ? "The latest submission completed successfully."
+        : "Use Jobs when this submission needs recovery action."),
+    meta: submission.resolvedAt ? new Date(submission.resolvedAt).toLocaleString() : "Awaiting connector resolution",
+    tone: statusTone(submission.status),
+  });
+
+  return items;
+}
+
 export default async function ChannelsSubmissionsPage({ searchParams }: ChannelsSubmissionsPageProps) {
   const query = await searchParams;
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
@@ -70,6 +115,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
       { role: actorRole, authHeader },
     );
     const submissions = toItems(submissionsResponse);
+    const latestSubmission = submissions[0] ?? null;
     const statusCounts = submissions.reduce<Record<string, number>>((accumulator, submission) => {
       const key = normalizeStatus(submission.status);
       accumulator[key] = (accumulator[key] ?? 0) + 1;
@@ -113,6 +159,52 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
           />
         </section>
 
+        <Card>
+          <CardTitle>Submission triage guide</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Watch pending work</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Stay in Submissions when the latest payload is still queued or retrying and no repair action is needed yet.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Open Jobs for recovery</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Move to Jobs when a submission is rejected, errors repeatedly, or needs an explicit retry after catalog or connector fixes.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Trace product context</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Open the product when you need to confirm the latest payload context, readiness state, or mapped channel data behind a submission.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {latestSubmission ? (
+          <Card>
+            <CardTitle>Latest Submission Timeline</CardTitle>
+            <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div>
+                <p className="text-sm text-slate-700">
+                  Review the most recent submission lifecycle before opening Jobs for active recovery.
+                </p>
+                <Timeline className="mt-3" items={submissionTimelineItems(latestSubmission)} />
+              </div>
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current submission</p>
+                <p className="font-mono text-xs text-slate-700">{latestSubmission.id}</p>
+                <StatusChip label={normalizeStatus(latestSubmission.status)} tone={statusTone(latestSubmission.status)} />
+                <Link href="/operations/jobs" className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                  Open Jobs Workspace
+                </Link>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
         <FilterBar>
           <form method="get" className="grid gap-3 md:grid-cols-[220px_240px_auto]">
             <div className="space-y-1">
@@ -147,42 +239,65 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
 
         <Card>
           <CardTitle>Latest Channel Submissions</CardTitle>
-          {submissions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No submissions found for the current filter scope.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Submission</th>
-                    <th className="px-3 py-2">Connector</th>
-                    <th className="px-3 py-2">Product</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Attempts</th>
-                    <th className="px-3 py-2">Submitted</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {submissions.map((submission) => (
-                    <tr key={submission.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                      <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{submission.id}</td>
-                      <td className="px-3 py-2.5">{submission.connectorDisplayName}</td>
-                      <td className="px-3 py-2.5">
-                        <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="underline">
-                          {submission.productId}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)} />
-                      </td>
-                      <td className="px-3 py-2.5">{submission.attemptNumber}</td>
-                      <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="mt-3">
+            <DataGrid
+              columns={[
+                {
+                  key: "id",
+                  header: "Submission",
+                  cellClassName: "font-mono text-xs text-slate-700",
+                  render: (submission) => submission.id,
+                },
+                { key: "connectorDisplayName", header: "Connector" },
+                {
+                  key: "productId",
+                  header: "Product",
+                  render: (submission) => (
+                    <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="underline">
+                      {submission.productId}
+                    </Link>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Status",
+                  render: (submission) => (
+                    <StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)} />
+                  ),
+                },
+                {
+                  key: "externalRef",
+                  header: "External Ref",
+                  cellClassName: "font-mono text-xs text-slate-700",
+                  render: (submission) => {
+                    if (!submission.externalRef) return <span className="text-slate-400">—</span>;
+                    const gidMatch = submission.externalRef.match(/gid:\/\/shopify\/Product\/(\d+)/);
+                    if (gidMatch) {
+                      return <span title={submission.externalRef}>shopify:{gidMatch[1]}</span>;
+                    }
+                    return <span title={submission.externalRef}>{submission.externalRef.slice(0, 40)}</span>;
+                  },
+                },
+                {
+                  key: "attemptNumber",
+                  header: "Attempts",
+                  render: (submission) => submission.attemptNumber,
+                },
+                {
+                  key: "submittedAt",
+                  header: "Submitted",
+                  cellClassName: "text-xs text-slate-600",
+                  render: (submission) => new Date(submission.submittedAt).toLocaleString(),
+                },
+              ]}
+              rows={submissions}
+              getRowKey={(submission) => submission.id}
+              caption="Latest Channel Submissions"
+              emptyState={
+                <p className="text-sm text-slate-600">No submissions found for the current filter scope.</p>
+              }
+            />
+          </div>
         </Card>
       </div>
     );

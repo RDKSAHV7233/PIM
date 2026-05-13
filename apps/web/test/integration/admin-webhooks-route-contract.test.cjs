@@ -45,6 +45,23 @@ function run() {
     "Admin webhooks must surface create, error, pause, resume, test, and delete state banners at the page level.",
   );
   assert(
+    source.includes("CardTitle>Delivery health guide</CardTitle>") &&
+      source.includes("If status is queued") &&
+      source.includes("If status is failed") &&
+      source.includes("If an endpoint is paused"),
+    "Admin webhooks must explain delivery-state recovery guidance in plain language before operators inspect endpoint and delivery tables.",
+  );
+  assert(
+    source.includes("Receiver readiness checklist") &&
+      source.includes("Validate the signature") &&
+      source.includes("Acknowledge quickly") &&
+      source.includes("Log event evidence") &&
+      source.includes("x-pim1-webhook-signature") &&
+      source.includes("Return a fast 2xx response after persistence or queue handoff") &&
+      source.includes("receiver response details so incidents can be traced across Vexa and the downstream system."),
+    "Admin webhooks must guide operators on what a healthy receiver implementation should do after endpoint setup.",
+  );
+  assert(
     source.includes('role === "admin" ? (') &&
       source.includes("form action={createOutboundWebhookAction}") &&
       source.includes("form action={sendTestOutboundWebhookAction}") &&

@@ -32,8 +32,8 @@ No documentation files were deleted in this audit.
 | Check | Result | Risk |
 |---|---:|---|
 | Broken relative markdown links | 0 | Low |
-| Files with legacy/high-risk markers such as `TEJ PIM`, `PIM1`, `RabbitMQ`, old user-guide links, or placeholder wording | 169 | High until archive boundaries are enforced |
-| Generated placeholder lines reading `Information not available in TEJ PIM project` | 374 | Medium; mostly in generated product/transfer guide fragments |
+| Files with legacy/high-risk markers such as `Vexa PIM`, `PIM1`, `RabbitMQ`, old user-guide links, or placeholder wording | 169 | High until archive boundaries are enforced |
+| Generated placeholder lines reading `Information not available in Vexa PIM project` | 374 | Medium; mostly in generated product/transfer guide fragments |
 | Documentation-like files under `unused/` | 79 | Medium; should remain outside canonical docs |
 | Historical transfer files under `docs/ports/` | 55 | High if users treat them as current implementation truth |
 
@@ -46,7 +46,7 @@ Current-facing files cleaned during the second pass:
 - `docs/legal/privacy-policy.md`
 - `docs/legal/terms-of-service.md`
 - `docs/architecture/security-threat-model.md`
-- `docs/strategy/TEJ_PIM_PRODUCT_TEST_STRATEGY.md`
+- `docs/strategy/VEXA_PIM_PRODUCT_TEST_STRATEGY.md`
 - `packages/db/README.md`
 
 ## Codebase Evidence Used
@@ -77,7 +77,7 @@ Current-facing files cleaned during the second pass:
 | `docs/troubleshooting.md` | Support guide | Keep | Missing central troubleshooting entry. | Medium | Common failures are enforced by env validation and scripts. | Added. |
 | `docs/faq.md` | Common questions | Keep | Missing central FAQ. | Low | Common uncertainty exists around source of truth, connectors, and queues. | Added. |
 | `docs/connectors/README.md` | Connector doc index | Update | Still references TEJ naming and older date; mostly useful but should use Vexa terminology. | Medium | Connector code uses current slugs and implementation statuses. | Update in a focused connector-doc pass. |
-| `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md` | Connector developer guide | Keep/update | Likely useful but brand and route claims need current verification. | High | Connector routes exist but capability status changed over time. | Keep as detailed connector doc; audit before release. |
+| `docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md` | Connector developer guide | Keep/update | Likely useful but brand and route claims need current verification. | High | Connector routes exist but capability status changed over time. | Keep as detailed connector doc; audit before release. |
 | `docs/product/PRD.md` | Product source document | Keep | Important product reference but must not override code behavior. | Medium | README and connector index already use it as supporting product truth. | Keep; reconcile feature claims against code in future pass. |
 | `docs/execution/CURRENT_STATE.md` | Runtime/project state | Keep | Useful, but date-based execution state ages quickly. | Medium | Current implementation must be verified by routes/tests. | Keep with review date discipline. |
 | `docs/execution/INCREMENT_STATE.json` | Increment state machine | Keep | Useful release state artifact. | Medium | Referenced by existing docs and release process. | Keep. |

@@ -4,7 +4,7 @@ Purpose:
 Explain installation and deployment.
 
 Scope:
-Validated setup requirements, local run process, CI/CD deployment flow, and environment configuration from TEJ PIM repository.
+Validated setup requirements, local run process, CI/CD deployment flow, and environment configuration from Vexa PIM repository.
 
 Content:
 System Requirements (validated):
@@ -71,5 +71,5 @@ Container/Cloud setup:
 - deploy/aws/media-baseline.yaml exists for media baseline.
 
 Full production infrastructure topology specification:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

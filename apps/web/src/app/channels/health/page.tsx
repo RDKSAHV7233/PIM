@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth } from "@/lib/api";
@@ -24,6 +25,31 @@ export default async function ChannelsHealthPage() {
     const readyListings = typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : totalReady;
     const blockedListings = typeof health.blockedTotal === "number" ? health.blockedTotal : totalBlocked;
     const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;
+    const connectorColumns: Column<{ slug: string; ready: number; blocked: number }>[] = [
+      {
+        key: "channel",
+        header: "Channel",
+        render: (entry) => <span className="font-medium">{entry.slug}</span>,
+      },
+      { key: "ready", header: "Ready", render: (entry) => entry.ready },
+      { key: "blocked", header: "Blocked", render: (entry) => entry.blocked },
+      {
+        key: "health",
+        header: "Health",
+        render: (entry) => {
+          const ready = entry.ready;
+          const blocked = entry.blocked;
+          const healthTone = blocked > 0 ? "warning" : ready > 0 ? "success" : "neutral";
+          const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : "No activity";
+          return <StatusChip label={healthLabel} tone={healthTone} />;
+        },
+      },
+    ];
+    const connectorRows = connectorEntries.map(([slug, ready]) => ({
+      slug,
+      ready,
+      blocked: health.snapshot.blockedByConnector[slug] ?? 0,
+    }));
 
     return (
       <div className="space-y-5">
@@ -55,6 +81,30 @@ export default async function ChannelsHealthPage() {
         </section>
 
         <Card>
+          <CardTitle>Health triage guide</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Fix content blockers first</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Start with blocking issues when listings are not ready, because incomplete product data prevents publishable payloads from forming at all.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Check mappings next</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Move to the mapping workspace when a channel stays blocked after quality fixes, especially if required attributes differ by marketplace.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Use Jobs for delivery failures</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Open Jobs when listings were ready but the connector or downstream system still rejected the submission or needs a retry.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
           <CardTitle>Per Channel</CardTitle>
           <p className="mt-2 text-xs text-slate-500">As of {new Date(health.asOf).toLocaleString()}</p>
           {connectorBreakdownRedacted ? (
@@ -72,36 +122,12 @@ export default async function ChannelsHealthPage() {
               />
             </div>
           ) : (
-            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Channel</th>
-                    <th className="px-3 py-2">Ready</th>
-                    <th className="px-3 py-2">Blocked</th>
-                    <th className="px-3 py-2">Health</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connectorEntries.map(([slug, ready]) => {
-                    const blocked = health.snapshot.blockedByConnector[slug] ?? 0;
-                    const healthTone = blocked > 0 ? "warning" : ready > 0 ? "success" : "neutral";
-                    const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : "No activity";
-
-                    return (
-                      <tr key={slug} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5 font-medium">{slug}</td>
-                        <td className="px-3 py-2.5">{ready}</td>
-                        <td className="px-3 py-2.5">{blocked}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={healthLabel} tone={healthTone} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataGrid
+              className="mt-3"
+              columns={connectorColumns}
+              rows={connectorRows}
+              getRowKey={(entry) => entry.slug}
+            />
           )}
         </Card>
       </div>

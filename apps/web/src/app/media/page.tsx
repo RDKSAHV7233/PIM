@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { bulkAssociateMediaCsvAction, updateMediaGovernanceAction, uploadMediaAssetAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
@@ -11,10 +13,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
   AppRole,
+  MarketplaceChannel,
   getMediaAssets,
   getMediaAssetValidation,
   getProductList,
-  MarketplaceChannel,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { READINESS_CHANNELS } from "@/lib/channel-readiness";
@@ -54,7 +56,8 @@ function formatDateTime(value: string | null): string {
 }
 
 interface MediaPageProps {
-  searchParams: Promise<{    productId?: string;
+  searchParams: Promise<{
+    productId?: string;
     variantId?: string;
     assetId?: string;
     bulkAssociationStatus?: string;
@@ -121,10 +124,106 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     }
     throw error;
   }
+
   const products = filterTestData(rawProducts, true);
   const validation = assetId
     ? await getMediaAssetValidation(assetId, channel, { role: actorRole, authHeader })
     : null;
+  const assetColumns: Column<(typeof assets)[number]>[] = [
+    {
+      key: "asset",
+      header: "Asset",
+      render: (asset) => <span className="font-mono text-xs">{asset.id}</span>,
+    },
+    {
+      key: "product",
+      header: "Product",
+      render: (asset) => asset.productId ?? "-",
+    },
+    {
+      key: "variant",
+      header: "Variant",
+      render: (asset) => asset.variantId ?? "-",
+    },
+    {
+      key: "governance",
+      header: "Governance",
+      render: (asset) => (
+        <form action={updateMediaGovernanceAction} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <RoleHiddenInput role={actorRole} />
+          <input type="hidden" name="assetId" value={asset.id} />
+          <input type="hidden" name="productId" value={productId} />
+          <input type="hidden" name="variantId" value={variantId} />
+          <input type="hidden" name="assetFilterId" value={assetId} />
+          <input type="hidden" name="channel" value={channel} />
+          <p className="text-xs text-slate-500">
+            {asset.mimeType}
+            {asset.width && asset.height ? ` | ${asset.width}x${asset.height}` : ""}
+            {` | ${Math.round(asset.sizeBytes / 1024)} KB`}
+          </p>
+          <Input name="altText" defaultValue={asset.altText ?? ""} placeholder="Alt Text" />
+          <div className="grid gap-2 md:grid-cols-2">
+            <Input name="sortOrder" type="number" min={0} defaultValue={asset.sortOrder} placeholder="Gallery Order" />
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" name="isMain" value="true" defaultChecked={asset.isMain} />
+              Mark as main image
+            </label>
+          </div>
+          <div>
+            <p className="mb-2 text-xs text-slate-500">Eligible channels</p>
+            <div className="flex flex-wrap gap-3 text-xs text-slate-700">
+              {READINESS_CHANNELS.map((availableChannel) => (
+                <label key={`${asset.id}-${availableChannel}`} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="channelEligibility"
+                    value={availableChannel}
+                    defaultChecked={asset.channelEligibility.includes(availableChannel)}
+                  />
+                  {formatMarketplaceChannelLabel(availableChannel)}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button type="submit" variant="secondary" className="w-fit">
+            Save governance
+          </Button>
+        </form>
+      ),
+    },
+    {
+      key: "eligibility",
+      header: "Eligibility",
+      render: (asset) => (
+        <div>
+          <p>{asset.channelEligibility.length > 0 ? asset.channelEligibility.join(", ") : "All channels not set"}</p>
+          <p className="text-xs text-slate-500">Usage count: {asset.usageCount}</p>
+        </div>
+      ),
+    },
+    {
+      key: "health",
+      header: "Health",
+      render: (asset) => (
+        <div>
+          <p className="font-medium text-slate-900">{asset.assetHealthStatus}</p>
+          <p className="text-xs text-slate-500">Last checked: {formatDateTime(asset.lastCheckedAt)}</p>
+        </div>
+      ),
+    },
+    {
+      key: "validation",
+      header: "Validation",
+      render: (asset) => (
+        <Link
+          className="inline-flex items-center rounded-md border border-border px-3 py-2"
+          href={`/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
+        >
+          Validate
+        </Link>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -288,9 +387,9 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
             <Button type="submit" className="w-fit">
               Run bulk association
             </Button>
-            {bulkAssociationStatus === "done" && (
+            {bulkAssociationStatus === "done" ? (
               <p className="text-sm text-green-700">Bulk media association request completed.</p>
-            )}
+            ) : null}
           </form>
         ) : (
           <p className="text-sm text-slate-600">Your role is read-only on bulk media association.</p>
@@ -299,87 +398,23 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
 
       <Card>
         <CardTitle>Media Assets</CardTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2">Asset</th>
-                <th className="py-2">Product</th>
-                <th className="py-2">Variant</th>
-                <th className="py-2">Governance</th>
-                <th className="py-2">Eligibility</th>
-                <th className="py-2">Health</th>
-                <th className="py-2">Validation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map((asset) => (
-                <tr key={asset.id} className="border-t border-border">
-                  <td className="py-2 font-mono text-xs">{asset.id}</td>
-                  <td className="py-2">{asset.productId ?? "-"}</td>
-                  <td className="py-2">{asset.variantId ?? "-"}</td>
-                  <td className="py-2">
-                    <form action={updateMediaGovernanceAction} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-                      <RoleHiddenInput role={actorRole} />
-                      <input type="hidden" name="assetId" value={asset.id} />
-                      <input type="hidden" name="productId" value={productId} />
-                      <input type="hidden" name="variantId" value={variantId} />
-                      <input type="hidden" name="assetFilterId" value={assetId} />
-                      <input type="hidden" name="channel" value={channel} />
-                      <p className="text-xs text-slate-500">
-                        {asset.mimeType} {asset.width && asset.height ? `• ${asset.width}x${asset.height}` : ""} •{" "}
-                        {Math.round(asset.sizeBytes / 1024)} KB
-                      </p>
-                      <Input name="altText" defaultValue={asset.altText ?? ""} placeholder="Alt text" />
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <Input name="sortOrder" type="number" min={0} defaultValue={asset.sortOrder} placeholder="Order" />
-                        <label className="flex items-center gap-2 text-sm text-slate-700">
-                          <input type="checkbox" name="isMain" value="true" defaultChecked={asset.isMain} />
-                          Main image
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-3 text-xs text-slate-700">
-                        {READINESS_CHANNELS.map((availableChannel) => (
-                          <label key={`${asset.id}-${availableChannel}`} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              name="channelEligibility"
-                              value={availableChannel}
-                              defaultChecked={asset.channelEligibility.includes(availableChannel)}
-                            />
-                            {formatMarketplaceChannelLabel(availableChannel)}
-                          </label>
-                        ))}
-                      </div>
-                      <Button type="submit" variant="secondary" className="w-fit">
-                        Save governance
-                      </Button>
-                    </form>
-                  </td>
-                  <td className="py-2">
-                    <p>{asset.channelEligibility.length > 0 ? asset.channelEligibility.join(", ") : "All channels not set"}</p>
-                    <p className="text-xs text-slate-500">Usage count: {asset.usageCount}</p>
-                  </td>
-                  <td className="py-2">
-                    <p className="font-medium text-slate-900">{asset.assetHealthStatus}</p>
-                    <p className="text-xs text-slate-500">Last checked: {formatDateTime(asset.lastCheckedAt)}</p>
-                  </td>
-                  <td className="py-2">
-                    <Link
-                      className="inline-flex items-center rounded-md border border-border px-3 py-2"
-                      href={`/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&assetId=${encodeURIComponent(asset.id)}&channel=${encodeURIComponent(channel)}`}
-                    >
-                      Validate
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          className="mt-3"
+          columns={assetColumns}
+          rows={assets}
+          getRowKey={(asset) => asset.id}
+          rowClassName="align-top"
+          emptyState={
+            <EmptyState
+              icon="IMAGE"
+              title="No media assets found"
+              description="Upload assets or widen the current filter scope to review media governance."
+            />
+          }
+        />
       </Card>
 
-      {assetId && (
+      {assetId ? (
         <Card>
           <CardTitle>Channel Validation</CardTitle>
           <form method="get" className="flex items-end gap-3">
@@ -395,7 +430,7 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
             </Select>
             <Button type="submit">Run validation</Button>
           </form>
-          {validation && (
+          {validation ? (
             <div className="mt-3 space-y-2 text-sm">
               <p>
                 Result: <strong>{validation.valid ? "valid" : "invalid"}</strong>
@@ -419,18 +454,17 @@ SKU-DEMO-001,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoM
               ) : (
                 <p>No validation issues.</p>
               )}
-              {validation.warnings.length > 0 && (
+              {validation.warnings.length > 0 ? (
                 <ul className="list-disc pl-5 text-amber-700">
                   {validation.warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>
-              )}
+              ) : null}
             </div>
-          )}
+          ) : null}
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }
-

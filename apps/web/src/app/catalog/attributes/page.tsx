@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createAttributeDefinitionAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -76,6 +77,34 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
     const toggleHref = hideTestData
       ? `/catalog/attributes${selectedCategoryId ? `?categoryId=${encodeURIComponent(selectedCategoryId)}&hideTestData=false` : "?hideTestData=false"}`
       : `/catalog/attributes${selectedCategoryId ? `?categoryId=${encodeURIComponent(selectedCategoryId)}` : ""}`;
+    const definitionColumns: Column<(typeof definitions)[number]>[] = [
+      { key: "label", header: "Label", render: (definition) => definition.name },
+      {
+        key: "key",
+        header: "Key",
+        render: (definition) => <span className="font-mono text-xs text-slate-700">{definition.key}</span>,
+      },
+      { key: "type", header: "Type", render: (definition) => definition.dataType },
+      { key: "scope", header: "Scope", render: (definition) => definition.appliesTo },
+      {
+        key: "required",
+        header: "Required",
+        render: (definition) => (
+          <StatusChip
+            label={definition.required ? "Required" : "Optional"}
+            tone={definition.required ? "warning" : "neutral"}
+          />
+        ),
+      },
+      {
+        key: "allowedValues",
+        header: "Allowed Values",
+        render: (definition) => {
+          const values = asAllowedValues(definition);
+          return <span className="text-xs text-slate-600">{values.length > 0 ? values.join(", ") : "-"}</span>;
+        },
+      },
+    ];
 
     return (
       <div className="space-y-5">
@@ -126,47 +155,13 @@ export default async function CatalogAttributesPage({ searchParams }: CatalogAtt
 
         <Card>
           <CardTitle>Attribute Definitions</CardTitle>
-          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Label</th>
-                  <th className="px-3 py-2">Key</th>
-                  <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Scope</th>
-                  <th className="px-3 py-2">Required</th>
-                  <th className="px-3 py-2">Allowed Values</th>
-                </tr>
-              </thead>
-              <tbody>
-                {definitions.length > 0 ? (
-                  definitions.map((definition) => {
-                    const values = asAllowedValues(definition);
-                    return (
-                      <tr key={definition.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5">{definition.name}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{definition.key}</td>
-                        <td className="px-3 py-2.5">{definition.dataType}</td>
-                        <td className="px-3 py-2.5">{definition.appliesTo}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={definition.required ? "Required" : "Optional"} tone={definition.required ? "warning" : "neutral"} />
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-slate-600">
-                          {values.length > 0 ? values.join(", ") : "-"}
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr className="border-t border-slate-200">
-                    <td className="px-3 py-6 text-sm text-slate-500" colSpan={6}>
-                      No attribute definitions found for this category.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {definitions.length > 0 ? (
+            <DataGrid className="mt-3" columns={definitionColumns} rows={definitions} getRowKey={(definition) => definition.id} />
+          ) : (
+            <div className="mt-3 rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">
+              No attribute definitions found for this category.
+            </div>
+          )}
         </Card>
 
         {canManageTaxonomy && selectedCategoryId ? (

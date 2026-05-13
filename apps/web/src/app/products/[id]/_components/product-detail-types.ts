@@ -4,6 +4,7 @@ import type {
   ChannelMappingTemplate,
   ConnectorInstallation,
   ConnectorPublishReadiness,
+  ConnectorSubmission,
   MarketplaceChannel,
   MarketplaceChannelConfig,
   MarketplaceChannelMapping,
@@ -58,5 +59,6 @@ export type ProductDetailPageData = {
   fallbackAckRequired: boolean;
   canQueueExportWithAck: boolean;
   deleteConfirmToken: string;
+  connectorSubmissions: ConnectorSubmission[];
   tabHref: (tab: DetailTab) => string;
 };

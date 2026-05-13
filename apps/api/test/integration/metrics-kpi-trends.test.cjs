@@ -176,6 +176,38 @@ function assertStatus(result, expected, context) {
   }
 }
 
+async function advanceToApproved(baseUrl, token, product) {
+  const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: product.version,
+    title: product.title,
+    description: product.description ?? "",
+    brand: product.brand,
+    categoryId: product.categoryId,
+    hsnCode: product.hsnCode ?? undefined,
+    gstRate: product.gstRate ?? undefined,
+    attributes: product.attributes ?? {},
+    status: "in_review",
+  });
+  if (toReview.status !== 200) {
+    throw new Error(`advance to in_review failed: ${toReview.status} ${JSON.stringify(toReview.payload)}`);
+  }
+  const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: toReview.payload.version,
+    title: toReview.payload.title,
+    description: toReview.payload.description ?? "",
+    brand: toReview.payload.brand,
+    categoryId: toReview.payload.categoryId,
+    hsnCode: toReview.payload.hsnCode ?? undefined,
+    gstRate: toReview.payload.gstRate ?? undefined,
+    attributes: toReview.payload.attributes ?? {},
+    status: "approved",
+  });
+  if (toApproved.status !== 200) {
+    throw new Error(`advance to approved failed: ${toApproved.status} ${JSON.stringify(toApproved.payload)}`);
+  }
+  return toApproved.payload;
+}
+
 async function issueStepUp(baseUrl, token) {
   const result = await tracedRequest("issue step-up", baseUrl, "POST", "/auth/step-up", token, {
     password: getAuthPassword(),
@@ -329,6 +361,7 @@ async function run() {
       attributes: {},
     });
     assertStatus(product, 201, "create product");
+    await advanceToApproved(baseUrl, token, product.payload);
 
     const install = await tracedRequest("install connector", baseUrl, "POST", "/connectors/flipkart/install", token, {
       accountAlias: "primary",
@@ -378,6 +411,7 @@ async function run() {
       gstRate: 12,
     });
     assertStatus(successProduct, 201, "create successful product");
+    await advanceToApproved(baseUrl, token, successProduct.payload);
 
     const successMedia = await tracedRequest("create successful product media", baseUrl, "POST", "/media/assets", token, {
       productId: successProduct.payload.id,

@@ -1,6 +1,6 @@
 # Vexa PIM Enterprise Documentation Suite (Validated from Repository)
 
-> Scope note (2026-03-06): This document is an enterprise architecture suite and includes broader TEJ PIM surface references.
+> Scope note (2026-03-06): This document is an enterprise architecture suite and includes broader Vexa PIM surface references.
 > For connector-runtime and connector API contract truth in this repository, use:
 > docs/connectors/PIM1_CONNECTOR_DEVELOPER_GUIDE_CTO_VALIDATED.md.
 > In any conflict, the connector guide and current src/auth/protected-routes.ts route surface are authoritative for this repo.
@@ -26,7 +26,7 @@
 ## SECTION 1 — PRODUCT OVERVIEW
 
 ### 1. Product Overview
-- Product name: **TEJ PIM**
+- Product name: **Vexa PIM**
 - One-line description: India-first, multi-tenant PIM with connector-first marketplace architecture.
 - Source: `docs/product/PRD.md`
 
@@ -49,10 +49,10 @@
   - Viewer
   - Marketplace Ops
 - Source: `docs/product/PRD.md`
-- Additional roles beyond these: **Information not available in TEJ PIM project.**
+- Additional roles beyond these: **Information not available in Vexa PIM project.**
 
 ### 5. Implemented Feature List (from modules/routes)
-| Area | Implemented in TEJ PIM |
+| Area | Implemented in Vexa PIM |
 |---|---|
 | Auth & Access | JWT login/logout, jti revocation blocklist, role guard, tenant middleware |
 | Catalog | Products/variants CRUD, soft delete + purge, completeness score |
@@ -93,7 +93,7 @@
 | `AttributeDefinition` | `id`, `tenantKey`, `categoryId`, `key`, `name`, `dataType`, `required`, `appliesTo`, `allowedValues(Json)` | belongs to `Category`; applied at product/variant level via `appliesTo` |
 
 ### 9. Product Family Model
-- **Information not available in TEJ PIM project.**
+- **Information not available in Vexa PIM project.**
 
 ### 10. Category Hierarchy
 | Entity | Key Fields | Hierarchy Fields |
@@ -135,7 +135,7 @@
 - Variant attributes stored as JSON object.
 
 ### 16. Product Family Structure
-- **Information not available in TEJ PIM project.**
+- **Information not available in Vexa PIM project.**
 
 ### 17. Category Tree
 - Category tree built using `parentId` recursion and denormalized `path`.
@@ -147,7 +147,7 @@
 
 ### 19. Localization or Channel Model
 - Channel model present via `MarketplaceChannel` enum (`amazon`,`flipkart`,`meesho`), `ChannelMappingTemplate`, connector framework tables.
-- Localization model: **Information not available in TEJ PIM project.**
+- Localization model: **Information not available in Vexa PIM project.**
 
 ### 20. Product Enrichment Workflow
 - Implemented flow:
@@ -239,7 +239,7 @@
   - issue inbox: severity/category/status/connector installation filters
   - marketplace templates: by category/channel
   - bulk import/bulk edit listing filters
-- Full-text search service: **Information not available in TEJ PIM project.**
+- Full-text search service: **Information not available in Vexa PIM project.**
 
 ### 36. Pagination
 - Cursor pagination is implemented.
@@ -249,7 +249,7 @@
 ### 37. Webhooks or Events
 - Webhook event storage table exists: `connector_webhook_events`.
 - Queue lane exists: `WEBHOOK_EVENT`.
-- Dedicated webhook receiver controller endpoint: **Information not available in TEJ PIM project.**
+- Dedicated webhook receiver controller endpoint: **Information not available in Vexa PIM project.**
 - ADR-004 webhook transport decision is pending.
 
 ### Real Request/Response Examples (from DTO/interfaces)
@@ -277,7 +277,7 @@
 {
   "title": "Cotton Shirt",
   "description": "Regular fit cotton shirt",
-  "brand": "TEJ PIM",
+  "brand": "Vexa PIM",
   "categoryId": "category-id",
   "hsnCode": "62046200",
   "gstRate": 18,
@@ -301,14 +301,14 @@
 ## SECTION 6 — INTEGRATION DOCUMENTATION
 
 ### 38. ERP Integration
-- **Integration not defined in TEJ PIM project.**
+- **Integration not defined in Vexa PIM project.**
 
 ### 39. Ecommerce Integration
-- **Integration not defined in TEJ PIM project.**
+- **Integration not defined in Vexa PIM project.**
 
 ### 40. DAM Integration
 - Internal media storage integration exists (object storage path + CDN URL config via env).
-- External DAM platform connector: **Integration not defined in TEJ PIM project.**
+- External DAM platform connector: **Integration not defined in Vexa PIM project.**
 
 ### 41. Marketplace Integration
 - Connector-first framework implemented.
@@ -318,7 +318,7 @@
 
 ### 42. Data Synchronization
 - Export job and submission orchestration exists with status tracking and retry/dead-letter flows.
-- Full bidirectional channel sync contract implementation: **Information not available in TEJ PIM project.**
+- Full bidirectional channel sync contract implementation: **Information not available in Vexa PIM project.**
 
 ### 43. Event-driven Integrations
 - In-process queue service with lanes/backpressure exists.
@@ -358,7 +358,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 - Dashboard flow: aggregate from products/submissions/issues/media into readiness/health endpoints.
 
 ### 47. Search and Indexing
-- Dedicated search/indexing engine (Elasticsearch/OpenSearch/etc.): **Information not available in TEJ PIM project.**
+- Dedicated search/indexing engine (Elasticsearch/OpenSearch/etc.): **Information not available in Vexa PIM project.**
 - Database indexes and cursor pagination are implemented.
 
 ### 48. Caching Strategy
@@ -379,7 +379,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 ### 50. Performance Model
 - Cursor pagination enforced (default 50, max 200).
 - Queue backpressure policies and circuit pause behavior.
-- Formal SLA/SLO document: **Information not available in TEJ PIM project.**
+- Formal SLA/SLO document: **Information not available in Vexa PIM project.**
 
 ---
 
@@ -422,7 +422,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 - Product versioning: `Product.version` + `expectedVersion` in update DTO.
 - Mapping template version fields exist (`ChannelMappingTemplate.version`).
 - Connector definition version field exists (`connector_version`).
-- Global document-level data versioning system: **Information not available in TEJ PIM project.**
+- Global document-level data versioning system: **Information not available in Vexa PIM project.**
 
 ---
 
@@ -450,7 +450,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 ### 59. Container / Cloud Setup
 - Local containers: Postgres 16, Redis 7, RabbitMQ management via `docker-compose.yml`.
 - Cloud media baseline template exists: `deploy/aws/media-baseline.yaml`.
-- Full production topology specification: **Information not available in TEJ PIM project.**
+- Full production topology specification: **Information not available in Vexa PIM project.**
 
 ### 60. Environment Configuration
 - `.env.example` defines DB/JWT/Redis/auth mode/encryption keys/media/feature flags.
@@ -473,7 +473,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 ### 62. Monitoring
 - `/api/v1/health` exposes status, env, auth mode, db pool metrics, queue metrics.
 - `/api/v1/metrics/kpi-trends` available.
-- External monitoring stack definitions: **Information not available in TEJ PIM project.**
+- External monitoring stack definitions: **Information not available in Vexa PIM project.**
 
 ### 63. Logging
 - Structured logger service with correlation ID middleware and tenant-aware fields.
@@ -488,10 +488,10 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 - Backup references exist in runbooks:
   - credential rotation requires `pg_dump` backup before run.
   - test data governance runbook advises backup before execute mode.
-- Automated scheduled backup implementation details: **Information not available in TEJ PIM project.**
+- Automated scheduled backup implementation details: **Information not available in Vexa PIM project.**
 
 ### 66. Disaster Recovery
-- **Information not available in TEJ PIM project.**
+- **Information not available in Vexa PIM project.**
 
 ### 67. Troubleshooting
 - Available operational artifacts:
@@ -515,7 +515,7 @@ Object Storage/CDN (media assets, payload snapshot overflow URLs)
 
 ### 69. Data Migration
 - Bulk import supports CSV/XLSX/JSON ingestion and row-level repair.
-- Generic legacy data migration program documentation: **Information not available in TEJ PIM project.**
+- Generic legacy data migration program documentation: **Information not available in Vexa PIM project.**
 
 ### 70. Attribute Mapping
 - Marketplace field/category mapping via templates:

@@ -27,11 +27,11 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Severity`, `Connector Install`, `Category`, `Product Status`, `Page Size`
 - Field names (technical): `returnTo`, `issueIds`, `limit`
 - Select names: `severity`, `installationId`, `categoryId`, `productStatus`
-- Placeholders: Information not available in TEJ PIM project.
+- Placeholders: Information not available in Vexa PIM project.
 - Links: `/quality/issues`
 
 ## Related components

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AppDialog } from "@/components/ui/app-dialog";
 import { Button } from "@/components/ui/button";
 
 export function ProductDirtyNavigationGuard() {
@@ -75,32 +76,21 @@ export function ProductDirtyNavigationGuard() {
     if (href) window.location.assign(href);
   };
 
-  if (!isDirty || !pendingHref) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="product-unsaved-changes-title"
-        aria-describedby="product-unsaved-changes-description"
-        className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
-      >
-        <h2 id="product-unsaved-changes-title" className="text-base font-semibold text-slate-950">
-          Unsaved changes
-        </h2>
-        <p id="product-unsaved-changes-description" className="mt-2 text-sm leading-6 text-slate-600">
-          Save product changes before switching tabs, or leave without saving this edit.
-        </p>
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={stayOnTab}>
-            Stay on this tab
-          </Button>
-          <Button type="button" variant="destructive" onClick={leaveWithoutSaving}>
-            Leave without saving
-          </Button>
-        </div>
+    <AppDialog
+      open={isDirty && !!pendingHref}
+      title="Unsaved changes"
+      description="Save product changes before switching tabs, or leave without saving this edit."
+      onClose={stayOnTab}
+    >
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secondary" onClick={stayOnTab}>
+          Stay on this tab
+        </Button>
+        <Button type="button" variant="destructive" onClick={leaveWithoutSaving}>
+          Leave without saving
+        </Button>
       </div>
-    </div>
+    </AppDialog>
   );
 }

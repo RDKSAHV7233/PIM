@@ -29,8 +29,8 @@ function main() {
   );
 
   assert.equal(config.projectId, "proj_123");
-  assert.equal(config.apiServiceTarget, "API");
-  assert.equal(config.webServiceTarget, "PIM1");
+  assert.equal(config.apiServiceTarget, "svc_api");
+  assert.equal(config.webServiceTarget, "svc_web");
   assert.equal(config.environmentName, "staging");
   assert.equal(path.relative(repoRoot, config.apiSourcePath), path.join(".tmp", "railway-api-service"));
   assert.equal(path.relative(repoRoot, config.webSourcePath), path.join(".tmp", "railway-web-service"));
@@ -43,7 +43,7 @@ function main() {
     "up",
     path.join(".tmp", "railway-api-service"),
     "--service",
-    "API",
+    "svc_api",
     "--project",
     "proj_123",
     "--environment",
@@ -55,7 +55,7 @@ function main() {
     "up",
     path.join(".tmp", "railway-web-service"),
     "--service",
-    "PIM1",
+    "svc_web",
     "--project",
     "proj_123",
     "--environment",
@@ -99,6 +99,17 @@ function main() {
   );
   assert.equal(legacyConfig.apiServiceTarget, "svc_api_legacy");
   assert.equal(legacyConfig.webServiceTarget, "svc_web_legacy");
+
+  const nameFallbackConfig = resolveConfig(
+    {
+      RAILWAY_PROJECT_ID: "proj_name_fallback",
+      RAILWAY_API_SERVICE: "API",
+      RAILWAY_WEB_SERVICE: "PIM1",
+    },
+    repoRoot,
+  );
+  assert.equal(nameFallbackConfig.apiServiceTarget, "API");
+  assert.equal(nameFallbackConfig.webServiceTarget, "PIM1");
 
   assert.deepEqual(
     classifyDeployTargets([

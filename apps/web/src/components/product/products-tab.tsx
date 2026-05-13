@@ -1,13 +1,16 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { deleteProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProductChannelReadinessCell } from "@/components/channel/product-channel-readiness-cell";
 import { CreateProductForm } from "@/components/product/CreateProductForm";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonBlock } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, MarketplaceChannel, ProductListItem } from "@/lib/api";
@@ -150,6 +153,22 @@ function matchesProductSearch(product: ProductWithCompliance, query: string): bo
   return (product.skuCodes ?? []).some((skuCode) => skuCode.toLowerCase().includes(normalized));
 }
 
+function nextActionLabel(product: ProductWithCompliance, channelStatus: ReadinessStatus): string {
+  if (product.complianceErrorCount > 0) {
+    return `Fix ${product.complianceErrorCount} blocking issue${product.complianceErrorCount === 1 ? "" : "s"}`;
+  }
+  if (channelStatus === "errors") {
+    return "Fix channel blockers";
+  }
+  if (product.complianceWarningCount > 0 || channelStatus === "warnings") {
+    return "Review warnings";
+  }
+  if ((product.completenessScore ?? 0) < 100) {
+    return "Complete content";
+  }
+  return "Review product";
+}
+
 export function ProductsTab({
   role,
   products,
@@ -168,6 +187,8 @@ export function ProductsTab({
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
+  const [pendingArchive, setPendingArchive] = useState<{ form: HTMLFormElement; title: string } | null>(null);
+  const archiveConfirmedRef = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -391,12 +412,20 @@ export function ProductsTab({
       event.preventDefault();
       return;
     }
-    const confirmed = window.confirm(
-      `Archive product "${productTitle}"? It will be hidden from the catalog but can be restored later.`,
-    );
-    if (!confirmed) {
-      event.preventDefault();
+    if (archiveConfirmedRef.current) {
+      archiveConfirmedRef.current = false;
+      return;
     }
+    event.preventDefault();
+    setPendingArchive({ form: event.currentTarget, title: productTitle });
+  }
+
+  function handleConfirmedArchive() {
+    if (pendingArchive?.form) {
+      archiveConfirmedRef.current = true;
+      pendingArchive.form.requestSubmit();
+    }
+    setPendingArchive(null);
   }
 
   useEffect(() => {
@@ -424,6 +453,105 @@ export function ProductsTab({
     role === "viewer"
       ? "No products are available yet. Ask an editor or admin to import or create catalog data."
       : "Import your existing catalog from Excel, or create your first product manually.";
+
+  const productColumns = useMemo<Column<ProductWithCompliance>[]>(
+    () => [
+      {
+        key: "title",
+        header: "Title",
+        render: (product) => (
+          <div className="space-y-1">
+            <Link href={`/products/${product.id}`}>{product.title}</Link>
+            <p className="text-xs text-slate-500">{product.brand || "No brand set"}</p>
+          </div>
+        ),
+      },
+      {
+        key: "category",
+        header: "Category",
+        render: (product) => product.categoryPath ?? product.categoryName ?? product.categoryId,
+        mobileHide: true,
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (product) => (
+          <StatusChip label={product.status} tone={productStatusTone(product.status)} />
+        ),
+      },
+      {
+        key: "completeness",
+        header: "Complete %",
+        render: (product) => `${product.completenessScore ?? 0}%`,
+      },
+      {
+        key: "compliance",
+        header: "Compliance Issues",
+        render: (product) => (
+          <StatusChip label={complianceLabel(product)} tone={complianceTone(product)} />
+        ),
+        mobileHide: true,
+      },
+      {
+        key: "readiness",
+        header: "Channel Readiness",
+        render: (product) => <ProductChannelReadinessCell readiness={readinessState[product.id]} />,
+      },
+      {
+        key: "nextAction",
+        header: "Next Action",
+        render: (product) => (
+          <span className="text-sm text-slate-700">
+            {nextActionLabel(product, readinessMap[product.id] ?? "loading")}
+          </span>
+        ),
+      },
+      {
+        key: "updatedAt",
+        header: "Last Updated",
+        render: (product) => <span className="text-slate-600">{formatUpdatedAt(product.updatedAt)}</span>,
+        mobileHide: true,
+      },
+      {
+        key: "variants",
+        header: "Variants",
+        render: (product) => String(product.variantCount ?? 0),
+        mobileHide: true,
+      },
+      ...(canWrite
+        ? [
+            {
+              key: "actions",
+              header: "Actions",
+              headerClassName: "text-right",
+              cellClassName: "text-right",
+              render: (product: ProductWithCompliance) => (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Link
+                    href={`/products/${product.id}`}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Open
+                  </Link>
+                  <form action={deleteProductAction} onSubmit={(event) => handleDeleteSubmit(event, product.title)}>
+                    <input type="hidden" name="productId" value={product.id} />
+                    <input type="hidden" name="confirmDelete" value="yes" />
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                </div>
+              ),
+            } satisfies Column<ProductWithCompliance>,
+          ]
+        : []),
+    ],
+    [canWrite, readinessMap, readinessState, returnTo],
+  );
 
   return (
     <div className="space-y-4">
@@ -488,9 +616,9 @@ export function ProductsTab({
               </div>
             ) : (
               <span className="inline-flex items-center gap-2">
-                <span className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                <span className="h-4 w-20 animate-pulse rounded bg-slate-200" />
-                <span className="h-4 w-16 animate-pulse rounded bg-slate-200" />
+                <SkeletonBlock className="h-4 w-24" />
+                <SkeletonBlock className="h-4 w-20" />
+                <SkeletonBlock className="h-4 w-16" />
               </span>
             )}
           </div>
@@ -614,75 +742,24 @@ export function ProductsTab({
             }
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[940px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Title</th>
-                  <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Complete %</th>
-                  <th
-                    className="px-3 py-2"
-                    title="Checks for GST/HSN format and required compliance fields. Does not include channel-specific requirements - see Channel Readiness."
-                  >
-                    Compliance Issues <span aria-hidden="true">ⓘ</span>
-                  </th>
-                  <th className="px-3 py-2">Channel Readiness</th>
-                  <th className="px-3 py-2">Last Updated</th>
-                  <th className="px-3 py-2">Variants</th>
-                  {canWrite ? <th className="px-3 py-2 text-right">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {visibleProducts.map((product) => (
-                  <tr key={product.id} className="border-t border-border hover:bg-slate-50/50">
-                    <td className="px-3 py-2.5">
-                      <div className="space-y-1">
-                        <Link href={`/products/${product.id}`}>{product.title}</Link>
-                        <p className="text-xs text-slate-500">{product.brand || "No brand set"}</p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5">{product.categoryPath ?? product.categoryName ?? product.categoryId}</td>
-                    <td className="px-3 py-2.5">
-                      <StatusChip label={product.status} tone={productStatusTone(product.status)} />
-                    </td>
-                    <td className="px-3 py-2.5">{product.completenessScore ?? 0}%</td>
-                    <td className="px-3 py-2.5">
-                      <StatusChip label={complianceLabel(product)} tone={complianceTone(product)} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <ProductChannelReadinessCell
-                        readiness={readinessState[product.id]}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>
-                    <td className="px-3 py-2.5">{product.variantCount ?? 0}</td>
-                    {canWrite ? (
-                      <td className="px-3 py-2.5 text-right">
-                        <form action={deleteProductAction} onSubmit={(event) => handleDeleteSubmit(event, product.title)}>
-                          <input type="hidden" name="productId" value={product.id} />
-                          <input type="hidden" name="confirmDelete" value="yes" />
-                          <input type="hidden" name="returnTo" value={returnTo} />
-                          <button
-                            type="submit"
-                            className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                          >
-                            Delete
-                          </button>
-                        </form>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataGrid
+            columns={productColumns}
+            rows={visibleProducts}
+            getRowKey={(product) => product.id}
+            caption="Products workbench"
+          />
         )}
       </section>
+      <ConfirmDialog
+        open={pendingArchive !== null}
+        title="Archive product"
+        description={`Archive "${pendingArchive?.title}"? It will be hidden from the catalog but can be restored later.`}
+        confirmLabel="Archive"
+        destructive
+        onConfirm={handleConfirmedArchive}
+        onCancel={() => setPendingArchive(null)}
+      />
     </div>
   );
 }
-
-
 

@@ -26,6 +26,19 @@ export class BulkImportController {
   ) {}
 
   @Roles("admin", "editor")
+  @Post("validate")
+  validateJobInput(
+    @Body() dto: CreateBulkImportJobDto,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportService.validateJobInput(dto, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
+
+  @Roles("admin", "editor")
   @Post("jobs")
   createJob(
     @Body() dto: CreateBulkImportJobDto,
@@ -39,7 +52,7 @@ export class BulkImportController {
   }
 
   @Roles("admin", "editor")
-  @Post("validate")
+  @Post("validate/preflight")
   validateImport(
     @Body() dto: ImportValidateDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },

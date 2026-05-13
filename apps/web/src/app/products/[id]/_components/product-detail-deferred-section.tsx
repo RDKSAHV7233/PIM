@@ -4,6 +4,7 @@ import {
   getMarketplaceChannelMapping,
   getMarketplaceSimulation,
   getMarketplaceTemplates,
+  getSubmissions,
   type AppRole,
   type ConnectorInstallation,
   type MarketplaceChannel,
@@ -62,7 +63,7 @@ export async function ProductDetailDeferredSection({
   returnTo,
   tabHref,
 }: ProductDetailDeferredSectionProps) {
-  const [templates, mapping, simulation, categoryAttributes, readiness] = await Promise.all([
+  const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw] = await Promise.all([
     getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }),
     getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
       role: actorRole,
@@ -75,7 +76,13 @@ export async function ProductDetailDeferredSection({
       { categoryScope: product.categoryId, productId, fallbackAcknowledged: false },
       { role: actorRole, authHeader },
     ),
+    getSubmissions({ productId, limit: 20 }, { role: actorRole, authHeader }),
   ]);
+  const connectorSubmissions = (() => {
+    if (!submissionsRaw) return [];
+    if (Array.isArray(submissionsRaw)) return submissionsRaw;
+    return Array.isArray(submissionsRaw.items) ? submissionsRaw.items : [];
+  })();
 
   const publishCapableConnectorSlugs = new Set(
     installedConnectors
@@ -135,6 +142,7 @@ export async function ProductDetailDeferredSection({
     canQueueExportWithAck:
       (readiness.blockers ?? []).filter((item) => item !== "fallback_ack_required").length === 0,
     deleteConfirmToken: (variants.find((variant) => variant.skuCode)?.skuCode ?? product.id).trim(),
+    connectorSubmissions,
   };
 
   return (

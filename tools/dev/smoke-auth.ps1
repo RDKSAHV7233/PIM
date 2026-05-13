@@ -18,7 +18,7 @@ function Get-SmokeAuthHeaders {
   }
 
   $effectivePassword = if ([string]::IsNullOrWhiteSpace($Password)) {
-    "tej-pim-demo-password"
+    "vexa-pim-demo-password"
   } else {
     $Password
   }

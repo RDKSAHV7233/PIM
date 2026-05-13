@@ -48,6 +48,15 @@ function run() {
     "Channels submissions must derive KPI cards and status tones from live normalized submission states.",
   );
   assert(
+    source.includes("Submission triage guide") &&
+      source.includes("Watch pending work") &&
+      source.includes("Open Jobs for recovery") &&
+      source.includes("Trace product context") &&
+      source.includes("needs an explicit retry after catalog or connector fixes.") &&
+      source.includes("latest payload context, readiness state, or mapped channel data behind a submission."),
+    "Channels submissions must guide operators on when to monitor history, when to recover in Jobs, and when to inspect the product context.",
+  );
+  assert(
     source.includes('id="channel-submissions-status"') &&
       source.includes('id="channel-submissions-connector"') &&
       source.includes('href="/channels/submissions"') &&
@@ -58,7 +67,9 @@ function run() {
   assert(
     source.includes('href={`/products/${encodeURIComponent(submission.productId)}`}') &&
       source.includes("StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)}") &&
-      source.includes("new Date(submission.submittedAt).toLocaleString()"),
+      source.includes("new Date(submission.submittedAt).toLocaleString()") &&
+      source.includes("CardTitle>Latest Submission Timeline</CardTitle>") &&
+      source.includes("Timeline className=\"mt-3\" items={submissionTimelineItems(latestSubmission)}"),
     "Channels submissions must keep product drilldown, normalized status chips, and submission timestamps visible in the table.",
   );
   assert(
@@ -77,6 +88,7 @@ function run() {
           "channels_submissions_route_fetches_submissions_with_normalized_query",
           "channels_submissions_route_normalizes_list_payload_shape",
           "channels_submissions_route_derives_kpis_and_status_tones",
+          "channels_submissions_route_guides_submission_triage",
           "channels_submissions_route_preserves_operator_filters_and_links",
           "channels_submissions_route_keeps_product_drilldowns_and_timestamps",
           "channels_submissions_route_handles_empty_and_auth_redirect_states",

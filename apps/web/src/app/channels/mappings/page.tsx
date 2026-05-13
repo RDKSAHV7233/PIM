@@ -6,6 +6,7 @@ import { MappingsFilterCard, TaxonomyAlignmentCard } from "@/components/channel/
 import { VersionManagerCard } from "@/components/channel/version-manager";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getInstalledConnectors,
@@ -26,6 +27,7 @@ import {
   searchConnectorTaxonomy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSlug, normalizeChannel, resolveStepUpErrorMessage, type ProtectedMappingActionKind } from "@/lib/channel-mappings";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -139,14 +141,25 @@ function resolveInstallationLabel(installation: ConnectorInstallation): string {
   return `${installation.accountAlias} (${accountContext})`;
 }
 
+function resolveInstallationContextDetail(installation: ConnectorInstallation): string {
+  const shopName = readMetadataValue(installation.metadata, "shopName");
+  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
+  const externalRef = installation.externalAccountRef;
+  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" | ");
+  const prefix = context.length > 0
+    ? `${installation.displayName} | ${context} | status ${installation.status}`
+    : `${installation.displayName} | status ${installation.status}`;
+  return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
+}
+
 function resolveInstallationDetail(installation: ConnectorInstallation): string {
   const shopName = readMetadataValue(installation.metadata, "shopName");
   const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
   const externalRef = installation.externalAccountRef;
-  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" · ");
+  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" | ");
   const prefix = context.length > 0
-    ? `${installation.displayName} · ${context} · status ${installation.status}`
-    : `${installation.displayName} · status ${installation.status}`;
+    ? `${installation.displayName} | ${context} | status ${installation.status}`
+    : `${installation.displayName} | status ${installation.status}`;
   return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
 }
 
@@ -289,6 +302,10 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const priorityBlockers = Array.from(
       new Set([...(preflight?.blockers ?? []), ...(readiness?.blockers ?? [])]),
     ).slice(0, 3);
+    const readinessBlockers = Array.from(
+      new Set([...(preflight?.blockers ?? []), ...(readiness?.blockers ?? [])]),
+    );
+    const readinessWarnings = Array.from(new Set(readiness?.warnings ?? []));
     const connectorAccountLabel = selectedInstallation
       ? resolveInstallationLabel(selectedInstallation)
       : matchingInstallations.length > 1
@@ -297,12 +314,14 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           ? resolveInstallationLabel(matchingInstallations[0]!)
           : "No installed connector account";
     const connectorAccountDetail = selectedInstallation
-      ? resolveInstallationDetail(selectedInstallation)
+      ? resolveInstallationContextDetail(selectedInstallation)
       : matchingInstallations.length > 1
         ? `${matchingInstallations.length} installed accounts match this connector. Choose the exact account to keep mapping context aligned.`
         : matchingInstallations.length === 0
           ? "No installed connector account is linked to this channel yet."
           : null;
+    const readinessSummaryLabel = `${readinessBlockers.length} blockers | ${readinessWarnings.length} warnings`;
+    const readyToPublishMessage = "Ready to publish. The current mapping path is clear for this connector account.";
     const connectorHealthHref = selectedInstallationId
       ? `/channels/connectors/${encodeURIComponent(selectedInstallationId)}?tab=overview`
       : "/channels/connectors";
@@ -312,25 +331,25 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         ? `/channels/connectors/${encodeURIComponent(selectedInstallationId)}?tab=catalog#catalog-payload`
         : "/channels/connectors";
 
+    const mappingWorkflowStep = !selectedCategoryId
+      ? 0
+      : (preflight?.blockers?.length ?? 0) > 0
+        ? 1
+        : 2;
+    const mappingWorkflowSteps: WorkflowStep[] = [
+      { label: "Choose scope", tone: mappingWorkflowStep > 0 ? "complete" : "current" },
+      { label: "Build the draft", tone: mappingWorkflowStep > 1 ? "complete" : mappingWorkflowStep === 1 ? "current" : "pending" },
+      { label: "Validate and publish", tone: mappingWorkflowStep === 2 ? "current" : "pending" },
+    ];
+
     return (
       <div className="space-y-5">
         <PageHeader title="Mapping Workbench" description="Choose scope, build the draft, then validate and publish with clear readiness gates for each channel." breadcrumb={<>Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span></>} actions={<Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open connector portfolio</Link>} />
         <MappingStepUpAlert message={stepUpMessage} />
-        <Card id="mapping-scope" className="border-slate-200 bg-slate-50/80">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Operator flow</CardTitle>
-              <p className="mt-2 text-sm text-slate-600">
-                Lock the scope, update the draft, then validate and promote from history when the readiness gate is clear.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">1. Choose scope</span>
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">2. Build the draft</span>
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">3. Validate and publish</span>
-            </div>
-          </div>
-        </Card>
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operator flow</p>
+          <WorkflowStepper steps={mappingWorkflowSteps} />
+        </div>
         <MappingsFilterCard
           categories={categories}
           channels={channels}
@@ -356,6 +375,54 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           mappedRequiredCount={mappedRequiredCount}
           missingRequiredCount={missingRequiredCount}
         />
+        <Card className="border-slate-200 bg-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Publish Readiness</CardTitle>
+              <p className="text-sm text-slate-600">
+                {readinessSummaryLabel}
+              </p>
+            </div>
+            <StatusChip
+              label={readinessBlockers.length === 0 ? "Ready to publish" : "Attention required"}
+              tone={readinessBlockers.length === 0 ? "success" : "warning"}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocking</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{readinessBlockers.length}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Fix hard gates before validate and publish can clear.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{readinessWarnings.length}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Warnings do not always block publish, but they should be reviewed.
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Connector account</p>
+              <p className="mt-2 text-sm font-medium text-slate-900">{connectorAccountLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {selectedInstallation
+                  ? `${connectorHealthLabel(selectedInstallation.status)} account context is active for this workflow.`
+                  : "Select the right connector account so readiness stays aligned with the publish lane."}
+              </p>
+            </div>
+          </div>
+          {readinessBlockers.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              {readyToPublishMessage}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Resolve the blocking readiness items in the side rail before you validate and publish this mapping version.
+            </div>
+          )}
+        </Card>
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_380px]">
           <div className="space-y-4">
             {/* mapTarget:: */}

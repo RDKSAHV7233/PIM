@@ -1,4 +1,4 @@
-import type { ApiRequestOptions, AttributeDefinition, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
+import type { ApiRequestOptions, AttributeDefinition, BulkImportValidationSummary, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ProductRevision, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
 import { fetchJson, postJson } from "./core";
 
 export async function getCategories(options?: ApiRequestOptions) {
@@ -87,6 +87,14 @@ export async function getProduct(productId: string, options?: ApiRequestOptions)
   return fetchJson<Product>(`/catalog/products/${productId}`, undefined, options);
 }
 
+export async function getProductRevisions(productId: string, options?: ApiRequestOptions) {
+  return fetchJson<ProductRevision[]>(
+    `/catalog/products/${encodeURIComponent(productId)}/revisions`,
+    undefined,
+    options,
+  );
+}
+
 export async function searchCatalogProducts(
   input: { q: string; limit?: number },
   options?: ApiRequestOptions,
@@ -120,6 +128,29 @@ export async function getCategoryAttributes(categoryId: string, options?: ApiReq
 
 export async function getProductIssues(productId: string, options?: ApiRequestOptions) {
   return fetchJson<ValidationIssue[]>(`/compliance/products/${productId}/issues`, undefined, options);
+}
+
+export async function validateBulkImportPayload(
+  body: {
+    categoryId: string;
+    sourceFormat: "csv" | "json";
+    sourceName?: string;
+    csvContent?: string;
+    fileContentBase64?: string;
+    rows?: Record<string, unknown>[];
+    mapping?: Record<string, string>;
+    chunkSize?: number;
+    maxRetries?: number;
+  },
+  options?: ApiRequestOptions,
+) {
+  return fetchJson<BulkImportValidationSummary>("/bulk-import/validate", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+    },
+  }, options);
 }
 
 export async function getApprovalComments(productId: string, options?: ApiRequestOptions) {

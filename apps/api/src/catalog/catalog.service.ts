@@ -448,6 +448,32 @@ export class CatalogService {
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_product_detail_redacted", withScore);
   }
 
+  async getProductRevisions(productId: string, actor?: ActorContext) {
+    const product = await this.requireProduct(productId);
+    await this.accessPolicy.assertProductAccess(this.toPolicyActor(actor), "view", {
+      id: product.id,
+      categoryId: product.categoryId,
+      brand: product.brand,
+      vendorScopeKey: product.vendorScopeKey,
+    });
+
+    const logs = await this.prisma.tenant().auditLog.findMany({
+      where: {
+        resourceId: productId,
+        action: {
+          in: ["PRODUCT_UPDATED", "REVIEW_DECISION"],
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+    });
+
+    const items = logs
+      .map((log) => this.toProductRevision(log, productId))
+      .filter((revision): revision is NonNullable<typeof revision> => revision !== null);
+    return { items };
+  }
+
   async createProduct(dto: CreateProductDto, actor?: ActorContext) {
     await this.requireCategory(dto.categoryId);
     await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "create", {
@@ -538,6 +564,34 @@ export class CatalogService {
       include: { category: true, variants: true },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
+    const changedFields = this.collectChangedProductFields(current, {
+      title: dto.title.trim(),
+      description: dto.description.trim(),
+      brand: dto.brand.trim(),
+      categoryId: dto.categoryId,
+      vendorScopeKey: requestedVendorScopeKey,
+      hsnCode: dto.hsnCode?.trim() || null,
+      gstRate: dto.gstRate ?? null,
+      attributes,
+      status: nextStatus,
+    });
+    if (changedFields.length > 0) {
+      await this.auditService.record({
+        actorId: actor?.id ?? "system",
+        actorRole: actor?.role ?? "admin",
+        action: "PRODUCT_UPDATED",
+        resource: "/api/v1/catalog/products/:id",
+        resourceId: product.id,
+        metadata: {
+          model: "Product",
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          changedFields,
+          changedFieldCount: changedFields.length,
+          changedSectionCount: this.countChangedSections(changedFields),
+        },
+      });
+    }
     if (current.status !== nextStatus) {
       await this.auditService.record({
         actorId: actor?.id ?? "system",
@@ -601,6 +655,30 @@ export class CatalogService {
         version: { increment: 1 },
       },
       include: { category: true, variants: true },
+    });
+
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "REVIEW_DECISION",
+      resource: "/api/v1/catalog/products/:id/review-decision",
+      resourceId: product.id,
+      metadata: {
+        model: "Product",
+        fromStatus: current.status,
+        toStatus: nextStatus,
+        changedFields: [
+          {
+            path: "status",
+            label: "Status",
+            before: current.status,
+            after: nextStatus,
+          },
+        ],
+        changedFieldCount: 1,
+        changedSectionCount: 1,
+        decisionNote: dto.note?.trim() || null,
+      },
     });
 
     await this.auditService.record({
@@ -1221,47 +1299,142 @@ export class CatalogService {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
   }
 
-  async getProductRevisions(productId: string, actor?: ActorContext) {
-    const product = await this.prisma.tenant().product.findUnique({
-      where: { id: productId },
-      select: { id: true },
-    });
-    if (!product) {
-      throw new NotFoundException(`Product ${productId} not found`);
+  private collectChangedProductFields(
+    current: {
+      title: string;
+      description: string;
+      brand: string;
+      categoryId: string;
+      vendorScopeKey?: string | null;
+      hsnCode: string | null;
+      gstRate: number | null;
+      attributes: unknown;
+      status: RecordStatus;
+    },
+    next: {
+      title: string;
+      description: string;
+      brand: string;
+      categoryId: string;
+      vendorScopeKey?: string | null;
+      hsnCode: string | null;
+      gstRate: number | null;
+      attributes: Record<string, unknown>;
+      status: RecordStatus;
+    },
+  ) {
+    const changedFields: Array<{ path: string; label: string; before: unknown; after: unknown }> = [];
+    const scalarFields = [
+      { path: "title", label: "Title", before: current.title, after: next.title },
+      { path: "description", label: "Description", before: current.description, after: next.description },
+      { path: "brand", label: "Brand", before: current.brand, after: next.brand },
+      { path: "categoryId", label: "Category", before: current.categoryId, after: next.categoryId },
+      {
+        path: "vendorScopeKey",
+        label: "Vendor scope",
+        before: this.normalizeVendorScopeKey(current.vendorScopeKey),
+        after: this.normalizeVendorScopeKey(next.vendorScopeKey),
+      },
+      { path: "hsnCode", label: "HSN Code", before: current.hsnCode ?? null, after: next.hsnCode ?? null },
+      { path: "gstRate", label: "GST Rate", before: current.gstRate ?? null, after: next.gstRate ?? null },
+      { path: "status", label: "Status", before: current.status, after: next.status },
+    ] as const;
+    for (const field of scalarFields) {
+      if (JSON.stringify(field.before) !== JSON.stringify(field.after)) {
+        changedFields.push(field);
+      }
     }
 
-    const auditLogs = await this.prisma.tenant().auditLog.findMany({
-      where: {
-        resource: "product",
-        resourceId: productId,
-        action: { in: ["product.created", "product.updated", "product.status_changed"] },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const currentAttributes = this.normalizeProductAttributes(this.asRecord(current.attributes));
+    const nextAttributes = this.normalizeProductAttributes(next.attributes);
+    const attributeKeys = Array.from(
+      new Set([...Object.keys(currentAttributes), ...Object.keys(nextAttributes)]),
+    ).sort((left, right) => left.localeCompare(right));
+    for (const key of attributeKeys) {
+      const before = currentAttributes[key];
+      const after = nextAttributes[key];
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        changedFields.push({
+          path: `attributes.${key}`,
+          label: `Attribute: ${key}`,
+          before: before ?? null,
+          after: after ?? null,
+        });
+      }
+    }
 
-    const items = auditLogs.map((log) => {
-      const metadata = (log.metadata ?? {}) as Record<string, unknown>;
-      const changes = Array.isArray(metadata.changes) ? (metadata.changes as Array<Record<string, unknown>>) : [];
-
-      const changedFields = changes.map((change) => ({
-        field: String(change.field ?? ""),
-        displayLabel: change.label != null ? String(change.label) : undefined,
-        before: change.before,
-        after: change.after,
-      }));
-
-      return {
-        revisionId: log.id,
-        productId,
-        createdAt: log.createdAt.toISOString(),
-        actorId: log.actorId || null,
-        actorLabel: log.actorId || null,
-        changedFields,
-        summary: { changedSectionCount: changedFields.length },
-      };
-    });
-
-    return { items };
+    return changedFields;
   }
+
+  private countChangedSections(changedFields: Array<{ path: string }>) {
+    return new Set(
+      changedFields.map((field) => {
+        const [section] = field.path.split(".");
+        return section || field.path;
+      }),
+    ).size;
+  }
+
+  private toProductRevision(
+    log: {
+      id: string;
+      actorId: string;
+      actorRole: string;
+      action: string;
+      metadata: Prisma.JsonValue;
+      createdAt: Date;
+    },
+    productId: string,
+  ) {
+    const metadata = this.asRecord(log.metadata);
+    if (metadata.model !== "Product") {
+      return null;
+    }
+    const changedFields = Array.isArray(metadata.changedFields)
+      ? metadata.changedFields
+          .map((entry) => this.toProductRevisionFieldChange(entry))
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      : [];
+
+    return {
+      productId,
+      revisionId: log.id,
+      action: log.action,
+      actorId: log.actorId,
+      actorLabel: log.actorId.length > 8 ? `…${log.actorId.slice(-8)}` : log.actorId,
+      actorRole: log.actorRole,
+      createdAt: log.createdAt,
+      changedFields,
+      summary: {
+        changedFieldCount:
+          typeof metadata.changedFieldCount === "number"
+            ? metadata.changedFieldCount
+            : changedFields.length,
+        changedSectionCount:
+          typeof metadata.changedSectionCount === "number"
+            ? metadata.changedSectionCount
+            : this.countChangedSections(changedFields),
+      },
+      decisionNote: typeof metadata.decisionNote === "string" ? metadata.decisionNote : null,
+    };
+  }
+
+  private toProductRevisionFieldChange(entry: unknown) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return null;
+    }
+    const value = entry as Record<string, unknown>;
+    const path = String(value.path ?? "").trim();
+    const label = String(value.label ?? "").trim();
+    if (!path || !label) {
+      return null;
+    }
+    return {
+      path,
+      label,
+      before: value.before ?? null,
+      after: value.after ?? null,
+    };
+  }
+
 }

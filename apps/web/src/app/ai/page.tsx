@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { applyAiRepairAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import {
   ApiHttpError,
@@ -125,12 +126,8 @@ export default async function AiPage({ searchParams }: AiPageProps) {
           <Card>
             <CardTitle>Rule-based Attribute Suggestions</CardTitle>
             <div className="grid gap-3 lg:grid-cols-2">
-              <pre className="overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
-                {JSON.stringify(attributeSuggestion.existingAttributes, null, 2)}
-              </pre>
-              <pre className="overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
-                {JSON.stringify(attributeSuggestion.suggestedAttributes, null, 2)}
-              </pre>
+              <JsonPreview value={JSON.stringify(attributeSuggestion.existingAttributes, null, 2)} className="border-border" />
+              <JsonPreview value={JSON.stringify(attributeSuggestion.suggestedAttributes, null, 2)} className="border-border" />
             </div>
             <p className="mt-2 text-xs text-slate-500">Confidence: {attributeSuggestion.confidence}</p>
           </Card>

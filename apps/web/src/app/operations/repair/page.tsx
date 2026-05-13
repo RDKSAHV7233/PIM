@@ -65,6 +65,30 @@ export default async function OperationsRepairPage() {
           <KpiCard label="Submission Dead Letter Queue" value={deadLetterSubmissions.length} tone={deadLetterSubmissions.length > 0 ? "danger" : "default"} />
         </section>
 
+        <Card>
+          <CardTitle>Repair playbook</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Fix source data first</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Repair import rows when the catalog payload itself is incomplete, malformed, or mapped to the wrong category context.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Retry delivery only when ready</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Move to Jobs after the catalog or connector issue is resolved so retries do not repeat the same downstream failure.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Escalate repeated dead letter</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Escalate when the same submission keeps failing after fixes, because that usually points to connector configuration or receiver-side drift.
+              </p>
+            </div>
+          </div>
+        </Card>
+
         <section className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardTitle>Import Jobs Needing Repair</CardTitle>

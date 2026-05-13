@@ -48,18 +48,18 @@ function prepareEnv() {
   if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
-  setDefaultEnv("JWT_SECRET", "tej-pim-local-dev-jwt-secret-minimum-length-32");
+  setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
-  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "tej-pim-local-encryption-key-v1-minimum-32");
+  setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION", "1");
   setDefaultEnv("REDIS_URL", "redis://localhost:6379");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
-  setDefaultEnv("PIM_AUTH_PASSWORD", "tej-pim-demo-password");
+  setDefaultEnv("PIM_AUTH_PASSWORD", "vexa-pim-demo-password");
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
-  setDefaultEnv("R2_BUCKET_NAME", "tej-pim-local");
-  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/tej-pim-local");
+  setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
+  setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
@@ -128,7 +128,7 @@ async function login(baseUrl, userId, workspaceSlug) {
   const response = await apiRequest(baseUrl, "POST", "/auth/login", null, {
     userId,
     workspaceSlug,
-    password: process.env.PIM_AUTH_PASSWORD || "tej-pim-demo-password",
+    password: process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password",
     expiresInMinutes: 30,
   });
   assertStatus(response, 201, `login ${userId}`);
@@ -140,7 +140,7 @@ async function login(baseUrl, userId, workspaceSlug) {
 async function createProduct(baseUrl, token, categoryId, title) {
   const response = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
     title,
-    brand: "TEJ PIM",
+    brand: "Vexa PIM",
     description: "media tenant boundary coverage",
     categoryId,
     status: "draft",

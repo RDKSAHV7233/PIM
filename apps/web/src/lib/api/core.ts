@@ -4,6 +4,16 @@ export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "a
 export type RuleSeverity = "error" | "warning";
 export type { MarketplaceChannel };
 export type AppRole = "admin" | "editor" | "reviewer" | "viewer";
+export type ApiClientScope =
+  | "catalog.read"
+  | "catalog.write"
+  | "bulk_import.read"
+  | "media.read"
+  | "compliance.read"
+  | "issues.read"
+  | "rejection_intelligence.read"
+  | "auto_suggestions.read"
+  | "taxonomy.read";
 
 const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
 
@@ -120,6 +130,29 @@ export interface Product {
   completenessScore?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductRevisionFieldChange {
+  path: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface ProductRevision {
+  productId: string;
+  revisionId: string;
+  action: string;
+  actorId: string;
+  actorLabel: string;
+  actorRole: string;
+  createdAt: string;
+  changedFields: ProductRevisionFieldChange[];
+  summary: {
+    changedFieldCount: number;
+    changedSectionCount: number;
+  };
+  decisionNote?: string | null;
 }
 
 export interface ProductListItem {
@@ -301,6 +334,7 @@ export interface ApiAccessKey {
   id: string;
   label: string;
   role: AppRole;
+  scopes: ApiClientScope[];
   keyPrefix: string;
   isActive: boolean;
   lastUsedAt: string | null;
@@ -925,6 +959,37 @@ export interface BulkImportJob {
   rows?: BulkImportRow[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BulkImportValidationIssue {
+  rowNumber: number;
+  severity: "blocking" | "warning";
+  code: string;
+  message: string;
+  fieldPath?: string | null;
+}
+
+export interface BulkImportValidationSummary {
+  sourceFormat: "csv" | "json";
+  sourceName: string | null;
+  categoryId: string;
+  categoryPath: string;
+  totalRows: number;
+  blockingIssueCount: number;
+  warningCount: number;
+  acceptedRows: number;
+  failedRows: number;
+  deadLetterRows: number;
+  canImport: boolean;
+  mapping: Record<string, string>;
+  unmappedFields: string[];
+  unusedHeaders: string[];
+  sampleIssues: BulkImportValidationIssue[];
+  repairSummary: {
+    acceptedRows: number;
+    failedRows: number;
+    deadLetterRows: number;
+  };
 }
 
 export interface BulkImportMappingSuggestion {

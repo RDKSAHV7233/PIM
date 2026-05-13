@@ -45,6 +45,14 @@ function run() {
     "Operations repair must surface KPI cards for both import-repair and submission dead-letter backlog.",
   );
   assert(
+    source.includes("Repair playbook") &&
+      source.includes("Fix source data first") &&
+      source.includes("Retry delivery only when ready") &&
+      source.includes("Escalate repeated dead letter") &&
+      source.includes("that usually points to connector configuration or receiver-side drift."),
+    "Operations repair must guide operators through a clear repair workflow, not just expose backlog counts and links.",
+  );
+  assert(
     source.includes('href="/operations/imports"') &&
       source.includes('href="/operations/jobs"') &&
       source.includes('href={`/operations/imports?bulkJobId=${encodeURIComponent(job.id)}`}') &&
@@ -77,6 +85,7 @@ function run() {
           "operations_repair_route_normalizes_dead_letter_payload_shape",
           "operations_repair_route_derives_import_backlog_counts",
           "operations_repair_route_surfaces_core_repair_kpis",
+          "operations_repair_route_guides_repair_workflow",
           "operations_repair_route_links_to_scoped_import_and_jobs_workspaces",
           "operations_repair_route_surfaces_honest_empty_states",
           "operations_repair_route_exposes_status_and_failure_reasons",

@@ -13,6 +13,9 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
     return null;
   }
 
+  const mediaBlockerCount = data.imageAssetCount === 0 ? 1 : 0;
+  const connectorBlocked = !data.mappingManagerInstallation || data.mappingManagerInstallation.status !== "ACTIVE";
+
   return (
     <section className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
@@ -74,7 +77,7 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
           <CardTitle>Fix blockers before publish</CardTitle>
           <div className="mt-4 space-y-3 text-sm text-slate-700">
             <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
-              <span>Blocking issues</span>
+              <span>Product quality blockers</span>
               <StatusChip
                 label={`${data.blockingIssueCount}`}
                 tone={data.blockingIssueCount > 0 ? "danger" : "success"}
@@ -88,12 +91,29 @@ export function OverviewTab({ data }: { data: ProductDetailPageData }) {
               />
             </div>
             <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
-              <span>Publish blockers</span>
+              <span>Mapping or publish blockers</span>
               <StatusChip
                 label={`${data.readinessBlockers.length}`}
                 tone={data.readinessBlockers.length > 0 ? "danger" : "success"}
               />
             </div>
+            <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+              <span>Media blockers</span>
+              <StatusChip
+                label={`${mediaBlockerCount}`}
+                tone={mediaBlockerCount > 0 ? "danger" : "success"}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2">
+              <span>Connector account</span>
+              <StatusChip
+                label={connectorBlocked ? "Needs attention" : "Ready"}
+                tone={connectorBlocked ? "warning" : "success"}
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Publish blockers are grouped by source so you can decide whether to fix catalog quality, channel mapping, media, or connector setup first.
+            </p>
             <div className="flex flex-wrap gap-2 pt-1">
               <Link
                 href={data.tabHref("quality")}

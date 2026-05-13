@@ -7,7 +7,7 @@ import { getCommercialOpsRequestOptions, updateInternalUpgradeRequestStatus } fr
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 
 function buildReturnTo(formData: FormData) {
-  const url = new URL("/internal/developer", "https://local.tej");
+  const url = new URL("/internal/developer", "https://local.vexa");
   const tenantQuery = String(formData.get("tenantQuery") ?? "").trim();
   const tenantKey = String(formData.get("tenantKey") ?? "").trim();
   const requestStatusFilter = String(formData.get("requestStatusFilter") ?? "").trim();

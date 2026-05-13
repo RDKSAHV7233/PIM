@@ -4,7 +4,7 @@ Purpose:
 Describe database schema.
 
 Scope:
-Validated schema models, migration-owned runtime tables, relationships, indexes, and lifecycle controls in TEJ PIM.
+Validated schema models, migration-owned runtime tables, relationships, indexes, and lifecycle controls in Vexa PIM.
 
 Content:
 Schema Sources:
@@ -77,5 +77,5 @@ Data Versioning:
 - Connector definition connector_version field.
 
 Cross-entity historical version system:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

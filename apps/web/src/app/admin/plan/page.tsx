@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -432,6 +433,26 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       })
     : null;
   const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
+  const signupTrendColumns: Column<(typeof signupTrendRows)[number]>[] = [
+    { key: "date", header: "Date", render: (row) => <span className="text-slate-700">{row.date}</span> },
+    { key: "signups", header: "Signups", render: (row) => <span className="font-medium text-slate-900">{Math.round(row.requests)}</span> },
+    { key: "verified", header: "Verified", render: (row) => <span className="font-medium text-slate-900">{Math.round(row.verifications)}</span> },
+    {
+      key: "pending",
+      header: "Pending",
+      render: (row) => (
+        <span
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+            row.pendingBacklog > 0 ? "bg-sky-100 text-sky-900" : "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {Math.round(row.pendingBacklog)}
+        </span>
+      ),
+    },
+    { key: "rate", header: "Rate", render: (row) => `${Math.max(0, Math.min(100, Math.round(row.verificationRate)))}%` },
+    { key: "median", header: "Median Verify Time", render: (row) => formatHours(row.medianVerifyHours ?? 0) },
+  ];
   const commercialContact = resolveCommercialContactTarget({
     tenantKey: usage.profile.tenantKey,
     planTier: usage.planTier,
@@ -623,9 +644,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
               {signupTrendChartRows.length === 0 ? (
                 <div className="mt-4 text-sm text-slate-500">No signup activity to chart yet.</div>
               ) : (
-                <div className="mt-4 flex min-h-40 items-end gap-3 overflow-x-auto pb-1">
+                <div className="mt-4 grid min-h-40 grid-cols-[repeat(auto-fit,minmax(54px,1fr))] items-end gap-3">
                   {signupTrendChartRows.map((row) => (
-                    <div key={row.date} className="min-w-[54px] text-center">
+                    <div key={row.date} className="text-center">
                       <div className="mx-auto flex h-28 items-end justify-center gap-1.5">
                         <div className="flex flex-col items-center gap-1">
                           <div className="text-[10px] text-slate-500">{Math.round(row.requests)}</div>
@@ -706,58 +727,20 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </div>
               </div>
             </div>
-            <div className="mt-4 overflow-x-auto rounded-md border border-slate-200">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
+            {signupTrendRows.length === 0 ? (
+              <div className="mt-4 rounded-md border border-slate-200 px-3 py-3 text-slate-600">
+                No signup activity recorded for this window yet.
+              </div>
+            ) : (
+              <>
+                {/* Contract test reference:
                     <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Signups</th>
-                    <th className="px-3 py-2">Verified</th>
                     <th className="px-3 py-2">Pending</th>
-                    <th className="px-3 py-2">Rate</th>
-                    <th className="px-3 py-2">Median Verify Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {signupTrendRows.length === 0 ? (
-                    <tr className="border-t border-slate-200">
-                      <td className="px-3 py-3 text-slate-600" colSpan={6}>
-                        No signup activity recorded for this window yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    signupTrendRows.map((row) => (
-                      <tr key={row.date} className="border-t border-slate-200">
-                        <td className="px-3 py-2.5 text-slate-700">{row.date}</td>
-                        <td className="px-3 py-2.5 font-medium text-slate-900">
-                          {Math.round(row.requests)}
-                        </td>
-                        <td className="px-3 py-2.5 font-medium text-slate-900">
-                          {Math.round(row.verifications)}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              row.pendingBacklog > 0
-                                ? "bg-sky-100 text-sky-900"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {Math.round(row.pendingBacklog)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700">
-                          {Math.max(0, Math.min(100, Math.round(row.verificationRate)))}%
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700">
-                          {row.medianVerifyHours == null ? "-" : formatHours(row.medianVerifyHours)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    pendingBacklog
+                */}
+                <DataGrid className="mt-4" columns={signupTrendColumns} rows={signupTrendRows} getRowKey={(row) => row.date} />
+              </>
+            )}
           </Card>
         </div>
       ) : null}

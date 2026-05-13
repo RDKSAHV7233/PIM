@@ -812,17 +812,26 @@ export async function createVariantAction(formData: FormData) {
     throw new Error("Product and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
-    skuCode,
-    attributes,
-    mrp: parseNumber(formData.get("mrp")),
-    sellingPrice: parseNumber(formData.get("sellingPrice")),
-    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-    status: String(formData.get("status") ?? "draft"),
-  });
-
-  revalidatePath(`/products/${productId}`);
+  try {
+    await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
+      skuCode,
+      attributes,
+      mrp: parseNumber(formData.get("mrp")),
+      sellingPrice: parseNumber(formData.get("sellingPrice")),
+      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+      status: String(formData.get("status") ?? "draft"),
+    });
+    revalidatePath(`/products/${productId}`);
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error", updateError: "CONTENT_LOCKED" }));
+    }
+    redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error" }));
+  }
 }
 
 export async function updateVariantAction(formData: FormData) {
@@ -833,17 +842,26 @@ export async function updateVariantAction(formData: FormData) {
     throw new Error("Product, variant, and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
-    skuCode,
-    attributes,
-    mrp: parseNumber(formData.get("mrp")),
-    sellingPrice: parseNumber(formData.get("sellingPrice")),
-    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-    status: String(formData.get("status") ?? "draft"),
-  });
-
-  revalidatePath(`/products/${productId}`);
+  try {
+    await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
+      skuCode,
+      attributes,
+      mrp: parseNumber(formData.get("mrp")),
+      sellingPrice: parseNumber(formData.get("sellingPrice")),
+      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+      status: String(formData.get("status") ?? "draft"),
+    });
+    revalidatePath(`/products/${productId}`);
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error", updateError: "CONTENT_LOCKED" }));
+    }
+    redirect(appendQueryParams(basePath, { tab: "variants", updateStatus: "error" }));
+  }
 }
 
 export async function deleteVariantAction(formData: FormData) {

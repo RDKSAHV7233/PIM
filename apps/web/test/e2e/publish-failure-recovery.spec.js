@@ -1,69 +1,63 @@
-/* eslint-disable no-console */
 const { test, expect } = require("@playwright/test");
 const {
+  apiLogin,
+  apiRequest,
+  createCategory,
+  createProduct,
+  deleteCategory,
+  deleteProduct,
   loginViaUi,
+  purgeProduct,
+  uniqueName,
 } = require("./helpers/vexa-pim.cjs");
 
-/**
- * Publish failure recovery spec.
- * Proves that a failed/non-success job state renders correctly
- * and that repair guidance is accessible without blank/crash states.
- */
-
-test.describe("Publish failure recovery", () => {
-  test("operations page renders job states without crash and exposes repair path", async ({ page }) => {
-    // 1. Login
-    await loginViaUi(page, "admin");
-
-    // 2. Navigate to operations (jobs/submissions)
-    await page.goto("/operations", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-
-    // 3. Observe job state rows — verify no blank/crash state regardless of seeded data
-    await expect(page.locator("body")).not.toContainText("Application error");
-    await expect(page.locator("body")).not.toContainText("Unhandled Runtime Error");
-
-    // 4. Navigate to imports (where failed job rows appear)
-    await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("Application error");
-
-    // 5. Verify that the repair link or guidance path is accessible
-    // The repair link should be present either in the nav or on the page
-    const repairLink = page.locator('a[href*="/operations/repair"], a[href*="repair"]').first();
-    const hasRepairLink = await repairLink.count() > 0;
-    if (!hasRepairLink) {
-      // If no repair link is visible on this page, navigate directly and confirm it renders
-      await page.goto("/operations/repair", { waitUntil: "domcontentloaded" });
-      await expect(page.locator("body")).not.toContainText("Application error");
-    } else {
-      // Repair link is present — verify it's accessible
-      await expect(repairLink).toBeVisible();
-    }
-
-    // 6. Confirm that the UI does not show a blank/crash state for any job status value
-    // Navigate back to imports and verify the page renders all status values cleanly
-    await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("body")).not.toContainText("Application error");
-    await expect(page.locator("body")).not.toContainText("Unhandled Runtime Error");
-    // The page should display the operations section (not an error boundary)
-    await expect(page.locator("h1")).toBeVisible();
+test("admin can follow a failed publish from jobs into recovery guidance", async ({ page }) => {
+  const adminToken = await apiLogin("admin");
+  const category = await createCategory(adminToken, uniqueName("TEST-publish-recovery-cat"));
+  const product = await createProduct(adminToken, {
+    title: uniqueName("TEST-publish-recovery-product"),
+    brand: "Vexa PIM",
+    description: "TEST publish recovery browser flow",
+    categoryId: category.id,
+    status: "draft",
+    hsnCode: "62046200",
+    gstRate: 18,
+    attributes: { color: "Black" },
   });
 
-  test("publish failure recovery wizard step 4 links to repair console", async ({ page }) => {
-    // Login and navigate to imports page
+  let exportJobId = null;
+
+  try {
+    const exportJob = await apiRequest("POST", `/marketplace/products/${encodeURIComponent(product.id)}/export-jobs`, adminToken, {
+      channel: "flipkart",
+      maxRetries: 1,
+    });
+    exportJobId = String(exportJob.id);
+    const processed = await apiRequest("POST", `/marketplace/export-jobs/${encodeURIComponent(exportJobId)}/process`, adminToken);
+    expect(["failed", "dead_letter"]).toContain(String(processed.status));
+
     await loginViaUi(page, "admin");
-    await page.goto("/operations/imports", { waitUntil: "domcontentloaded" });
 
-    // Wizard step indicator must be present
-    const wizardStep = page.locator('[aria-label="Import wizard steps"]');
-    await expect(wizardStep).toBeVisible();
-    await expect(wizardStep).toContainText("Review Result & Repair");
+    await page.goto("/operations/jobs", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
+    await expect(page.getByText("Recovery Now")).toBeVisible();
+    await expect(page.getByText("Use Jobs vs Submissions")).toBeVisible();
 
-    // The validation summary section references the repair console
-    const repairRef = page.locator('a[href*="/operations/repair"]');
-    if (await repairRef.count() > 0) {
-      await expect(repairRef.first()).toBeVisible();
-    }
-  });
+    const exportReference = page.getByText(exportJobId, { exact: false }).first();
+    await expect(exportReference).toBeVisible();
+
+    await page.goto(`/channels/submissions?productId=${encodeURIComponent(product.id)}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Submissions", exact: true })).toBeVisible();
+    await expect(page.getByText("Submission triage guide")).toBeVisible();
+  } finally {
+    try {
+      await deleteProduct(adminToken, product.id);
+    } catch {}
+    try {
+      await purgeProduct(adminToken, product.id);
+    } catch {}
+    try {
+      await deleteCategory(adminToken, category.id);
+    } catch {}
+  }
 });

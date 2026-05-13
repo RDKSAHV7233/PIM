@@ -578,6 +578,11 @@ export class MarketplaceService implements OnModuleInit {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    if (product.status !== "approved" && product.status !== "active") {
+      throw new BadRequestException(
+        `Product must be approved before publishing. Current status: ${product.status}`,
+      );
+    }
     await this.accessPolicy.assertProductAccess(actor ?? {}, "export", {
       id: product.id,
       categoryId: product.categoryId,

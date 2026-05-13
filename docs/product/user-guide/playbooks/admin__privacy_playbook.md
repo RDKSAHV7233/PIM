@@ -3,7 +3,7 @@
 ## Page
 - Route: `/admin/privacy`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/admin/privacy/page.tsx`
-- Title: Information not available in TEJ PIM project.
+- Title: Information not available in Vexa PIM project.
 
 ## What this page is used for
 - Read/monitor data and navigate to downstream workflow pages.
@@ -16,10 +16,10 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Format`, `Confirmation text`, `Reason (optional)`
-- Field names (technical): Information not available in TEJ PIM project.
-- Select names: Information not available in TEJ PIM project.
+- Field names (technical): Information not available in Vexa PIM project.
+- Select names: Information not available in Vexa PIM project.
 - Placeholders: `Type DELETE`
 - Links: `/`
 

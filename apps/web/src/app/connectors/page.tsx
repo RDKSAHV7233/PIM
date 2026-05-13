@@ -5,10 +5,13 @@ import {
   reconnectConnectorAction,
   uninstallConnectorAction,
 } from "@/app/actions";
+import { ConnectorAccountQuickView } from "@/app/connectors/_components/connector-account-quick-view";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
@@ -40,6 +43,14 @@ interface ConnectorsPageProps {
 type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 
 type ConnectorMaturity = "Live publish" | "Export/manual" | "Beta" | "Experimental";
+
+const CONNECTOR_CAPABILITY_BADGES = [
+  { label: "Publish", capability: "PUBLISH" },
+  { label: "Validate", capability: "VALIDATE" },
+  { label: "Status sync", capability: "STATUS_SYNC" },
+  { label: "Webhooks", capability: "WEBHOOK_RECEIVE" },
+  { label: "Excel export", capability: "EXCEL_EXPORT" },
+] as const;
 
 function formatStatusMessage(raw: string): string | null {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -252,6 +263,46 @@ function formatDateTime(value: string | null | undefined): string {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+}
+
+function formatRelativeTime(value: string | null | undefined): string {
+  if (!value) {
+    return "Sync not recorded yet";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Sync time unavailable";
+  }
+  const deltaMs = Date.now() - parsed.getTime();
+  if (deltaMs < 60_000) {
+    return "Last synced just now";
+  }
+  const units = [
+    { label: "day", ms: 24 * 60 * 60 * 1000 },
+    { label: "hour", ms: 60 * 60 * 1000 },
+    { label: "minute", ms: 60 * 1000 },
+  ];
+  for (const unit of units) {
+    if (deltaMs >= unit.ms) {
+      const count = Math.floor(deltaMs / unit.ms);
+      return `Last synced ${count} ${unit.label}${count === 1 ? "" : "s"} ago`;
+    }
+  }
+  return "Sync time unavailable";
+}
+
+function capabilityBadges(capabilities: string[]): Array<{ label: string; supported: boolean }> {
+  return CONNECTOR_CAPABILITY_BADGES.map((badge) => ({
+    label: badge.label,
+    supported: capabilities.includes(badge.capability),
+  }));
+}
+
+function capabilityMatrixValue(
+  capabilities: string[],
+  capability: (typeof CONNECTOR_CAPABILITY_BADGES)[number]["capability"],
+): boolean {
+  return capabilities.includes(capability);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -515,6 +566,45 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
       (installation) => !isDisabledInstallation(installation) && isInstallationAttentionStatus(installation.status),
     );
     const portfolioContext = searchValue ? ` for "${searchValue}"` : "";
+    const channelCatalogColumns: Column<(typeof channelCatalogDefinitions)[number]>[] = [
+      {
+        key: "connector",
+        header: "Connector",
+        render: (item) => (
+          <>
+            <p className="font-medium text-slate-900">{item.definition.displayName}</p>
+            <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
+          </>
+        ),
+      },
+      {
+        key: "maturity",
+        header: "Maturity",
+        render: (item) => (
+          <StatusChip
+            label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
+            tone={connectorLaunchTone(item.definition.launchStage)}
+          />
+        ),
+      },
+      {
+        key: "footprint",
+        header: "Footprint",
+        cellClassName: "text-slate-700",
+        render: (item) => formatInstallFootprint(item.installedForDefinition),
+      },
+      ...CONNECTOR_CAPABILITY_BADGES.map((badge) => ({
+        key: badge.capability,
+        header: badge.label,
+        // key={`matrix-head-${badge.capability}`}
+        render: (item: (typeof channelCatalogDefinitions)[number]) => (
+          <StatusChip
+            label={capabilityMatrixValue(item.definition.capabilities, badge.capability) ? "Yes" : "No"}
+            tone={capabilityMatrixValue(item.definition.capabilities, badge.capability) ? "success" : "neutral"}
+          />
+        ),
+      })),
+    ];
 
     return (
       <div className="space-y-6">
@@ -676,7 +766,53 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                 />
               </div>
             ) : (
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Connector capability matrix</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Compare live connector lanes by install footprint, maturity label, and shipped operator capabilities before promising channel coverage.
+                      </p>
+                    </div>
+                    <StatusChip label={`${channelCatalogDefinitions.length} live lanes`} tone="info" />
+                  </div>
+                  {/* key={`matrix-row-${item.definition.id}`} */}
+                  <DataGrid
+                    className="mt-4 hidden lg:block"
+                    columns={channelCatalogColumns}
+                    rows={channelCatalogDefinitions}
+                    getRowKey={(item) => item.definition.id}
+                    caption="Connector capability matrix"
+                  />
+                  <div className="mt-4 grid gap-3 lg:hidden">
+                    {channelCatalogDefinitions.map((item) => (
+                      <div key={`matrix-card-${item.definition.id}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-slate-900">{item.definition.displayName}</p>
+                            <p className="mt-1 font-mono text-xs text-slate-500">{item.definition.slug}</p>
+                          </div>
+                          <StatusChip
+                            label={connectorLaunchLabel(item.definition.launchStage, item.definition.implementationStatus)}
+                            tone={connectorLaunchTone(item.definition.launchStage)}
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">{formatInstallFootprint(item.installedForDefinition)}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {CONNECTOR_CAPABILITY_BADGES.map((badge) => (
+                            <StatusChip
+                              key={`matrix-mobile-${item.definition.id}-${badge.capability}`}
+                              label={`${badge.label} ${capabilityMatrixValue(item.definition.capabilities, badge.capability) ? "Yes" : "No"}`}
+                              tone={capabilityMatrixValue(item.definition.capabilities, badge.capability) ? "success" : "neutral"}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
                 {channelCatalogDefinitions.map((item) => {
                   const { definition, installedForDefinition, statusNote, workspaceState } = item;
                   const primaryInstallation = installedForDefinition[0] ?? null;
@@ -715,12 +851,21 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported operations</p>
                           <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(definition.capabilities)}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {capabilityBadges(definition.capabilities).map((badge) => (
+                              <StatusChip
+                                key={`${definition.id}-${badge.label}`}
+                                label={badge.label}
+                                tone={badge.supported ? "success" : "neutral"}
+                              />
+                            ))}
+                          </div>
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-white p-3">
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Install footprint</p>
                           <p className="mt-2 text-sm text-slate-700">{formatInstallFootprint(installedForDefinition)}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            Auth {definition.authType} · Version {definition.connectorVersion}
+                            Auth {definition.authType} | Version {definition.connectorVersion}
                           </p>
                         </div>
                       </div>
@@ -761,6 +906,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     </section>
                   );
                 })}
+                </div>
               </div>
             )}
           </Card>
@@ -948,16 +1094,26 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supported operations</p>
                         <p className="mt-2 text-sm text-slate-700">{formatCapabilityList(installation.capabilities)}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {capabilityBadges(installation.capabilities).map((badge) => (
+                            <StatusChip
+                              key={`${installation.id}-${badge.label}`}
+                              label={badge.label}
+                              tone={badge.supported ? "success" : "neutral"}
+                            />
+                          ))}
+                        </div>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Installed</p>
                         <p className="mt-2 text-sm text-slate-700">{formatDateTime(installation.installedAt)}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last sync</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last synced</p>
                         <p className="mt-2 text-sm text-slate-700">
                           {installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "No sync recorded yet"}
                         </p>
+                        <p className="mt-1 text-xs text-slate-500">{formatRelativeTime(installation.lastSyncAt)}</p>
                       </div>
                     </div>
 
@@ -1010,6 +1166,34 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                     ) : null}
 
                     <div className="mt-4 flex flex-wrap gap-2">
+                      <ConnectorAccountQuickView
+                        title={`${installation.displayName} / ${installation.accountAlias}`}
+                        statusLabel={displayStatus.label}
+                        statusTone={displayStatus.tone}
+                        maturityLabel={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
+                        maturityTone={connectorLaunchTone(installation.launchStage)}
+                        externalReference={installation.externalAccountRef || "Not recorded"}
+                        installedAt={formatDateTime(installation.installedAt)}
+                        lastSyncAt={installation.lastSyncAt ? formatDateTime(installation.lastSyncAt) : "No sync recorded yet"}
+                        lastSyncRelative={formatRelativeTime(installation.lastSyncAt)}
+                        capabilities={installation.capabilities.map(formatCapabilityLabel)}
+                        detailHref={`/channels/connectors/${encodeURIComponent(installation.id)}`}
+                        mappingHref={mappingHref}
+                        launchNote={installation.launchNote}
+                        contextTitle={shopifyContext ? "Shopify connection context" : null}
+                        contextSummary={
+                          shopifyContext
+                            ? shopifyContext.shopName || shopifyContext.shopDomain || "Shop context not recorded yet"
+                            : null
+                        }
+                        contextNote={
+                          shopifyContext
+                            ? shopifyContext.publicationTargetCount > 0
+                              ? `Publication targets: ${shopifyContext.publicationTargetSummary}`
+                              : "Open connector details to select the publication targets Vexa should publish to."
+                            : null
+                        }
+                      />
                       <Link
                         href={`/channels/connectors/${encodeURIComponent(installation.id)}`}
                         className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -1093,9 +1277,10 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
                       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
                         View connector metadata
                       </summary>
-                      <pre className="max-h-44 overflow-auto border-t border-slate-200 p-3 text-[11px] leading-4 text-slate-600">
-                        {JSON.stringify(installation.metadata ?? {}, null, 2)}
-                      </pre>
+                      <JsonPreview
+                        value={JSON.stringify(installation.metadata ?? {}, null, 2)}
+                        className="max-h-44 rounded-none border-0 border-t border-slate-200 bg-transparent p-3 text-[11px] leading-4 text-slate-600"
+                      />
                     </details>
                   </section>
                 );
@@ -1112,4 +1297,3 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     throw error;
   }
 }
-

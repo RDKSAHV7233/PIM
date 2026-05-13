@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createCategoryAction } from "@/app/actions";
 import { CategoryDeleteButton } from "@/components/catalog/category-delete-button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
@@ -85,6 +86,49 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
     const returnTo = returnParams.toString()
       ? `/catalog/categories?${returnParams.toString()}`
       : "/catalog/categories";
+    const categoryColumns: Column<(typeof visibleCategories)[number]>[] = [
+      { key: "name", header: "Name", render: (category) => category.name },
+      { key: "path", header: "Path", render: (category) => category.path },
+      { key: "slug", header: "Slug", render: (category) => category.slug },
+      {
+        key: "children",
+        header: "Children",
+        render: (category) => childCounts[category.id] ?? 0,
+      },
+      {
+        key: "products",
+        header: "Products",
+        render: (category) => productCounts[category.id] ?? 0,
+      },
+      ...(canAdmin
+        ? [
+            {
+              key: "actions",
+              header: "Actions",
+              headerClassName: "text-right",
+              cellClassName: "text-right",
+              render: (category) => {
+                const childCount = childCounts[category.id] ?? 0;
+                const productCount = productCounts[category.id] ?? 0;
+                const disabledReason =
+                  childCount > 0
+                    ? `This category has ${childCount} child ${childCount === 1 ? "category" : "categories"}.`
+                    : productCount > 0
+                      ? `This category has ${productCount} ${productCount === 1 ? "product" : "products"} assigned.`
+                      : null;
+                return (
+                  <CategoryDeleteButton
+                    categoryId={category.id}
+                    categoryPath={category.path}
+                    disabledReason={disabledReason}
+                    returnTo={returnTo}
+                  />
+                );
+              },
+            } satisfies Column<(typeof visibleCategories)[number]>,
+          ]
+        : []),
+    ];
 
     return (
       <div className="space-y-5">
@@ -130,50 +174,7 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
               </div>
             </div>
           ) : null}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="py-2">Name</th>
-                  <th className="py-2">Path</th>
-                  <th className="py-2">Slug</th>
-                  <th className="py-2">Children</th>
-                  <th className="py-2">Products</th>
-                  {canAdmin ? <th className="py-2 text-right">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {visibleCategories.map((category) => {
-                  const childCount = childCounts[category.id] ?? 0;
-                  const productCount = productCounts[category.id] ?? 0;
-                  const disabledReason =
-                    childCount > 0
-                      ? `This category has ${childCount} child ${childCount === 1 ? "category" : "categories"}.`
-                      : productCount > 0
-                        ? `This category has ${productCount} ${productCount === 1 ? "product" : "products"} assigned.`
-                        : null;
-                  return (
-                  <tr key={category.id} className="border-t border-border">
-                    <td className="py-2">{category.name}</td>
-                    <td className="py-2">{category.path}</td>
-                    <td className="py-2">{category.slug}</td>
-                    <td className="py-2">{childCount}</td>
-                    <td className="py-2">{productCount}</td>
-                    {canAdmin ? (
-                      <td className="py-2 text-right">
-                        <CategoryDeleteButton
-                          categoryId={category.id}
-                          categoryPath={category.path}
-                          disabledReason={disabledReason}
-                          returnTo={returnTo}
-                        />
-                      </td>
-                    ) : null}
-                  </tr>
-                )})}
-              </tbody>
-            </table>
-          </div>
+          <DataGrid columns={categoryColumns} rows={visibleCategories} getRowKey={(category) => category.id} />
           {!canAdmin ? <p className="mt-3 text-xs text-slate-400">Category management requires admin access.</p> : null}
         </Card>
 

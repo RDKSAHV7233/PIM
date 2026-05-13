@@ -27,6 +27,13 @@ function run() {
     "Issue Inbox Fix Now links must encode a safe returnTo back-link for the current inbox scope.",
   );
   assert(
+    issueInboxSource.includes("CardTitle>Grouped Impact</CardTitle>") &&
+      issueInboxSource.includes("Publish blockers") &&
+      issueInboxSource.includes("Cleanup warnings") &&
+      issueInboxSource.includes("Top issue families"),
+    "Issue Inbox must summarize blocker-vs-warning guidance and top issue families before the row-level queue.",
+  );
+  assert(
     productPageSource.includes("Back to inbox") &&
       productPageSource.includes('params.set("returnTo", returnTo)') &&
       contentTabSource.includes('name="returnTo" value={data.returnTo}'),

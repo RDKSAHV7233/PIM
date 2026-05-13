@@ -278,7 +278,7 @@ Last updated: 2026-05-09 (green local validation reruns after P0 regression fixe
     - send test delivery
     - delete endpoint
     - list delivery history
-  - Deliveries are queued through the existing worker infrastructure and signed with `X-TEJ PIM-Webhook-Signature` (HMAC SHA-256 over `timestamp.body`).
+  - Deliveries are queued through the existing worker infrastructure and signed with `X-Vexa PIM-Webhook-Signature` (HMAC SHA-256 over `timestamp.body`).
   - Admin UI now exposes `/admin/webhooks` for endpoint creation, test delivery, and delivery visibility.
   - Tenant-scoped API key program shipped for machine access to the protected API:
     - admin API under `/api/v1/admin/api-keys`

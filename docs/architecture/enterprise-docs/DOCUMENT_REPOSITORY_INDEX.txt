@@ -1,7 +1,7 @@
-Repository Name: TEJ PIM Enterprise Documentation Repository
+Repository Name: Vexa PIM Enterprise Documentation Repository
 
 Purpose:
-Index all separate documentation artifacts generated from validated TEJ PIM project data.
+Index all separate documentation artifacts generated from validated Vexa PIM project data.
 
 Scope:
 Lists document files, validated source inputs, and missing-information policy used for this repository.
@@ -50,5 +50,5 @@ Validated Source Inputs:
 - docs/product/FIRST_SELLER_ONBOARDING_PLAYBOOK.md
 
 Missing Information Rule Applied:
-If data is not present in validated TEJ PIM sources, the exact phrase is used:
-"Information not available in TEJ PIM project."
+If data is not present in validated Vexa PIM sources, the exact phrase is used:
+"Information not available in Vexa PIM project."

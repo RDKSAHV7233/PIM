@@ -37,6 +37,14 @@ function run() {
     "Admin audit page must expose actor, action, resource, entity type, and date-range filters.",
   );
   assert(
+    pageSource.includes("function summarizeFilterScope(") &&
+      pageSource.includes("CardTitle>Governance summary</CardTitle>") &&
+      pageSource.includes("Top entity families in this page") &&
+      pageSource.includes("Mutation events") &&
+      pageSource.includes("Access + policy"),
+    "Admin audit page must summarize filter scope and dominant event families before the raw event explorer table.",
+  );
+  assert(
     pageSource.includes('"TENANT_BILLING_STATUS_SET"') &&
       pageSource.includes('"TENANT_ACCESS_SUSPENDED"') &&
       pageSource.includes('"TENANT_ACCESS_RESUMED"') &&

@@ -101,6 +101,7 @@ function run() {
       source.includes("issueLaneLabel") &&
       source.includes("catalogReadinessLabel") &&
       source.includes("Credential Safety") &&
+      source.includes("Connection Recovery Checklist") &&
       source.includes("Publication Targets") &&
       source.includes("Category and taxonomy") &&
       source.includes("publicationTargetSummary") &&

@@ -52,9 +52,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       {mounted
         ? createPortal(
-            <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+            <div
+              className="fixed bottom-4 right-4 z-50 flex flex-col gap-2"
+              role="region"
+              aria-label="Notifications"
+              aria-live="polite"
+              aria-atomic="false"
+            >
               {toasts.map((toast) => (
-                <div key={toast.id} className={`rounded-md border px-3 py-2 text-sm shadow ${toneClass[toast.tone]}`}>
+                <div
+                  key={toast.id}
+                  role={toast.tone === "error" ? "alert" : "status"}
+                  aria-live={toast.tone === "error" ? "assertive" : "polite"}
+                  aria-atomic="true"
+                  className={`rounded-md border px-3 py-2 text-sm shadow ${toneClass[toast.tone]}`}
+                >
                   {toast.message}
                 </div>
               ))}

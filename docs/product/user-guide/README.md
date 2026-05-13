@@ -13,5 +13,5 @@ This folder now includes procedural, action-oriented documentation.
 - Source scope: `apps/web/src/app/**/page.tsx` + first-level imported components
 
 ## Validation policy
-- Uses only validated code references from current TEJ PIM source.
+- Uses only validated code references from current Vexa PIM source.
 - If control labels are dynamic/not explicit, playbooks keep wording generic and reference action IDs.

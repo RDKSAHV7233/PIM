@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -104,6 +105,25 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
       throw error;
     }
   }
+  const suggestionColumns: Column<NonNullable<typeof score>["suggestions"][number]>[] =
+    score
+      ? [
+          { key: "field", header: "Field", render: (item) => <span className="font-mono text-xs text-slate-700">{item.field}</span> },
+          { key: "suggestedFix", header: "Suggested Fix", render: (item) => <span className="text-slate-700">{item.suggestion}</span> },
+          {
+            key: "action",
+            header: "Action",
+            render: () => (
+              <Link
+                href={`/products/${encodeURIComponent(score.productId)}`}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Fix in Product
+              </Link>
+            ),
+          },
+        ]
+      : [];
 
   return (
     <div className="space-y-5">
@@ -247,33 +267,7 @@ export default async function RejectionPage({ searchParams }: RejectionPageProps
             {score.suggestions.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">No fix suggestions available for this product/channel pair.</p>
             ) : (
-              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Field</th>
-                      <th className="px-3 py-2">Suggested Fix</th>
-                      <th className="px-3 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {score.suggestions.map((item) => (
-                      <tr key={`${item.field}-${item.suggestion}`} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{item.field}</td>
-                        <td className="px-3 py-2.5 text-slate-700">{item.suggestion}</td>
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`/products/${encodeURIComponent(score.productId)}`}
-                            className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            Fix in Product
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataGrid className="mt-3" columns={suggestionColumns} rows={score.suggestions} getRowKey={(item) => `${item.field}-${item.suggestion}`} />
             )}
           </Card>
         </section>

@@ -65,11 +65,16 @@ export function MappingsFilterCard({
             </label>
             <Select id="mapping-installation" name="installationId" defaultValue={selectedInstallationId || ""}>
               {installations.length > 1 ? <option value="">Choose connector account</option> : null}
-              {installations.map((installation) => (
-                <option key={installation.id} value={installation.id}>
-                  {`${installation.accountAlias}${installation.externalAccountRef ? ` · ${installation.externalAccountRef}` : ""}`}
-                </option>
-              ))}
+              {installations.map((installation) => {
+                const connectorLabel = installation.externalAccountRef
+                  ? `${installation.accountAlias} - ${installation.externalAccountRef}`
+                  : installation.accountAlias;
+                return (
+                  <option key={installation.id} value={installation.id}>
+                    {connectorLabel}
+                  </option>
+                );
+              })}
             </Select>
           </div>
         ) : null}
@@ -77,7 +82,16 @@ export function MappingsFilterCard({
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-taxonomy-q">
             Taxonomy search
           </label>
-          <Input id="mapping-taxonomy-q" name="taxonomyQ" defaultValue={taxonomyQ} placeholder="Search category path..." />
+          <Input
+            id="mapping-taxonomy-q"
+            name="taxonomyQ"
+            defaultValue={taxonomyQ}
+            placeholder="Search category path..."
+            aria-describedby="mapping-taxonomy-q-help"
+          />
+          <p id="mapping-taxonomy-q-help" className="text-xs text-slate-500">
+            Search the target channel taxonomy when you need a better publish category match before saving the draft.
+          </p>
         </div>
         <div className="flex items-end">
           <Button type="submit">Apply</Button>
@@ -105,7 +119,8 @@ export function TaxonomyAlignmentCard({
       </div>
       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
         <summary className="cursor-pointer text-sm font-medium text-slate-800">Show taxonomy search results</summary>
-        <ul className="mt-2 space-y-2 text-sm text-slate-700">
+        <div role="region" aria-label="Taxonomy search results" className="mt-2">
+        <ul className="space-y-2 text-sm text-slate-700">
           {taxonomyMatches.map((item) => (
             <li key={item.id} className="rounded border border-slate-200 p-2">
               <p className="font-medium">{item.path}</p>
@@ -113,10 +128,12 @@ export function TaxonomyAlignmentCard({
             </li>
           ))}
         </ul>
+        </div>
       </details>
       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
         <summary className="cursor-pointer text-sm font-medium text-slate-800">Show unmapped categories</summary>
-        <ul className="mt-2 max-h-64 space-y-1 overflow-auto text-sm text-slate-700">
+        <div role="region" aria-label="Unmapped categories" className="mt-2">
+        <ul className="max-h-64 space-y-1 overflow-y-auto text-sm text-slate-700">
           {unmappedCategories.map((item) => (
             <li key={item.id} className="rounded border border-slate-200 p-2">
               <p className="font-medium">{item.path}</p>
@@ -124,6 +141,7 @@ export function TaxonomyAlignmentCard({
             </li>
           ))}
         </ul>
+        </div>
       </details>
     </Card>
   );

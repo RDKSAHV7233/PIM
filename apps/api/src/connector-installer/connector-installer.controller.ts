@@ -1,7 +1,9 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
+import { Public } from "../auth/public.decorator";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
@@ -100,6 +102,57 @@ export class ConnectorInstallerController {
       params ?? {},
       this.resolveActor(request),
     );
+  }
+
+  @Get("shopify/oauth/callback")
+  @Public()
+  @ApiOperation({ summary: "Handle Shopify OAuth redirect via static callback URL (installation ID in state)" })
+  @ApiResponse({ status: 302, description: "Redirects to web app after token exchange" })
+  async oauthCallbackStatic(
+    @Query() query: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const webRoot = String(process.env.CORS_ORIGIN ?? "http://localhost:3000").replace(/\/+$/, "");
+    // state is the installation ID
+    const installationId = String(query.state ?? "").trim();
+    if (!installationId) {
+      res.redirect(`${webRoot}/channels/connectors?status=oauth_error&detail=${encodeURIComponent("Missing installation ID in state parameter")}`);
+      return;
+    }
+    try {
+      await this.connectorInstallerService.handleOAuthCallback(
+        installationId,
+        query ?? {},
+        { actorId: "oauth-redirect", actorRole: "admin" },
+      );
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+    }
+  }
+
+  @Get(":id/oauth/callback")
+  @Public()
+  @ApiOperation({ summary: "Handle Shopify OAuth redirect (public GET callback)" })
+  @ApiResponse({ status: 302, description: "Redirects to web app after token exchange" })
+  async oauthCallbackRedirect(
+    @Param("id") installationId: string,
+    @Query() query: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const webRoot = String(process.env.CORS_ORIGIN ?? "http://localhost:3000").replace(/\/+$/, "");
+    try {
+      await this.connectorInstallerService.handleOAuthCallback(
+        installationId,
+        query ?? {},
+        { actorId: "oauth-redirect", actorRole: "admin" },
+      );
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+    }
   }
 
   @Get(":id/product-type-schema")

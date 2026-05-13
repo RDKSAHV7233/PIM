@@ -18,6 +18,7 @@ function assert(condition, message) {
 try {
   const page = read("apps/web/src/app/operations/imports/page.tsx");
   const component = read("apps/web/src/components/ui/pending-submit-button.tsx");
+  const preflightForm = read("apps/web/src/components/operations/import-preflight-form.tsx");
 
   assert(
     component.includes('useFormStatus'),
@@ -32,11 +33,11 @@ try {
     "PendingSubmitButton must expose aria-busy while pending",
   );
   assert(
-    page.includes('idleLabel="Upload Import File"'),
-    "imports page must use PendingSubmitButton for upload",
+    preflightForm.includes("PendingSubmitButton"),
+    "imports preflight form must use PendingSubmitButton for upload",
   );
   assert(
-    page.includes('pendingLabel="Uploading and starting import..."'),
+    preflightForm.includes('pendingLabel="Uploading and starting import..."'),
     "upload button must show an uploading pending label",
   );
   assert(
@@ -51,7 +52,7 @@ try {
         validated: [
           "pending_submit_button_uses_form_status",
           "pending_submit_button_disables_while_pending",
-          "imports_upload_uses_pending_feedback",
+          "imports_preflight_upload_uses_pending_feedback",
           "imports_start_action_uses_pending_feedback",
         ],
       },

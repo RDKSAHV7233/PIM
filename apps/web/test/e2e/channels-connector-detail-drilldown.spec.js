@@ -62,7 +62,7 @@ test("admin can drill from connector portfolio into connector detail and linked 
     await page.getByRole("link", { name: "Open connections" }).click();
     await page.waitForURL(/\/channels\/connectors$/);
 
-    await page.getByLabel("Search connectors").fill(accountAlias);
+    await page.getByRole("textbox", { name: /Search connection/i }).fill(accountAlias);
     await page.getByRole("button", { name: "Apply filters" }).click();
     await expect(page).toHaveURL(new RegExp(`q=${encodeURIComponent(accountAlias).replace(/%/g, "%25")}|q=${accountAlias}`));
 
@@ -73,12 +73,17 @@ test("admin can drill from connector portfolio into connector detail and linked 
 
     await page.waitForURL(new RegExp(`/channels/connectors/${installation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
     await expect(page.getByRole("heading", { name: `Flipkart / ${accountAlias}` })).toBeVisible();
-    await expect(page.getByText(`Account alias: ${accountAlias}`)).toBeVisible();
+    await expect(page.getByText("Account alias")).toBeVisible();
+    await expect(page.getByText(accountAlias, { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Review catalog coverage" }).click();
+    await page.waitForURL(
+      new RegExp(`/channels/connectors/${installation.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?tab=catalog$`),
+    );
     await expect(page.getByRole("heading", { name: "Catalog Module Framework" })).toBeVisible();
 
     const submissionRow = page.locator("tbody tr", { hasText: product.id }).first();
     await expect(submissionRow).toBeVisible();
-    await submissionRow.getByRole("link", { name: product.id }).click();
+    await submissionRow.getByRole("link", { name: product.title }).click();
 
     await page.waitForURL(new RegExp(`/products/${product.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
     await expect(page.getByRole("heading", { name: product.title })).toBeVisible();

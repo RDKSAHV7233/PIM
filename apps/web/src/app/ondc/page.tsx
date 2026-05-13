@@ -3,7 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { createOndcMappingAction, runOndcSimulationAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -84,6 +86,14 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
           authHeader,
         }).catch(() => null)
       : null;
+  const mappingColumns: Column<(typeof mappings)[number]>[] = [
+    { key: "name", header: "Name", render: (mapping) => mapping.name },
+    { key: "node", header: "Node", render: (mapping) => mapping.nodeType },
+    { key: "version", header: "Version", render: (mapping) => mapping.version },
+    { key: "category", header: "Category", render: (mapping) => mapping.categoryId },
+    { key: "required", header: "Required", render: (mapping) => mapping.requiredFields.length },
+    { key: "default", header: "Default", render: (mapping) => (mapping.isDefault ? "Yes" : "No") },
+  ];
 
   return (
     <div className="space-y-5">
@@ -213,32 +223,7 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
 
       <Card>
         <CardTitle>ONDC Mappings</CardTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2">Name</th>
-                <th className="py-2">Node</th>
-                <th className="py-2">Version</th>
-                <th className="py-2">Category</th>
-                <th className="py-2">Required</th>
-                <th className="py-2">Default</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.map((mapping) => (
-                <tr key={mapping.id} className="border-t border-border">
-                  <td className="py-2">{mapping.name}</td>
-                  <td className="py-2">{mapping.nodeType}</td>
-                  <td className="py-2">{mapping.version}</td>
-                  <td className="py-2">{mapping.categoryId}</td>
-                  <td className="py-2">{mapping.requiredFields.length}</td>
-                  <td className="py-2">{mapping.isDefault ? "Yes" : "No"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataGrid columns={mappingColumns} rows={mappings} getRowKey={(mapping) => mapping.id} />
       </Card>
 
       <Card>
@@ -316,9 +301,7 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
                 ))}
               </ul>
             )}
-            <pre className="max-h-72 overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
-              {JSON.stringify(simulation.payload, null, 2)}
-            </pre>
+            <JsonPreview value={JSON.stringify(simulation.payload, null, 2)} className="max-h-72 border-border" />
           </div>
         )}
       </Card>

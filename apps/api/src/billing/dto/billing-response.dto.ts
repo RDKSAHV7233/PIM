@@ -9,7 +9,7 @@ class PlanUsageCounterDto {
 }
 
 export class PlanProfileSummaryDto {
-  @ApiProperty({ example: "tej-demo" })
+  @ApiProperty({ example: "vexa-demo" })
   tenantKey!: string;
 
   @ApiProperty({ enum: ["STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
@@ -97,13 +97,13 @@ export class PlanUpgradeRequestSummaryDto {
   @ApiProperty({ example: "ckreq_123" })
   id!: string;
 
-  @ApiProperty({ example: "tej-demo" })
+  @ApiProperty({ example: "vexa-demo" })
   tenantKey!: string;
 
-  @ApiProperty({ example: "tej-demo", nullable: true })
+  @ApiProperty({ example: "vexa-demo", nullable: true })
   workspaceSlug!: string | null;
 
-  @ApiProperty({ example: "TEJ Demo", nullable: true })
+  @ApiProperty({ example: "Vexa Demo", nullable: true })
   displayName!: string | null;
 
   @ApiProperty({ example: "upgrade" })

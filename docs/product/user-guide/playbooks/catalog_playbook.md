@@ -3,7 +3,7 @@
 ## Page
 - Route: `/catalog`
 - Source: `C:/Users/Om Computers/PIM1/apps/web/src/app/catalog/page.tsx`
-- Title: Information not available in TEJ PIM project.
+- Title: Information not available in Vexa PIM project.
 
 ## What this page is used for
 - Read/monitor data and navigate to downstream workflow pages.
@@ -16,15 +16,15 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
-- Visible labels: Information not available in TEJ PIM project.
-- Field names (technical): Information not available in TEJ PIM project.
-- Select names: Information not available in TEJ PIM project.
-- Placeholders: Information not available in TEJ PIM project.
-- Links: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
+- Visible labels: Information not available in Vexa PIM project.
+- Field names (technical): Information not available in Vexa PIM project.
+- Select names: Information not available in Vexa PIM project.
+- Placeholders: Information not available in Vexa PIM project.
+- Links: Information not available in Vexa PIM project.
 
 ## Related components
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Validation source
 - Derived from route source + first-level component source imports.

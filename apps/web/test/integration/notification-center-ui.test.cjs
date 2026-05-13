@@ -19,6 +19,7 @@ try {
   const layout = read("apps/web/src/app/layout.tsx");
   const shell = read("apps/web/src/components/nav/authenticated-shell.tsx");
   const center = read("apps/web/src/components/nav/notification-center.tsx");
+  const drawer = read("apps/web/src/components/ui/app-drawer.tsx");
   const route = read("apps/web/src/app/api/notifications/route.ts");
   const readRoute = read("apps/web/src/app/api/notifications/[id]/read/route.ts");
 
@@ -29,12 +30,13 @@ try {
   assert(center.includes("POLL_INTERVAL_MS = 30_000"), "notification center must poll every 30 seconds");
   assert(center.includes("Mark all read"), "notification center must expose mark all read");
   assert(center.includes("You're up to date"), "notification center must render empty state copy");
-  assert(center.includes('document.body.style.overflow = "hidden"'), "notification center must lock body scroll while drawer is open");
+  assert(center.includes('import { AppDrawer } from "@/components/ui/app-drawer";'), "notification center must use the shared drawer primitive");
+  assert(drawer.includes('document.body.style.overflow = "hidden"'), "shared app drawer must lock body scroll while a drawer is open");
   assert(center.includes("createPortal(drawer, document.body)"), "notification drawer must render through a body portal");
-  assert(center.includes('event.key !== "Tab"'), "notification drawer must trap Tab navigation");
-  assert(center.includes("previousFocusRef.current.focus()"), "notification drawer must restore focus when it closes");
-  assert(center.includes("flex h-full w-full max-w-md flex-col"), "notification drawer must use a bounded flex column layout");
-  assert(center.includes("min-h-0 flex-1 overflow-y-auto"), "notification drawer list must scroll inside the panel body");
+  assert(drawer.includes('if (event.key !== "Tab")'), "shared app drawer must trap Tab navigation");
+  assert(drawer.includes("previousFocusRef.current?.focus();"), "shared app drawer must restore focus when it closes");
+  assert(center.includes('panelClassName="w-full max-w-md border-l border-slate-200 shadow-2xl"'), "notification drawer must keep the bounded right-rail layout");
+  assert(center.includes('contentClassName="px-4 py-4"'), "notification drawer content must keep the bounded internal scroll layout");
   assert(center.includes("setUnreadCount(0)"), "mark all read must update unread count immediately");
   assert(center.includes("setUnreadCount((current) => Math.max(0, current - 1))"), "opening an unread notification must update unread count immediately");
   assert(route.includes("validateCsrf(request)"), "notifications PATCH route must enforce CSRF");

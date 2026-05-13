@@ -1,7 +1,7 @@
 {
-  "name": "TEJ PIM-frontend-codex-package",
+  "name": "Vexa PIM-frontend-codex-package",
   "version": "1.0.0",
-  "description": "TEJ PIM frontend Codex execution package — drop into apps/web/src/ and feed ui-tasks.json one sprint at a time",
+  "description": "Vexa PIM frontend Codex execution package — drop into apps/web/src/ and feed ui-tasks.json one sprint at a time",
   "files": {
     "CODEX_UI.md": "Main instruction file — read before every sprint",
     "ui-tasks.json": "All 37 tasks across 10 sprints with acceptance criteria and gate checks",

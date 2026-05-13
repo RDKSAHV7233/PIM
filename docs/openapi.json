@@ -1409,6 +1409,43 @@
         "tags": [
           "Connectors"
         ]
+      },
+      "get": {
+        "operationId": "ConnectorInstallerController_oauthCallbackRedirect",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirects to web app after token exchange"
+          }
+        },
+        "summary": "Handle Shopify OAuth redirect (public GET callback)",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/shopify/oauth/callback": {
+      "get": {
+        "operationId": "ConnectorInstallerController_oauthCallbackStatic",
+        "parameters": [],
+        "responses": {
+          "302": {
+            "description": "Redirects to web app after token exchange"
+          }
+        },
+        "summary": "Handle Shopify OAuth redirect via static callback URL (installation ID in state)",
+        "tags": [
+          "Connectors"
+        ]
       }
     },
     "/api/v1/connectors/{id}/product-type-schema": {
@@ -2749,6 +2786,30 @@
         ]
       }
     },
+    "/api/v1/bulk-import/validate": {
+      "post": {
+        "operationId": "BulkImportController_validateJobInput",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBulkImportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
     "/api/v1/bulk-import/jobs": {
       "post": {
         "operationId": "BulkImportController_createJob",
@@ -2794,7 +2855,7 @@
         ]
       }
     },
-    "/api/v1/bulk-import/validate": {
+    "/api/v1/bulk-import/validate/preflight": {
       "post": {
         "operationId": "BulkImportController_validateImport",
         "parameters": [],
@@ -3604,6 +3665,30 @@
             "description": ""
           }
         },
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{id}/revisions": {
+      "get": {
+        "operationId": "CatalogController_getProductRevisions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product revision history fetched"
+          }
+        },
+        "summary": "Get product revision history",
         "tags": [
           "Catalog"
         ]
@@ -4699,7 +4784,7 @@
         "properties": {
           "tenantKey": {
             "type": "string",
-            "example": "tej-demo"
+            "example": "vexa-demo"
           },
           "planTier": {
             "type": "string",
@@ -4888,16 +4973,16 @@
           },
           "tenantKey": {
             "type": "string",
-            "example": "tej-demo"
+            "example": "vexa-demo"
           },
           "workspaceSlug": {
             "type": "object",
-            "example": "tej-demo",
+            "example": "vexa-demo",
             "nullable": true
           },
           "displayName": {
             "type": "object",
-            "example": "TEJ Demo",
+            "example": "Vexa Demo",
             "nullable": true
           },
           "requestType": {

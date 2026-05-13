@@ -122,6 +122,38 @@ function assertStatus(result, expected, context) {
   }
 }
 
+async function advanceToApproved(baseUrl, token, product) {
+  const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: product.version,
+    title: product.title,
+    description: product.description ?? "",
+    brand: product.brand,
+    categoryId: product.categoryId,
+    hsnCode: product.hsnCode ?? undefined,
+    gstRate: product.gstRate ?? undefined,
+    attributes: product.attributes ?? {},
+    status: "in_review",
+  });
+  if (toReview.status !== 200) {
+    throw new Error(`advance to in_review failed: ${toReview.status} ${JSON.stringify(toReview.payload)}`);
+  }
+  const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: toReview.payload.version,
+    title: toReview.payload.title,
+    description: toReview.payload.description ?? "",
+    brand: toReview.payload.brand,
+    categoryId: toReview.payload.categoryId,
+    hsnCode: toReview.payload.hsnCode ?? undefined,
+    gstRate: toReview.payload.gstRate ?? undefined,
+    attributes: toReview.payload.attributes ?? {},
+    status: "approved",
+  });
+  if (toApproved.status !== 200) {
+    throw new Error(`advance to approved failed: ${toApproved.status} ${JSON.stringify(toApproved.payload)}`);
+  }
+  return toApproved.payload;
+}
+
 async function issueStepUp(baseUrl, token) {
   const result = await apiRequest(baseUrl, "POST", "/auth/step-up", token, {
     password: getAuthPassword(),
@@ -227,6 +259,7 @@ async function run() {
       gstRate: 12,
     });
     assertStatus(product, 201, "create product");
+    await advanceToApproved(baseUrl, tokenA, product.payload);
     const productId = String(product.payload.id);
 
     const install = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", tokenA, {

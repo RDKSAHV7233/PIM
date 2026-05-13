@@ -203,23 +203,44 @@ export class ShopifyConnector implements ConnectorInterface {
     const sessionToken = String(
       params.sessionToken ?? params.session_token ?? params.subject_token ?? "",
     ).trim();
+    const authCode = String(params.code ?? "").trim();
 
     if (!requestedShopDomain) {
       throw new Error("Missing Shopify shop domain.");
     }
-    if (!sessionToken) {
-      throw new Error("Missing Shopify session token for token exchange.");
-    }
 
-    const token = await this.exchangeToken(requestedShopDomain, {
-      client_id: this.requireClientId(),
-      client_secret: this.requireClientSecret(),
-      grant_type: DEFAULT_TOKEN_EXCHANGE_GRANT,
-      subject_token: sessionToken,
-      subject_token_type: DEFAULT_SUBJECT_TOKEN_TYPE,
-      requested_token_type: DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE,
-      expiring: "1",
-    });
+    let token: ShopifyTokenResponse;
+    let authMode: string;
+
+    // Direct admin API token (custom app flow — token copied from Shopify Admin → Apps → API credentials)
+    const directToken = String(params.accessToken ?? params.access_token ?? "").trim();
+
+    if (directToken && !authCode) {
+      token = { access_token: directToken };
+      authMode = "custom_app_direct_token";
+    } else if (authCode) {
+      // Standard OAuth authorization code flow (for local dev / non-embedded installs)
+      token = await this.exchangeToken(requestedShopDomain, {
+        client_id: this.requireClientId(),
+        client_secret: this.requireClientSecret(),
+        code: authCode,
+      });
+      authMode = "authorization_code";
+    } else {
+      if (!sessionToken) {
+        throw new Error("Missing Shopify session token for token exchange.");
+      }
+      token = await this.exchangeToken(requestedShopDomain, {
+        client_id: this.requireClientId(),
+        client_secret: this.requireClientSecret(),
+        grant_type: DEFAULT_TOKEN_EXCHANGE_GRANT,
+        subject_token: sessionToken,
+        subject_token_type: DEFAULT_SUBJECT_TOKEN_TYPE,
+        requested_token_type: DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE,
+        expiring: "1",
+      });
+      authMode = "managed_install_token_exchange";
+    }
 
     if (!token.access_token) {
       throw new Error("Shopify token response did not include access_token.");
@@ -232,13 +253,14 @@ export class ShopifyConnector implements ConnectorInterface {
 
     await this.persistTokenSet(ctx, token, {
       shopDomain: canonicalShopDomain,
-      authMode: "managed_install_token_exchange",
+      authMode,
       shopIdentity,
     });
-    this.logger.info("Shopify managed-install token exchange completed", {
+    this.logger.info("Shopify OAuth callback completed", {
       installationId: ctx.installationId,
       shopDomain: canonicalShopDomain,
       shopId: shopIdentity.id ?? null,
+      authMode,
     });
   }
 
@@ -943,6 +965,7 @@ export class ShopifyConnector implements ConnectorInterface {
               id
               handle
               status
+              variants(first: 1) { edges { node { id } } }
             }
             userErrors {
               field
@@ -969,11 +992,52 @@ export class ShopifyConnector implements ConnectorInterface {
       throw new Error("Shopify product sync did not return a product id.");
     }
 
+    const variantId = (mutation.product as any).variants?.edges?.[0]?.node?.id;
+    const shopifyProductId = String(mutation.product.id);
+    if (variantId && shopifyProductId) {
+      await this.updateDefaultVariantPrice(ctx, shopifyProductId, variantId, product);
+    }
+
     return {
-      id: String(mutation.product.id),
+      id: shopifyProductId,
       handle: this.normalizeOptionalString(mutation.product.handle),
       status: this.normalizeOptionalString(mutation.product.status),
     };
+  }
+
+  private async updateDefaultVariantPrice(
+    ctx: ConnectorContext,
+    shopifyProductId: string,
+    variantId: string,
+    product: ProductPayload,
+  ): Promise<void> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const sellingPrice = this.formatMoney(product.sellingPrice);
+    const compareAtPrice =
+      Number.isFinite(product.mrp) && Number(product.mrp) > 0 ? this.formatMoney(product.mrp) : null;
+    const sku = String(product.sku ?? "").trim();
+    const variantInput = {
+      id: variantId,
+      price: sellingPrice,
+      ...(compareAtPrice ? { compareAtPrice } : {}),
+      inventoryPolicy: "CONTINUE",
+      taxable: true,
+      inventoryItem: { tracked: false, ...(sku ? { sku } : {}) },
+    };
+    await this.graphqlRequest({
+      shopDomain,
+      accessToken,
+      query: `
+        mutation VexaBulkUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+            productVariants { id price }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { productId: shopifyProductId, variants: [variantInput] },
+    });
   }
 
   private async publishToPublication(
@@ -1026,11 +1090,7 @@ export class ShopifyConnector implements ConnectorInterface {
       };
     }
     return {
-      customId: {
-        namespace: DEFAULT_CUSTOM_ID_NAMESPACE,
-        key: DEFAULT_CUSTOM_ID_KEY,
-        value: String(product.sku ?? "").trim(),
-      },
+      handle: this.buildHandle(product),
     };
   }
 
@@ -1043,6 +1103,12 @@ export class ShopifyConnector implements ConnectorInterface {
     const title = String(product.title ?? "").trim();
     const handle = this.buildHandle(product);
     const metafields = [
+      {
+        namespace: DEFAULT_CUSTOM_ID_NAMESPACE,
+        key: DEFAULT_CUSTOM_ID_KEY,
+        type: "single_line_text_field",
+        value: String(product.sku ?? "").trim(),
+      },
       {
         namespace: DEFAULT_VEXA_METAFIELD_NAMESPACE,
         key: "source_sku",
@@ -1059,26 +1125,6 @@ export class ShopifyConnector implements ConnectorInterface {
       ...(brand ? { vendor: brand } : {}),
       ...(productType ? { productType } : {}),
       metafields,
-      files: [
-        {
-          originalSource: String(product.mainImageUrl ?? "").trim(),
-          alt: title,
-          contentType: "IMAGE",
-          filename: `${handle || "vexa-product"}.jpg`,
-        },
-      ],
-      variants: [
-        {
-          price: sellingPrice,
-          ...(compareAtPrice ? { compareAtPrice } : {}),
-          inventoryPolicy: "CONTINUE",
-          taxable: true,
-          inventoryItem: {
-            tracked: false,
-            sku: String(product.sku ?? "").trim(),
-          },
-        },
-      ],
     };
   }
 

@@ -4,7 +4,7 @@ Purpose:
 Explain how users manage products.
 
 Scope:
-Implemented role-aware pages and workflows present in TEJ PIM web routes and API modules.
+Implemented role-aware pages and workflows present in Vexa PIM web routes and API modules.
 
 Content:
 Primary Navigation (implemented):
@@ -102,5 +102,5 @@ Core User Workflows:
 - API: /api/v1/billing/* and /api/v1/audit/logs
 
 Additional formal end-user SOP:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

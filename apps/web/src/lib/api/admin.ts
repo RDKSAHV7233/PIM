@@ -1,4 +1,4 @@
-import type { AccessScopeAssignment, AccessScopeAssignmentAction, AccessScopeAssignmentScopeType, AccessScopeAssignmentSubjectType, ApiAccessKey, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, TenantAuthPolicy, WorkspaceUser } from "./core";
+import type { AccessScopeAssignment, AccessScopeAssignmentAction, AccessScopeAssignmentScopeType, AccessScopeAssignmentSubjectType, ApiAccessKey, ApiClientScope, ApiRequestOptions, AppRole, CreatedApiAccessKey, OutboundWebhookDelivery, OutboundWebhookEndpoint, TenantAuthPolicy, WorkspaceUser } from "./core";
 import { fetchJson, patchJson, postJson } from "./core";
 
 export async function getTenantAuthPolicy(options?: ApiRequestOptions) {
@@ -85,7 +85,7 @@ export async function getApiAccessKeys(options?: ApiRequestOptions) {
 }
 
 export async function createApiAccessKey(
-  dto: { label: string; role: AppRole; expiresAt?: string },
+  dto: { label: string; role: AppRole; expiresAt?: string; scopes?: ApiClientScope[] },
   options?: ApiRequestOptions,
 ) {
   return postJson<CreatedApiAccessKey>("/admin/api-keys", dto, options);

@@ -27,11 +27,11 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Request upgrade`, current plan summary, usage meters
-- Field names (technical): Information not available in TEJ PIM project.
-- Select names: Information not available in TEJ PIM project.
-- Placeholders: Information not available in TEJ PIM project.
+- Field names (technical): Information not available in Vexa PIM project.
+- Select names: Information not available in Vexa PIM project.
+- Placeholders: Information not available in Vexa PIM project.
 - Links: `/dashboard`, `/admin`
 
 ## Related components

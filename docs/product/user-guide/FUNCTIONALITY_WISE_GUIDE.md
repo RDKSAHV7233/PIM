@@ -12,7 +12,7 @@ This document explains how to perform core workflows across pages.
 1. Open `/catalog/products`.
 2. Use search/filter controls to locate or triage products.
 3. Open product detail `/products/[id]`.
-4. In product detail tabs (Overview/Content/Attributes/Variants/Media/Channels/Quality/Activity), edit data and run:
+4. In product detail tabs (Overview/Content/Attributes/Variants/Media/Channels/Quality/Activity — the Activity tab shows connector export and submission job history for this product, not a general edit timeline), edit data and run:
    - `updateProductAction`
    - `validateProductAction`
    - `createVariantAction` (when adding variants)

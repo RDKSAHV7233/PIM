@@ -68,7 +68,7 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Step-up re-authentication`, `Category`, `Channel`, `Taxonomy search`, `Mapping type`, `Category scope`, `Publish category`, `Channel compatibility`, `Allow fallback mapping`, `Fallback confirmation`, `Default fallback category`, `Fallback label`, `Confirmation message`, `Override mapping rules (JSON)`, `Override fallback behavior (JSON)`, `Archive reason`, `Rollback reason`
 - Field names (technical): `connectorSlug`, `versionId`, `redirectTo`, `requiredField`, `taxonomyRequiredAttribute`, `connectorDefinitionId`, `connectorDefinitionVersion`, `confirm`, `fallbackAckMessage`, `mappingRules`, `fallbackPolicy`, `stepUpPassword`, `taxonomyQ`, `categoryScope`, `targetCategory`, `fallbackDefaultCategory`, `fallbackWarningTag`, `reason`
 - Select names: `categoryId`, `channel`, `mappingLevel`, `targetCategory`, `compatibilityState`, `fallbackEnabled`, `fallbackAckRequired`
@@ -81,4 +81,4 @@ Failure handling:
 ## Validation source
 - Derived from route source + first-level component source imports.
 - No behavior is added beyond validated code references.
-- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current TEJ PIM UX.
+- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current Vexa PIM UX.

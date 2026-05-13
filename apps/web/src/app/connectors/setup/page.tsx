@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -390,16 +391,8 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
           }
         />
 
-        {actionStatusMessage ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            {actionStatusMessage}
-          </div>
-        ) : null}
-        {installErrorMessage ? (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-            {installErrorMessage}
-          </div>
-        ) : null}
+        {actionStatusMessage ? <InlineAlert tone="success" message={actionStatusMessage} /> : null}
+        {installErrorMessage ? <InlineAlert tone="error" message={installErrorMessage} /> : null}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
           <Card className="border-slate-200 bg-white">
@@ -451,6 +444,16 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
                   Finish install here, then return to mappings or account detail for catalog readiness, managed install, and publication work.
                 </p>
               </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Connection readiness checklist
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                <li>Confirm the marketplace account alias matches the operator team that will own this lane.</li>
+                <li>Use validated credentials for live publish connectors and keep manual/export lanes clearly scoped.</li>
+                <li>Return to connector detail after install to verify account health, publication targets, and recovery guidance.</li>
+              </ul>
             </div>
           </Card>
         </div>

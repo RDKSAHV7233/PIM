@@ -7,10 +7,10 @@
 - C:/Users/Om Computers/PIM1/apps/web/src/app/operations/bulk-edit
 
 ## Page Title (Validated)
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Purpose
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Functionality (Validated from Page Imports/Actions)
 - Data retrieval/API helpers used on this page:

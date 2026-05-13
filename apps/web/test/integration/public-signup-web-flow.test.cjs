@@ -8,6 +8,7 @@ const { spawn, execFileSync, spawnSync } = require("node:child_process");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
 const WEB_DIR = path.join(REPO_ROOT, "apps", "web");
+const WEB_BUILD_ID = path.join(REPO_ROOT, "apps", "web", ".next", "BUILD_ID");
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -274,27 +275,40 @@ async function run() {
     return;
   }
   if (!fs.existsSync(API_ENTRY)) {
-    throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build`);
+    const apiBuildCommand = npmInvocation(["run", "build", "--workspace", "@pim1/api"]);
+    const apiBuild = spawnSync(apiBuildCommand.command, apiBuildCommand.args, {
+      cwd: REPO_ROOT,
+      shell: false,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+      },
+    });
+    if (apiBuild.status !== 0 || !fs.existsSync(API_ENTRY)) {
+      throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
+    }
   }
 
-  const webBuildCommand = npmInvocation(["run", "build", "--workspace", "@pim1/web"]);
-  const webBuild = spawnSync(webBuildCommand.command, webBuildCommand.args, {
-    cwd: REPO_ROOT,
-    shell: false,
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED: "true",
-      FEATURE_PUBLIC_SIGNUP_ENABLED: "true",
-    },
-  });
-  if (webBuild.status !== 0) {
-    process.exit(webBuild.status ?? 1);
+  if (!fs.existsSync(WEB_BUILD_ID)) {
+    const webBuildCommand = npmInvocation(["run", "build", "--workspace", "@pim1/web"]);
+    const webBuild = spawnSync(webBuildCommand.command, webBuildCommand.args, {
+      cwd: REPO_ROOT,
+      shell: false,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED: "true",
+        FEATURE_PUBLIC_SIGNUP_ENABLED: "true",
+      },
+    });
+    if (webBuild.status !== 0) {
+      process.exit(webBuild.status ?? 1);
+    }
   }
 
   const runId = Date.now().toString();
   const apiPort = 5900 + Math.floor(Math.random() * 80);
-  const webPort = 6000 + Math.floor(Math.random() * 80);
+  const webPort = 6100 + Math.floor(Math.random() * 80);
   const apiBaseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
   const webBaseUrl = `http://127.0.0.1:${webPort}`;
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-web-"));

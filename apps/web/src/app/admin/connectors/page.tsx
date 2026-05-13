@@ -6,6 +6,8 @@ import {
 } from "@/app/actions";
 import { ConnectorPermissionForm } from "@/components/settings/connector-permission-form";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getConnectorDefinitions, getConnectorPermissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -35,14 +37,6 @@ function formatPolicyAction(permission: { action: string }) {
   return permission.action === "uninstall" ? "Disable connector" : `${permission.action[0]?.toUpperCase() ?? ""}${permission.action.slice(1)}`;
 }
 
-function StatusBanner({ tone, message }: { tone: "success" | "error"; message: string }) {
-  const classes =
-    tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : "border-rose-200 bg-rose-50 text-rose-800";
-  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
-}
-
 export default async function ConnectorSettingsPage({ searchParams }: ConnectorSettingsPageProps) {
   const query = await searchParams;
   const role = await getServerActorRole();
@@ -57,6 +51,37 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
     const rolePolicies = permissions.filter((permission) => permission.principalType === "role").length;
     const userPolicies = permissions.length - rolePolicies;
     const aliasScopedPolicies = permissions.filter((permission) => permission.accountAlias !== "*").length;
+    const permissionColumns: Column<(typeof permissions)[number]>[] = [
+      {
+        key: "connector",
+        header: "Connector",
+        render: (permission) => <span className="font-medium text-slate-900">{permission.connectorSlug}</span>,
+      },
+      { key: "subject", header: "Who gets access", render: (permission) => formatPolicySubject(permission) },
+      { key: "scope", header: "Which accounts", render: (permission) => formatPolicyScope(permission) },
+      { key: "action", header: "Allowed action", render: (permission) => formatPolicyAction(permission) },
+      { key: "changedBy", header: "Changed by", render: (permission) => <span>{permission.createdBy || "-"}</span> },
+      {
+        key: "updatedAt",
+        header: "Updated",
+        render: (permission) => <span className="text-xs">{new Date(permission.updatedAt).toLocaleString()}</span>,
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        render: (permission) =>
+          role === "admin" ? (
+            <form action={revokeConnectorPermissionAction}>
+              <input type="hidden" name="permissionId" value={permission.id} />
+              <button type="submit" className="rounded-md border border-border px-3 py-2 text-sm">
+                Revoke
+              </button>
+            </form>
+          ) : (
+            <span className="text-xs text-slate-500">Read-only</span>
+          ),
+      },
+    ];
 
     return (
       <div className="space-y-5">
@@ -78,19 +103,19 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
           }
         />
 
-        {status === "permission-granted" ? <StatusBanner tone="success" message="Connector permission granted." /> : null}
-        {status === "permission-revoked" ? <StatusBanner tone="success" message="Connector permission revoked." /> : null}
+        {status === "permission-granted" ? <InlineAlert tone="success" message="Connector permission granted." /> : null}
+        {status === "permission-revoked" ? <InlineAlert tone="success" message="Connector permission revoked." /> : null}
         {status === "permission-invalid-role" ? (
-          <StatusBanner tone="error" message="Choose a valid role: admin, editor, reviewer, or viewer." />
+          <InlineAlert tone="error" message="Choose a valid role: admin, editor, reviewer, or viewer." />
         ) : null}
         {status === "permission-user-not-found" ? (
-          <StatusBanner tone="error" message="That user ID was not found in this workspace." />
+          <InlineAlert tone="error" message="That user ID was not found in this workspace." />
         ) : null}
         {status === "permission-user-required" ? (
-          <StatusBanner tone="error" message="User ID is required when principal type is user." />
+          <InlineAlert tone="error" message="User ID is required when principal type is user." />
         ) : null}
         {status === "permission-invalid-request" ? (
-          <StatusBanner tone="error" message="Connector permission request was invalid. Review the form and try again." />
+          <InlineAlert tone="error" message="Connector permission request was invalid. Review the form and try again." />
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -114,6 +139,30 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
             </p>
           </Card>
         </div>
+
+        <Card>
+          <CardTitle>Connector access review checklist</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Prefer role policies first</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Start with role-based access for install, reconnect, and disable flows so connector governance stays predictable across teams.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Keep alias rules exceptional</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Use alias-specific exceptions only when business ownership really differs by connector account, then review those rules before launches.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Retire stale grants</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Revoke user-specific policies when staffing changes or temporary escalation ends so connector access does not drift quietly over time.
+              </p>
+            </div>
+          </div>
+        </Card>
 
         {role === "admin" ? (
           <Card>
@@ -140,45 +189,12 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
           {permissions.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">No connector access policies configured for this tenant.</p>
           ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Connector</th>
-                    <th className="py-2">Who gets access</th>
-                    <th className="py-2">Which accounts</th>
-                    <th className="py-2">Allowed action</th>
-                    <th className="py-2">Changed by</th>
-                    <th className="py-2">Updated</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissions.map((permission) => (
-                    <tr key={permission.id} className="border-t border-border">
-                      <td className="py-2 font-medium text-slate-900">{permission.connectorSlug}</td>
-                      <td className="py-2">{formatPolicySubject(permission)}</td>
-                      <td className="py-2">{formatPolicyScope(permission)}</td>
-                      <td className="py-2">{formatPolicyAction(permission)}</td>
-                      <td className="py-2">{permission.createdBy || "-"}</td>
-                      <td className="py-2 text-xs">{new Date(permission.updatedAt).toLocaleString()}</td>
-                      <td className="py-2">
-                        {role === "admin" ? (
-                          <form action={revokeConnectorPermissionAction}>
-                            <input type="hidden" name="permissionId" value={permission.id} />
-                            <button type="submit" className="rounded-md border border-border px-3 py-2 text-sm">
-                              Revoke
-                            </button>
-                          </form>
-                        ) : (
-                          <span className="text-xs text-slate-500">Read-only</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataGrid
+              className="mt-3"
+              columns={permissionColumns}
+              rows={permissions}
+              getRowKey={(permission) => permission.id}
+            />
           )}
         </Card>
       </div>

@@ -6,16 +6,136 @@ import {
   requeueExportJobAction,
 } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { translateExportStatus } from "@/lib/errors";
+import type { ConnectorSubmission } from "@/lib/api";
 import { lifecycleStatusTone, RoleHiddenInput } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
+function submissionStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  const s = String(status ?? "").trim().toUpperCase();
+  if (s === "SUCCESS") return "success";
+  if (s === "PENDING" || s === "RETRYING") return "warning";
+  if (s === "REJECTED" || s === "ERROR" || s === "DEAD_LETTER") return "danger";
+  return "neutral";
+}
+
 export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
+  const latestExportJob = data.exportJobs[0] ?? null;
+  const selectedChannelOption =
+    data.channels.find((channel) => channel.channel === data.selectedChannel) ?? null;
+  type TemplateRow = ProductDetailPageData["templates"][number];
+  type ExportJobRow = ProductDetailPageData["exportJobs"][number];
+  const templateColumns: Column<TemplateRow>[] = [
+    {
+      key: "name",
+      header: "Template",
+      render: (template) => template.name,
+    },
+    {
+      key: "channel",
+      header: "Channel",
+      render: (template) => <span className="capitalize">{template.channel}</span>,
+    },
+    {
+      key: "default",
+      header: "Default",
+      render: (template) => (
+        <StatusChip
+          label={template.isDefault ? "Default" : "Custom"}
+          tone={template.isDefault ? "success" : "neutral"}
+        />
+      ),
+    },
+    {
+      key: "requiredFields",
+      header: "Required Fields",
+      render: (template) => template.requiredFields.length,
+    },
+    {
+      key: "updatedAt",
+      header: "Updated",
+      cellClassName: "text-slate-600",
+      render: (template) => new Date(template.updatedAt).toLocaleString(),
+    },
+  ];
+  const exportJobColumns: Column<ExportJobRow>[] = [
+    {
+      key: "id",
+      header: "Job",
+      cellClassName: "font-mono text-xs text-slate-700",
+      render: (job) => job.id,
+    },
+    {
+      key: "channel",
+      header: "Channel",
+      render: (job) => <span className="capitalize">{job.channel}</span>,
+    },
+    {
+      key: "template",
+      header: "Template",
+      render: (job) => job.template?.name ?? "-",
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (job) => <StatusChip label={translateExportStatus(job.status)} tone={lifecycleStatusTone(job.status)} />,
+    },
+    {
+      key: "retry",
+      header: "Retry",
+      render: (job) => `${job.retryCount}/${job.maxRetries}`,
+    },
+    {
+      key: "failureReason",
+      header: "Failure",
+      cellClassName: "text-slate-600",
+      render: (job) => job.failureReason ?? "-",
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (job) => (
+        <div className="flex flex-wrap gap-2">
+          {data.canWrite ? (
+            <form action={processExportJobAction}>
+              <RoleHiddenInput role={data.actorRole} />
+              <input type="hidden" name="jobId" value={job.id} />
+              <input type="hidden" name="productId" value={data.productId} />
+              <PendingSubmitButton
+                type="submit"
+                className="px-2.5 py-1.5 text-xs"
+                idleLabel="Process"
+                pendingLabel="Processing..."
+              />
+            </form>
+          ) : null}
+          {data.canWrite &&
+          (job.status === "dead_letter" || job.status === "retrying" || job.status === "failed") ? (
+            <form action={requeueExportJobAction}>
+              <RoleHiddenInput role={data.actorRole} />
+              <input type="hidden" name="jobId" value={job.id} />
+              <input type="hidden" name="productId" value={data.productId} />
+              <PendingSubmitButton
+                type="submit"
+                variant="secondary"
+                className="px-2.5 py-1.5 text-xs"
+                idleLabel="Requeue"
+                pendingLabel="Requeueing..."
+              />
+            </form>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <>
       <Card hidden={data.activeTab !== "channels"}>
@@ -57,6 +177,45 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
               >
                 Review quality blockers
               </Link>
+            </div>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Export confirmation</p>
+              <p className="mt-1">
+                Queue the export only after mapping, quality, and connector readiness are clear for the selected channel.
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                <li>Channel target: {selectedChannelOption?.displayName ?? data.selectedChannel}</li>
+                <li>Installed publish lanes: {data.publishableChannels.length}</li>
+                <li>Fallback acknowledgement required: {data.fallbackAckRequired ? "Yes" : "No"}</li>
+              </ul>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Latest export result summary</p>
+              {latestExportJob ? (
+                <div className="mt-2 space-y-2">
+                  <StatusChip
+                    label={translateExportStatus(latestExportJob.status)}
+                    tone={lifecycleStatusTone(latestExportJob.status)}
+                  />
+                  <p>
+                    Most recent channel: <span className="capitalize">{latestExportJob.channel}</span>
+                  </p>
+                  <p>
+                    Retry position: {latestExportJob.retryCount}/{latestExportJob.maxRetries}
+                  </p>
+                  <p className="text-slate-600">
+                    {latestExportJob.failureReason
+                      ? `Latest failure: ${latestExportJob.failureReason}`
+                      : "No failure recorded on the latest queued export."}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-slate-600">
+                  No export result summary yet. Queue the first export to establish channel history for this product.
+                </p>
+              )}
             </div>
           </div>
           {data.canWrite && data.publishableChannels.length > 0 ? (
@@ -108,12 +267,15 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                   <option value="true">Acknowledge fallback usage</option>
                 </Select>
               </div>
-              <PendingSubmitButton
-                type="submit"
-                disabled={!data.canQueueExportWithAck}
-                idleLabel="Queue channel export"
-                pendingLabel="Queueing export..."
-              />
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Submit</label>
+                <PendingSubmitButton
+                  type="submit"
+                  disabled={!data.canQueueExportWithAck}
+                  idleLabel="Queue channel export"
+                  pendingLabel="Queueing export..."
+                />
+              </div>
             </form>
           ) : data.canWrite ? (
             <p className="text-sm text-slate-600">
@@ -199,9 +361,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 </div>
                 <div>
                   <p className="mb-2 text-xs uppercase text-slate-500">Mapped Payload Preview</p>
-                  <pre className="max-h-64 overflow-auto rounded-md border border-border bg-slate-50 p-3 text-xs">
-                    {JSON.stringify(data.simulation.mappedPayload, null, 2)}
-                  </pre>
+                  <JsonPreview value={JSON.stringify(data.simulation.mappedPayload, null, 2)} className="max-h-64 border-border" />
                 </div>
               </div>
             </div>
@@ -286,42 +446,20 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
               Legacy template inventory (transition only)
             </summary>
-            <div className="overflow-x-auto border-t border-slate-200 rounded-b-lg">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Template</th>
-                    <th className="px-3 py-2">Channel</th>
-                    <th className="px-3 py-2">Default</th>
-                    <th className="px-3 py-2">Required Fields</th>
-                    <th className="px-3 py-2">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.templates.length > 0 ? (
-                    data.templates.map((template) => (
-                      <tr key={template.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5">{template.name}</td>
-                        <td className="px-3 py-2.5 capitalize">{template.channel}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip
-                            label={template.isDefault ? "Default" : "Custom"}
-                            tone={template.isDefault ? "success" : "neutral"}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">{template.requiredFields.length}</td>
-                        <td className="px-3 py-2.5 text-slate-600">{new Date(template.updatedAt).toLocaleString()}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr className="border-t border-slate-200">
-                      <td className="px-3 py-6 text-sm text-slate-500" colSpan={5}>
-                        No mapping templates found for this category and channel.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="border-t border-slate-200 rounded-b-lg">
+              <div className="p-4">
+                <DataGrid
+                  columns={templateColumns}
+                  rows={data.templates}
+                  getRowKey={(template) => template.id}
+                  caption="Legacy template inventory"
+                  emptyState={
+                    <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      No mapping templates found for this category and channel.
+                    </div>
+                  }
+                />
+              </div>
             </div>
           </details>
         </div>
@@ -334,79 +472,108 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-800">
               View queued export attempts and recovery actions
             </summary>
-            <div className="overflow-x-auto border-t border-slate-200 rounded-b-lg">
-              <table className="w-full min-w-[960px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Job</th>
-                    <th className="px-3 py-2">Channel</th>
-                    <th className="px-3 py-2">Template</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Retry</th>
-                    <th className="px-3 py-2">Failure</th>
-                    <th className="px-3 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.exportJobs.length > 0 ? (
-                    data.exportJobs.map((job) => (
-                      <tr key={job.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{job.id}</td>
-                        <td className="px-3 py-2.5 capitalize">{job.channel}</td>
-                        <td className="px-3 py-2.5">{job.template?.name ?? "-"}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={translateExportStatus(job.status)} tone={lifecycleStatusTone(job.status)} />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {job.retryCount}/{job.maxRetries}
-                        </td>
-                        <td className="max-w-[260px] px-3 py-2.5 text-slate-600">{job.failureReason ?? "-"}</td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex flex-wrap gap-2">
-                            {data.canWrite ? (
-                              <form action={processExportJobAction}>
-                                <RoleHiddenInput role={data.actorRole} />
-                                <input type="hidden" name="jobId" value={job.id} />
-                                <input type="hidden" name="productId" value={data.productId} />
-                                <PendingSubmitButton
-                                  type="submit"
-                                  className="px-2.5 py-1.5 text-xs"
-                                  idleLabel="Process"
-                                  pendingLabel="Processing..."
-                                />
-                              </form>
-                            ) : null}
-                            {data.canWrite &&
-                            (job.status === "dead_letter" || job.status === "retrying" || job.status === "failed") ? (
-                              <form action={requeueExportJobAction}>
-                                <RoleHiddenInput role={data.actorRole} />
-                                <input type="hidden" name="jobId" value={job.id} />
-                                <input type="hidden" name="productId" value={data.productId} />
-                                <PendingSubmitButton
-                                  type="submit"
-                                  variant="secondary"
-                                  className="px-2.5 py-1.5 text-xs"
-                                  idleLabel="Requeue"
-                                  pendingLabel="Requeueing..."
-                                />
-                              </form>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr className="border-t border-slate-200">
-                      <td className="px-3 py-6 text-sm text-slate-500" colSpan={7}>
-                        No submission jobs created yet. Queue an export job to start channel processing.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="border-t border-slate-200 rounded-b-lg">
+              <div className="p-4">
+                <DataGrid
+                  columns={exportJobColumns}
+                  rows={data.exportJobs}
+                  getRowKey={(job) => job.id}
+                  caption="Queued export attempts and recovery"
+                  rowClassName="align-top"
+                  emptyState={
+                    <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      No submission jobs created yet. Queue an export job to start channel processing.
+                    </div>
+                  }
+                />
+              </div>
             </div>
           </details>
         </div>
+      </Card>
+
+      <Card hidden={data.activeTab !== "channels"}>
+        <CardTitle>Connector submission history</CardTitle>
+        <p className="mb-3 text-sm text-slate-600">
+          Connector submissions record the lifecycle of each publish attempt from queue to channel resolution. Use this table to confirm a product reached SUCCESS or to trace retry evidence.
+        </p>
+        <DataGrid
+          columns={
+            [
+              {
+                key: "id",
+                header: "Submission",
+                cellClassName: "font-mono text-xs text-slate-700",
+                render: (s: ConnectorSubmission) => s.id,
+              },
+              {
+                key: "connectorDisplayName",
+                header: "Connector",
+                render: (s: ConnectorSubmission) => s.connectorDisplayName,
+              },
+              {
+                key: "status",
+                header: "Status",
+                render: (s: ConnectorSubmission) => (
+                  <StatusChip label={String(s.status ?? "").toUpperCase()} tone={submissionStatusTone(s.status)} />
+                ),
+              },
+              {
+                key: "externalRef",
+                header: "Shopify / External Ref",
+                cellClassName: "font-mono text-xs text-slate-700",
+                render: (s: ConnectorSubmission) => {
+                  if (!s.externalRef) return <span className="text-slate-400">—</span>;
+                  const gidMatch = s.externalRef.match(/gid:\/\/shopify\/Product\/(\d+)/);
+                  if (gidMatch) {
+                    return (
+                      <span title={s.externalRef}>
+                        shopify:{gidMatch[1]}
+                      </span>
+                    );
+                  }
+                  return <span title={s.externalRef}>{s.externalRef.slice(0, 40)}</span>;
+                },
+              },
+              {
+                key: "attemptNumber",
+                header: "Attempt",
+                render: (s: ConnectorSubmission) => s.attemptNumber,
+              },
+              {
+                key: "submittedAt",
+                header: "Submitted",
+                cellClassName: "text-xs text-slate-600",
+                render: (s: ConnectorSubmission) => new Date(s.submittedAt).toLocaleString(),
+              },
+              {
+                key: "resolvedAt",
+                header: "Resolved",
+                cellClassName: "text-xs text-slate-600",
+                render: (s: ConnectorSubmission) =>
+                  s.resolvedAt ? new Date(s.resolvedAt).toLocaleString() : "—",
+              },
+            ] as Column<ConnectorSubmission>[]
+          }
+          rows={data.connectorSubmissions}
+          getRowKey={(s) => s.id}
+          caption="Connector submission history for this product"
+          emptyState={
+            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+              No connector submissions yet for this product. Queue a channel export to create the first submission.
+            </div>
+          }
+        />
+        {data.connectorSubmissions.length > 0 ? (
+          <div className="mt-3">
+            <Link
+              href="/channels/submissions"
+              className="text-sm font-medium text-blue-700 hover:underline"
+            >
+              View all submissions →
+            </Link>
+          </div>
+        ) : null}
       </Card>
     </>
   );

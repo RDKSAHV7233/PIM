@@ -27,12 +27,12 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Product`
 - Field names (technical): `productId`
 - Select names: `productId`
-- Placeholders: Information not available in TEJ PIM project.
-- Links: Information not available in TEJ PIM project.
+- Placeholders: Information not available in Vexa PIM project.
+- Links: Information not available in Vexa PIM project.
 
 ## Related components
 - `ui/button`, `ui/card`, `ui/select`

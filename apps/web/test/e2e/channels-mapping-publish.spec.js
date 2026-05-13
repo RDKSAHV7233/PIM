@@ -104,8 +104,8 @@ test("admin can create, validate, and publish a connector mapping version from t
     await loginViaUi(page, "admin");
     await page.goto(mappingsUrl, { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("heading", { name: "Mappings" })).toBeVisible();
-    await expect(page.getByText(product.title, { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mapping Workbench" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: new RegExp(product.title) })).toBeVisible();
     await expect(page.getByText("Publish Readiness (Hard Gate)")).toBeVisible();
 
     const targetCategoryControl = page.locator('[name="targetCategory"]').first();
@@ -168,8 +168,23 @@ test("admin can create, validate, and publish a connector mapping version from t
     });
     const validatedRow = page.locator("tbody tr", { hasText: versionId }).first();
     await expect(validatedRow).toBeVisible();
-    await validatedRow.locator("summary").filter({ hasText: "Publish" }).click();
-    const publishPanel = validatedRow.locator("details[open]").first();
+    const fallbackAcknowledgement = validatedRow.getByRole("checkbox", { name: /Acknowledge fallback/i });
+    if (await fallbackAcknowledgement.count()) {
+      await fallbackAcknowledgement.check();
+      await Promise.all([
+        page.waitForURL(/fallbackAcknowledged=true/),
+        validatedRow.getByRole("button", { name: "Save acknowledgement" }).click(),
+      ]);
+      await Promise.all([
+        page.waitForURL(/showHistory=1/),
+        page.getByRole("link", { name: "Open history" }).click(),
+      ]);
+    }
+
+    const readyToPublishRow = page.locator("tbody tr", { hasText: versionId }).first();
+    await expect(readyToPublishRow).toBeVisible();
+    await readyToPublishRow.locator("summary").filter({ hasText: "Publish" }).click();
+    const publishPanel = readyToPublishRow.locator("details[open]").first();
     await publishPanel.getByLabel("Step-up re-authentication").fill(STEP_UP_PASSWORD);
     await submitContainingForm(publishPanel.getByRole("button", { name: "Publish" }));
 

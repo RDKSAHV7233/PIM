@@ -4,7 +4,7 @@ Purpose:
 Describe system architecture.
 
 Scope:
-Validated high-level architecture, module architecture, data flow, caching, security, and performance controls present in TEJ PIM.
+Validated high-level architecture, module architecture, data flow, caching, security, and performance controls present in Vexa PIM.
 
 Content:
 High-Level Architecture:
@@ -68,8 +68,8 @@ Performance Model:
 - Connector submission idempotency uniquely scoped by tenant+installation+idempotency key.
 
 Search and indexing service:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 
 Formal SLO/SLA definition:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

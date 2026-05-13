@@ -60,7 +60,7 @@
 | File | Diff | Bucket | Evidence | Proposed action |
 |---|---:|---|---|---|
 | `AGENTS.md` | `untracked` | `local-workflow-governance` | Repo-local guardrails file is present and actively used in current workflow; keeping it untracked would make the guardrails non-reproducible for future repo-local sessions. | `commit-now` |
-| `unused/pim1-files-20260306_145759/` | `untracked` | `generated/noise` | Already under `unused/`; contains archive snapshot material (`.runlogs`, `docs`, `tools`, `.TEJ PIM-web.log`) rather than active runtime paths. | `archive-to-unused` |
+| `unused/pim1-files-20260306_145759/` | `untracked` | `generated/noise` | Already under `unused/`; contains archive snapshot material (`.runlogs`, `docs`, `tools`, `.Vexa PIM-web.log`) rather than active runtime paths. | `archive-to-unused` |
 | `unused/temp/` | `untracked` | `generated/noise` | Already under `unused/`; contains temp runtime files and restore backups, including `ui_restore_backup_20260306_103845` and temp staging scripts. | `archive-to-unused` |
 
 ## Summary by Proposed Action

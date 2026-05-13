@@ -25,7 +25,7 @@ function withRequestStatus(basePath: string, status: string) {
 }
 
 function withStatus(basePath: string, key: string, status: string) {
-  const url = new URL(basePath, "https://local.tej");
+  const url = new URL(basePath, "https://local.vexa");
   url.searchParams.set(key, status);
   const query = url.searchParams.toString();
   return `${url.pathname}${query ? `?${query}` : ""}`;

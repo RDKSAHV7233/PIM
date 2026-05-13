@@ -7,6 +7,8 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid } from "@/components/ui/data-grid";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 
@@ -14,16 +16,6 @@ export const dynamic = "force-dynamic";
 
 interface ApiKeysPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
-}
-
-function StatusBanner({ tone, message }: { tone: "success" | "error" | "info"; message: string }) {
-  const classes =
-    tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : tone === "error"
-        ? "border-rose-200 bg-rose-50 text-rose-800"
-        : "border-sky-200 bg-sky-50 text-sky-800";
-  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
 }
 
 function formatTimestamp(value: string | null) {
@@ -39,6 +31,48 @@ function resolveStatus(key: ApiAccessKey) {
   }
   return { label: "active", tone: "success" as const };
 }
+
+function formatScopes(scopes: ApiAccessKey["scopes"]) {
+  if (scopes.length === 0) {
+    return "No scopes";
+  }
+  return scopes.join(", ");
+}
+
+const API_SCOPE_LEGEND = [
+  {
+    scope: "catalog:read",
+    description: "Read product, category, and attribute data without changing catalog records.",
+  },
+  {
+    scope: "catalog:write",
+    description: "Create or update catalog content such as products, taxonomy, and product fields.",
+  },
+  {
+    scope: "channels:read",
+    description: "Read channel mappings, submissions, and connection health for automation monitoring.",
+  },
+  {
+    scope: "channels:write",
+    description: "Trigger or manage channel publishing workflows and outbound sync activity.",
+  },
+  {
+    scope: "media:read",
+    description: "Inspect media assets, validation results, and governance settings.",
+  },
+  {
+    scope: "media:write",
+    description: "Upload media assets and update media governance for products and variants.",
+  },
+  {
+    scope: "quality:read",
+    description: "Read issue inbox, approvals, and quality health signals for integrations.",
+  },
+  {
+    scope: "quality:write",
+    description: "Resolve warnings or perform quality workflow actions through API automation.",
+  },
+] as const;
 
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
@@ -62,7 +96,7 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
         />
 
         {status === "api-key-revoked" ? (
-          <StatusBanner tone="success" message="API key revoked." />
+          <InlineAlert tone="success" message="API key revoked." />
         ) : null}
 
         {role === "admin" ? (
@@ -77,63 +111,136 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
         )}
 
         <Card>
-          <CardTitle>Issued API Keys</CardTitle>
-          {keys.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No API keys issued for this tenant yet.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Label</th>
-                    <th className="py-2">Role</th>
-                    <th className="py-2">Prefix</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Last used</th>
-                    <th className="py-2">Expires</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keys.map((key) => {
-                    const state = resolveStatus(key);
-                    return (
-                      <tr key={key.id} className="border-t border-slate-200 align-top">
-                        <td className="py-2 font-medium text-slate-900">
-                          <div>{key.label}</div>
-                          <div className="text-xs text-slate-500">Created by {key.createdBy || "system"}</div>
-                        </td>
-                        <td className="py-2">
-                          <StatusChip label={key.role} tone={key.role === "viewer" ? "neutral" : "info"} />
-                        </td>
-                        <td className="py-2 font-mono text-xs text-slate-600">{key.keyPrefix}</td>
-                        <td className="py-2">
-                          <StatusChip label={state.label} tone={state.tone} />
-                        </td>
-                        <td className="py-2 text-xs text-slate-600">{formatTimestamp(key.lastUsedAt)}</td>
-                        <td className="py-2 text-xs text-slate-600">{formatTimestamp(key.expiresAt)}</td>
-                        <td className="py-2">
-                          {role === "admin" && !key.revokedAt ? (
-                            <form action={revokeApiAccessKeyAction}>
-                              <input type="hidden" name="keyId" value={key.id} />
-                              <button
-                                type="submit"
-                                className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700"
-                              >
-                                Revoke
-                              </button>
-                            </form>
-                          ) : (
-                            <span className="text-xs text-slate-500">{key.revokedAt ? "Revoked" : "Read-only"}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <CardTitle>Scope legend</CardTitle>
+          <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-800">
+              Review what each API scope allows
+            </summary>
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-slate-600">
+                Use the scope chips below as a plain-English guide before creating or reviewing machine credentials.
+              </p>
+              <div className="space-y-2">
+                {API_SCOPE_LEGEND.map((entry) => (
+                  <div key={entry.scope} className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+                    <StatusChip label={entry.scope} tone="info" />
+                    <p className="text-sm text-slate-600">{entry.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          </details>
+        </Card>
+
+        <Card>
+          <CardTitle>Machine credential lifecycle</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">1. Scope access tightly</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Start with the narrowest role and scope set needed for the integration instead of issuing broad write access by default.
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">2. Track usage and expiry</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Review last-used and expiry dates regularly so stale credentials do not remain active longer than the integration needs.
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">3. Revoke deliberately</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Revoke keys when ownership changes, automation is retired, or you need to contain a delivery or credential incident quickly.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Pair API keys with webhook monitoring so machine access and outbound delivery behavior stay auditable together.
+          </p>
+        </Card>
+
+        <Card>
+          <CardTitle>Issued API Keys</CardTitle>
+          <div className="mt-3">
+            <DataGrid
+              columns={[
+                {
+                  key: "label",
+                  header: "Label",
+                  cellClassName: "font-medium text-slate-900",
+                  render: (key) => (
+                    <>
+                      <div>{key.label}</div>
+                      <div className="text-xs text-slate-500">Created by {key.createdBy || "system"}</div>
+                    </>
+                  ),
+                },
+                {
+                  key: "role",
+                  header: "Role",
+                  render: (key) => (
+                    <StatusChip label={key.role} tone={key.role === "viewer" ? "neutral" : "info"} />
+                  ),
+                },
+                {
+                  key: "scopes",
+                  header: "Scopes",
+                  cellClassName: "text-xs text-slate-600",
+                  render: (key) => formatScopes(key.scopes),
+                },
+                {
+                  key: "keyPrefix",
+                  header: "Prefix",
+                  cellClassName: "font-mono text-xs text-slate-600",
+                },
+                {
+                  key: "status",
+                  header: "Status",
+                  render: (key) => {
+                    const state = resolveStatus(key);
+                    return <StatusChip label={state.label} tone={state.tone} />;
+                  },
+                },
+                {
+                  key: "lastUsedAt",
+                  header: "Last used",
+                  cellClassName: "text-xs text-slate-600",
+                  render: (key) => formatTimestamp(key.lastUsedAt),
+                },
+                {
+                  key: "expiresAt",
+                  header: "Expires",
+                  cellClassName: "text-xs text-slate-600",
+                  render: (key) => formatTimestamp(key.expiresAt),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (key) =>
+                    role === "admin" && !key.revokedAt ? (
+                      <form action={revokeApiAccessKeyAction}>
+                        <input type="hidden" name="keyId" value={key.id} />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700"
+                        >
+                          Revoke
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-slate-500">{key.revokedAt ? "Revoked" : "Read-only"}</span>
+                    ),
+                },
+              ]}
+              rows={keys}
+              getRowKey={(key) => key.id}
+              rowClassName="align-top"
+              caption="Issued API Keys"
+              emptyState={
+                <p className="text-sm text-slate-600">No API keys issued for this tenant yet.</p>
+              }
+            />
+          </div>
         </Card>
 
         <div className="text-sm text-slate-600">

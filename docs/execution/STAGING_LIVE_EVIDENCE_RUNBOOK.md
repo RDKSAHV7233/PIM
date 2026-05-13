@@ -63,7 +63,7 @@ node scripts/validate-deploy-staging-workflow.cjs
 
 ## Trigger the live staging workflow
 
-Run from the TEJ PIM repo root:
+Run from the Vexa PIM repo root:
 
 ```powershell
 gh workflow run deploy-staging.yml --ref main
@@ -148,7 +148,7 @@ node scripts/validate-live-staging-evidence.cjs --artifactDir $artifactDir --env
 
 ## Optional public-signup rollout check
 
-When testing the TEJ PIM self-serve signup rollout, use the focused non-destructive checker below.
+When testing the Vexa PIM self-serve signup rollout, use the focused non-destructive checker below.
 
 It validates:
 
@@ -175,7 +175,7 @@ When signup is enabled, set all three runtime flags to `true`. The web app uses 
 Disabled-state validation:
 
 ```powershell
-$env:STAGING_BASE_URL="https://api-staging-4faf.up.railway.app"
+$env:STAGING_BASE_URL="https://pim1api-staging.up.railway.app"
 $env:STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED="false"
 $env:STAGING_EXPECTED_ENV="staging"
 node scripts/staging-public-signup-check.cjs
@@ -184,8 +184,8 @@ node scripts/staging-public-signup-check.cjs
 Enabled-state validation:
 
 ```powershell
-$env:STAGING_BASE_URL="https://api-staging-4faf.up.railway.app"
-$env:STAGING_WEB_URL="https://<railway-web-service>.up.railway.app"
+$env:STAGING_BASE_URL="https://pim1api-staging.up.railway.app"
+$env:STAGING_WEB_URL="https://pim1web-staging.up.railway.app"
 $env:STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED="true"
 $env:STAGING_EXPECTED_ENV="staging"
 node scripts/staging-public-signup-check.cjs
@@ -202,6 +202,6 @@ Expected enabled-state validations:
 - signup availability endpoint returns `200`
 - signup create endpoint rejects missing terms with `TERMS_ACCEPTANCE_REQUIRED`
 - signup verify endpoint rejects bogus token with `SIGNUP_VERIFICATION_TOKEN_INVALID`
-- `/signup` renders the `Create your TEJ PIM workspace` heading when `STAGING_WEB_URL` is provided
+- `/signup` renders the `Create your Vexa PIM workspace` heading when `STAGING_WEB_URL` is provided
 
 This check is intentionally safe to run before full live-email signup verification because it does not create a real workspace or consume a real verification token.

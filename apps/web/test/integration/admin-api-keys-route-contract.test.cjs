@@ -58,6 +58,14 @@ function run() {
     "Admin API keys must show read-only/revoked fallback actions and link operators into the webhook surface.",
   );
   assert(
+    source.includes("Machine credential lifecycle") &&
+      source.includes("Scope access tightly") &&
+      source.includes("Track usage and expiry") &&
+      source.includes("Revoke deliberately") &&
+      source.includes("Pair API keys with webhook monitoring so machine access and outbound delivery behavior stay auditable together."),
+    "Admin API keys must guide operators through a safe machine-credential lifecycle, not just expose raw key rows.",
+  );
+  assert(
     source.includes('redirect(buildLoginRedirect("/admin/api-keys", error));'),
     "Admin API keys must redirect expired or forbidden sessions through the shared login helper.",
   );
@@ -74,6 +82,7 @@ function run() {
           "admin_api_keys_route_derives_key_status_from_live_fields",
           "admin_api_keys_route_surfaces_empty_state_and_timestamps",
           "admin_api_keys_route_shows_read_only_fallbacks_and_links_webhooks",
+          "admin_api_keys_route_guides_machine_credential_lifecycle",
           "admin_api_keys_route_redirects_auth_failures",
         ],
         checkedAt: new Date().toISOString(),

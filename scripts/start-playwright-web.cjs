@@ -68,12 +68,12 @@ const env = {
   ...process.env,
   PORT: process.env.PLAYWRIGHT_WEB_PORT || "3001",
   PIM_API_BASE_URL: process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1",
-  JWT_SECRET: process.env.JWT_SECRET || fileEnv.JWT_SECRET || "tej-pim-local-dev-jwt-secret-minimum-length-32",
+  JWT_SECRET: process.env.JWT_SECRET || fileEnv.JWT_SECRET || "vexa-pim-local-dev-jwt-secret-minimum-length-32",
   JWT_EXPIRY: process.env.JWT_EXPIRY || fileEnv.JWT_EXPIRY || "4h",
   CREDENTIAL_ENCRYPTION_KEY_V1:
     process.env.CREDENTIAL_ENCRYPTION_KEY_V1 ||
     fileEnv.CREDENTIAL_ENCRYPTION_KEY_V1 ||
-    "tej-pim-local-encryption-key-v1-minimum-32",
+    "vexa-pim-local-encryption-key-v1-minimum-32",
   CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION:
     process.env.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION ||
     fileEnv.CREDENTIAL_ENCRYPTION_KEY_CURRENT_VERSION ||

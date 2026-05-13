@@ -434,7 +434,7 @@ Success:
 
 Note:
 
-Two local tests required `PIM_AUTH_PASSWORD=tej-pim-demo-password` because this machine has a local auth password override. That is local environment drift, not product behavior.
+Two local tests required `PIM_AUTH_PASSWORD=vexa-pim-demo-password` because this machine has a local auth password override. That is local environment drift, not product behavior.
 
 ### Required validation for Phase 0
 

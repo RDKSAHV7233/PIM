@@ -7,7 +7,7 @@ import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
-import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
+import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
 import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
@@ -87,6 +87,19 @@ export class CatalogController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.getProduct(id, this.resolveActor(request));
+  }
+
+  @Get("products/:id/revisions")
+  @FoundationRoleAccess("category_manager", "vendor")
+  @ApiClientScopes("catalog.read")
+  @AuthenticatedReadRoute({ classification: "scope_filtered", responseHandling: "none", apiClientPolicy: "allowed_with_api_scope" })
+  @ApiOperation({ summary: "Get product revision history" })
+  @ApiResponse({ status: 200, description: "Product revision history fetched" })
+  getProductRevisions(
+    @Param("id") id: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.getProductRevisions(id, this.resolveActor(request));
   }
 
   @Post("products")

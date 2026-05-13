@@ -37,7 +37,7 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Product`, `Variant ID`, `Image File`, `Width`, `Height`, `CSV Content`
 - Field names (technical): `productId`, `variantId`, `assetId`, `csvContent`, `sourceFile`, `width`, `height`
 - Select names: `productId`, `channel`

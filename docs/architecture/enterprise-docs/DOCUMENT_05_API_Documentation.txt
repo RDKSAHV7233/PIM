@@ -1,7 +1,7 @@
 Document Name: API Documentation
 
 Purpose:
-Describe APIs available in TEJ PIM.
+Describe APIs available in Vexa PIM.
 
 Scope:
 Validated API surface from docs/openapi.yaml and controller implementations under apps/api/src.
@@ -156,4 +156,4 @@ Pagination:
 Source: apps/api/src/common/pagination/*
 
 Webhooks/Event Receiver Endpoint:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.

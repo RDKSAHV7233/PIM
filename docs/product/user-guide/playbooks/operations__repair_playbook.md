@@ -16,11 +16,11 @@
 5. Confirm success by checking updated status, table rows, and/or history sections.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
-- Visible labels: Information not available in TEJ PIM project.
-- Field names (technical): Information not available in TEJ PIM project.
-- Select names: Information not available in TEJ PIM project.
-- Placeholders: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
+- Visible labels: Information not available in Vexa PIM project.
+- Field names (technical): Information not available in Vexa PIM project.
+- Select names: Information not available in Vexa PIM project.
+- Placeholders: Information not available in Vexa PIM project.
 - Links: `/operations/imports`, `/operations/jobs`
 
 ## Related components

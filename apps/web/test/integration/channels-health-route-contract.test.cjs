@@ -41,6 +41,15 @@ function run() {
     "Channels health must surface the core readiness and blocking KPI cards.",
   );
   assert(
+    source.includes("Health triage guide") &&
+      source.includes("Fix content blockers first") &&
+      source.includes("Check mappings next") &&
+      source.includes("Use Jobs for delivery failures") &&
+      source.includes("incomplete product data prevents publishable payloads from forming at all.") &&
+      source.includes("connector or downstream system still rejected the submission or needs a retry."),
+    "Channels health must guide operators toward the right follow-up workspace for content, mapping, and delivery problems.",
+  );
+  assert(
     source.includes("Per-channel connector breakdown is limited to editor and admin roles.") &&
       source.includes("The aggregate readiness and blocking") &&
       source.includes("totals above remain available for read-only quality review.") &&
@@ -71,6 +80,7 @@ function run() {
           "channels_health_route_fetches_dashboard_health",
           "channels_health_route_derives_kpis_from_live_snapshot",
           "channels_health_route_surfaces_core_readiness_cards",
+          "channels_health_route_guides_triage_follow_up",
           "channels_health_route_handles_empty_state_honestly",
           "channels_health_route_derives_per_channel_health_labels",
           "channels_health_route_links_and_redirects_auth_failures",

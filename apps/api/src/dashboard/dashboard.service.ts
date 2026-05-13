@@ -126,7 +126,7 @@ export class DashboardService implements OnModuleDestroy {
   private redisRetryAfterMs = 0;
   private readonly catalogHealthRefreshes = new Map<string, Promise<void>>();
   private readonly dashboardHealthRefreshes = new Map<string, Promise<void>>();
-  private readonly allowInMemoryFallbackCache = !isProductionAppEnv();
+  private readonly allowInMemoryFallbackCache = true;
   private readonly fallbackCache = new Map<
     string,
     { value: DashboardCachedValue; expiresAt: number }

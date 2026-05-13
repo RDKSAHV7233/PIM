@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev -p 3000",
-    "clean": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true });\"",
+    "clean": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });\"",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit -p tsconfig.lint.json",
     "test": "node test/integration/run-all.cjs",
     "test:integration": "node test/integration/run-all.cjs"
   },

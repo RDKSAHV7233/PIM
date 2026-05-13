@@ -88,11 +88,11 @@ Failure handling:
 - If server returns error code/message, correct inputs/permissions and retry.
 
 ## Input and control reference
-- Buttons: Information not available in TEJ PIM project.
+- Buttons: Information not available in Vexa PIM project.
 - Visible labels: `Product Title`, `Brand`, `Description`, `HSN Code`, `GST Rate`, `Status`, `Additional Attributes`, `Channel`, `Mapping`, `Max Retries`, `Fallback confirmation`, `Template Name`, `Required Fields`, `Field Mapping`, `Default Template`, `SKU Code`, `Inventory Quantity`, `MRP`, `Selling Price`, `Variant Attributes`
 - Field names (technical): `productId`, `categoryId`, `expectedVersion`, `attributesBase`, `jobId`, `description`, `requiredFields`, `fieldMap`, `attributes`, `title`, `brand`, `hsnCode`, `gstRate`, `maxRetries`, `name`, `skuCode`, `inventoryQty`, `mrp`, `sellingPrice`
 - Select names: `status`, `channel`, `templateId`, `fallbackAcknowledged`, `isDefault`
-- Placeholders: Information not available in TEJ PIM project.
+- Placeholders: Information not available in Vexa PIM project.
 - Links: `/dashboard`, `/catalog/products`, `/channels/health`
 
 ## Related components
@@ -101,4 +101,4 @@ Failure handling:
 ## Validation source
 - Derived from route source + first-level component source imports.
 - No behavior is added beyond validated code references.
-- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current TEJ PIM UX.
+- Connector workflow note: `/channels/mappings` is the canonical lifecycle mapping route in the current Vexa PIM UX.

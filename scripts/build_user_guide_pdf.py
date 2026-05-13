@@ -6,7 +6,7 @@ ROOT = Path(r"C:\Users\Om Computers\PIM1")
 UG = ROOT / "docs" / "product" / "user-guide"
 PAGES = UG / "pages"
 PLAYBOOKS = UG / "playbooks"
-OUT_HTML = UG / "TEJ_PIM_User_Guide_Navigation.html"
+OUT_HTML = UG / "VEXA_PIM_User_Guide_Navigation.html"
 
 files = [
     UG / "README.md",

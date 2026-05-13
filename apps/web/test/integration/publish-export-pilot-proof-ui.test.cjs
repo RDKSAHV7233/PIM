@@ -36,14 +36,18 @@ function assert(condition, message) {
 }
 
 function run() {
+  const pageSource = fs.readFileSync(
+    path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx"),
+    "utf8",
+  );
   const channelsSource = fs.readFileSync(CHANNELS_TAB, "utf8");
   const deferredSource = fs.readFileSync(DEFERRED_SECTION, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
   const submissionsSource = fs.readFileSync(SUBMISSIONS_PAGE, "utf8");
 
   assert(
-    deferredSource.includes("evaluateConnectorPublishReadiness(") &&
-      deferredSource.includes("fallbackAcknowledged: false") &&
+    pageSource.includes("evaluateConnectorPublishReadiness(") &&
+      pageSource.includes("fallbackAcknowledged: false") &&
       deferredSource.includes('connector.status === "ACTIVE"') &&
       deferredSource.includes('connector.capabilities.some((capability) => capability === "PUBLISH")') &&
       deferredSource.includes("const publishableChannels = channels.filter"),
@@ -52,6 +56,8 @@ function run() {
   assert(
     channelsSource.includes("<CardTitle>Channel readiness and queued exports</CardTitle>") &&
       channelsSource.includes("Queue readiness") &&
+      channelsSource.includes("Export confirmation") &&
+      channelsSource.includes("Latest export result summary") &&
       channelsSource.includes("Ready to queue export") &&
       channelsSource.includes("Blocked until fixes are complete") &&
       channelsSource.includes("No preflight blockers for queued export."),
@@ -88,7 +94,7 @@ function run() {
       channelsSource.includes("job.failureReason") &&
       channelsSource.includes('idleLabel="Process"') &&
       channelsSource.includes('idleLabel="Requeue"'),
-    "Channels tab must expose status, failure state, process, and requeue recovery for queued export attempts.",
+    "Channels tab must expose status, failure state, process, requeue recovery, and a latest export result summary for queued export attempts.",
   );
   assert(
     submissionsSource.includes("StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)}") &&

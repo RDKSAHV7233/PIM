@@ -48,6 +48,14 @@ function run() {
     "Admin users must derive top-line access metrics from live billing, connector permission, and delegated scope data.",
   );
   assert(
+    source.includes("Access Review Checklist") &&
+      source.includes("Confirm ownership") &&
+      source.includes("Constrain exceptions") &&
+      source.includes("Retire stale access") &&
+      source.includes("Run this review before major catalog launches, connector cutovers, or buyer-facing governance walkthroughs."),
+    "Admin users must guide admins through a repeatable access review workflow, not just expose raw user and scope controls.",
+  );
+  assert(
     source.includes("<CardTitle>Workspace Access Management</CardTitle>") &&
       source.includes("Admin role is required to invite users, change roles, or change account access state.") &&
       source.includes("workspace users, the role matrix, and connector overrides below."),
@@ -138,6 +146,7 @@ function run() {
           "admin_users_route_normalizes_status_and_invite_query_state",
           "admin_users_route_fetches_usage_permissions_and_users_in_parallel",
           "admin_users_route_derives_access_kpis_from_live_data",
+          "admin_users_route_guides_access_review_workflow",
           "admin_users_route_explains_read_only_access_honestly",
           "admin_users_route_keeps_invite_flow_and_roles_explicit",
           "admin_users_route_surfaces_user_lifecycle_status_banners",

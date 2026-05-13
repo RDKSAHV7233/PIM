@@ -10,6 +10,8 @@ import {
   updateWorkspaceUserRoleAction,
 } from "@/app/admin/users/actions";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid } from "@/components/ui/data-grid";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -85,14 +87,6 @@ function toneForCapability(value: string) {
   return "neutral" as const;
 }
 
-function StatusBanner({ tone, message }: { tone: "success" | "error"; message: string }) {
-  const classes =
-    tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : "border-rose-200 bg-rose-50 text-rose-800";
-  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
-}
-
 function getUserStatus(user: { isActive: boolean; isLocked: boolean }) {
   if (!user.isActive) {
     return { label: "inactive", tone: "neutral" as const };
@@ -114,6 +108,14 @@ function formatDateTime(value: string | null) {
   return parsed.toLocaleString();
 }
 
+function resolveInviteFieldErrors(message: string) {
+  const normalized = message.toLowerCase();
+  return {
+    userId: normalized.includes("user id"),
+    role: normalized.includes("role"),
+  };
+}
+
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
@@ -124,6 +126,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const errorMessage = String(query.message ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
   const canManageUsers = actorRole === "admin";
+  const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
 
   try {
     const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([
@@ -137,6 +140,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       acc[item.principalType] = (acc[item.principalType] ?? 0) + 1;
       return acc;
     }, {});
+    const activeUsers = workspaceUsers.filter((user) => user.isActive).length;
+    const lockedUsers = workspaceUsers.filter((user) => user.isLocked && user.isActive).length;
+    const adminUsers = workspaceUsers.filter((user) => user.role === "admin" && user.isActive).length;
 
     return (
       <div className="space-y-5">
@@ -169,15 +175,15 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         />
 
         {status === "user-error" ? (
-          <StatusBanner tone="error" message={errorMessage || "Unable to update workspace user."} />
+          <InlineAlert tone="error" message={errorMessage || "Unable to update workspace user."} />
         ) : null}
-        {status === "user-created" ? <StatusBanner tone="success" message="Workspace user invited." /> : null}
-        {status === "role-updated" ? <StatusBanner tone="success" message="Workspace user role updated." /> : null}
-        {status === "user-locked" ? <StatusBanner tone="success" message="Workspace user locked." /> : null}
-        {status === "user-unlocked" ? <StatusBanner tone="success" message="Workspace user unlocked." /> : null}
-        {status === "user-deactivated" ? <StatusBanner tone="success" message="Workspace user deactivated." /> : null}
-        {status === "scope-created" ? <StatusBanner tone="success" message="Delegated access scope assigned." /> : null}
-        {status === "scope-deleted" ? <StatusBanner tone="success" message="Delegated access scope removed." /> : null}
+        {status === "user-created" ? <InlineAlert tone="success" message="Workspace user invited." /> : null}
+        {status === "role-updated" ? <InlineAlert tone="success" message="Workspace user role updated." /> : null}
+        {status === "user-locked" ? <InlineAlert tone="success" message="Workspace user locked." /> : null}
+        {status === "user-unlocked" ? <InlineAlert tone="success" message="Workspace user unlocked." /> : null}
+        {status === "user-deactivated" ? <InlineAlert tone="success" message="Workspace user deactivated." /> : null}
+        {status === "scope-created" ? <InlineAlert tone="success" message="Delegated access scope assigned." /> : null}
+        {status === "scope-deleted" ? <InlineAlert tone="success" message="Delegated access scope removed." /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
@@ -190,6 +196,64 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           />
           <KpiCard label="Delegated Scopes" value={accessScopeAssignments.length} tone="info" />
         </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <Card>
+            <CardTitle>Governance Snapshot</CardTitle>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active Users</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{activeUsers}</p>
+                <p className="mt-1 text-sm text-slate-600">Operators who can still sign in and work in this tenant.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Locked Users</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{lockedUsers}</p>
+                <p className="mt-1 text-sm text-slate-600">Temporary access holds that still need follow-up or unlock decisions.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin Coverage</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{adminUsers}</p>
+                <p className="mt-1 text-sm text-slate-600">Keep at least two active admins so governance never depends on one person.</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <CardTitle>Operator Model</CardTitle>
+            <div className="space-y-2 text-sm text-slate-600">
+              <p>Use roles for broad platform permissions and delegated scopes for precise business boundaries.</p>
+              <p>Connector overrides should stay exceptional so the default role model remains understandable during audits and buyer reviews.</p>
+            </div>
+          </Card>
+        </section>
+
+        <Card>
+          <CardTitle>Access Review Checklist</CardTitle>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Confirm ownership</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Keep at least two active admins and verify that each editor or reviewer still owns a real operating workflow.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Constrain exceptions</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Use delegated scopes and connector overrides only where business boundaries require them, then review those exceptions regularly.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">Retire stale access</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Lock or deactivate accounts when staffing changes, temporary access ends, or credentials no longer map to a live operator.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Run this review before major catalog launches, connector cutovers, or buyer-facing governance walkthroughs.
+          </p>
+        </Card>
 
         {!canManageUsers ? (
           <Card>
@@ -219,11 +283,11 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   className="rounded-md border border-slate-300 px-3 py-2"
                   required
                   aria-required="true"
-                  aria-invalid={status === "user-error" ? "true" : undefined}
-                  aria-describedby={status === "user-error" ? "admin-user-id-error" : undefined}
+                  aria-invalid={status === "user-error" && inviteFieldErrors.userId ? "true" : undefined}
+                  aria-describedby={status === "user-error" && inviteFieldErrors.userId ? "workspace-user-id-error" : undefined}
                 />
-                {status === "user-error" ? (
-                  <span id="admin-user-id-error" className="text-xs text-rose-600">{errorMessage || "Unable to update workspace user."}</span>
+                {status === "user-error" && inviteFieldErrors.userId ? (
+                  <p id="workspace-user-id-error" className="text-xs text-red-700">{errorMessage}</p>
                 ) : null}
               </label>
               <label className="grid gap-1 text-sm">
@@ -234,13 +298,16 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   defaultValue="viewer"
                   className="rounded-md border border-slate-300 px-3 py-2"
                   aria-required="true"
-                  aria-invalid={status === "user-error" ? "true" : undefined}
-                  aria-describedby={status === "user-error" ? "admin-user-id-error" : undefined}
+                  aria-invalid={status === "user-error" && inviteFieldErrors.role ? "true" : undefined}
+                  aria-describedby={status === "user-error" && inviteFieldErrors.role ? "workspace-user-role-error" : undefined}
                 >
                   <option value="editor">Editor</option>
                   <option value="reviewer">Reviewer</option>
                   <option value="viewer">Viewer</option>
                 </select>
+                {status === "user-error" && inviteFieldErrors.role ? (
+                  <p id="workspace-user-role-error" className="text-xs text-red-700">{errorMessage}</p>
+                ) : null}
               </label>
               <button
                 type="submit"
@@ -254,119 +321,131 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
         <Card id="workspace-users" className="scroll-mt-24">
           <CardTitle>Workspace Users</CardTitle>
-          {workspaceUsers.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">No users yet. Invite the first user above.</p>
-          ) : (
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">User ID</th>
-                    <th className="py-2">Role</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">MFA</th>
-                    <th className="py-2">Locked Until</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workspaceUsers.map((user) => {
-                    const statusChip = getUserStatus(user);
+          <p className="mt-2 text-sm text-slate-600">
+            Review tenant access, role ownership, and account state in one queue before making lifecycle changes.
+          </p>
+          <div className="mt-2">
+            <DataGrid
+              columns={[
+                {
+                  key: "userId",
+                  header: "User ID",
+                  render: (user) => (
+                    <div className="space-y-1">
+                      <p className="font-medium text-slate-900">{user.userId}</p>
+                      <p className="text-xs text-slate-500">Created {formatDateTime(user.createdAt)}</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: "role",
+                  header: "Role",
+                  render: (user) => {
                     const isSelf = user.userId === currentUserId;
-
-                    return (
-                      <tr key={user.id} className="border-t border-slate-200">
-                        <td className="py-2">
-                          <div className="space-y-1">
-                            <p className="font-medium text-slate-900">{user.userId}</p>
-                            <p className="text-xs text-slate-500">Created {formatDateTime(user.createdAt)}</p>
-                          </div>
-                        </td>
-                        <td className="py-2">
-                          {canManageUsers ? (
-                            <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
-                              <input type="hidden" name="userId" value={user.userId} />
-                              <select
-                                name="role"
-                                defaultValue={user.role}
-                                className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-                                disabled={isSelf}
-                              >
-                                <option value="admin">Admin</option>
-                                <option value="editor">Editor</option>
-                                <option value="reviewer">Reviewer</option>
-                                <option value="viewer">Viewer</option>
-                              </select>
-                              <button
-                                type="submit"
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                disabled={isSelf}
-                              >
-                                Save
-                              </button>
-                            </form>
-                          ) : (
-                            <StatusChip label={user.role} tone="info" />
-                          )}
-                        </td>
-                        <td className="py-2">
-                          <StatusChip label={statusChip.label} tone={statusChip.tone} />
-                        </td>
-                        <td className="py-2">
-                          <StatusChip
-                            label={user.mfaEnrolled ? "enrolled" : "none"}
-                            tone={user.mfaEnrolled ? "success" : "neutral"}
-                          />
-                        </td>
-                        <td className="py-2 text-slate-600">{formatDateTime(user.lockedUntil)}</td>
-                        <td className="py-2">
-                          {canManageUsers ? (
-                            <div className="flex flex-wrap gap-2">
-                              {user.isLocked ? (
-                                <form action={unlockWorkspaceUserAction}>
-                                  <input type="hidden" name="userId" value={user.userId} />
-                                  <button
-                                    type="submit"
-                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Unlock
-                                  </button>
-                                </form>
-                              ) : (
-                                <form action={lockWorkspaceUserAction}>
-                                  <input type="hidden" name="userId" value={user.userId} />
-                                  <input type="hidden" name="durationMinutes" value="60" />
-                                  <button
-                                    type="submit"
-                                    className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                    disabled={isSelf || !user.isActive}
-                                  >
-                                    Lock 60m
-                                  </button>
-                                </form>
-                              )}
-                              <form action={deactivateWorkspaceUserAction}>
-                                <input type="hidden" name="userId" value={user.userId} />
-                                <button
-                                  type="submit"
-                                  className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                  disabled={isSelf || !user.isActive}
-                                >
-                                  Deactivate
-                                </button>
-                              </form>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-500">Read-only</span>
-                          )}
-                        </td>
-                      </tr>
+                    return canManageUsers ? (
+                      <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
+                        <input type="hidden" name="userId" value={user.userId} />
+                        <select
+                          name="role"
+                          defaultValue={user.role}
+                          className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                          disabled={isSelf}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="editor">Editor</option>
+                          <option value="reviewer">Reviewer</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                        <button
+                          type="submit"
+                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isSelf}
+                        >
+                          Save
+                        </button>
+                      </form>
+                    ) : (
+                      <StatusChip label={user.role} tone="info" />
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  },
+                },
+                {
+                  key: "status",
+                  header: "Status",
+                  render: (user) => {
+                    const statusChip = getUserStatus(user);
+                    return <StatusChip label={statusChip.label} tone={statusChip.tone} />;
+                  },
+                },
+                {
+                  key: "mfa",
+                  header: "MFA",
+                  render: (user) => (
+                    <StatusChip
+                      label={user.mfaEnrolled ? "enrolled" : "none"}
+                      tone={user.mfaEnrolled ? "success" : "neutral"}
+                    />
+                  ),
+                },
+                {
+                  key: "lockedUntil",
+                  header: "Locked Until",
+                  cellClassName: "text-slate-600",
+                  render: (user) => formatDateTime(user.lockedUntil),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (user) => {
+                    const isSelf = user.userId === currentUserId;
+                    return canManageUsers ? (
+                      <div className="flex flex-wrap gap-2">
+                        {user.isLocked ? (
+                          <form action={unlockWorkspaceUserAction}>
+                            <input type="hidden" name="userId" value={user.userId} />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              Unlock
+                            </button>
+                          </form>
+                        ) : (
+                          <form action={lockWorkspaceUserAction}>
+                            <input type="hidden" name="userId" value={user.userId} />
+                            <input type="hidden" name="durationMinutes" value="60" />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={isSelf || !user.isActive}
+                            >
+                              Lock 60m
+                            </button>
+                          </form>
+                        )}
+                        <form action={deactivateWorkspaceUserAction}>
+                          <input type="hidden" name="userId" value={user.userId} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={isSelf || !user.isActive}
+                          >
+                            Deactivate
+                          </button>
+                        </form>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500">Read-only</span>
+                    );
+                  },
+                },
+              ]}
+              rows={workspaceUsers}
+              getRowKey={(user) => user.id}
+              caption="Workspace Users"
+              emptyState={<p className="text-sm text-slate-600">No users yet. Invite the first user above.</p>}
+            />
+          </div>
         </Card>
 
         <Card>
@@ -424,54 +503,64 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
               </div>
             </form>
           ) : null}
-          {accessScopeAssignments.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No delegated access assignments are configured.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Subject</th>
-                    <th className="py-2">Scope</th>
-                    <th className="py-2">Value</th>
-                    <th className="py-2">Actions</th>
-                    <th className="py-2">Updated</th>
-                    <th className="py-2">Admin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accessScopeAssignments.map((assignment) => (
-                    <tr key={assignment.id} className="border-t border-slate-200">
-                      <td className="py-2">
-                        <div className="space-y-1">
-                          <p className="font-medium text-slate-900">{assignment.subjectId}</p>
-                          <p className="text-xs text-slate-500">{assignment.subjectType}</p>
-                        </div>
-                      </td>
-                      <td className="py-2">{assignment.scopeType}</td>
-                      <td className="py-2 text-slate-600">
-                        {assignment.categoryPath ?? assignment.connectorAccountAlias ?? assignment.scopeValue ?? assignment.categoryId ?? assignment.connectorInstallationId ?? "-"}
-                      </td>
-                      <td className="py-2 text-slate-600">{assignment.actions.length > 0 ? assignment.actions.join(", ") : "all"}</td>
-                      <td className="py-2 text-slate-600">{formatDateTime(assignment.updatedAt)}</td>
-                      <td className="py-2">
-                        {canManageUsers ? (
-                          <form action={deleteAccessScopeAssignmentAction}>
-                            <input type="hidden" name="assignmentId" value={assignment.id} />
-                            <button type="submit" className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">
-                              Remove
-                            </button>
-                          </form>
-                        ) : (
-                          <span className="text-xs text-slate-500">Read-only</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="mt-3">
+            <DataGrid
+              columns={[
+                {
+                  key: "subject",
+                  header: "Subject",
+                  render: (assignment) => (
+                    <div className="space-y-1">
+                      <p className="font-medium text-slate-900">{assignment.subjectId}</p>
+                      <p className="text-xs text-slate-500">{assignment.subjectType}</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: "scopeType",
+                  header: "Scope",
+                },
+                {
+                  key: "value",
+                  header: "Value",
+                  cellClassName: "text-slate-600",
+                  render: (assignment) =>
+                    assignment.categoryPath ?? assignment.connectorAccountAlias ?? assignment.scopeValue ?? assignment.categoryId ?? assignment.connectorInstallationId ?? "-",
+                },
+                {
+                  key: "scopeActions",
+                  header: "Actions",
+                  cellClassName: "text-slate-600",
+                  render: (assignment) => (assignment.actions.length > 0 ? assignment.actions.join(", ") : "all"),
+                },
+                {
+                  key: "updatedAt",
+                  header: "Updated",
+                  cellClassName: "text-slate-600",
+                  render: (assignment) => formatDateTime(assignment.updatedAt),
+                },
+                {
+                  key: "admin",
+                  header: "Admin",
+                  render: (assignment) =>
+                    canManageUsers ? (
+                      <form action={deleteAccessScopeAssignmentAction}>
+                        <input type="hidden" name="assignmentId" value={assignment.id} />
+                        <button type="submit" className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">
+                          Remove
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-slate-500">Read-only</span>
+                    ),
+                },
+              ]}
+              rows={accessScopeAssignments}
+              getRowKey={(assignment) => assignment.id}
+              caption="Delegated Access Scopes"
+              emptyState={<p className="text-sm text-slate-600">No delegated access assignments are configured.</p>}
+            />
+          </div>
         </Card>
 
         <Card>
@@ -480,90 +569,93 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             The web app currently uses four first-class roles. Enterprise persona names are handled through those roles
             plus delegated access scopes until dedicated vendor, category-manager, and system-admin shells are released.
           </p>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="py-2">Enterprise Persona</th>
-                  <th className="py-2">Current Web Model</th>
-                  <th className="py-2">Pilot Handling</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pilotRoleAlignment.map((entry) => (
-                  <tr key={entry.persona} className="border-t border-slate-200">
-                    <td className="py-2 font-medium text-slate-900">{entry.persona}</td>
-                    <td className="py-2 text-slate-700">{entry.currentModel}</td>
-                    <td className="py-2 text-slate-600">{entry.pilotHandling}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-3">
+            <DataGrid
+              columns={[
+                { key: "persona", header: "Enterprise Persona", cellClassName: "font-medium text-slate-900" },
+                { key: "currentModel", header: "Current Web Model", cellClassName: "text-slate-700" },
+                { key: "pilotHandling", header: "Pilot Handling", cellClassName: "text-slate-600" },
+              ]}
+              rows={pilotRoleAlignment}
+              getRowKey={(entry) => entry.persona}
+              caption="Pilot Role Alignment"
+            />
           </div>
         </Card>
 
         <Card>
           <CardTitle>Role Matrix</CardTitle>
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[700px] text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="py-2">Role</th>
-                  <th className="py-2">Catalog</th>
-                  <th className="py-2">Channels</th>
-                  <th className="py-2">Operations</th>
-                  <th className="py-2">Quality</th>
-                  <th className="py-2">Admin</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rolePermissions.map((entry) => (
-                  <tr key={entry.role} className="border-t border-slate-200">
-                    <td className="py-2 font-medium text-slate-900">{entry.role}</td>
-                    <td className="py-2"><StatusChip label={entry.catalog} tone={toneForCapability(entry.catalog)} /></td>
-                    <td className="py-2"><StatusChip label={entry.channels} tone={toneForCapability(entry.channels)} /></td>
-                    <td className="py-2"><StatusChip label={entry.ops} tone={toneForCapability(entry.ops)} /></td>
-                    <td className="py-2"><StatusChip label={entry.quality} tone={toneForCapability(entry.quality)} /></td>
-                    <td className="py-2"><StatusChip label={entry.admin} tone={entry.admin === "full" ? "info" : entry.admin === "none" ? "neutral" : "warning"} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <p className="mt-2 text-sm text-slate-600">
+            Use this matrix as the default policy baseline, then keep exceptions visible through delegated scopes and connector overrides.
+          </p>
+          <div className="mt-2">
+            <DataGrid
+              columns={[
+                { key: "role", header: "Role", cellClassName: "font-medium text-slate-900" },
+                {
+                  key: "catalog",
+                  header: "Catalog",
+                  render: (entry) => <StatusChip label={entry.catalog} tone={toneForCapability(entry.catalog)} />,
+                },
+                {
+                  key: "channels",
+                  header: "Channels",
+                  render: (entry) => <StatusChip label={entry.channels} tone={toneForCapability(entry.channels)} />,
+                },
+                {
+                  key: "ops",
+                  header: "Operations",
+                  render: (entry) => <StatusChip label={entry.ops} tone={toneForCapability(entry.ops)} />,
+                },
+                {
+                  key: "quality",
+                  header: "Quality",
+                  render: (entry) => <StatusChip label={entry.quality} tone={toneForCapability(entry.quality)} />,
+                },
+                {
+                  key: "admin",
+                  header: "Admin",
+                  render: (entry) => (
+                    <StatusChip
+                      label={entry.admin}
+                      tone={entry.admin === "full" ? "info" : entry.admin === "none" ? "neutral" : "warning"}
+                    />
+                  ),
+                },
+              ]}
+              rows={rolePermissions}
+              getRowKey={(entry) => entry.role}
+              caption="Role Matrix"
+            />
           </div>
         </Card>
 
         <Card>
           <CardTitle>Connector Permission Overrides</CardTitle>
-          {connectorPermissions.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">No connector-specific overrides are configured.</p>
-          ) : (
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Principal</th>
-                    <th className="py-2">Type</th>
-                    <th className="py-2">Connector</th>
-                    <th className="py-2">Action</th>
-                    <th className="py-2">Alias</th>
-                    <th className="py-2">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connectorPermissions.map((permission) => (
-                    <tr key={permission.id} className="border-t border-slate-200">
-                      <td className="py-2 font-medium text-slate-900">{permission.principalId}</td>
-                      <td className="py-2">{permission.principalType}</td>
-                      <td className="py-2">{permission.connectorSlug}</td>
-                      <td className="py-2">{permission.action}</td>
-                      <td className="py-2">{permission.accountAlias}</td>
-                      <td className="py-2 text-xs">{new Date(permission.updatedAt).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <p className="mt-2 text-sm text-slate-600">
+            Connector overrides are the exception layer for machine or role-specific access. Review them alongside user roles so connector governance stays auditable.
+          </p>
+          <div className="mt-2">
+            <DataGrid
+              columns={[
+                { key: "principalId", header: "Principal", cellClassName: "font-medium text-slate-900" },
+                { key: "principalType", header: "Type" },
+                { key: "connectorSlug", header: "Connector" },
+                { key: "action", header: "Action" },
+                { key: "accountAlias", header: "Alias" },
+                {
+                  key: "updatedAt",
+                  header: "Updated",
+                  cellClassName: "text-xs",
+                  render: (permission) => new Date(permission.updatedAt).toLocaleString(),
+                },
+              ]}
+              rows={connectorPermissions}
+              getRowKey={(permission) => permission.id}
+              caption="Connector Permission Overrides"
+              emptyState={<p className="text-sm text-slate-600">No connector-specific overrides are configured.</p>}
+            />
+          </div>
           <Link href="/admin/connectors" className="mt-3 inline-flex text-sm font-medium text-blue-700 hover:underline">
             Manage Overrides
           </Link>

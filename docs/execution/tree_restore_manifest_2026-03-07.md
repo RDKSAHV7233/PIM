@@ -1,7 +1,7 @@
 # Tree Restore Manifest - 2026-03-07
 
 ## Reason
-Restore UI and connector work from 2026-03-06 that was moved into `unused/archive` but is still needed as active TEJ PIM working material.
+Restore UI and connector work from 2026-03-06 that was moved into `unused/archive` but is still needed as active Vexa PIM working material.
 
 ## Restored Paths
 - `unused/archive/docs/architecture/enterprise-docs-20260307/**` -> `docs/architecture/enterprise-docs/**`

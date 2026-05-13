@@ -4,6 +4,7 @@ import { createConnectorMappingVersionAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,56 +105,86 @@ function renderFieldRows(
         <p className="text-sm font-semibold text-slate-900">{group.title}</p>
         <p className="text-xs text-slate-500">{group.description}</p>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-3 py-2">Channel field</th>
-              <th className="px-3 py-2">PIM field</th>
-              <th className="px-3 py-2">Sample product value</th>
-              <th className="px-3 py-2">Required</th>
-              <th className="px-3 py-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.rows.map((row) => {
-              const selectedOption =
-                sourceFieldOptions.find((option) => option.value === row.selectedSource) ?? null;
-              const samplePreview = row.selectedSource
-                ? selectedOption?.preview ?? "No value on sample product"
-                : "Select a PIM field to preview sample value.";
+      <div className="rounded-lg border border-slate-200">
+        <div className="hidden grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs uppercase text-slate-500 lg:grid">
+          <div>Channel field</div>
+          <div>PIM field</div>
+          <div>Sample product value</div>
+          <div>Required</div>
+          <div>Status</div>
+        </div>
+        <div className="space-y-3 p-3">
+          {group.rows.map((row) => {
+            const selectedOption =
+              sourceFieldOptions.find((option) => option.value === row.selectedSource) ?? null;
+            const samplePreview = row.selectedSource
+              ? selectedOption?.preview ?? "No value on sample product"
+              : "Select a PIM field to preview sample value.";
+            const samplePreviewId = `${fieldInputPrefix}${row.targetField}-sample-preview`;
+            const mappingStatusId = `${fieldInputPrefix}${row.targetField}-mapping-status`;
 
-              return (
-                <tr key={row.targetField} className="border-t border-slate-200">
-                  <td className="px-3 py-2.5 font-medium text-slate-900">{row.targetField}</td>
-                  <td className="px-3 py-2.5">
-                    <Select name={`${fieldInputPrefix}${row.targetField}`} defaultValue={row.selectedSource}>
-                      <option value="">Select PIM field</option>
-                      {sourceFieldOptions.map((option) => (
-                        <option key={`${row.targetField}:${option.value}`} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">{samplePreview}</td>
-                  <td className="px-3 py-2.5">
-                    <StatusChip
-                      label={row.required ? "Required" : "Optional"}
-                      tone={row.required ? "warning" : "neutral"}
-                    />
-                  </td>
-                  <td className="px-3 py-2.5">
+            return (
+              <div
+                key={row.targetField}
+                className="rounded-lg border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] lg:items-start lg:gap-3"
+              >
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Channel field
+                  </p>
+                  <p className="text-sm font-medium text-slate-900">{row.targetField}</p>
+                </div>
+                <div className="mt-3 lg:mt-0">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wide text-slate-600 lg:hidden"
+                    htmlFor={`${fieldInputPrefix}${row.targetField}-field`}
+                  >
+                    PIM field
+                  </label>
+                  <Select
+                    id={`${fieldInputPrefix}${row.targetField}-field`}
+                    name={`${fieldInputPrefix}${row.targetField}`}
+                    defaultValue={row.selectedSource}
+                    aria-describedby={`${samplePreviewId} ${mappingStatusId}`}
+                  >
+                    <option value="">Select PIM field</option>
+                    {sourceFieldOptions.map((option) => (
+                      <option key={`${row.targetField}:${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="mt-3 lg:mt-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Sample product value
+                  </p>
+                  <p id={samplePreviewId} className="text-xs text-slate-600">{samplePreview}</p>
+                </div>
+                <div className="mt-3 lg:mt-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Required
+                  </p>
+                  <StatusChip
+                    label={row.required ? "Required" : "Optional"}
+                    tone={row.required ? "warning" : "neutral"}
+                  />
+                </div>
+                <div className="mt-3 lg:mt-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Status
+                  </p>
+                  <div id={mappingStatusId}>
                     <StatusChip
                       label={row.selectedSource ? "Mapped" : "Missing"}
                       tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
                     />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   ));
@@ -234,7 +265,7 @@ export function ResolvedMappingSnapshotCard({
       </div>
       <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
         <summary className="cursor-pointer text-sm font-medium text-slate-800">Advanced: resolved mapping JSON</summary>
-        <pre className="mt-2 max-h-60 overflow-auto text-xs text-slate-700">{resolvedMappingJson}</pre>
+        <JsonPreview value={resolvedMappingJson} className="mt-2 max-h-60 border-0 bg-transparent p-0" />
       </details>
     </Card>
   );
@@ -632,25 +663,37 @@ export function PublishReadinessCard({
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preflight blockers</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
-                {(preflight?.blockers ?? []).map((item) => (
-                  <li key={`pf-b-${item}`}>{describeReadinessCode(item)}</li>
-                ))}
+                {(preflight?.blockers ?? []).length > 0 ? (
+                  (preflight?.blockers ?? []).map((item) => (
+                    <li key={`pf-b-${item}`}>{describeReadinessCode(item)}</li>
+                  ))
+                ) : (
+                  <li>No preflight blockers are active.</li>
+                )}
               </ul>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness blockers</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
-                {(readiness?.blockers ?? []).map((item) => (
-                  <li key={`rd-b-${item}`}>{describeReadinessCode(item)}</li>
-                ))}
+                {(readiness?.blockers ?? []).length > 0 ? (
+                  (readiness?.blockers ?? []).map((item) => (
+                    <li key={`rd-b-${item}`}>{describeReadinessCode(item)}</li>
+                  ))
+                ) : (
+                  <li>No publish-readiness blockers are active.</li>
+                )}
               </ul>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
               <ul className="list-disc pl-5 text-sm text-slate-700">
-                {(readiness?.warnings ?? []).map((item) => (
-                  <li key={`rd-w-${item}`}>{describeReadinessCode(item)}</li>
-                ))}
+                {(readiness?.warnings ?? []).length > 0 ? (
+                  (readiness?.warnings ?? []).map((item) => (
+                    <li key={`rd-w-${item}`}>{describeReadinessCode(item)}</li>
+                  ))
+                ) : (
+                  <li>No readiness warnings are active.</li>
+                )}
               </ul>
             </div>
           </div>

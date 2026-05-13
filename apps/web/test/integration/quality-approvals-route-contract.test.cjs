@@ -58,6 +58,16 @@ function run() {
     "Approval Queue must only render real in-review products and keep the newest items at the top of the decision list.",
   );
   assert(
+    approvalsSource.includes("getProductRevisions(product.id, { role: actorRole, authHeader })") &&
+      approvalsSource.includes("const revisionsByProduct = new Map(") &&
+      approvalsSource.includes("Revision Evidence Coverage") &&
+      approvalsSource.includes("with revision evidence") &&
+      approvalsSource.includes("ApprovalEvidenceDrawer") &&
+      approvalsSource.includes("productQualityHref") &&
+      approvalsSource.includes("productHref"),
+    "Approval Queue must fetch product revisions and hand them into an in-workspace evidence drawer instead of forcing reviewers to infer what changed.",
+  );
+  assert(
     approvalsSource.includes("approvalQueueRedacted") &&
       approvalsSource.includes("Approval queue restricted") &&
       approvalsSource.includes("Approval queue counts require reviewer, editor, or admin access.") &&
@@ -66,16 +76,33 @@ function run() {
   );
   assert(
     approvalsSource.includes('const canApprove = summary.blocking === 0;') &&
+      approvalsSource.includes('name="status"') &&
+      approvalsSource.includes('value="approved"') &&
+      approvalsSource.includes('value="rejected"') &&
+      approvalsSource.includes("Reviewer note") &&
       approvalsSource.includes('disabled={!canApprove}') &&
       approvalsSource.includes("Clear blocking issues before approving."),
-    "Approval Queue must disable approval when blocking issues remain and explain that constraint inline.",
+    "Approval Queue must keep reviewer note capture inside the decision form, disable approval when blockers remain, and explain that constraint inline.",
   );
   assert(
     approvalsSource.includes('query.decisionStatus ? (') &&
-      approvalsSource.includes("Product review decision recorded: {query.decisionStatus}.") &&
+      approvalsSource.includes('tone="success"') &&
+      approvalsSource.includes('title="Review decision recorded"') &&
+      approvalsSource.includes("Product review decision recorded: ${query.decisionStatus}.") &&
       approvalsSource.includes('query.decisionError ? (') &&
-      approvalsSource.includes("Review decision could not be applied."),
+      approvalsSource.includes('tone="error"') &&
+      approvalsSource.includes('title="Review decision could not be applied"') &&
+      approvalsSource.includes("Refresh the queue and verify blocking issues are cleared before recording the decision again."),
     "Approval Queue must surface success and failure feedback after decision actions redirect back to the queue.",
+  );
+  assert(
+    approvalsSource.includes("Reviewer Decision Guide") &&
+      approvalsSource.includes("Use the same evidence path on every item so approval stays consistent across the review queue.") &&
+      approvalsSource.includes("Check blockers.") &&
+      approvalsSource.includes("Open product context.") &&
+      approvalsSource.includes("Use rejection intentionally.") &&
+      approvalsSource.includes("Approval decisions here reflect the live in-review queue and the current issue inbox, not a demo-only workflow."),
+    "Approval Queue must guide reviewers through a consistent decision workflow before they approve or reject items.",
   );
   assert(
     approvalsSource.includes('if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {') &&
@@ -93,8 +120,10 @@ function run() {
           "quality_approvals_route_derives_review_metrics_from_issue_inbox_state",
           "quality_approvals_route_uses_shared_reviewer_decision_capability",
           "quality_approvals_route_preserves_product_return_context",
+          "quality_approvals_route_fetches_revision_evidence",
           "quality_approvals_route_blocks_approval_until_blockers_clear",
           "quality_approvals_route_surfaces_decision_feedback_and_auth_redirects",
+          "quality_approvals_route_guides_reviewer_decisions",
         ],
         checkedAt: new Date().toISOString(),
       },

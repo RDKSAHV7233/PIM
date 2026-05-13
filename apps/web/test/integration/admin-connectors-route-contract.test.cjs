@@ -48,6 +48,15 @@ function run() {
     "Admin connectors must surface grant, revoke, and validation failures through the page-level status banner contract.",
   );
   assert(
+    source.includes("Connector access review checklist") &&
+      source.includes("Prefer role policies first") &&
+      source.includes("Keep alias rules exceptional") &&
+      source.includes("Retire stale grants") &&
+      source.includes("connector governance stays predictable across teams.") &&
+      source.includes("connector access does not drift quietly over time."),
+    "Admin connectors must guide admins through ongoing connector access review, not just expose the current policy matrix.",
+  );
+  assert(
       source.includes('role === "admin" ? (') &&
       source.includes("<ConnectorPermissionForm definitions={definitions} grantAction={grantConnectorPermissionAction} />") &&
       source.includes("form action={revokeConnectorPermissionAction}") &&
@@ -87,6 +96,7 @@ function run() {
           "admin_connectors_route_normalizes_status_query_state",
           "admin_connectors_route_fetches_definitions_and_permissions_in_parallel",
           "admin_connectors_route_surfaces_status_and_validation_banners",
+          "admin_connectors_route_guides_connector_access_review",
           "admin_connectors_route_keeps_grant_and_revoke_admin_only",
           "admin_connectors_route_explains_connector_permission_model_and_empty_state",
           "admin_connectors_route_surfaces_alias_and_audit_metadata",

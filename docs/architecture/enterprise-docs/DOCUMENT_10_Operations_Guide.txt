@@ -4,7 +4,7 @@ Purpose:
 Describe monitoring, logging, backup, and troubleshooting.
 
 Scope:
-Validated operational controls, scripts, workflows, and runbooks available in TEJ PIM repository.
+Validated operational controls, scripts, workflows, and runbooks available in Vexa PIM repository.
 
 Content:
 CI/CD Operations:
@@ -38,7 +38,7 @@ Backup and Data Safety:
 Sources: docs/runbooks/credential-key-rotation.md and docs/runbooks/test-data-governance.md
 
 Disaster Recovery:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 
 Troubleshooting References:
 - docs/runbooks/auth-bootstrap-admin.md
@@ -47,5 +47,5 @@ Troubleshooting References:
 - scripts/staging-postdeploy-check.cjs (workflow reference)
 
 External observability platform configuration:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

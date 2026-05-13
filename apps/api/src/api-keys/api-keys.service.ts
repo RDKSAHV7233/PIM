@@ -40,6 +40,7 @@ export type ApiAccessKeySummary = {
   id: string;
   label: string;
   role: AppRole;
+  scopes: ApiClientScope[];
   keyPrefix: string;
   isActive: boolean;
   lastUsedAt: string | null;
@@ -329,6 +330,7 @@ export class ApiKeysService {
       id: row.id,
       label: row.label,
       role: normalizeAppRole(row.role) ?? "viewer",
+      scopes: normalizeApiClientScopes(row.scopes),
       keyPrefix: row.keyPrefix,
       isActive: isRowActive(row),
       lastUsedAt: row.lastUsedAt?.toISOString() ?? null,

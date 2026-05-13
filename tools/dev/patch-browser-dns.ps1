@@ -20,7 +20,7 @@
 
 .PARAMETER Domains
   One or more Railway hostnames to pin, e.g.
-    "pim1-api-staging.up.railway.app","pim1-web-staging.up.railway.app"
+    "pim1api-staging.up.railway.app","pim1web-staging.up.railway.app"
   If omitted, the script attempts to parse hostnames from the STAGING_BASE_URL
   and STAGING_WEB_URL environment variables (or the .env file in the repo root).
 
@@ -36,13 +36,13 @@
 .EXAMPLE
   # Add entries for staging domains (run as Administrator):
   tools\dev\patch-browser-dns.ps1 `
-    -Domains "pim1-api-staging.up.railway.app","pim1-web-staging.up.railway.app" `
+    -Domains "pim1api-staging.up.railway.app","pim1web-staging.up.railway.app" `
     -Ip "66.33.22.1"
 
 .EXAMPLE
   # Let the script discover hostnames from STAGING_BASE_URL / STAGING_WEB_URL:
-  $env:STAGING_BASE_URL = "https://pim1-api-staging.up.railway.app/api/v1"
-  $env:STAGING_WEB_URL  = "https://pim1-web-staging.up.railway.app"
+  $env:STAGING_BASE_URL = "https://pim1api-staging.up.railway.app/api/v1"
+  $env:STAGING_WEB_URL  = "https://pim1web-staging.up.railway.app"
   $env:STAGING_RESOLVE_IP = "66.33.22.1"
   tools\dev\patch-browser-dns.ps1
 

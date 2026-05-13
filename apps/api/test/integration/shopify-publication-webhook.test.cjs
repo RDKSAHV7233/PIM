@@ -355,8 +355,12 @@ async function run() {
     const upsertCall = stub.graphqlCalls.find((call) => call.query.includes("mutation VexaUpsertProduct"));
     assert(upsertCall, "Expected Shopify productSet mutation call.");
     assert(
-      upsertCall.variables?.identifier?.customId?.value === "SKU-001",
-      `Expected Shopify customId identifier to use SKU, got ${JSON.stringify(upsertCall.variables)}`,
+      typeof upsertCall.variables?.identifier?.handle === "string" && upsertCall.variables.identifier.handle.length > 0,
+      `Expected Shopify handle identifier, got ${JSON.stringify(upsertCall.variables?.identifier)}`,
+    );
+    assert(
+      !upsertCall.variables?.identifier?.customId,
+      `Expected no customId in identifier (deprecated), got ${JSON.stringify(upsertCall.variables?.identifier)}`,
     );
 
     const publishCall = stub.graphqlCalls.find((call) => call.query.includes("mutation VexaPublishProduct"));

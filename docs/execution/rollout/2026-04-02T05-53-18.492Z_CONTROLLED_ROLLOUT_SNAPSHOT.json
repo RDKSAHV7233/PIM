@@ -18,7 +18,7 @@
         "active": 0,
         "idle": 0,
         "waiting": 0,
-        "applicationName": "tej-pim-api"
+        "applicationName": "vexa-pim-api"
       },
       "queues": {
         "auth-email": {

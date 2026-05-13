@@ -12,7 +12,7 @@
 ## Purpose
 - Canonical lifecycle mapping workspace for channel publishing.
 - Use this page to create, validate, publish, archive, and rollback mapping versions.
-- This is the only editable mapping surface in the current TEJ PIM UX.
+- This is the only editable mapping surface in the current Vexa PIM UX.
 
 ## Functionality (Validated from Page Imports/Actions)
 - Data retrieval/API helpers used on this page:

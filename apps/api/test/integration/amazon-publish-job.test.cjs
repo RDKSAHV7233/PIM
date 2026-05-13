@@ -122,6 +122,38 @@ function assertStatus(result, expected, context) {
   }
 }
 
+async function advanceToApproved(baseUrl, token, product) {
+  const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: product.version,
+    title: product.title,
+    description: product.description ?? "",
+    brand: product.brand,
+    categoryId: product.categoryId,
+    hsnCode: product.hsnCode ?? undefined,
+    gstRate: product.gstRate ?? undefined,
+    attributes: product.attributes ?? {},
+    status: "in_review",
+  });
+  if (toReview.status !== 200) {
+    throw new Error(`advance to in_review failed: ${toReview.status} ${JSON.stringify(toReview.payload)}`);
+  }
+  const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
+    expectedVersion: toReview.payload.version,
+    title: toReview.payload.title,
+    description: toReview.payload.description ?? "",
+    brand: toReview.payload.brand,
+    categoryId: toReview.payload.categoryId,
+    hsnCode: toReview.payload.hsnCode ?? undefined,
+    gstRate: toReview.payload.gstRate ?? undefined,
+    attributes: toReview.payload.attributes ?? {},
+    status: "approved",
+  });
+  if (toApproved.status !== 200) {
+    throw new Error(`advance to approved failed: ${toApproved.status} ${JSON.stringify(toApproved.payload)}`);
+  }
+  return toApproved.payload;
+}
+
 function createAmazonStub() {
   const calls = {
     oauth: [],
@@ -418,6 +450,8 @@ async function run() {
     assertStatus(install, 201, "install amazon connector");
     const installationId = String(install.payload.id);
 
+    await advanceToApproved(baseUrl, token, product.payload);
+
     const createJob = await apiRequest(
       baseUrl,
       "POST",
@@ -428,11 +462,9 @@ async function run() {
         maxRetries: 1,
       },
     );
-    assertStatus(createJob, 400, "public export job remains launch-gated");
-    assert(
-      String(createJob.payload?.message ?? "").includes("does not support capability 'PUBLISH'"),
-      `expected capability gate, got ${JSON.stringify(createJob.payload)}`,
-    );
+    assertStatus(createJob, 201, "amazon publish job accepted (connector is live)");
+    const jobId = String(createJob.payload?.id);
+    assert(jobId.length > 0, `expected job id, got ${jobId}`);
 
     const direct = await runDirectAmazonConnector({
       tenantId,
@@ -474,7 +506,7 @@ async function run() {
     assert(publishCall.auth === "", `unexpected auth header ${publishCall.auth}`);
     assert(publishCall.accessToken === "amazon-stub-access-token", `unexpected x-amz-access-token ${publishCall.accessToken}`);
     assert(/^\d{8}T\d{6}Z$/.test(publishCall.amzDate), `unexpected x-amz-date ${publishCall.amzDate}`);
-    assert(publishCall.userAgent.includes("TEJPIMAmazonConnector/0.1"), `unexpected user-agent ${publishCall.userAgent}`);
+    assert(publishCall.userAgent.includes("VexaPIMAmazonConnector/0.1"), `unexpected user-agent ${publishCall.userAgent}`);
     assert(
       publishCall.query.includes(`issueLocale=${encodeURIComponent("en_IN")}`),
       `expected issueLocale in publish query, got ${publishCall.query}`,
@@ -522,7 +554,7 @@ async function run() {
           publishExternalRef: direct.publishResult.externalRef,
           updateExternalRef: direct.updateResult.externalRef,
           validated: [
-            "amazon_public_publish_remains_launch_gated",
+            "amazon_public_publish_is_live_and_accepted",
             "amazon_direct_publish_calls_live_connector_path",
             "amazon_publish_payload_matches_documented_listings_items_shape",
             "amazon_publish_calls_include_documented_sp_api_headers",

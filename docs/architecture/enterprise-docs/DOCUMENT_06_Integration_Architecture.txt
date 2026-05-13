@@ -4,7 +4,7 @@ Purpose:
 Describe integrations.
 
 Scope:
-Validated integration capabilities and boundaries implemented in TEJ PIM source and migration artifacts.
+Validated integration capabilities and boundaries implemented in Vexa PIM source and migration artifacts.
 
 Content:
 Connector-first Integration Model:
@@ -48,12 +48,12 @@ Event-driven Pattern:
 - Queue names include bulk-import, connector-submission, webhook-event.
 
 Integrations Not Defined:
-- ERP integration: Information not available in TEJ PIM project.
-- Ecommerce platform integration: Information not available in TEJ PIM project.
-- External DAM integration: Information not available in TEJ PIM project.
+- ERP integration: Information not available in Vexa PIM project.
+- Ecommerce platform integration: Information not available in Vexa PIM project.
+- External DAM integration: Information not available in Vexa PIM project.
 
 Webhook Transport Decision:
 - ADR-004 status is pending.
 - Final Amazon notification transport implementation details are not finalized.
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

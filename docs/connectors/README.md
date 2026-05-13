@@ -14,7 +14,7 @@ Use this page first to determine:
 
 ## Canonical developer guide
 
-- `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
 
 Use this for:
 - connector API and workflow understanding
@@ -25,7 +25,7 @@ Use this for:
 
 ## Internal implementation guide
 
-- `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
 
 Use this for:
 - repo paths
@@ -35,7 +35,7 @@ Use this for:
 
 ## Recipes
 
-- `docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_RECIPES.md`
 
 Use this for:
 - export-only connector flow
@@ -46,7 +46,7 @@ Use this for:
 
 ## Compatibility pointer
 
-- `docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md`
 
 This is retained as a thin compatibility pointer only. The developer guide above is the human-readable SSOT.
 
@@ -54,8 +54,8 @@ This is retained as a thin compatibility pointer only. The developer guide above
 
 These documents are retained as historical reference only. Do not use them as current sprint-planning or implementation authority.
 
-- `C:\Users\Om Computers\Downloads\TEJ_PIM_connector_plan_review_2026-03-04.docx`
-- `C:\Users\Om Computers\Downloads\TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
+- `C:\Users\Om Computers\Downloads\VEXA_PIM_connector_plan_review_2026-03-04.docx`
+- `C:\Users\Om Computers\Downloads\VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE_FINAL_2026-03-06.pdf`
 
 Reason:
 - they reference older file paths and older route surfaces
@@ -108,9 +108,9 @@ As of 2026-04-25:
 - ONDC remains `Experimental`, admin-only, and non-production when feature-enabled
 
 For implementation and current-state guidance, use:
-- `docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
-- `docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
-- `docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md`
+- `docs/connectors/VEXA_PIM_CONNECTOR_RECIPES.md`
 
 ## Roadmap connectors (not yet implemented)
 

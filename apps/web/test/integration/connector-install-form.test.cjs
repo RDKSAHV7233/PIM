@@ -52,6 +52,12 @@ function run() {
     "Connector setup flow must surface install-time validation failures back to the user.",
   );
   assert(
+    setupSource.includes("InlineAlert") &&
+      setupSource.includes('<InlineAlert tone="success" message={actionStatusMessage} />') &&
+      setupSource.includes('<InlineAlert tone="error" message={installErrorMessage} />'),
+    "Connector setup page must use the shared inline alert pattern for install success and error feedback.",
+  );
+  assert(
     pageSource.includes("Action rail") &&
       pageSource.includes('title="Connections"') &&
       pageSource.includes("Channel catalog") &&
@@ -72,7 +78,8 @@ function run() {
       pageSource.includes('id="connector-catalog"') &&
       setupSource.includes("Back to connection portfolio") &&
       setupSource.includes("Setup flow") &&
-      setupSource.includes("Focused setup lane"),
+      setupSource.includes("Focused setup lane") &&
+      setupSource.includes("Connection readiness checklist"),
     "Connectors hub must route install work into the dedicated setup page instead of embedding credential forms inline.",
   );
   assert(
@@ -102,6 +109,8 @@ function run() {
           "amazon_install_form_collects_seller_credentials",
           "shopify_install_form_collects_store_domain_handoff",
           "connector_install_form_explains_secret_handling",
+          "connector_setup_page_uses_shared_inline_alerts",
+          "connector_setup_page_includes_readiness_checklist",
           "flipkart_install_action_surfaces_validation_error",
         ],
         checkedAt: new Date().toISOString(),

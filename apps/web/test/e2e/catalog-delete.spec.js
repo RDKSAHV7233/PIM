@@ -29,7 +29,7 @@ test("editor can archive a product from the workbench", async ({ page }) => {
 
   try {
     await loginViaUi(page, "editor");
-    await page.goto(`/catalog/products?search=${encodeURIComponent(product.title)}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/catalog/products?hideTestData=false&search=${encodeURIComponent(product.title)}`, { waitUntil: "domcontentloaded" });
     page.once("dialog", (dialog) => dialog.accept());
     const row = page.locator("tbody tr", { hasText: product.title }).first();
     await expect(row).toBeVisible();
@@ -107,7 +107,7 @@ test("admin sees blocked and allowed category delete states", async ({ page }) =
 
   try {
     await loginViaUi(page, "admin");
-    await page.goto("/catalog/categories", { waitUntil: "domcontentloaded" });
+    await page.goto("/catalog/categories?hideTestData=false", { waitUntil: "domcontentloaded" });
 
     const blockedRow = page.locator("tbody tr", { hasText: blockedParent.name }).first();
     await expect(blockedRow).toBeVisible();

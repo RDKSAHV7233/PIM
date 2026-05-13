@@ -7,16 +7,16 @@
 - C:/Users/Om Computers/PIM1/apps/web/src/app/consent
 
 ## Page Title (Validated)
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Purpose
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Functionality (Validated from Page Imports/Actions)
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## User Actions
-- Information not available in TEJ PIM project.
+- Information not available in Vexa PIM project.
 
 ## Notes
 - This document is generated from current route source and only contains validated references.

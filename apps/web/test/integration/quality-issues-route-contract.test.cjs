@@ -53,6 +53,14 @@ function run() {
     "Issue Inbox must preserve normalized filter state when building its stable return path.",
   );
   assert(
+    issuesSource.includes("function issueFamily(issue: { fieldPath: string | null; sellerMessage: string }): string {") &&
+      issuesSource.includes("const blockingItems = inbox.items.filter((item) => item.severity === \"BLOCKING\");") &&
+      issuesSource.includes("const warningItems = inbox.items.filter((item) => item.severity === \"WARNING\");") &&
+      issuesSource.includes("CardTitle>Grouped Impact</CardTitle>") &&
+      issuesSource.includes("Top issue families"),
+    "Issue Inbox must summarize grouped impact so operators can distinguish blockers from cleanup work before opening row detail.",
+  );
+  assert(
     issuesSource.includes('href={`/products/${encodeURIComponent(issue.productId)}?returnTo=${encodeURIComponent(returnTo)}`}') &&
       issuesSource.includes('const previousParams = new URLSearchParams(filterParams.toString());') &&
       issuesSource.includes('const nextParams = new URLSearchParams(filterParams.toString());'),

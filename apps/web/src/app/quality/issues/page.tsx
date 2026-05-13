@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { resolveIssueInboxWarningsAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -90,6 +91,26 @@ function trendBadge(trend: "up" | "down" | "flat"): { label: string; className: 
   return { label: "flat vs yesterday", className: "text-slate-600" };
 }
 
+function issueFamily(issue: { fieldPath: string | null; sellerMessage: string }): string {
+  const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
+  const sellerMessage = String(issue.sellerMessage ?? "").trim().toLowerCase();
+  const combined = `${fieldPath} ${sellerMessage}`;
+
+  if (combined.includes("image") || combined.includes("media") || combined.includes("asset")) {
+    return "Media";
+  }
+  if (combined.includes("category") || combined.includes("taxonomy")) {
+    return "Taxonomy";
+  }
+  if (combined.includes("channel") || combined.includes("marketplace") || combined.includes("mapping")) {
+    return "Channel mapping";
+  }
+  if (combined.includes("price") || combined.includes("mrp") || combined.includes("gst")) {
+    return "Pricing";
+  }
+  return "Core content";
+}
+
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
@@ -146,6 +167,16 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
     );
     const returnTo = buildReturnTo(filterParams);
     const trend = trendBadge(inbox.trend);
+    const blockingItems = inbox.items.filter((item) => item.severity === "BLOCKING");
+    const warningItems = inbox.items.filter((item) => item.severity === "WARNING");
+    const familyCounts = inbox.items.reduce<Record<string, number>>((accumulator, issue) => {
+      const family = issueFamily(issue);
+      accumulator[family] = (accumulator[family] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const dominantFamilies = Object.entries(familyCounts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4);
 
     const previousParams = new URLSearchParams(filterParams.toString());
     const nextParams = new URLSearchParams(filterParams.toString());
@@ -155,6 +186,83 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
     if (query.cursor) {
       previousParams.delete("cursor");
     }
+    const resolvedProgressPct =
+      inbox.resolvedToday + inbox.items.length > 0
+        ? Math.min(100, Math.round((inbox.resolvedToday / (inbox.resolvedToday + inbox.items.length)) * 100))
+        : 0;
+    const issueColumns: Column<(typeof inbox.items)[number]>[] = [
+      ...(canResolveWarnings
+        ? [
+            {
+              key: "select",
+              header: "Select",
+              mobileHide: true,
+              render: (issue) =>
+                issue.severity === "WARNING" ? (
+                  <input
+                    type="checkbox"
+                    name="issueIds"
+                    value={issue.issueId}
+                    className="rounded border-slate-300"
+                  />
+                ) : (
+                  <span className="text-xs text-slate-400">-</span>
+                ),
+            } satisfies Column<(typeof inbox.items)[number]>,
+          ]
+        : []),
+      {
+        key: "product",
+        header: "Product",
+        render: (issue) => (
+          <div className="space-y-1">
+            <div className="font-medium text-slate-900">{issue.productName}</div>
+            <div className="text-xs text-slate-500">
+              SKU: {issue.sku} | {issue.categoryName} | {issue.productStatus}
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: "fieldPath",
+        header: "Field",
+        render: (issue) => <span className="font-mono text-xs text-slate-600">{issue.fieldPath ?? "-"}</span>,
+      },
+      {
+        key: "severity",
+        header: "Severity",
+        render: (issue) => (
+          <StatusChip label={issue.severity} tone={issue.severity === "BLOCKING" ? "danger" : "warning"} />
+        ),
+      },
+      {
+        key: "age",
+        header: "Age",
+        render: (issue) => <span className="text-slate-600">{formatAge(issue.detectedAt)}</span>,
+      },
+      {
+        key: "message",
+        header: "Message",
+        render: (issue) => (
+          <div>
+            <p className="text-slate-800">{issue.sellerMessage}</p>
+            <p className="mt-1 text-xs text-slate-500">{issue.suggestedFix}</p>
+          </div>
+        ),
+      },
+      {
+        key: "action",
+        header: "Action",
+        render: (issue) => (
+          <Link
+            href={`/products/${encodeURIComponent(issue.productId)}?returnTo=${encodeURIComponent(returnTo)}`}
+            className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Fix Now
+          </Link>
+        ),
+      },
+    ];
 
     return (
       <div className="space-y-5">
@@ -186,6 +294,62 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             </span>
             <span className={trend.className}>{trend.label}</span>
             <span className="text-slate-500">Yesterday: {inbox.resolvedYesterday}</span>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-slate-100">
+            <div
+              className="h-2 rounded-full bg-emerald-500"
+              style={{ width: `${resolvedProgressPct}%` }}
+            />
+          </div>
+        </Card>
+
+        <Card aria-live="polite" aria-atomic="true">
+          <CardTitle>Grouped Impact</CardTitle>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700">
+                Review blockers first, then use warning cleanup to improve readiness without slowing the publish path.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip
+                  label={`Blocking ${blockingItems.length}`}
+                  tone={blockingItems.length > 0 ? "danger" : "success"}
+                />
+                <StatusChip
+                  label={`Warnings ${warningItems.length}`}
+                  tone={warningItems.length > 0 ? "warning" : "success"}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publish blockers</p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Blocking issues stop review, approval, or channel delivery until the product editor clears them.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cleanup warnings</p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Warning-only rows are safe to bulk-resolve or schedule after the current publish window.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-900">Top issue families</p>
+              {dominantFamilies.length === 0 ? (
+                <p className="text-sm text-slate-600">No open issue families in the current scope.</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {dominantFamilies.map(([family, count]) => (
+                    <li key={family} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                      <span className="text-slate-700">{family}</span>
+                      <StatusChip label={`${count} open`} tone={count > 0 ? "info" : "neutral"} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </Card>
 
@@ -276,65 +440,12 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             <form action={resolveIssueInboxWarningsAction} className="space-y-3">
               <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="returnTo" value={returnTo} />
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
-                    <tr className="border-b border-slate-200">
-                      {canResolveWarnings ? <th className="px-3 py-2">Select</th> : null}
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2">Field</th>
-                      <th className="px-3 py-2">Severity</th>
-                      <th className="px-3 py-2">Age</th>
-                      <th className="px-3 py-2">Message</th>
-                      <th className="px-3 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inbox.items.map((issue) => (
-                      <tr key={issue.issueId} className="border-b border-slate-100 align-top hover:bg-slate-50/50">
-                        {canResolveWarnings ? (
-                          <td className="px-3 py-2.5">
-                            {issue.severity === "WARNING" ? (
-                              <input
-                                type="checkbox"
-                                name="issueIds"
-                                value={issue.issueId}
-                                className="rounded border-slate-300"
-                              />
-                            ) : (
-                              <span className="text-xs text-slate-400">-</span>
-                            )}
-                          </td>
-                        ) : null}
-                        <td className="px-3 py-2.5">
-                          <div className="font-medium text-slate-900">{issue.productName}</div>
-                          <div className="text-xs text-slate-500">
-                            SKU: {issue.sku} | {issue.categoryName} | {issue.productStatus}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{issue.fieldPath ?? "-"}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusChip label={issue.severity} tone={issue.severity === "BLOCKING" ? "danger" : "warning"} />
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-600">{formatAge(issue.detectedAt)}</td>
-                        <td className="px-3 py-2.5">
-                          <p className="text-slate-800">{issue.sellerMessage}</p>
-                          <p className="mt-1 text-xs text-slate-500">{issue.suggestedFix}</p>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`/products/${encodeURIComponent(issue.productId)}?returnTo=${encodeURIComponent(returnTo)}`}
-                            className="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            Fix Now
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataGrid
+                columns={issueColumns}
+                rows={inbox.items}
+                getRowKey={(issue) => issue.issueId}
+                rowClassName="align-top"
+              />
 
               {canResolveWarnings ? (
                 <div className="flex items-center gap-2">

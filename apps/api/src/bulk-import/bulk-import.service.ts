@@ -351,6 +351,99 @@ export class BulkImportService {
     return this.mapTemplateResponse(enriched);
   }
 
+  async validateJobInput(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
+    await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
+    const category = await this.requireCategory(dto.categoryId);
+
+    const sourceRows = this.resolveImportSourceRows(dto);
+    const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
+    const normalizedRows = sourceRows.rows.map((row) => this.normalizeCanonicalPayload(row, suggestion.mapping));
+    const sourceBytes = this.estimateSourceBytes(dto, normalizedRows);
+    this.assertSourceSize(sourceBytes);
+
+    const sampleIssues: Array<{ rowNumber: number; severity: "blocking" | "warning"; code: string; message: string }> = [];
+    let blockingIssueCount = 0;
+    let warningCount = 0;
+    let acceptedRows = 0;
+
+    if (normalizedRows.length === 0) {
+      sampleIssues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "NO_ROWS",
+        message: "No import rows detected.",
+      });
+      blockingIssueCount += 1;
+    }
+
+    if (normalizedRows.length > 10000) {
+      sampleIssues.push({
+        rowNumber: 0,
+        severity: "blocking",
+        code: "ROW_LIMIT_EXCEEDED",
+        message: "Maximum 10,000 rows per job.",
+      });
+      blockingIssueCount += 1;
+    }
+
+    if (suggestion.unmappedFields.length > 0) {
+      warningCount += suggestion.unmappedFields.length;
+      sampleIssues.push({
+        rowNumber: 0,
+        severity: "warning",
+        code: "UNMAPPED_FIELDS",
+        message: `Unmapped source fields detected: ${suggestion.unmappedFields.join(", ")}`,
+      });
+    }
+
+    for (const [index, row] of normalizedRows.entries()) {
+      const rowIssues = this.validateCanonicalRow(row);
+      if (rowIssues.length === 0) {
+        acceptedRows += 1;
+        continue;
+      }
+      for (const issue of rowIssues) {
+        if (issue.severity === "blocking") {
+          blockingIssueCount += 1;
+        } else {
+          warningCount += 1;
+        }
+        if (sampleIssues.length < 12) {
+          sampleIssues.push({
+            rowNumber: index + 1,
+            severity: issue.severity,
+            code: issue.code,
+            message: issue.message,
+          });
+        }
+      }
+    }
+
+    const failedRows = normalizedRows.length - acceptedRows;
+    return {
+      sourceFormat: dto.sourceFormat,
+      sourceName: dto.sourceName?.trim() || null,
+      categoryId: dto.categoryId,
+      categoryPath: category.path,
+      totalRows: normalizedRows.length,
+      blockingIssueCount,
+      warningCount,
+      acceptedRows,
+      failedRows,
+      deadLetterRows: 0,
+      canImport: blockingIssueCount === 0 && normalizedRows.length > 0,
+      mapping: suggestion.mapping,
+      unmappedFields: suggestion.unmappedFields,
+      unusedHeaders: suggestion.unusedHeaders,
+      sampleIssues,
+      repairSummary: {
+        acceptedRows,
+        failedRows,
+        deadLetterRows: 0,
+      },
+    };
+  }
+
   async createJob(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
     await this.requireCategory(dto.categoryId);
@@ -1145,6 +1238,16 @@ export class BulkImportService {
     };
   }
 
+  private resolveImportSourceRows(dto: CreateBulkImportJobDto) {
+    if (dto.sourceFormat === "csv") {
+      if (dto.fileContentBase64) {
+        return this.parseDelimitedBase64(dto.fileContentBase64, "csv");
+      }
+      return this.parseCsv(dto.csvContent ?? "");
+    }
+    return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
+  }
+
   private parseCsvLine(line: string) {
     const values: string[] = [];
     let current = "";
@@ -1221,6 +1324,56 @@ export class BulkImportService {
       return RecordStatus.archived;
     }
     return RecordStatus.draft;
+  }
+
+  private validateCanonicalRow(row: CanonicalRowPayload) {
+    const issues: Array<{ severity: "blocking" | "warning"; code: string; message: string }> = [];
+    if (!this.asTrimmedString(row.title)) {
+      issues.push({
+        severity: "blocking",
+        code: "TITLE_REQUIRED",
+        message: "Title is required.",
+      });
+    }
+    if (!this.asTrimmedString(row.brand)) {
+      issues.push({
+        severity: "warning",
+        code: "BRAND_RECOMMENDED",
+        message: "Brand is recommended for marketplace readiness.",
+      });
+    }
+    if (row.gstRate !== undefined && (!Number.isFinite(row.gstRate) || row.gstRate < 0)) {
+      issues.push({
+        severity: "blocking",
+        code: "GST_RATE_INVALID",
+        message: "GST rate must be a non-negative number.",
+      });
+    }
+    if (row.hsnCode !== undefined && String(row.hsnCode).trim().length === 0) {
+      issues.push({
+        severity: "warning",
+        code: "HSN_CODE_RECOMMENDED",
+        message: "HSN code is recommended for downstream exports.",
+      });
+    }
+    if (row.status !== undefined) {
+      const normalizedStatus = this.normalizeRecordStatus(row.status);
+      if (normalizedStatus !== RecordStatus.draft) {
+        issues.push({
+          severity: "blocking",
+          code: "WORKFLOW_ENTRY_INVALID",
+          message: "Imported rows must enter workflow in draft status.",
+        });
+      }
+    }
+    if (row.attributes !== undefined && (Array.isArray(row.attributes) || typeof row.attributes !== "object")) {
+      issues.push({
+        severity: "blocking",
+        code: "ATTRIBUTES_INVALID",
+        message: "Attributes must be a JSON object.",
+      });
+    }
+    return issues;
   }
 
   private assertDraftWorkflowEntry(status: RecordStatus) {

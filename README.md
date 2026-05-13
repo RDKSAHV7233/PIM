@@ -75,6 +75,6 @@ Run focused integration scripts from `package.json` when changing a specific rou
 Current repo truth:
 
 - Targeted production-readiness code blockers around web session fail-closed behavior, privileged internal route guarding, web build/gate stability, submission and DLQ count honesty, readiness proxy failure handling, and catalog products pagination have been closed in code and revalidated locally.
-- `INC-08` in `docs/execution/INCREMENT_STATE.json` remains complete, but the latest checked-in staging rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `controlledPending = ["Health endpoint env mismatch: expected 'staging', got 'unset'."]` and `broadPending = []`.
-- Local validation is green again, but rollout evidence is stale and must be refreshed before controlled-pilot or broader production claims are restored in repo docs.
-- Enterprise-ready is still not approved from the current evidence bundle.
+- `INC-08` in `docs/execution/INCREMENT_STATE.json` is now complete, supported by the latest checked-in staging rollout snapshot `docs/execution/rollout/2026-05-12_CONTROLLED_ROLLOUT_SNAPSHOT.json` with `healthOk: true`, `controlledPending: []`, and `broadPending: []`. All gates are green.
+- Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers with proven catalog, import, approval, connector, publish, audit, account-security, and recovery workflows.
+- Enterprise-ready is not approved from the current evidence bundle and must not be claimed.

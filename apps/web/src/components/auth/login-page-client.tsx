@@ -41,6 +41,17 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number>(0);
 
   useEffect(() => {
+    if (!initialWorkspaceSlug) {
+      try {
+        const saved = localStorage.getItem("pim_last_workspace");
+        if (saved) setWorkspaceSlug(saved);
+      } catch {
+        // localStorage unavailable (SSR guard, private browsing restrictions)
+      }
+    }
+  }, [initialWorkspaceSlug]);
+
+  useEffect(() => {
     if (!rateLimitedUntilMs) {
       setRateLimitCountdown(0);
       return;
@@ -102,6 +113,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
         await response.json().catch(() => ({}));
         setAttemptsRemaining(null);
         setRateLimitedUntilMs(null);
+        try { localStorage.setItem("pim_last_workspace", normalizedWorkspaceSlug); } catch { /* ignore */ }
         window.location.assign(safeNextPath);
         return;
       }

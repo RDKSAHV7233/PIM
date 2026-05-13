@@ -101,6 +101,15 @@ function run() {
     "Dashboard must preserve the next-best-actions navigation contract across catalog, quality, and channels follow-up.",
   );
   assert(
+    source.includes("Get started - 3 steps to your first export") &&
+      source.includes("Use this onboarding checklist to move from an empty catalog to a channel-ready first publish.") &&
+      source.includes('StatusChip label="Onboarding checklist" tone="info"') &&
+      source.includes("to build your starting catalog.") &&
+      source.includes("and configure attribute mapping before you publish.") &&
+      source.includes("to make products publish-ready before the first export."),
+    "Dashboard must expose a polished onboarding checklist for empty catalog workspaces.",
+  );
+  assert(
     source.includes("Catalog Work Queue") &&
       source.includes("Operations &amp; Usage") &&
       source.includes("Operational job counts are limited to editor and admin roles.") &&
@@ -132,6 +141,7 @@ function run() {
           "dashboard_route_exposes_admin_signup_funnel_and_drilldown",
           "dashboard_route_derives_priority_product_queue",
           "dashboard_route_preserves_next_best_action_links",
+          "dashboard_route_exposes_polished_onboarding_checklist",
           "dashboard_route_surfaces_catalog_and_usage_follow_up_panels",
           "dashboard_route_redirects_auth_failures",
         ],

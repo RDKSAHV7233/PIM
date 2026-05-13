@@ -3,8 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ProductReadinessSummaryBar } from "@/components/channel/product-readiness-summary-bar";
 import { buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { PlanLimitModal } from "@/components/ui/plan-limit-modal";
+import { SkeletonBlock } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
@@ -33,6 +35,7 @@ import {
 } from "./_components/product-detail-shared";
 import type { DetailTab } from "./_components/product-detail-types";
 import { StatusToastEffect } from "./_components/status-toast-effect";
+import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 
 interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; returnTo?: string; updateStatus?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; deleteStatus?: string; deleteError?: string; }>; }
 
@@ -260,6 +263,143 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       ? [{ label: "Review approval status", href: tabHref("quality") }]
       : []),
   ].slice(0, 4);
+  const workflowSteps: WorkflowStep[] = (() => {
+    switch (product.status) {
+      case "in_review":
+        return [
+          { label: "Draft", tone: "complete" },
+          { label: "In Review", tone: "current" },
+          { label: "Approved", tone: "pending" },
+          { label: "Active", tone: "pending" },
+        ];
+      case "approved":
+        return [
+          { label: "Draft", tone: "complete" },
+          { label: "In Review", tone: "complete" },
+          { label: "Approved", tone: "current" },
+          { label: "Active", tone: "pending" },
+        ];
+      case "rejected":
+        return [
+          { label: "Draft", tone: "complete" },
+          { label: "In Review", tone: "complete" },
+          { label: "Changes Requested", tone: "rejected" },
+          { label: "Active", tone: "pending" },
+        ];
+      case "active":
+        return [
+          { label: "Draft", tone: "complete" },
+          { label: "In Review", tone: "complete" },
+          { label: "Approved", tone: "complete" },
+          { label: "Active", tone: "current" },
+        ];
+      case "archived":
+        return [
+          { label: "Draft", tone: "complete" },
+          { label: "In Review", tone: "complete" },
+          { label: "Approved", tone: "complete" },
+          { label: "Archived", tone: "current" },
+        ];
+      default:
+        return [
+          { label: "Draft", tone: "current" },
+          { label: "In Review", tone: "pending" },
+          { label: "Approved", tone: "pending" },
+          { label: "Active", tone: "pending" },
+        ];
+    }
+  })();
+  const nextAction = (() => {
+    if (product.status === "draft") {
+      if (blockingIssueCount > 0) {
+        return {
+          title: `Fix ${blockingIssueCount} blocking issue${blockingIssueCount === 1 ? "" : "s"} in the Quality tab`,
+          detail: "Clear product-level blockers before sending this item forward for review.",
+          href: tabHref("quality"),
+          cta: "Open Quality tab",
+          tone: "border-red-200 bg-red-50/70",
+        };
+      }
+      return {
+        title: "Submit for review - product is ready",
+        detail: "Core quality blockers are clear. Review the quality checklist and move this draft forward.",
+        href: tabHref("quality"),
+        cta: "Review quality",
+        tone: "border-emerald-200 bg-emerald-50/70",
+      };
+    }
+    if (product.status === "in_review") {
+      return {
+        title: "Awaiting review decision",
+        detail: "A reviewer still needs to approve or reject this product before it can move forward.",
+        href: null,
+        cta: null,
+        tone: "border-amber-200 bg-amber-50/70",
+      };
+    }
+    if (product.status === "rejected") {
+      return {
+        title: "Address reviewer feedback and resubmit",
+        detail: "Review the quality feedback, make the required changes, and prepare this product for another review pass.",
+        href: tabHref("quality"),
+        cta: "Open Quality tab",
+        tone: "border-red-200 bg-red-50/70",
+      };
+    }
+    if (product.status === "approved") {
+      if ((readiness.blockers ?? []).length > 0 || (readiness.warnings ?? []).length > 0) {
+        return {
+          title: "Map remaining attributes to go live",
+          detail: "Channel mapping still needs attention before this approved product is ready for publish and export.",
+          href: tabHref("channels"),
+          cta: "Open Channels tab",
+          tone: "border-amber-200 bg-amber-50/70",
+        };
+      }
+      return {
+        title: "Activate this product to make it live",
+        detail: "Approval and publish readiness are clear. Use the channel workflow to move this product into a live state.",
+        href: tabHref("channels"),
+        cta: "Open publish & export",
+        tone: "border-blue-200 bg-blue-50/70",
+      };
+    }
+    if (product.status === "active") {
+      const latestExportStatus = String(latestExportJob?.status ?? "").trim().toLowerCase();
+      const hasConnectorErrors =
+        latestExportStatus === "failed" ||
+        latestExportStatus === "dead_letter" ||
+        latestExportStatus === "rejected" ||
+        latestExportStatus === "error" ||
+        (selectedConnectorInstallation?.status ?? "ACTIVE") !== "ACTIVE";
+      if (hasConnectorErrors) {
+        return {
+          title: "Fix connector sync errors in the Channels tab",
+          detail: "This product is live, but connector health or the latest export attempt still needs attention.",
+          href: tabHref("channels"),
+          cta: "Open Channels tab",
+          tone: "border-amber-200 bg-amber-50/70",
+        };
+      }
+      return {
+        title: "Product is live and healthy",
+        detail: "Quality, media, and connector signals are currently clear for this live product.",
+        href: null,
+        cta: null,
+        tone: "border-emerald-200 bg-emerald-50/70",
+      };
+    }
+    if (product.status === "archived") {
+      return {
+        title: "Archived product",
+        detail: "This product is no longer active in the catalog. Restore or duplicate it only if it needs to go live again.",
+        href: null,
+        cta: null,
+        tone: "border-slate-200 bg-slate-50",
+      };
+    }
+    return null;
+  })();
 
   return (
     <div className="space-y-5">
@@ -272,12 +412,29 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         breadcrumb={<><Link href="/dashboard" className="hover:underline">Dashboard</Link> / <Link href="/catalog/products" className="hover:underline">Catalog</Link> / <span className="font-semibold text-slate-700">Product Detail</span></>}
         actions={<>{returnTo ? <Link href={returnTo} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to inbox</Link> : null}<StatusChip label={product.status} tone={product.status === "active" ? "success" : "neutral"} /><StatusChip label={`${product.completenessScore ?? 0}% complete`} tone="info" />{canWrite ? <button type="submit" form="product-edit-form" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save</button> : null}{canWrite ? <button type="submit" form="product-validate-form" className={cn(buttonVariants({ variant: "dark" }))}>Validate</button> : null}{canWrite ? <Link href={tabHref("channels")} data-product-tab-link="true" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open publish & export</Link> : null}</>}
       />
-      <div className="relative">
-        <nav aria-label="Product detail tabs" className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="flex min-w-max gap-2">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} data-product-tab-link="true" className={`inline-flex rounded-md px-3 py-2 text-sm font-medium transition ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
-        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-white/80 to-transparent sm:hidden" />
-      </div>
+      <nav aria-label="Product detail tabs" className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ul className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">{DETAIL_TABS.map((tab) => <li key={tab.key}><Link href={tabHref(tab.key)} data-product-tab-link="true" aria-current={activeTab === tab.key ? "page" : undefined} className={`inline-flex w-full justify-center rounded-md px-3 py-2 text-sm font-medium transition sm:w-auto ${activeTab === tab.key ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{tab.label}</Link></li>)}</ul></nav>
       <StatusToastEffect updateStatus={updateStatus} />
       <ProductDetailStatusAlerts updateStatus={updateStatus} conflictVersion={conflictVersion} deleteStatus={deleteStatus} deleteError={deleteError} />
+      {activeTab === "overview" && nextAction ? (
+        <Card className={nextAction.tone}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next Action</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">{nextAction.title}</h2>
+              <p className="mt-1 text-sm text-slate-600">{nextAction.detail}</p>
+            </div>
+            {nextAction.href && nextAction.cta ? (
+              <Link
+                href={nextAction.href}
+                className="inline-flex rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white/70"
+              >
+                {nextAction.cta}
+              </Link>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+      {activeTab === "overview" ? <WorkflowStepper steps={workflowSteps} /> : null}
       {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
       <Suspense fallback={<ProductDetailDeferredLoading />}>
         <ProductDetailDeferredSection
@@ -307,12 +464,12 @@ function ProductDetailDeferredLoading() {
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_290px]">
       <div className="space-y-3">
         {Array.from({ length: 8 }).map((_, index) => (
-          <div key={index} className="h-10 w-full animate-pulse rounded bg-slate-100" />
+          <SkeletonBlock key={index} className="h-10 w-full" />
         ))}
       </div>
       <div className="space-y-3">
-        <div className="h-6 w-24 animate-pulse rounded bg-slate-100" />
-        <div className="h-40 w-full animate-pulse rounded bg-slate-100" />
+        <SkeletonBlock className="h-6 w-24" />
+        <SkeletonBlock className="h-40 w-full" />
       </div>
     </div>
   );

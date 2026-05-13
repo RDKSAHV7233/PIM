@@ -1,6 +1,6 @@
 # QA Phase 0 Baseline (2026-03-29)
 
-This document records the current TEJ PIM validation baseline directly from the repository and sets the starting point for phased QA automation execution.
+This document records the current Vexa PIM validation baseline directly from the repository and sets the starting point for phased QA automation execution.
 
 ## Frontend Route Inventory
 

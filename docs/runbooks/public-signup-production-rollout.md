@@ -1,5 +1,5 @@
 ---
-title: TEJ PIM Public Signup Production Rollout Runbook
+title: Vexa PIM Public Signup Production Rollout Runbook
 audience: internal-ops
 status: active
 last_updated: 2026-03-26
@@ -8,7 +8,7 @@ owner: DevOps + Product
 
 ## 1. Purpose
 
-Use this runbook when enabling or disabling TEJ PIM public self-serve signup in production.
+Use this runbook when enabling or disabling Vexa PIM public self-serve signup in production.
 
 This runbook is for controlled production rollout only. It assumes signup has already passed:
 
@@ -72,7 +72,7 @@ These checks do not create a real tenant:
    - expect `401`
    - expect `SIGNUP_VERIFICATION_TOKEN_INVALID`
 4. `GET /signup`
-   - expect the `Create your TEJ PIM workspace` heading
+   - expect the `Create your Vexa PIM workspace` heading
 
 If production email delivery is available and you want full validation:
 
@@ -142,7 +142,7 @@ Current v1 signup behavior still has these constraints:
 
 ## 9. References
 
-- `docs/auth/TEJ_PIM_TENANT_LOGIN_SPEC.md`
+- `docs/auth/VEXA_PIM_TENANT_LOGIN_SPEC.md`
 - `docs/execution/STAGING_LIVE_EVIDENCE_RUNBOOK.md`
 - `docs/runbooks/on-call-guide.md`
 - `docs/runbooks/incident-response.md`

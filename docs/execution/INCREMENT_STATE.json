@@ -70,7 +70,7 @@
           ],
           "reopened_by": "codex",
           "reopened_reason": "Fix Product Workbench create-product workflow mismatch where the UI offered non-draft initial statuses even though the backend enforces draft-only workflow entry.",
-          "regression_evidence": "Exact failing command: @' const base = 'http://127.0.0.1:4000/api/v1'; const loginResp = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceSlug: 'default', userId: 'admin@pim1.local', password: 'TEJ PIM-demo-password' }) }); const login = await loginResp.json(); const authHeaders = { Authorization: `Bearer ${login.accessToken}` }; const catsResp = await fetch(`${base}/taxonomy/categories`, { headers: authHeaders }); const cats = await catsResp.json(); const cat = Array.isArray(cats) ? cats[0] : (Array.isArray(cats.items) ? cats.items[0] : null); if (!cat) throw new Error('NO_CATEGORY_FOUND'); const createResp = await fetch(`${base}/catalog/products`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Workflow Entry Proof Product', description: 'proof', brand: 'TEJ PIM', categoryId: cat.id, status: 'active', attributes: { pricing: { sellingPrice: 999 } } }) }); const body = await createResp.text(); console.log('CREATE_STATUS=' + createResp.status); console.log(body); '@ | node --input-type=module -. Failing output snippet: CREATE_STATUS=400 {\"code\":\"WORKFLOW_ENTRY_INVALID\",\"message\":\"New products must enter workflow in draft status.\",\"source\":\"create_product\",\"allowedStatus\":\"draft\",\"receivedStatus\":\"active\"}. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
+          "regression_evidence": "Exact failing command: @' const base = 'http://127.0.0.1:4000/api/v1'; const loginResp = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceSlug: 'default', userId: 'admin@pim1.local', password: 'Vexa PIM-demo-password' }) }); const login = await loginResp.json(); const authHeaders = { Authorization: `Bearer ${login.accessToken}` }; const catsResp = await fetch(`${base}/taxonomy/categories`, { headers: authHeaders }); const cats = await catsResp.json(); const cat = Array.isArray(cats) ? cats[0] : (Array.isArray(cats.items) ? cats.items[0] : null); if (!cat) throw new Error('NO_CATEGORY_FOUND'); const createResp = await fetch(`${base}/catalog/products`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Workflow Entry Proof Product', description: 'proof', brand: 'Vexa PIM', categoryId: cat.id, status: 'active', attributes: { pricing: { sellingPrice: 999 } } }) }); const body = await createResp.text(); console.log('CREATE_STATUS=' + createResp.status); console.log(body); '@ | node --input-type=module -. Failing output snippet: CREATE_STATUS=400 {\"code\":\"WORKFLOW_ENTRY_INVALID\",\"message\":\"New products must enter workflow in draft status.\",\"source\":\"create_product\",\"allowedStatus\":\"draft\",\"receivedStatus\":\"active\"}. Likely files: apps/web/src/components/product/CreateProductForm.tsx, apps/web/src/app/actions.ts."
         },
         {
           "storyId": "ST-UI-STRUCTURED-MAPPING-003",
@@ -682,7 +682,7 @@
           "commit": "e49c0dd",
           "tests_passed": [
             "npm run test:staging:postdeploy-check",
-            "$env:STAGING_BASE_URL='http://127.0.0.1:4000'; $env:STAGING_SMOKE_WORKSPACE='default'; $env:STAGING_SMOKE_USER='admin@pim1.local'; $env:STAGING_SMOKE_PASSWORD='TEJ PIM-demo-password'; $env:STAGING_EXPECTED_ENV='development'; node scripts/staging-postdeploy-check.cjs",
+            "$env:STAGING_BASE_URL='http://127.0.0.1:4000'; $env:STAGING_SMOKE_WORKSPACE='default'; $env:STAGING_SMOKE_USER='admin@pim1.local'; $env:STAGING_SMOKE_PASSWORD='Vexa PIM-demo-password'; $env:STAGING_EXPECTED_ENV='development'; node scripts/staging-postdeploy-check.cjs",
             "node --check scripts/staging-postdeploy-check.cjs",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
@@ -1066,7 +1066,7 @@
       "stories": [
         {
           "storyId": "ST-CON-MAP-CTOPO-001",
-          "title": "Phase A1/A2/B/C baseline activation in TEJ PIM",
+          "title": "Phase A1/A2/B/C baseline activation in Vexa PIM",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1170,7 +1170,7 @@
           ],
           "reopened_by": "user",
           "reopened_reason": "Reopen INC-09 for MFA because mapping-domain work is closed and the remaining connector-domain gap is bounded security step-up only.",
-          "regression_evidence": "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active TEJ PIM."
+          "regression_evidence": "Connector mapping lifecycle was operationally complete but high-risk mapping actions (publish, rollback, archive) had no step-up re-auth protection in active Vexa PIM."
         },
         {
           "storyId": "ST-CON-STEPUP-WEB-001",
@@ -1200,7 +1200,7 @@
           "commit": "63c3036",
           "tests_passed": [
             "Get-Content docs/connectors/README.md",
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
             "Get-Content docs/STRUCTURE.md",
             "git status --short",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
@@ -1242,11 +1242,11 @@
           "owner": "codex",
           "commit": "0657985",
           "tests_passed": [
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
-            "rg -n \"TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "rg -n \"VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1258,11 +1258,11 @@
           "owner": "codex",
           "commit": "54f2c5d",
           "tests_passed": [
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "rg -n \"TEJ_PIM_CONNECTOR_CURRENT_STATE_2026-03-08|TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE\" docs -S",
+            "rg -n \"VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08|VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE\" docs -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1274,12 +1274,12 @@
           "owner": "codex",
           "commit": "a7d57ad",
           "tests_passed": [
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md",
-            "Get-Content docs/connectors/TEJ_PIM_CONNECTOR_RECIPES.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md",
+            "Get-Content docs/connectors/VEXA_PIM_CONNECTOR_RECIPES.md",
             "Get-Content docs/connectors/README.md",
             "Get-Content docs/STRUCTURE.md",
-            "rg -n \"TEJ_PIM_CONNECTOR_DEVELOPER_GUIDE|TEJ_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE|TEJ_PIM_CONNECTOR_RECIPES\" docs/connectors docs/STRUCTURE.md -S",
+            "rg -n \"VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE|VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE|VEXA_PIM_CONNECTOR_RECIPES\" docs/connectors docs/STRUCTURE.md -S",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ]
         },
@@ -1307,7 +1307,7 @@
       "name": "Flipkart Publish Connector v1",
       "status": "completed",
       "evidence": [
-        "docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
+        "docs/connectors/VEXA_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md"
       ],
       "stories": [
         {
@@ -1318,20 +1318,20 @@
           "owner": "codex",
           "commit": "dd07f73",
           "tests_passed": [
-            "Get-Content docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
-            "rg -n \"publish-capable|imported/snapshotted taxonomy|Publish to Flipkart|installation and credential contract|Response normalization contract|Idempotency Contract|connector-installer|connector-framework|connector-mapping.service|product detail\" docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
-            "git diff --stat -- docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md docs/execution/INCREMENT_STATE.json",
+            "Get-Content docs/connectors/VEXA_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "rg -n \"publish-capable|imported/snapshotted taxonomy|Publish to Flipkart|installation and credential contract|Response normalization contract|Idempotency Contract|connector-installer|connector-framework|connector-mapping.service|product detail\" docs/connectors/VEXA_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "git diff --stat -- docs/connectors/VEXA_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md docs/execution/INCREMENT_STATE.json",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "scope": [
-            "docs/connectors/TEJ_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
+            "docs/connectors/VEXA_PIM_FLIPKART_V1_IMPLEMENTATION_PLAN.md",
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
             "Flipkart v1 capability is locked as publish-capable.",
             "Taxonomy strategy is locked to imported or snapshotted provider taxonomy.",
             "Operation model is locked to one unified seller-facing publish action.",
-            "Installation and credential contract is documented against current TEJ PIM connector installation surfaces.",
+            "Installation and credential contract is documented against current Vexa PIM connector installation surfaces.",
             "Response normalization and idempotency key contracts are explicitly documented."
           ]
         },
@@ -1666,7 +1666,7 @@
           "commit": "d81eb45",
           "reopened_by": "codex",
           "reopened_reason": "Fix connector definitions endpoint regression causing /channels/mappings to fail with a 500 when install action matrices are resolved.",
-          "regression_evidence": "Exact failing command: $login = Invoke-RestMethod -Uri 'http://127.0.0.1:4000/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body (@{workspaceSlug='default'; userId='admin@pim1.local'; password='TEJ PIM-demo-password'} | ConvertTo-Json); $headers=@{ Authorization = \"Bearer $($login.accessToken)\" }; Invoke-WebRequest -Uri 'http://127.0.0.1:4000/api/v1/connectors/definitions' -Headers $headers -ErrorAction Stop. Failing output snippet: DEFINITIONS_STATUS=500 and backend stack shows PrismaClientKnownRequestError P2037: Too many database connections opened during ConnectorPermissionService.buildDefinitionActions -> PlanUsageService.checkLimit/recomputeUsage. Likely files: apps/api/src/connector-installer/connector-installer.service.ts, apps/api/src/connector-installer/connector-permission.service.ts, apps/api/src/billing/plan-usage.service.ts.",
+          "regression_evidence": "Exact failing command: $login = Invoke-RestMethod -Uri 'http://127.0.0.1:4000/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body (@{workspaceSlug='default'; userId='admin@pim1.local'; password='Vexa PIM-demo-password'} | ConvertTo-Json); $headers=@{ Authorization = \"Bearer $($login.accessToken)\" }; Invoke-WebRequest -Uri 'http://127.0.0.1:4000/api/v1/connectors/definitions' -Headers $headers -ErrorAction Stop. Failing output snippet: DEFINITIONS_STATUS=500 and backend stack shows PrismaClientKnownRequestError P2037: Too many database connections opened during ConnectorPermissionService.buildDefinitionActions -> PlanUsageService.checkLimit/recomputeUsage. Likely files: apps/api/src/connector-installer/connector-installer.service.ts, apps/api/src/connector-installer/connector-permission.service.ts, apps/api/src/billing/plan-usage.service.ts.",
           "scope": [
             "apps/api/src/connector-installer/connector-permission.service.ts",
             "apps/api/src/connector-installer/connector-installer.service.ts",
@@ -1805,12 +1805,12 @@
         "package.json",
         "scripts/run-product-suite.cjs",
         "apps/web/test/integration/product-shell-uiux.test.cjs",
-        "docs/strategy/TEJ_PIM_PRODUCT_TEST_STRATEGY.md"
+        "docs/strategy/VEXA_PIM_PRODUCT_TEST_STRATEGY.md"
       ],
       "stories": [
         {
           "storyId": "ST-TEST-PRODUCT-001",
-          "title": "Reorganize current TEJ PIM tests into product-facing acceptance suites with UI UX coverage",
+          "title": "Reorganize current Vexa PIM tests into product-facing acceptance suites with UI UX coverage",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1818,7 +1818,7 @@
           "scope": [
             "package.json",
             "scripts/run-product-suite.cjs",
-            "docs/strategy/TEJ_PIM_PRODUCT_TEST_STRATEGY.md",
+            "docs/strategy/VEXA_PIM_PRODUCT_TEST_STRATEGY.md",
             "apps/web/test/integration/product-shell-uiux.test.cjs",
             "apps/api/test/integration/create-product-pricing-normalization.test.cjs",
             "apps/api/test/integration/product-workflow-transitions.test.cjs",
@@ -1834,9 +1834,9 @@
             "docs/execution/INCREMENT_STATE.json"
           ],
           "acceptance": [
-            "TEJ PIM exposes product-oriented test suite entry points for shell, catalog, publish, operations, governance, and UI UX validation.",
+            "Vexa PIM exposes product-oriented test suite entry points for shell, catalog, publish, operations, governance, and UI UX validation.",
             "The product shell has explicit UI UX acceptance coverage for current topbar and sidebar affordances.",
-            "The full product suite passes against the current workspace-scoped login model and current TEJ PIM feature set.",
+            "The full product suite passes against the current workspace-scoped login model and current Vexa PIM feature set.",
             "A committed test strategy document maps product capabilities to the maintained suite entry points."
           ],
           "tests_passed": [
@@ -1899,7 +1899,7 @@
       "stories": [
         {
           "storyId": "ST-TEST-E2E-001",
-          "title": "Add Playwright browser coverage for current TEJ PIM user workflows",
+          "title": "Add Playwright browser coverage for current Vexa PIM user workflows",
           "status": "completed",
           "locked": true,
           "owner": "codex",
@@ -1927,7 +1927,7 @@
             "Playwright can start isolated API and web test servers against the current workspace-scoped login model.",
             "Browser E2E coverage exists for workspace login, product archive/category delete UI, reviewer approval decisions, and notification center behavior.",
             "Shared web helpers tolerate empty successful responses and do not swallow successful redirect control flow during server actions.",
-            "The full Playwright suite passes on current TEJ PIM behavior.",
+            "The full Playwright suite passes on current Vexa PIM behavior.",
             "Playwright runtime logs do not pollute the working tree."
           ],
           "tests_passed": [
@@ -2190,7 +2190,7 @@
       "stories": [
         {
           "storyId": "ST-BRAND-ALIGN-001",
-          "title": "Retire TEJ PIM brand from internal doc headers",
+          "title": "Retire Vexa PIM brand from internal doc headers",
           "status": "completed",
           "locked": true,
           "owner": "codex",

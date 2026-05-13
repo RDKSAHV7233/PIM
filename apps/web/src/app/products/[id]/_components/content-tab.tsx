@@ -51,6 +51,19 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
               defaultValue={data.product.description}
             />
           </div>
+          <div className="space-y-1 md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="product-main-image-url">
+              Main Image URL
+            </label>
+            <input type="hidden" name="attrType__mainImageUrl" value="text" />
+            <Input
+              id="product-main-image-url"
+              name="attr__mainImageUrl"
+              data-field="mainImageUrl"
+              defaultValue={String(data.productAttributes?.mainImageUrl ?? "")}
+              placeholder="https://example.com/product-image.jpg"
+            />
+          </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="product-hsn-code">
               HSN Code
@@ -77,6 +90,8 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
             </label>
             <Select id="product-status" name="status" data-field="status" defaultValue={data.product.status}>
               <option value="draft">draft</option>
+              <option value="in_review">in_review</option>
+              <option value="approved">approved</option>
               <option value="active">active</option>
               <option value="archived">archived</option>
             </Select>

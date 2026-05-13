@@ -4,7 +4,7 @@
 - Repo head at alignment: `5a64683`
 
 ## 1. Canonical current-state sources
-These files describe the current active TEJ PIM baseline and should be read first.
+These files describe the current active Vexa PIM baseline and should be read first.
 
 1. `README.md`
 2. `docs/STRUCTURE.md`
@@ -32,11 +32,11 @@ These code sources define the current implemented shell, route surface, and core
 ## 3. Historical design inputs retained for traceability
 These remain useful as design/history inputs, but they are not the live source of truth by themselves.
 
-1. `docs/architecture/TEJ_PIM_Final_Architecture_March2026_v3.docx`
-2. `docs/execution/TEJ_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
-3. `docs/strategy/TEJ_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
-4. `docs/architecture/TEJ_PIM_Connector_First_Redesign_March2026.docx`
-5. `docs/design/TEJ_PIM_UI_Design_Review.html`
+1. `docs/architecture/VEXA_PIM_Final_Architecture_March2026_v3.docx`
+2. `docs/execution/VEXA_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
+3. `docs/strategy/VEXA_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
+4. `docs/architecture/VEXA_PIM_Connector_First_Redesign_March2026.docx`
+5. `docs/design/VEXA_PIM_UI_Design_Review.html`
 
 ## 4. Canonical active docs after restructuring
 - `docs/product/PRD.md`

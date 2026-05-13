@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createBulkImportJobAction, processBulkImportJobAction } from "@/app/actions";
+import { ImportPreflightForm } from "@/components/operations/import-preflight-form";
 import { RowRepairForm } from "@/components/ui/row-repair-form";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { KpiCard } from "@/components/ui/kpi-card";
+import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
+import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import type { BulkImportRun, BulkImportRunRow } from "@/lib/api/core";
 import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
 // validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
@@ -107,6 +111,44 @@ function resolveHideTestData(value: string | undefined): boolean {
   return true;
 }
 
+function importWorkflowSteps(input: {
+  selectedBulkJobId: string;
+  selectedJobStatus: string | null;
+  selectedAttentionRows: number;
+  selectedSuccessfulRows: number;
+}): WorkflowStep[] {
+  const hasSelection = input.selectedBulkJobId.length > 0;
+  const status = String(input.selectedJobStatus ?? "").trim().toLowerCase();
+
+  return [
+    {
+      label: "Upload and pre-validate",
+      tone: hasSelection ? "complete" : "current",
+      description: "Choose category scope, upload the source file, and validate before creating a job.",
+    },
+    {
+      label: "Review validation summary",
+      tone: hasSelection ? "complete" : "pending",
+      description: "Review blocking issues, warnings, sample row errors, and field mapping coverage.",
+    },
+    {
+      label: "Start import",
+      tone: hasSelection ? "complete" : "pending",
+      description: "Create and process the queued import only after preflight is clear or warning-only.",
+    },
+    {
+      label: "Review result and repair rows",
+      tone:
+        input.selectedAttentionRows > 0
+          ? "current"
+          : input.selectedSuccessfulRows > 0 && hasSelection
+            ? "complete"
+            : "pending",
+      description: "Open the selected job, review results, download the error report, and repair remaining rows.",
+    },
+  ];
+}
+
 export default async function OperationsImportsPage({ searchParams }: OperationsImportsPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
@@ -145,6 +187,12 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     const selectedRowsNeedingRepair = selectedRows.filter((row) => row.status !== "success");
     const selectedSuccessfulRows = selectedRows.filter((row) => row.status === "success");
     const selectedAttentionRows = (selectedRowCounts.failed ?? 0) + (selectedRowCounts.dead_letter ?? 0);
+    const operatorWorkflowSteps = importWorkflowSteps({
+      selectedBulkJobId,
+      selectedJobStatus: selectedJob?.status ?? null,
+      selectedAttentionRows,
+      selectedSuccessfulRows: selectedSuccessfulRows.length,
+    });
     const selectedRun =
       selectedBulkRunId
         ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
@@ -188,6 +236,76 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       const queryString = search.toString();
       return queryString ? `/operations/imports?${queryString}` : "/operations/imports";
     };
+    const importFieldColumns: Column<(typeof IMPORT_FIELD_GUIDE)[number]>[] = [
+      { key: "field", header: "Field", render: (field) => <span className="font-mono text-xs text-slate-900">{field.name}</span> },
+      { key: "example", header: "Example", render: (field) => <span className="font-mono text-xs text-slate-700">{field.example}</span> },
+      { key: "notes", header: "How to use it", render: (field) => <span className="text-slate-600">{field.notes}</span> },
+    ];
+    const jobColumns: Column<(typeof visibleJobs)[number]>[] = [
+      { key: "job", header: "Job", render: (job) => <span className="font-mono text-xs">{job.id}</span> },
+      { key: "format", header: "Format", render: (job) => job.sourceFormat },
+      { key: "category", header: "Category", render: (job) => job.category?.path ?? job.categoryId },
+      { key: "status", header: "Status", render: (job) => translateJobStatus(job.status) },
+      { key: "rows", header: "Rows", render: (job) => `${job.processedRows}/${job.totalRows}` },
+      { key: "success", header: "Success", render: (job) => job.successRows },
+      { key: "attention", header: "Needs Attention", render: (job) => job.deadLetterRows },
+      {
+        key: "actions",
+        header: "Actions",
+        render: (job) => (
+          <div className="flex flex-wrap gap-2">
+            {canWrite && String(job.status).toLowerCase() === "queued" ? (
+              <form action={processBulkImportJobAction}>
+                <input type="hidden" name="jobId" value={job.id} />
+                <input type="hidden" name="chunkSize" value={job.chunkSize} />
+                <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
+                <PendingSubmitButton
+                  type="submit"
+                  variant="secondary"
+                  idleLabel="Start import"
+                  pendingLabel="Starting import..."
+                />
+              </form>
+            ) : null}
+            <Link
+              href={buildImportsHref(job.id)}
+              className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
+            >
+              View rows
+            </Link>
+          </div>
+        ),
+      },
+    ];
+    const selectedRowColumns: Column<(typeof selectedRows)[number]>[] = [
+      { key: "row", header: "Row", render: (row) => <span className="font-mono text-xs">{row.rowNumber}</span> },
+      { key: "status", header: "Status", render: (row) => translateJobStatus(row.status) },
+      {
+        key: "catalogResult",
+        header: "Catalog result",
+        render: (row) =>
+          row.productId ? (
+            <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
+              View product
+            </Link>
+          ) : (
+            <span className="text-slate-500">No product created</span>
+          ),
+      },
+      {
+        key: "error",
+        header: "Error",
+        render: (row) => {
+          const translatedError = translateError(extractErrorCode(row.errorMessage));
+          return (
+            <span className="text-xs text-slate-600">
+              {row.errorMessage ? `${translatedError.title}: ${translatedError.description}` : "None"}
+            </span>
+          );
+        },
+      },
+      { key: "attempts", header: "Attempts", render: (row) => row.retryCount },
+    ];
 
     const buildRunHref = (bulkRunId?: string) => {
       const search = new URLSearchParams();
@@ -207,24 +325,20 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     return (
       <div className="space-y-5">
         <RefreshOnInterval intervalMs={30_000} />
-        <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-slate-500">
-                Dashboard / Operations / <span className="font-semibold text-slate-700">Imports</span>
-              </p>
-              <h1 className="text-2xl font-semibold text-slate-900">Operations Imports</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Track import runs, failures, and row-level repair activity.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={hideToggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
-                {hideTestData ? "Show test data" : "Hide test data"}
-              </Link>
-            </div>
-          </div>
-        </header>
+        <PageHeader
+          title="Operations Imports"
+          description="Run imports in a strict operator sequence: pre-validate the file, review readiness, start the queued job, then move into result and repair."
+          breadcrumb={
+            <>
+              Dashboard / Operations / <span className="font-semibold text-slate-700">Imports</span>
+            </>
+          }
+          actions={
+            <Link href={hideToggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+              {hideTestData ? "Show test data" : "Hide test data"}
+            </Link>
+          }
+        />
 
         {/* Import wizard step indicator */}
         <nav aria-label="Import wizard steps" className="rounded-lg border border-slate-200 bg-white px-4 py-3">
@@ -303,88 +417,20 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           <Card>
-            <CardTitle>Start Import</CardTitle>
-            {canWrite ? (
-              <form action={createBulkImportJobAction} className="space-y-4" suppressHydrationWarning>
-                <input
-                  type="hidden"
-                  name="mapping"
-                  value='{"title":"title","description":"description","brand":"brand","hsnCode":"hsnCode","gstRate":"gstRate","status":"status","attributes":"attributes"}'
-                />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1 text-sm text-slate-700">
-                    <span className="font-medium">Category</span>
-                    <select
-                      name="categoryId"
-                      required
-                      defaultValue={categories[0]?.id ?? ""}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    >
-                      {categories.length === 0 ? (
-                        <option value="">No categories available</option>
-                      ) : (
-                        categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.path ?? category.name ?? category.id}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                  <label className="space-y-1 text-sm text-slate-700">
-                    <span className="font-medium">Source File</span>
-                    <input
-                      type="file"
-                      name="sourceFile"
-                      required
-                      accept=".csv,.json"
-                      className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1 text-sm text-slate-700">
-                    <span className="font-medium">Chunk Size</span>
-                    <input
-                      type="number"
-                      name="chunkSize"
-                      min={1}
-                      max={500}
-                      defaultValue={100}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm text-slate-700">
-                    <span className="font-medium">Max Retries</span>
-                    <input
-                      type="number"
-                      name="maxRetries"
-                      min={1}
-                      max={10}
-                      defaultValue={3}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                </div>
-                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  <p className="font-medium text-slate-800">Accepted columns</p>
-                  <p>
-                    Use the canonical fields <code>title</code>, <code>description</code>, <code>brand</code>, <code>hsnCode</code>, <code>gstRate</code>, <code>status</code>, and <code>attributes</code>.
-                  </p>
-                  <p>
-                    The <code>attributes</code> column should contain a JSON object for category-specific fields, for example <code>{'{"material":"cotton","color":"black"}'}</code>.
-                  </p>
-                </div>
-                <PendingSubmitButton
-                  type="submit"
-                  disabled={categories.length === 0}
-                  idleLabel="Upload Import File"
-                  pendingLabel="Uploading and starting import..."
-                />
-              </form>
-            ) : (
-              <p className="text-sm text-slate-600">Import upload is read-only for your role.</p>
-            )}
+            <CardTitle>Operator import flow</CardTitle>
+            <p className="mb-3 text-sm text-slate-600">
+              Follow the same four-step path every time: upload and pre-validate, review the validation summary, start import, then review results and repair only the rows that still need operator attention.
+            </p>
+            <WorkflowStepper steps={operatorWorkflowSteps} />
+          </Card>
+
+          <Card>
+            <CardTitle>Stage 1 and 2 | Upload and pre-validate</CardTitle>
+            <ImportPreflightForm
+              categories={categories}
+              canWrite={canWrite}
+              submitAction={createBulkImportJobAction}
+            />
           </Card>
 
           <Card>
@@ -424,26 +470,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 CSV uploads should use the exact canonical column names below. JSON uploads should use the
                 same keys on each row object.
               </p>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[720px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Field</th>
-                      <th className="px-3 py-2">Example</th>
-                      <th className="px-3 py-2">How to use it</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {IMPORT_FIELD_GUIDE.map((field) => (
-                      <tr key={field.name} className="border-t border-slate-200">
-                        <td className="px-3 py-2 font-mono text-xs text-slate-900">{field.name}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{field.example}</td>
-                        <td className="px-3 py-2 text-slate-600">{field.notes}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataGrid columns={importFieldColumns} rows={IMPORT_FIELD_GUIDE.slice()} getRowKey={(field) => field.name} />
               <ul className="list-disc space-y-1 pl-5">
                 <li>Keep the first row as headers for CSV uploads.</li>
                 <li>Use one product row per line in CSV, or one object per item in JSON.</li>
@@ -459,7 +486,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 If you prefer JSON imports, upload an array of product row objects using the same field names as the
                 CSV sample.
               </p>
-              <pre className="overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800">
+              <pre className="overflow-hidden whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800">
                 <code>{SAMPLE_JSON_PREVIEW}</code>
               </pre>
             </div>
@@ -467,7 +494,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         </section>
 
         <Card aria-live="polite" aria-atomic="true">
-          <CardTitle>Import Jobs</CardTitle>
+          <CardTitle>Stage 3 | Start import</CardTitle>
+          <p className="mb-3 text-sm text-slate-600">
+            Preflight creates the job in a queued state. Start processing from this queue, then open the selected job to review result details and move into repair.
+          </p>
           {visibleJobs.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">
               {actorRole === "viewer"
@@ -475,60 +505,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                 : "No import jobs match this filter."}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Job</th>
-                    <th className="py-2">Format</th>
-                    <th className="py-2">Category</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Rows</th>
-                    <th className="py-2">Success</th>
-                    <th className="py-2">Needs Attention</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleJobs.map((job) => (
-                    <tr key={job.id} className="border-t border-border">
-                      <td className="py-2 font-mono text-xs">{job.id}</td>
-                      <td className="py-2">{job.sourceFormat}</td>
-                      <td className="py-2">{job.category?.path ?? job.categoryId}</td>
-                      <td className="py-2">{translateJobStatus(job.status)}</td>
-                      <td className="py-2">
-                        {job.processedRows}/{job.totalRows}
-                      </td>
-                      <td className="py-2">{job.successRows}</td>
-                      <td className="py-2">{job.deadLetterRows}</td>
-                      <td className="py-2">
-                        <div className="flex flex-wrap gap-2">
-                          {canWrite && String(job.status).toLowerCase() === "queued" ? (
-                            <form action={processBulkImportJobAction}>
-                              <input type="hidden" name="jobId" value={job.id} />
-                              <input type="hidden" name="chunkSize" value={job.chunkSize} />
-                              <input type="hidden" name="returnTo" value={buildImportsHref(job.id)} />
-                              <PendingSubmitButton
-                                type="submit"
-                                variant="secondary"
-                                idleLabel="Start import"
-                                pendingLabel="Starting import..."
-                              />
-                            </form>
-                          ) : null}
-                          <Link
-                            href={buildImportsHref(job.id)}
-                            className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
-                          >
-                            View rows
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataGrid columns={jobColumns} rows={visibleJobs} getRowKey={(job) => job.id} />
           )}
         </Card>
 
@@ -664,8 +641,19 @@ export default async function OperationsImportsPage({ searchParams }: Operations
 
         {selectedBulkJobId ? (
           <Card aria-live="polite" aria-atomic="true">
-            <CardTitle>Selected Import Result ({selectedBulkJobId})</CardTitle>
+            <CardTitle>Stage 4 | Review result and repair rows ({selectedBulkJobId})</CardTitle>
             <div className="mt-3 space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">Import result summary</p>
+                <p className="mt-1">
+                  Review the selected job before opening repair: successful rows are already in the catalog, while failed or dead-letter rows stay below for targeted correction and the repair console remains available in the next section.
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                  <li>Selected job status: {selectedJob ? translateJobStatus(selectedJob.status) : "Row detail only"}</li>
+                  <li>Rows needing repair: {selectedAttentionRows}</li>
+                  <li>Successful rows already in catalog: {selectedSuccessfulRows.length}</li>
+                </ul>
+              </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <KpiCard label="Rows processed" value={selectedJob ? `${selectedJob.processedRows}/${selectedJob.totalRows}` : selectedRows.length} />
                 <KpiCard label="Successful rows" value={selectedJob?.successRows ?? selectedSuccessfulRows.length} tone={(selectedJob?.successRows ?? selectedSuccessfulRows.length) > 0 ? "success" : "default"} />
@@ -697,43 +685,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               {selectedRows.length === 0 ? (
                 <p className="text-sm text-slate-600">No row-level result data is available for this import job yet.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[920px] text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Row</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Catalog result</th>
-                        <th className="px-3 py-2">Error</th>
-                        <th className="px-3 py-2">Attempts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRows.map((row) => {
-                        const translatedError = translateError(extractErrorCode(row.errorMessage));
-                        return (
-                          <tr key={row.id} className="border-t border-slate-200">
-                            <td className="px-3 py-2.5 font-mono text-xs">{row.rowNumber}</td>
-                            <td className="px-3 py-2.5">{translateJobStatus(row.status)}</td>
-                            <td className="px-3 py-2.5">
-                              {row.productId ? (
-                                <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
-                                  View product
-                                </Link>
-                              ) : (
-                                <span className="text-slate-500">No product created</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-slate-600">
-                              {row.errorMessage ? `${translatedError.title}: ${translatedError.description}` : "None"}
-                            </td>
-                            <td className="px-3 py-2.5">{row.retryCount}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <DataGrid columns={selectedRowColumns} rows={selectedRows} getRowKey={(row) => row.id} />
               )}
             </div>
           </Card>
@@ -770,7 +722,14 @@ export default async function OperationsImportsPage({ searchParams }: Operations
               </div>
             )}
           </Card>
-        ) : null}
+        ) : (
+          <Card>
+            <CardTitle>Stage 4 | Review result and repair rows</CardTitle>
+            <p className="text-sm text-slate-600">
+              Select an import job from Stage 3 to open the result summary, download the error report, and move directly into the row repair console when failed rows remain.
+            </p>
+          </Card>
+        )}
 
         {selectedBulkRunId && selectedRun ? (
           <Card aria-live="polite" aria-atomic="true">

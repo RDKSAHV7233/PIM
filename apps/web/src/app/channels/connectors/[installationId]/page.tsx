@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { updateConnectorPublicationTargetsAction } from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -799,6 +800,126 @@ export default async function ChannelConnectorDetailPage({
             },
           ]
         : [];
+    const catalogColumns: Column<(typeof catalogEntries)[number]>[] = [
+      {
+        key: "product",
+        header: "Product",
+        render: (entry) => (
+          <div>
+            <Link href={`/products/${encodeURIComponent(entry.productId)}`} className="text-blue-700 hover:underline">
+              {entry.product?.title || "Open product"}
+            </Link>
+            <p className="mt-1 text-xs text-slate-500">
+              {entry.product?.brand ? `${entry.product.brand} | ` : ""}
+              {entry.productId}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: "category",
+        header: "Category",
+        render: (entry) => (
+          <div className="text-slate-700">
+            <p>{entry.product?.categoryName || "Uncategorized"}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {entry.product?.categoryPath || entry.product?.categoryId || "-"}
+            </p>
+          </div>
+        ),
+      },
+      { key: "variants", header: "Variants", render: (entry) => entry.product?.variantCount ?? 0 },
+      {
+        key: "readiness",
+        header: "Readiness",
+        render: (entry) => (
+          <StatusChip label={catalogReadinessLabel(entry.product)} tone={catalogReadinessTone(entry.product)} />
+        ),
+      },
+      {
+        key: "latestStatus",
+        header: "Latest Status",
+        render: (entry) => (
+          <StatusChip label={entry.latestSubmission.status} tone={submissionStatusTone(entry.latestSubmission.status)} />
+        ),
+      },
+      {
+        key: "latestOutcome",
+        header: "Latest Outcome",
+        render: (entry) => <span className="text-slate-700">{summarizeSubmissionOutcome(entry.latestSubmission)}</span>,
+      },
+      {
+        key: "updated",
+        header: "Updated",
+        render: (entry) => (
+          <span className="text-xs text-slate-600">
+            {formatDateTime(entry.product?.updatedAt || entry.latestSubmission.submittedAt)}
+          </span>
+        ),
+      },
+    ];
+    const issueQueueRows = [...failedSubmissions, ...pendingSubmissions].slice(0, 50);
+    const issueQueueColumns: Column<(typeof issueQueueRows)[number]>[] = [
+      {
+        key: "product",
+        header: "Product",
+        render: (submission) => {
+          const product = productsById.get(submission.productId);
+          return (
+            <div>
+              <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="text-blue-700 hover:underline">
+                {product?.title || "Open product"}
+              </Link>
+              <p className="mt-1 text-xs text-slate-500">
+                {product?.brand ? `${product.brand} | ` : ""}
+                {submission.productId}
+              </p>
+            </div>
+          );
+        },
+      },
+      { key: "lane", header: "Lane", render: (submission) => <span className="text-slate-700">{issueLaneLabel(submission)}</span> },
+      {
+        key: "status",
+        header: "Status",
+        render: (submission) => (
+          <StatusChip label={submission.status} tone={submissionStatusTone(submission.status)} />
+        ),
+      },
+      { key: "issue", header: "Issue", render: (submission) => <span className="text-slate-700">{summarizeSubmissionOutcome(submission)}</span> },
+      { key: "nextStep", header: "Next Step", render: (submission) => <span className="text-slate-700">{nextOperatorStep(submission)}</span> },
+      { key: "submitted", header: "Submitted", render: (submission) => <span className="text-xs text-slate-600">{formatDateTime(submission.submittedAt)}</span> },
+    ];
+    const submissionActivityColumns: Column<(typeof submissions)[number]>[] = [
+      {
+        key: "product",
+        header: "Product",
+        render: (submission) => {
+          const product = productsById.get(submission.productId);
+          return (
+            <div>
+              <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="text-blue-700 hover:underline">
+                {product?.title || "Open product"}
+              </Link>
+              <p className="mt-1 text-xs text-slate-500">
+                {product?.brand ? `${product.brand} | ` : ""}
+                {submission.productId}
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (submission) => (
+          <StatusChip label={submission.status} tone={submissionStatusTone(submission.status)} />
+        ),
+      },
+      { key: "outcome", header: "Outcome", render: (submission) => summarizeSubmissionOutcome(submission) },
+      { key: "attempt", header: "Attempt", render: (submission) => submission.attemptNumber },
+      { key: "submitted", header: "Submitted", render: (submission) => <span className="text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</span> },
+    ];
     return (
       <div className="space-y-5">
         <PageHeader
@@ -1016,6 +1137,92 @@ export default async function ChannelConnectorDetailPage({
                 )}
               </Card>
             </section>
+
+            {installation.slug === "shopify" ? (
+              <Card>
+                <CardTitle>Publication Targets</CardTitle>
+                {shopifyPublicationState.error ? (
+                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    {shopifyPublicationState.error}
+                    <div className="mt-2">
+                      <Link
+                        href={buildDetailHref(installation.id, "credentials")}
+                        className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Retry in Credentials tab →
+                      </Link>
+                    </div>
+                  </div>
+                ) : availableShopifyTargets.length === 0 ? (
+                  <div className="mt-2 space-y-3">
+                    <p className="text-sm text-slate-600">
+                      {publicationTargets.length > 0
+                        ? "Saved targets are shown below. To change selection, refresh available channels in the Credentials tab."
+                        : "No publication targets loaded yet. Open the Credentials tab to fetch available channels from your Shopify store."}
+                    </p>
+                    {publicationTargets.length > 0 ? (
+                      <ul className="space-y-2 text-sm">
+                        {publicationTargets.map((target) => (
+                          <li key={target.id} className="rounded-md border border-slate-200 px-3 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium text-slate-800">{target.name}</span>
+                              <StatusChip label={target.selected ? "selected" : "available"} tone={target.selected ? "success" : "neutral"} />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <Link
+                      href={buildDetailHref(installation.id, "credentials")}
+                      className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Refresh publication channels →
+                    </Link>
+                  </div>
+                ) : (
+                  <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <input type="hidden" name="tenantKey" value={installation.tenantKey} />
+                    <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "overview")} />
+                    <div className="space-y-2 text-sm">
+                      {availableShopifyTargets.map((target) => (
+                        <label
+                          key={target.id}
+                          className="flex items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            name="publicationId"
+                            value={target.id}
+                            defaultChecked={Boolean(target.selected)}
+                            disabled={actorRole === "viewer"}
+                            className="mt-1 h-4 w-4 rounded border-slate-300"
+                          />
+                          <span className="min-w-0">
+                            <span className="block font-medium text-slate-800">{target.name}</span>
+                            <span className="block text-xs text-slate-500">
+                              {target.catalogTitle ?? target.catalogType ?? target.catalogId ?? target.id}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={actorRole === "viewer"}
+                      className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      Save publication targets
+                    </button>
+                  </form>
+                )}
+                <p className="mt-3 text-xs text-slate-500">
+                  {publicationTargetsUpdatedAt
+                    ? `Last updated ${formatDateTime(publicationTargetsUpdatedAt)}.`
+                    : "No update timestamp recorded yet."}
+                </p>
+              </Card>
+            ) : null}
           </div>
         ) : null}
 
@@ -1070,6 +1277,20 @@ export default async function ChannelConnectorDetailPage({
                 </div>
               </Card>
             </section>
+
+            <Card>
+              <CardTitle>Connection Recovery Checklist</CardTitle>
+              <div className="mt-2 space-y-3 text-sm text-slate-700">
+                <p>
+                  Use this checklist before you reconnect or escalate a connector account so retries happen only after the likely failure lane is clear.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-600">
+                  <li>Confirm the external account reference and alias still point to the marketplace account this team expects to manage.</li>
+                  <li>Use account health, last sync, and issue queue evidence to decide whether the failure is credential drift, mapping pressure, or downstream processing.</li>
+                  <li>Return to publication targets, logs, and governance once the account reconnects so publish traffic does not resume with stale access assumptions.</li>
+                </ul>
+              </div>
+            </Card>
 
             {installation.slug === "shopify" ? (
               <Card>
@@ -1172,9 +1393,17 @@ export default async function ChannelConnectorDetailPage({
                     </div>
                   ) : availableShopifyTargets.length === 0 ? (
                     publicationTargets.length === 0 ? (
-                      <p className="mt-2 text-sm text-slate-600">
-                        Shopify publication targets are not available yet for this account. Reconnect after managed install to refresh them.
-                      </p>
+                      <div className="mt-2 space-y-3">
+                        <p className="text-sm text-slate-600">
+                          Shopify publication targets are not loaded yet. Visit the Credentials tab to trigger a refresh.
+                        </p>
+                        <Link
+                          href={buildDetailHref(installation.id, "credentials")}
+                          className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Refresh publication channels →
+                        </Link>
+                      </div>
                     ) : (
                       <ul className="mt-2 space-y-2 text-sm">
                         {publicationTargets.map((target) => (
@@ -1316,51 +1545,7 @@ export default async function ChannelConnectorDetailPage({
               {catalogEntries.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-600">No submissions recorded for this account yet.</p>
               ) : (
-                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[1180px] text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Product</th>
-                        <th className="px-3 py-2">Category</th>
-                        <th className="px-3 py-2">Variants</th>
-                        <th className="px-3 py-2">Readiness</th>
-                        <th className="px-3 py-2">Latest Status</th>
-                        <th className="px-3 py-2">Latest Outcome</th>
-                        <th className="px-3 py-2">Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {catalogEntries.map((entry) => (
-                        <tr key={entry.productId} className="border-t border-slate-200 hover:bg-slate-50/50">
-                          <td className="px-3 py-2.5">
-                            <Link href={`/products/${encodeURIComponent(entry.productId)}`} className="text-blue-700 hover:underline">
-                              {entry.product?.title || "Open product"}
-                            </Link>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {entry.product?.brand ? `${entry.product.brand} | ` : ""}
-                              {entry.productId}
-                            </p>
-                          </td>
-                          <td className="px-3 py-2.5 text-slate-700">
-                            <p>{entry.product?.categoryName || "Uncategorized"}</p>
-                            <p className="mt-1 text-xs text-slate-500">{entry.product?.categoryPath || entry.product?.categoryId || "-"}</p>
-                          </td>
-                          <td className="px-3 py-2.5">{entry.product?.variantCount ?? 0}</td>
-                          <td className="px-3 py-2.5">
-                            <StatusChip label={catalogReadinessLabel(entry.product)} tone={catalogReadinessTone(entry.product)} />
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <StatusChip label={entry.latestSubmission.status} tone={submissionStatusTone(entry.latestSubmission.status)} />
-                          </td>
-                          <td className="px-3 py-2.5 text-slate-700">{summarizeSubmissionOutcome(entry.latestSubmission)}</td>
-                          <td className="px-3 py-2.5 text-xs text-slate-600">
-                            {formatDateTime(entry.product?.updatedAt || entry.latestSubmission.submittedAt)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataGrid className="mt-3" columns={catalogColumns} rows={catalogEntries} getRowKey={(entry) => entry.productId} />
               )}
             </Card>
 
@@ -1691,45 +1876,7 @@ export default async function ChannelConnectorDetailPage({
               {failedSubmissions.length === 0 && pendingSubmissions.length === 0 ? (
                 <p className="mt-2 text-sm text-slate-600">No connector issues or in-flight items need attention for this account.</p>
               ) : (
-                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[1060px] text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Product</th>
-                        <th className="px-3 py-2">Lane</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Issue</th>
-                        <th className="px-3 py-2">Next Step</th>
-                        <th className="px-3 py-2">Submitted</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...failedSubmissions, ...pendingSubmissions].slice(0, 50).map((submission) => {
-                        const product = productsById.get(submission.productId);
-                        return (
-                          <tr key={submission.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                            <td className="px-3 py-2.5">
-                              <Link href={`/products/${encodeURIComponent(submission.productId)}`} className="text-blue-700 hover:underline">
-                                {product?.title || "Open product"}
-                              </Link>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {product?.brand ? `${product.brand} | ` : ""}
-                                {submission.productId}
-                              </p>
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-700">{issueLaneLabel(submission)}</td>
-                            <td className="px-3 py-2.5">
-                              <StatusChip label={submission.status} tone={submissionStatusTone(submission.status)} />
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-700">{summarizeSubmissionOutcome(submission)}</td>
-                            <td className="px-3 py-2.5 text-slate-700">{nextOperatorStep(submission)}</td>
-                            <td className="px-3 py-2.5 text-xs text-slate-600">{formatDateTime(submission.submittedAt)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <DataGrid className="mt-2" columns={issueQueueColumns} rows={issueQueueRows} getRowKey={(submission) => submission.id} />
               )}
             </Card>
           </div>
@@ -1741,20 +1888,7 @@ export default async function ChannelConnectorDetailPage({
             {submissions.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">No submissions recorded for this account yet.</p>
             ) : (
-              <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[920px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Outcome</th>
-                      <th className="px-3 py-2">Attempt</th>
-                      <th className="px-3 py-2">Submitted</th>
-                    </tr>
-                  </thead>
-                  <tbody>{renderSubmissionRows(submissions.slice(0, 50), productsById)}</tbody>
-                </table>
-              </div>
+              <DataGrid className="mt-2" columns={submissionActivityColumns} rows={submissions.slice(0, 50)} getRowKey={(submission) => submission.id} />
             )}
           </Card>
         ) : null}

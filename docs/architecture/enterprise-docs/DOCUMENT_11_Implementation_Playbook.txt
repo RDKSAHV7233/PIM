@@ -4,7 +4,7 @@ Purpose:
 Explain catalog onboarding, migration, and governance.
 
 Scope:
-Validated onboarding/playbook patterns, implementation workflows, and governance controls present in TEJ PIM documentation and code.
+Validated onboarding/playbook patterns, implementation workflows, and governance controls present in Vexa PIM documentation and code.
 
 Content:
 Catalog Onboarding:
@@ -58,5 +58,5 @@ Catalog Quality Rules:
 - Quality pages exposed in UI and API.
 
 Formal enterprise governance board process:
-Information not available in TEJ PIM project.
+Information not available in Vexa PIM project.
 

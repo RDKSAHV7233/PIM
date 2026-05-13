@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { StatusChip } from "@/components/ui/status-chip";
 import { buttonVariants } from "@/components/ui/button";
@@ -334,6 +335,47 @@ export default async function DashboardPage() {
         return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
       })
       .slice(0, 5);
+    const priorityProductColumns: Column<(typeof priorityProducts)[number]>[] = [
+      {
+        key: "product",
+        header: "Product",
+        render: (product) => (
+          <div className="space-y-1">
+            <p className="font-medium text-slate-900">{product.title}</p>
+            <p className="text-xs text-slate-500">{product.categoryPath ?? product.categoryId}</p>
+          </div>
+        ),
+      },
+      {
+        key: "whyNow",
+        header: "Why now",
+        render: (product) => (
+          <StatusChip
+            label={product.priorityReason}
+            tone={
+              product.blockingCount > 0
+                ? "danger"
+                : product.status === "in_review"
+                  ? "warning"
+                  : product.warningCount > 0
+                    ? "warning"
+                    : "info"
+            }
+          />
+        ),
+      },
+      { key: "complete", header: "Complete %", render: (product) => `${product.completenessScore}%` },
+      { key: "updated", header: "Updated", render: (product) => <span className="text-slate-600">{formatUpdatedAt(product.updatedAt)}</span> },
+      {
+        key: "action",
+        header: "Action",
+        render: (product) => (
+          <Link href={`/products/${encodeURIComponent(product.id)}`} className="text-sm font-medium text-blue-700 hover:underline">
+            Open product
+          </Link>
+        ),
+      },
+    ];
 
     return (
       <div className="space-y-5">
@@ -364,6 +406,54 @@ export default async function DashboardPage() {
             </>
           }
         />
+
+        {products.length === 0 ? (
+          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-blue-950">Get started - 3 steps to your first export</h2>
+                <p className="mt-1 max-w-2xl text-sm text-blue-900/80">
+                  Use this onboarding checklist to move from an empty catalog to a channel-ready first publish.
+                </p>
+              </div>
+              <StatusChip label="Onboarding checklist" tone="info" />
+            </div>
+            <ol className="mt-4 space-y-3">
+              <li className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-blue-700">
+                  1
+                </span>
+                <span className="text-sm text-blue-900">
+                  <strong>Add products.</strong>{" "}
+                  <Link href="/operations/imports" className="underline underline-offset-2">Import a CSV</Link>{" "}
+                  or{" "}
+                  <Link href="/catalog/products" className="underline underline-offset-2">create one manually</Link>{" "}
+                  to build your starting catalog.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-blue-700">
+                  2
+                </span>
+                <span className="text-sm text-blue-900">
+                  <strong>Connect a channel.</strong>{" "}
+                  <Link href="/channels/connectors" className="underline underline-offset-2">Set up a connector</Link>{" "}
+                  and configure attribute mapping before you publish.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-blue-700">
+                  3
+                </span>
+                <span className="text-sm text-blue-900">
+                  <strong>Run quality checks.</strong>{" "}
+                  <Link href="/quality/issues" className="underline underline-offset-2">Review open issues</Link>{" "}
+                  to make products publish-ready before the first export.
+                </span>
+              </li>
+            </ol>
+          </section>
+        ) : null}
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -542,9 +632,9 @@ export default async function DashboardPage() {
                     </span>
                   </div>
                 </div>
-                <div className="mt-3 flex items-end gap-2 overflow-x-auto pb-1">
+                <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(36px,1fr))] items-end gap-2">
                   {signupSparklineRows.map((row) => (
-                    <div key={row.date} className="min-w-[36px] text-center">
+                    <div key={row.date} className="text-center">
                       <div className="mx-auto flex h-16 items-end justify-center gap-1">
                         <div
                           aria-label={`${row.date} dashboard signups`}
@@ -629,57 +719,7 @@ export default async function DashboardPage() {
             {priorityProducts.length === 0 ? (
               <p className="mt-4 text-sm text-slate-600">No products need immediate attention.</p>
             ) : (
-              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2">Why now</th>
-                      <th className="px-3 py-2">Complete %</th>
-                      <th className="px-3 py-2">Updated</th>
-                      <th className="px-3 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {priorityProducts.map((product) => (
-                      <tr key={product.id} className="border-t border-slate-200 hover:bg-slate-50/50">
-                        <td className="px-3 py-2.5">
-                          <div className="space-y-1">
-                            <p className="font-medium text-slate-900">{product.title}</p>
-                            <p className="text-xs text-slate-500">{product.categoryPath ?? product.categoryId}</p>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="space-y-1">
-                            <StatusChip
-                              label={product.priorityReason}
-                              tone={
-                                product.blockingCount > 0
-                                  ? "danger"
-                                  : product.status === "in_review"
-                                    ? "warning"
-                                    : product.warningCount > 0
-                                      ? "warning"
-                                      : "info"
-                              }
-                            />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5">{product.completenessScore}%</td>
-                        <td className="px-3 py-2.5 text-slate-600">{formatUpdatedAt(product.updatedAt)}</td>
-                        <td className="px-3 py-2.5">
-                          <Link
-                            href={`/products/${encodeURIComponent(product.id)}`}
-                            className="text-sm font-medium text-blue-700 hover:underline"
-                          >
-                            Open product
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataGrid className="mt-4" columns={priorityProductColumns} rows={priorityProducts} getRowKey={(product) => product.id} />
             )}
           </div>
 

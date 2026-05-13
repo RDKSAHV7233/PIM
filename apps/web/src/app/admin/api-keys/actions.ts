@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createApiAccessKey, normalizeAppRole, revokeApiAccessKey } from "@/lib/api";
+import { createApiAccessKey, normalizeAppRole, revokeApiAccessKey, type ApiClientScope } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -11,6 +11,8 @@ export type ApiKeyCreateActionState = {
   message: string | null;
   createdKey: string | null;
 };
+
+const SUPPORTED_API_KEY_SCOPES: readonly ApiClientScope[] = ["catalog.read", "catalog.write"];
 
 async function requireAdminRequestOptions() {
   const authHeader = await getServerAuthHeader();
@@ -29,6 +31,12 @@ export async function createApiAccessKeyAction(
     const label = String(formData.get("label") ?? "").trim();
     const role = normalizeAppRole(formData.get("role"));
     const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
+    const scopes = formData
+      .getAll("scopes")
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .filter((value): value is ApiClientScope =>
+        SUPPORTED_API_KEY_SCOPES.includes(value as ApiClientScope),
+      );
     if (!label) {
       return {
         status: "error",
@@ -48,6 +56,7 @@ export async function createApiAccessKeyAction(
         label,
         role,
         expiresAt: expiresAtRaw ? new Date(expiresAtRaw).toISOString() : undefined,
+        scopes,
       },
       await requireAdminRequestOptions(),
     );

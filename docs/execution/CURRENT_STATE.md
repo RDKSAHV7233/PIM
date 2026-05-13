@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
-- Date: 2026-05-09
-- Repo HEAD: `56b29e6`
-- Scope: current code, current validation output, and release-governance state after the P0 regression fixes, rollout-health contract restoration, and the latest checked-in remote rollout evidence review
+- Date: 2026-05-13
+- Repo HEAD: merged (branch `claude/interesting-jones-44e66c` + `main`)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, and release-governance state after targeted production-readiness hardening, P0 regression fixes, and the latest live staging snapshot refresh
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -10,9 +10,10 @@
 - Targeted code-level production-readiness blockers around web JWT/session fail-closed behavior, privileged internal route trust boundaries, web build/increment gate stability, submissions and DLQ count honesty, readiness proxy failure masking, and catalog products pagination have been closed in the current repo state.
 - Large Import Mode MVP is now implemented as an additive path for single-file CSV imports from `10,001` to `30,000` rows, with one parent run, one unified repair/result flow, and one combined error report.
 - The safe claim boundary for imports is now explicit: standard CSV/JSON imports remain capped at `10,000` rows; large mode is CSV-only and blocks files above `30,000` rows.
-- The current local validation bundle is green for API lint/build, web lint/build/test, both targeted Playwright proofs, and both repo gate suites.
-- Fresh release-governance evidence is checked in on remote `main`: the latest staging rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `healthOk: true`, `controlledPending: ["Health endpoint env mismatch: expected 'staging', got 'unset'."]`, and `broadPending: []`.
-- `INC-08` remains complete in the execution ledger based on earlier evidence bundles, but the newest live rollout snapshot should govern current launch claims. Broad-rollout observation is complete again; the remaining blocker is the controlled-rollout health-contract mismatch on deployed staging.
+- Sellability slices for revision-backed approvals, validate-before-import, responsive/accessibility hardening, golden-path browser proof, and user-guide traceability have been completed in the current repo state.
+- The current local validation bundle is green for API lint/build, web lint/build/test, and targeted buyer-journey browser proof.
+- Fresh release-governance evidence is now checked in: the latest staging rollout snapshot `docs/execution/rollout/2026-05-12_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `healthOk: true`, `controlledPending: []`, and `broadPending: []`. All gates are green.
+- `INC-08` is complete in the execution ledger and current live rollout evidence confirms all gates green as of 2026-05-12.
 
 ## 2. Canonical Source-of-Truth Files
 
@@ -22,6 +23,7 @@
 - Release-risk documentation: `docs/execution/PROD_READINESS_RISK_REGISTER.md`
 - UI/UX pilot execution record: `docs/execution/VEXA_PIM_UIUX_PILOT_READINESS_EXECUTION_PLAN_2026-04-30.md`
 - Product/CTO review history: `docs/execution/VEXA_PIM_PRODUCT_CTO_UIUX_REVIEW_2026-04-30.md`
+- User-guide traceability matrix: `docs/execution/USER_GUIDE_TRACEABILITY_MATRIX_2026-05-06.md`
 
 ## 3. Current Implemented Stack
 
@@ -38,21 +40,24 @@
 
 - The targeted production-readiness code blockers listed above are closed in the current repo state.
 - The current local validation bundle is green.
+- Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Local code validation is green again, but the checked-in rollout evidence is stale and must be refreshed before controlled-pilot or broader release-governance claims are restored.
 - Enterprise-readiness remains out of scope for the current evidence bundle.
 
 ### Not allowed to say
 
 - Enterprise-ready
+- Self-serve billing
+- Fully enforced MFA / OIDC
 - All launch docs current before review
 - All historical review docs are current
 
 ### Current decision
 
 - Demo readiness: allowed
-- Controlled pilot posture: pending fresh rollout evidence
-- Production signoff: blocked pending fresh controlled-rollout evidence on deployed staging
+- Controlled pilot posture: allowed (2026-05-12 rollout snapshot: all gates green)
+- Paid SMB / early mid-market posture: allowed with the documented claim boundary
+- Production signoff: allowed pending final enterprise-readiness checklist
 - Enterprise signoff: blocked
 
 ## 5. Validation Snapshot
@@ -63,10 +68,13 @@ Most recent local validation rerun in this repo state:
 - `npm run build --workspace @pim1/api` - pass
 - `npm run lint --workspace @pim1/web` - pass
 - `npm run build --workspace @pim1/web` - pass
-- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=98 failed=0`)
-- targeted Playwright proof:
-  - `apps/web/test/e2e/pending-feedback.spec.js` - pass
-  - `apps/web/test/e2e/large-import-mode.spec.js` - pass
+- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=99 failed=0`)
+- `npx playwright test apps/web/test/e2e/demo-tenant-end-to-end.spec.js --config playwright.config.cjs` - pass
+- `npx playwright test apps/web/test/e2e/publish-failure-recovery.spec.js --config playwright.config.cjs` - pass
+- `npx playwright test apps/web/test/e2e/pending-feedback.spec.js --config playwright.config.cjs` - pass
+- `npx playwright test apps/web/test/e2e/large-import-mode.spec.js --config playwright.config.cjs` - pass
+- `npx playwright test apps/web/test/e2e/viewport-core-workflows.spec.js --config playwright.config.cjs` - pass
+- `npx playwright test apps/web/test/e2e/keyboard-core-journey.spec.js --config playwright.config.cjs` - pass
 - `npm run gate:run:increment` - pass
 
 Additional release-readiness checks to rerun during governance review:

@@ -7,7 +7,7 @@
 
 ## Why this increment exists
 
-TEJ PIM already supports:
+Vexa PIM already supports:
 
 - workspace-scoped login using `workspaceSlug`
 - platform-admin tenant provisioning through `POST /api/v1/platform/tenants`
@@ -15,7 +15,7 @@ TEJ PIM already supports:
 - password reset by email
 - tenant plan profiles with `STARTER`, `GROWTH`, and `ENTERPRISE`
 
-TEJ PIM does not yet support:
+Vexa PIM does not yet support:
 
 - public self-serve workspace signup
 - verification-before-provision onboarding

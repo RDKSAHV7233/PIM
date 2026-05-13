@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { GlobalSearch } from "@/components/nav/global-search";
 import { NotificationCenter } from "@/components/nav/notification-center";
+import { AppDrawer } from "@/components/ui/app-drawer";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { RoleBadge } from "@/components/ui/role-badge";
@@ -45,8 +46,10 @@ export function AuthenticatedShell({
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-700 lg:hidden"
               onClick={() => setMobileNavOpen(true)}
               aria-label="Open navigation menu"
+              aria-haspopup="dialog"
+              aria-expanded={mobileNavOpen}
             >
-              ☰
+              Menu
             </button>
             <Link href="/dashboard" className="inline-flex items-center" aria-label="Vexa PIM home">
               <BrandLogo variant="compact" />
@@ -63,24 +66,20 @@ export function AuthenticatedShell({
       </header>
 
       {mobileNavOpen ? (
-        <>
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-            onClick={() => setMobileNavOpen(false)}
-          />
-          <div className="fixed inset-y-0 left-0 z-50 w-72 overflow-y-auto bg-white p-4 shadow-xl lg:hidden">
+        <div className="lg:hidden">
+          <AppDrawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} title="Navigation" width="sm" side="left">
             <AppSidebar actorRole={actorRole} showInternal={false} />
-          </div>
-        </>
+          </AppDrawer>
+        </div>
       ) : null}
 
       <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <AppSidebar actorRole={actorRole} showInternal={false} />
         </div>
-        <main id="main-content" className="min-w-0">{children}</main>
+        <main id="main-content" className="min-w-0">
+          {children}
+        </main>
       </div>
     </ToastProvider>
   );

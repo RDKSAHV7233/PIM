@@ -1,5 +1,6 @@
 "use client";
 
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { translateError } from "@/lib/errors";
 
 type ValidationIssueRow = {
@@ -58,79 +59,56 @@ function focusField(fieldPath: string, remediation: string) {
 }
 
 export function ValidationIssuePanel({ issues }: ValidationIssuePanelProps) {
-  return (
-    <div className="w-full max-w-full">
-      {/* Desktop table — hidden on small screens */}
-      <div className="hidden sm:block overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="text-xs uppercase text-slate-500">
-            <tr>
-              <th className="py-2">Severity</th>
-              <th className="py-2">Issue</th>
-              <th className="py-2">Field</th>
-              <th className="py-2">Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {issues.map((issue) => {
-              const translated = translateError(issue.ruleCode);
-              const remediation = translated.action ?? "Update the field and save again.";
-              return (
-                <tr key={issue.id} className="border-t border-border">
-                  <td className="py-2 capitalize">{issue.severity}</td>
-                  <td className="py-2">{translated.title}</td>
-                  <td className="py-2">{issue.fieldPath ?? "-"}</td>
-                  <td className="py-2">
-                    {issue.fieldPath ? (
-                      <button
-                        type="button"
-                        className="text-left text-accent hover:underline"
-                        onClick={() => focusField(issue.fieldPath ?? "", remediation)}
-                      >
-                        {issue.message}
-                      </button>
-                    ) : (
-                      issue.message
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+  const columns: Column<ValidationIssueRow>[] = [
+    {
+      key: "severity",
+      header: "Severity",
+      render: (issue) => (
+        <div className="space-y-1">
+          <span className="capitalize">{issue.severity}</span>
+          <span className="block text-xs text-slate-500 md:hidden">Tap the message to jump to the affected field.</span>
+        </div>
+      ),
+    },
+    {
+      key: "ruleCode",
+      header: "Issue",
+      render: (issue) => translateError(issue.ruleCode).title,
+    },
+    {
+      key: "fieldPath",
+      header: "Field",
+      mobileHide: true,
+      render: (issue) => issue.fieldPath ?? "-",
+    },
+    {
+      key: "message",
+      header: "Message",
+      render: (issue) => {
+        const translated = translateError(issue.ruleCode);
+        const remediation = translated.action ?? "Update the field and save again.";
+        return issue.fieldPath ? (
+          <button
+            type="button"
+            className="text-left text-accent hover:underline"
+            onClick={() => focusField(issue.fieldPath ?? "", remediation)}
+          >
+            {issue.fieldPath ? `${issue.fieldPath}: ${issue.message}` : issue.message}
+          </button>
+        ) : (
+          issue.message
+        );
+      },
+    },
+  ];
 
-      {/* Mobile stacked list — shown below sm breakpoint */}
-      <div className="flex flex-col space-y-2 sm:hidden">
-        {issues.map((issue) => {
-          const translated = translateError(issue.ruleCode);
-          const remediation = translated.action ?? "Update the field and save again.";
-          return (
-            <div key={`mobile-${issue.id}`} className="rounded-md border border-border p-3 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium capitalize">{issue.severity}</span>
-                <span className="text-slate-600">{translated.title}</span>
-              </div>
-              {issue.fieldPath ? (
-                <p className="mt-1 text-xs text-slate-500">Field: {issue.fieldPath}</p>
-              ) : null}
-              <div className="mt-1 text-slate-700">
-                {issue.fieldPath ? (
-                  <button
-                    type="button"
-                    className="text-left text-accent hover:underline"
-                    onClick={() => focusField(issue.fieldPath ?? "", remediation)}
-                  >
-                    {issue.message}
-                  </button>
-                ) : (
-                  issue.message
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+  return (
+    <DataGrid
+      columns={columns}
+      rows={issues}
+      getRowKey={(issue) => issue.id}
+      caption="Validation issues"
+      rowClassName="align-top"
+    />
   );
 }

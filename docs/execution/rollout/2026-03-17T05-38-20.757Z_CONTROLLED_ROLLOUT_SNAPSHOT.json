@@ -18,7 +18,7 @@
         "active": 0,
         "idle": 7,
         "waiting": 0,
-        "applicationName": "TEJ PIM-api"
+        "applicationName": "Vexa PIM-api"
       },
       "queues": {
         "connector-submission": {

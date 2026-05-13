@@ -746,7 +746,7 @@ Only the dated review document was intentionally created by this task. The other
 - `docs/execution/ACCESS_POLICY_PO_CHECKPOINT_2026-04-26.md`
 - `docs/execution/VEXA_PIM_ENTERPRISE_DELEGATED_ACCESS_REPORT_2026-04-25.md`
 - `docs/execution/VEXA_PIM_PO_CTO_LAUNCH_GATE_2026-04-16.md`
-- `docs/product/user-guide/TEJ_PIM_MASTER_USER_GUIDE.md`
+- `docs/product/user-guide/VEXA_PIM_MASTER_USER_GUIDE.md`
 - `docs/user-guide.md`
 - `docs/openapi.json`
 - `docs/openapi.yaml`

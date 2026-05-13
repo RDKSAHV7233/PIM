@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid } from "@/components/ui/data-grid";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Input } from "@/components/ui/input";
+import { JsonPreview } from "@/components/ui/json-preview";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -136,6 +138,24 @@ function summarizeMetadata(row: AuditEventRecord) {
   return "View details";
 }
 
+function summarizeFilterScope(input: {
+  actorId: string;
+  action: string;
+  entityType: AuditEntityType | "";
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const parts = [
+    input.actorId ? `Actor ${input.actorId}` : null,
+    input.action ? `Action ${input.action}` : null,
+    input.entityType ? `Entity ${input.entityType}` : null,
+    input.dateFrom ? `From ${input.dateFrom}` : null,
+    input.dateTo ? `To ${input.dateTo}` : null,
+  ].filter((value) => Boolean(value));
+
+  return parts.length > 0 ? parts.join(" | ") : "All governance events in the current workspace scope.";
+}
+
 export default async function AdminAuditPage({ searchParams }: AdminAuditPageProps) {
   const query = await searchParams;
   const actorRole = await getServerActorRole();
@@ -174,6 +194,20 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
       dateTo,
       limit: String(Number.isFinite(limit) ? limit : 50),
     })}`;
+    const entityCounts = events.items.reduce<Record<string, number>>((accumulator, event) => {
+      accumulator[event.entityType] = (accumulator[event.entityType] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const topEntityEntries = Object.entries(entityCounts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3);
+    const mutationEvents = events.items.filter(
+      (event) => event.action === "POST" || event.action === "PATCH" || event.action === "DELETE",
+    ).length;
+    const accessEvents = events.items.filter(
+      (event) => event.entityType === "auth" || event.entityType === "privacy" || event.entityType === "plan",
+    ).length;
+    const scopeSummary = summarizeFilterScope({ actorId, action, entityType, dateFrom, dateTo });
 
     return (
       <div className="space-y-5">
@@ -287,68 +321,115 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
         </FilterBar>
 
         <Card>
+          <CardTitle>Governance summary</CardTitle>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700">
+                Use this summary to understand what changed before opening raw metadata. Filter scope:
+              </p>
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {scopeSummary}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={`Mutation events ${mutationEvents}`} tone={mutationEvents > 0 ? "info" : "neutral"} />
+                <StatusChip label={`Access + policy ${accessEvents}`} tone={accessEvents > 0 ? "danger" : "neutral"} />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-900">Top entity families in this page</p>
+              {topEntityEntries.length === 0 ? (
+                <p className="text-sm text-slate-600">No audit events matched the current filters.</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {topEntityEntries.map(([entity, count]) => (
+                    <li key={entity} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                      <span className="text-slate-700">{entity}</span>
+                      <StatusChip label={`${count} events`} tone={toneForEntity(entity as AuditEntityType)} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Card>
           <CardTitle>Event Explorer</CardTitle>
-          {events.items.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No audit events matched the current filters.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Timestamp</th>
-                    <th className="py-2">Actor</th>
-                    <th className="py-2">Role</th>
-                    <th className="py-2">Entity</th>
-                    <th className="py-2">Action</th>
-                    <th className="py-2">Resource</th>
-                    <th className="py-2">Change</th>
-                    <th className="py-2">Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.items.map((row) => {
+          <div className="mt-3">
+            <DataGrid
+              columns={[
+                {
+                  key: "createdAt",
+                  header: "Timestamp",
+                  cellClassName: "text-xs text-slate-600",
+                  render: (row) => new Date(row.createdAt).toLocaleString(),
+                },
+                {
+                  key: "actorId",
+                  header: "Actor",
+                  cellClassName: "font-medium text-slate-900",
+                },
+                {
+                  key: "actorRole",
+                  header: "Role",
+                  render: (row) => <StatusChip label={row.actorRole} tone="neutral" />,
+                },
+                {
+                  key: "entityType",
+                  header: "Entity",
+                  render: (row) => <StatusChip label={row.entityType} tone={toneForEntity(row.entityType)} />,
+                },
+                {
+                  key: "action",
+                  header: "Action",
+                  cellClassName: "font-medium text-slate-900",
+                },
+                {
+                  key: "resource",
+                  header: "Resource",
+                  render: (row) => {
                     const recordHref = buildRecordHref(row);
                     return (
-                      <tr key={row.id} className="border-t border-slate-200 align-top">
-                        <td className="py-3 text-xs text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
-                        <td className="py-3 font-medium text-slate-900">{row.actorId}</td>
-                        <td className="py-3">
-                          <StatusChip label={row.actorRole} tone="neutral" />
-                        </td>
-                        <td className="py-3">
-                          <StatusChip label={row.entityType} tone={toneForEntity(row.entityType)} />
-                        </td>
-                        <td className="py-3 font-medium text-slate-900">{row.action}</td>
-                        <td className="py-3">
-                          <div className="space-y-1">
-                            <div className="text-slate-700">{row.resource}</div>
-                            {row.resourceId ? (
-                              recordHref ? (
-                                <Link href={recordHref} className="text-xs text-blue-700 underline">
-                                  Open record {row.resourceId}
-                                </Link>
-                              ) : (
-                                <div className="text-xs text-slate-500">{row.resourceId}</div>
-                              )
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="py-3 text-slate-700">{summarizeMetadata(row)}</td>
-                        <td className="py-3">
-                          <details className="rounded-md border border-slate-200 bg-slate-50 p-2">
-                            <summary className="cursor-pointer text-xs font-medium text-slate-700">Metadata</summary>
-                            <pre className="mt-2 whitespace-pre-wrap break-all text-xs text-slate-600">
-                              {JSON.stringify(row.metadata ?? {}, null, 2)}
-                            </pre>
-                          </details>
-                        </td>
-                      </tr>
+                      <div className="space-y-1">
+                        <div className="text-slate-700">{row.resource}</div>
+                        {row.resourceId ? (
+                          recordHref ? (
+                            <Link href={recordHref} className="text-xs text-blue-700 underline">
+                              Open record {row.resourceId}
+                            </Link>
+                          ) : (
+                            <div className="text-xs text-slate-500">{row.resourceId}</div>
+                          )
+                        ) : null}
+                      </div>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  },
+                },
+                {
+                  key: "change",
+                  header: "Change",
+                  cellClassName: "text-slate-700",
+                  render: (row) => summarizeMetadata(row),
+                },
+                {
+                  key: "details",
+                  header: "Details",
+                  mobileHide: true,
+                  render: (row) => (
+                    <details className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                      <summary className="cursor-pointer text-xs font-medium text-slate-700">Metadata</summary>
+                      <JsonPreview value={JSON.stringify(row.metadata ?? {}, null, 2)} className="mt-2 border-0 bg-transparent p-0 text-slate-600" />
+                    </details>
+                  ),
+                },
+              ]}
+              rows={events.items}
+              getRowKey={(row) => row.id}
+              caption="Audit Events"
+              rowClassName="align-top"
+              emptyState={<p className="text-sm text-slate-600">No audit events matched the current filters.</p>}
+            />
+          </div>
           {events.nextCursor ? (
             <div className="mt-4">
               <Link

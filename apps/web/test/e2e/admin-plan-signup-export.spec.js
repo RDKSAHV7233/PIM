@@ -260,9 +260,9 @@ test("workspace admin can export signup trends from the plan page", async ({ pag
       page.waitForEvent("download"),
       page.getByRole("link", { name: "Export CSV" }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe("tej-pim-signup-trends-30d.csv");
+    expect(download.suggestedFilename()).toBe("vexa-pim-signup-trends-30d.csv");
 
-    downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "tej-pim-signup-export-"));
+    downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "vexa-pim-signup-export-"));
     const downloadPath = path.join(downloadDir, download.suggestedFilename());
     await download.saveAs(downloadPath);
 
