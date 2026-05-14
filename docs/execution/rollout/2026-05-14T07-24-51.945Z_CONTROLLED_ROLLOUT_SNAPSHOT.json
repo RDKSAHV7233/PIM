@@ -1,0 +1,177 @@
+{
+  "capturedAt": "2026-05-14T07:24:51.945Z",
+  "environment": "staging",
+  "tenantId": "default",
+  "apiBase": "https://pim1-staging.up.railway.app/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "env": "staging",
+      "queues": {
+        "webhook-event": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "auth-email": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "account-export": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "connector-webhook": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "account-deletion-execution": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "connector-submission": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "bulk-import": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        }
+      },
+      "queueRuntime": {
+        "backend": "bullmq",
+        "workerEnabled": true
+      }
+    }
+  },
+  "gates": {
+    "artifactsInWindow": 14,
+    "allEvidenceArtifactsInWindow": 14,
+    "consecutiveE10SignoffRuns": 2,
+    "recentArtifacts": [
+      {
+        "file": "2026-05-14T07-24-51.906Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-14T07:24:51.906Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25847629029",
+        "gitTag": "sha-d3a6071"
+      },
+      {
+        "file": "2026-05-13T07-31-24.596Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-13T07:31:24.596Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25785020123",
+        "gitTag": "sha-e5009a3"
+      },
+      {
+        "file": "2026-05-12T07-19-23.193Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-12T07:19:23.193Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25719656110",
+        "gitTag": "sha-5799cad"
+      },
+      {
+        "file": "2026-05-11T07-55-22.955Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-11T07:55:22.955Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25657590635",
+        "gitTag": "sha-6caadb2"
+      },
+      {
+        "file": "2026-05-10T07-08-23.056Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-10T07:08:23.056Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25622549884",
+        "gitTag": "sha-25e4239"
+      },
+      {
+        "file": "2026-05-09T06-30-00.000Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-09T06:30:00.000Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25594154154",
+        "gitTag": "sha-1ea1bf7"
+      },
+      {
+        "file": "2026-05-08T06-11-51.200Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-08T06:11:51.200Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25540104928",
+        "gitTag": "sha-56b29e6"
+      },
+      {
+        "file": "2026-05-07T07-21-08.806Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-07T07:21:08.806Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25481919115",
+        "gitTag": "sha-32ae719"
+      },
+      {
+        "file": "2026-05-06T06-47-24.066Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-06T06:47:24.066Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25420672791",
+        "gitTag": "sha-6ef5276"
+      },
+      {
+        "file": "2026-05-05T06-30-20.228Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-05T06:30:20.228Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25361418055",
+        "gitTag": "sha-2e09f47"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": true,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true,
+      "healthEndpointHealthy": true
+    },
+    "pending": []
+  },
+  "broadRollout": {
+    "criteria": {
+      "observationWindowDaysCovered": 14,
+      "observationWindowDaysRequired": 14,
+      "observationWindowComplete": true,
+      "sloTrendDaysCovered": 14,
+      "sloTrendDaysRequired": 14,
+      "sloTrendWindowComplete": true
+    },
+    "pending": []
+  }
+}
