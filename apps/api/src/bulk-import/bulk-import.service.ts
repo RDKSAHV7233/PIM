@@ -451,16 +451,7 @@ export class BulkImportService {
     if (linkedRunId) {
       await this.assertLinkedStandardRun(linkedRunId, dto.categoryId, actor);
     }
-
-    const sourceRows = (() => {
-      if (dto.sourceFormat === "csv") {
-        if (dto.fileContentBase64) {
-          return this.parseDelimitedBase64(dto.fileContentBase64, "csv");
-        }
-        return this.parseCsv(dto.csvContent ?? "");
-      }
-      return { headers: this.inferHeadersFromRows(dto.rows ?? []), rows: dto.rows ?? [] };
-    })();
+    const sourceRows = this.resolveImportSourceRows(dto);
 
     const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
     const normalizedRows = sourceRows.rows.map((row) =>

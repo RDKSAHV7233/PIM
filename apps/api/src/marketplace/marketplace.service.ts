@@ -6,6 +6,7 @@ import {
   ValidationIssueStatus,
 } from "@prisma/client";
 import { ConnectorFrameworkService } from "../connector-framework/connector-framework.service";
+import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   CapabilityNotSupportedError,
@@ -13,6 +14,7 @@ import {
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
 import { ProductPayload } from "../connector-framework/connector.interface";
+import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
   CursorPaginationQuery,
@@ -26,6 +28,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LoggerService } from "../common/logging/logger.service";
 import { MetricsService } from "../metrics/metrics.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
+import { runWithTenantContext } from "../common/tenant/tenant-context";
 import { QueueService } from "../queue/queue.service";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
@@ -246,6 +249,7 @@ export class MarketplaceService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectorFramework: ConnectorFrameworkService,
+    private readonly connectorRegistry: ConnectorRegistry,
     private readonly planUsageService: PlanUsageService,
     private readonly queueService: QueueService,
     private readonly metricsService: MetricsService,
@@ -1363,6 +1367,19 @@ export class MarketplaceService implements OnModuleInit {
       return;
     }
     this.workerRegistered = true;
+
+    this.queueService.processScheduledSync(async (payload: unknown) => {
+      const p = payload as { tenantKey?: string; installationId?: string };
+      const tenantKey = String(p?.tenantKey ?? "").trim();
+      const installationId = String(p?.installationId ?? "").trim();
+      if (!tenantKey || !installationId) return;
+      await runWithTenantContext(tenantKey, async () => {
+        await this.queueDeltaSync(installationId).catch((err: unknown) => {
+          this.logger.warn("Scheduled delta sync failed", { installationId, error: String(err) });
+        });
+      });
+    });
+
     this.queueService.processWithBackpressure(
       QUEUE_NAMES.CONNECTOR_SUBMISSION,
       {
@@ -2096,6 +2113,32 @@ export class MarketplaceService implements OnModuleInit {
     return raw;
   }
 
+  private parseLocaleTranslations(raw: unknown): Array<{
+    locale: string;
+    fieldMappings: { title?: string; descriptionHtml?: string; seoTitle?: string; seoDescription?: string };
+  }> {
+    const parsed = this.parseJsonValue(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+      .map((item) => {
+        const locale = String(item.locale ?? "").trim();
+        const fm = (item.fieldMappings && typeof item.fieldMappings === "object" && !Array.isArray(item.fieldMappings))
+          ? item.fieldMappings as Record<string, unknown>
+          : {};
+        return {
+          locale,
+          fieldMappings: {
+            title: typeof fm.title === "string" ? fm.title : undefined,
+            descriptionHtml: typeof fm.descriptionHtml === "string" ? fm.descriptionHtml : undefined,
+            seoTitle: typeof fm.seoTitle === "string" ? fm.seoTitle : undefined,
+            seoDescription: typeof fm.seoDescription === "string" ? fm.seoDescription : undefined,
+          },
+        };
+      })
+      .filter((item) => Boolean(item.locale));
+  }
+
   private toFailureReason(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error ?? "Unknown processing error");
     const normalized = raw.trim();
@@ -2132,6 +2175,7 @@ export class MarketplaceService implements OnModuleInit {
       id: string;
       productId: string;
       channel: string;
+      categoryId?: string | null;
     },
     simulation: {
       exportReady: boolean;
@@ -2166,6 +2210,53 @@ export class MarketplaceService implements OnModuleInit {
       try {
         const productPayload = await this.buildConnectorProductPayload(job.productId);
         const publishResult = await this.connectorFramework.publish(installation, productPayload);
+
+        // ─── Sprint 14: locale translations (best-effort, warnings only) ─────────
+        const localeWarnings: { code: string; fieldPath: string; severity: "warning"; sellerMessage: string }[] = [];
+        if (connectorSlug === "shopify" && publishResult.externalRef && job.categoryId) {
+          try {
+            const resolvedLocale = await this.connectorMappingService.resolveEffectiveMapping({
+              connectorSlug: "shopify",
+              categoryScope: job.categoryId,
+              installationId: installation.id,
+            });
+            const localeTranslations = this.parseLocaleTranslations(resolvedLocale.resolvedMapping.localeTranslations);
+            if (localeTranslations.length > 0) {
+              const connector = this.connectorRegistry.getConnector("shopify") as unknown as {
+                registerTranslations: (
+                  ctx: unknown,
+                  productGid: string,
+                  localeTranslations: unknown[],
+                  product: { title: string; description: string; seoTitle?: string; seoDescription?: string },
+                ) => Promise<string[]>;
+              };
+              const ctx = {
+                tenantId: tenantKey,
+                installationId: installation.id,
+                connectorId: installation.connectorId,
+                getAccessToken: async () => "",
+              };
+              const warnings = await connector.registerTranslations(
+                ctx,
+                publishResult.externalRef,
+                localeTranslations,
+                {
+                  title: productPayload.title,
+                  description: productPayload.description,
+                  seoTitle: productPayload.seoTitle,
+                  seoDescription: productPayload.seoDescription,
+                },
+              );
+              for (const warning of warnings) {
+                localeWarnings.push({ code: "LOCALE_TRANSLATION_FAILED", fieldPath: "", severity: "warning", sellerMessage: warning });
+              }
+            }
+          } catch {
+            // Translation errors never block the submission — base publish is committed.
+          }
+        }
+        // ─── Sprint 14 end ───────────────────────────────────────────────────────
+
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,
@@ -2175,12 +2266,15 @@ export class MarketplaceService implements OnModuleInit {
           status: publishResult.status,
           externalRef: publishResult.externalRef,
           payloadSnapshot: simulation.mappedPayload,
-          channelErrors: simulation.channelIssues.map((issue) => ({
-            code: issue.code,
-            fieldPath: issue.fieldPath,
-            severity: issue.severity,
-            sellerMessage: issue.sellerMessage,
-          })),
+          channelErrors: [
+            ...simulation.channelIssues.map((issue) => ({
+              code: issue.code,
+              fieldPath: issue.fieldPath,
+              severity: issue.severity,
+              sellerMessage: issue.sellerMessage,
+            })),
+            ...localeWarnings,
+          ],
         });
         if (
           publishResult.status === "PENDING" &&
@@ -2190,6 +2284,24 @@ export class MarketplaceService implements OnModuleInit {
           await this.queueSubmissionStatusSync(submission.id, connectorSlug, 1);
         }
       } catch (error) {
+        // ShopifyPublishError carries parsed ConnectorIssue[] with real fieldPaths.
+        // Generic errors fall back to a single CONNECTOR_PUBLISH_FAILED issue.
+        const channelErrors =
+          error instanceof ShopifyPublishError && error.issues.length > 0
+            ? error.issues.map((issue) => ({
+                code: issue.code,
+                fieldPath: issue.fieldPath,
+                severity: issue.severity,
+                sellerMessage: issue.sellerMessage,
+              }))
+            : [
+                {
+                  code: "CONNECTOR_PUBLISH_FAILED",
+                  fieldPath: "",
+                  severity: "error" as const,
+                  sellerMessage: this.toFailureReason(error),
+                },
+              ];
         submission = await this.connectorFramework.recordSubmissionAttempt({
           installation,
           productId: job.productId,
@@ -2198,14 +2310,7 @@ export class MarketplaceService implements OnModuleInit {
           source: "LIVE_API",
           status: "ERROR",
           payloadSnapshot: simulation.mappedPayload,
-          channelErrors: [
-            {
-              code: "CONNECTOR_PUBLISH_FAILED",
-              fieldPath: "",
-              severity: "error",
-              sellerMessage: this.toFailureReason(error),
-            },
-          ],
+          channelErrors,
         });
         await this.emitConnectorOutcomeMetrics({
           tenantKey,
@@ -2262,7 +2367,6 @@ export class MarketplaceService implements OnModuleInit {
         },
         variants: {
           orderBy: [{ updatedAt: "desc" }],
-          take: 1,
         },
       },
     });
@@ -2271,22 +2375,22 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const attributes = this.asRecord(product.attributes);
-    const variant = product.variants[0] ?? null;
-    const variantAttributes = this.asRecord(variant?.attributes);
     const pricing = this.asRecord(attributes.pricing);
+    const primaryVariant = product.variants[0] ?? null;
+    const primaryVariantAttributes = this.asRecord(primaryVariant?.attributes);
     const sku = this.firstNonEmptyString(
-      variant?.skuCode,
+      primaryVariant?.skuCode,
       attributes.sku,
       product.id,
     );
     const mrp = this.firstNumber(
-      variant?.mrp,
+      primaryVariant?.mrp,
       pricing.mrp,
       attributes.mrp,
       attributes.price,
     );
     const sellingPrice = this.firstNumber(
-      variant?.sellingPrice,
+      primaryVariant?.sellingPrice,
       pricing.sellingPrice,
       attributes.sellingPrice,
       attributes.selling_price,
@@ -2301,6 +2405,34 @@ export class MarketplaceService implements OnModuleInit {
       "general",
     );
 
+    const variants: import("../connector-framework/connector.interface").ProductVariantPayload[] = product.variants.map((v) => {
+      const va = this.asRecord(v.attributes);
+      const vMrp = this.firstNumber(v.mrp, pricing.mrp, attributes.mrp, attributes.price);
+      const vPrice = this.firstNumber(v.sellingPrice, pricing.sellingPrice, attributes.sellingPrice, vMrp);
+      return {
+        sku: String(v.skuCode ?? "").trim() || String(attributes.sku ?? "").trim() || productId,
+        sellingPrice: vPrice,
+        mrp: vMrp,
+        barcode: this.firstNonEmptyString(va.barcode, va.ean, va.upc) || undefined,
+        weight: this.firstPositiveNumber(va.weight, attributes.weight) || undefined,
+        weightUnit: (this.firstNonEmptyString(va.weightUnit, attributes.weightUnit) as "KILOGRAMS" | "GRAMS" | "POUNDS" | "OUNCES" | undefined) || "KILOGRAMS",
+        taxable: typeof va.taxable === "boolean" ? va.taxable : true,
+        inventoryPolicy: (this.firstNonEmptyString(va.inventoryPolicy, attributes.inventoryPolicy) as "CONTINUE" | "DENY" | undefined) || "CONTINUE",
+        attributes: va,
+      };
+    });
+
+    const seoTitle = this.firstNonEmptyString(attributes.seoTitle, attributes.seo_title) || undefined;
+    const seoDescription = this.firstNonEmptyString(attributes.seoDescription, attributes.seo_description) || undefined;
+    const rawTags = attributes.tags;
+    const tags = Array.isArray(rawTags)
+      ? (rawTags as unknown[]).map((t) => String(t ?? "").trim()).filter(Boolean)
+      : typeof rawTags === "string" && rawTags.trim()
+        ? rawTags.split(",").map((t) => t.trim()).filter(Boolean)
+        : undefined;
+    const statusRaw = this.firstNonEmptyString(attributes.status);
+    const status = statusRaw === "DRAFT" ? ("DRAFT" as const) : ("ACTIVE" as const);
+
     return {
       sku,
       title: this.firstNonEmptyString(product.title),
@@ -2313,10 +2445,15 @@ export class MarketplaceService implements OnModuleInit {
       mainImageUrl,
       attributes: {
         ...attributes,
-        ...variantAttributes,
-        ...(variant ? { inventoryQty: variant.inventoryQty } : {}),
+        ...primaryVariantAttributes,
+        ...(primaryVariant ? { inventoryQty: primaryVariant.inventoryQty } : {}),
       },
       productType,
+      variants: variants.length > 0 ? variants : undefined,
+      seoTitle,
+      seoDescription,
+      tags: tags && tags.length > 0 ? tags : undefined,
+      status,
     };
   }
 
@@ -2397,6 +2534,11 @@ export class MarketplaceService implements OnModuleInit {
       }
     }
     return 0;
+  }
+
+  private firstPositiveNumber(...values: unknown[]): number {
+    const n = this.firstNumber(...values);
+    return n > 0 ? n : 0;
   }
 
   private async emitExportThroughputMetric(
@@ -2498,5 +2640,538 @@ export class MarketplaceService implements OnModuleInit {
       } satisfies ConnectorWorkerPayload,
       { delayMs: AUTO_STATUS_SYNC_DELAY_MS },
     );
+  }
+
+  async getRecoveryGroups(installationId: string) {
+    const submissions = await this.prisma.tenant().connectorSubmission.findMany({
+      where: { installationId, status: "FAILED" },
+      select: {
+        productId: true,
+        channelErrors: true,
+        submittedAt: true,
+      },
+      orderBy: { submittedAt: "desc" },
+    });
+
+    const groupMap = new Map<string, { affectedCount: number; exampleMessage: string; productIds: string[] }>();
+    for (const sub of submissions) {
+      const errors = Array.isArray(sub.channelErrors) ? sub.channelErrors : [];
+      const firstError = errors[0] as Record<string, unknown> | undefined;
+      const family = String(firstError?.code ?? "UNKNOWN_ERROR").trim() || "UNKNOWN_ERROR";
+      const message = String(firstError?.sellerMessage ?? firstError?.message ?? "Unknown error").trim();
+      const existing = groupMap.get(family);
+      if (existing) {
+        if (!existing.productIds.includes(sub.productId)) {
+          existing.productIds.push(sub.productId);
+          existing.affectedCount = existing.productIds.length;
+        }
+      } else {
+        groupMap.set(family, { affectedCount: 1, exampleMessage: message, productIds: [sub.productId] });
+      }
+    }
+
+    return Array.from(groupMap.entries()).map(([errorFamily, data]) => ({
+      errorFamily,
+      affectedCount: data.affectedCount,
+      exampleMessage: data.exampleMessage,
+      productIds: data.productIds,
+    }));
+  }
+
+  async retryRecoveryGroup(installationId: string, errorFamily: string, actor?: PolicyActor) {
+    const db = this.prisma.tenant();
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true },
+    });
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "shopify";
+    const channel = this.mapConnectorSlugToChannel(connectorSlug);
+
+    const failed = await db.connectorSubmission.findMany({
+      where: { installationId, status: "FAILED" },
+      select: { productId: true, channelErrors: true },
+    });
+
+    const eligible = failed.filter((sub) => {
+      const errors = Array.isArray(sub.channelErrors) ? sub.channelErrors : [];
+      const firstError = errors[0] as Record<string, unknown> | undefined;
+      const family = String(firstError?.code ?? "UNKNOWN_ERROR").trim() || "UNKNOWN_ERROR";
+      return family === errorFamily;
+    });
+
+    const uniqueProductIds = [...new Set(eligible.map((s) => s.productId))];
+
+    let queued = 0;
+    for (const productId of uniqueProductIds) {
+      try {
+        const product = await db.product.findUnique({ where: { id: productId }, select: { categoryId: true } });
+        if (!product) continue;
+        const job = await db.marketplaceExportJob.create({
+          data: {
+            createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
+            productId,
+            categoryId: product.categoryId,
+            channel,
+            status: ExportJobStatus.queued,
+            retryCount: 0,
+            maxRetries: 3,
+            payload: {} as Prisma.JsonObject,
+          },
+        });
+        await this.queueService.enqueue(QUEUE_NAMES.CONNECTOR_SUBMISSION, {
+          jobId: job.id,
+          connectorSlug,
+        } satisfies ConnectorWorkerPayload);
+        queued++;
+      } catch {
+        // Skip individual product failures; best-effort bulk retry
+      }
+    }
+
+    return { queued };
+  }
+
+  async previewProductChanges(installationId: string, productId: string): Promise<ShopifyProductPreview> {
+    const db = this.prisma.tenant();
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true, externalAccountRef: true, metadata: true },
+    });
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const latestSubmission = await db.connectorSubmission.findFirst({
+      where: { installationId, productId, status: "SUCCESS" },
+      orderBy: { submittedAt: "desc" },
+      select: { externalRef: true },
+    });
+
+    let shopifyGid: string | null = null;
+    const ref = latestSubmission?.externalRef ?? null;
+    if (ref && /^gid:\/\/shopify\/Product\//.test(ref)) {
+      shopifyGid = ref;
+    }
+
+    if (!shopifyGid) {
+      return { hasExistingProduct: false, noChanges: false, changes: [] };
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "shopify";
+
+    const payload = await this.buildConnectorProductPayload(productId);
+
+    const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
+      previewChanges: (ctx: unknown, product: ProductPayload, gid: string) => Promise<ShopifyProductPreview>;
+    };
+
+    const ctx = {
+      tenantId: installation.tenantKey,
+      installationId: installation.id,
+      connectorId: installation.connectorId,
+      getAccessToken: async () => "",
+    };
+
+    return connector.previewChanges(ctx, payload, shopifyGid);
+  }
+
+  // ─── Sprint 2: Shopify config import ──────────────────────────────────────
+
+  async importShopifyConfig(installationId: string): Promise<ShopifyConfigResult> {
+    const db = this.prisma.tenant();
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true },
+    });
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "shopify";
+
+    const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
+      importShopifyConfig: (ctx: unknown) => Promise<ShopifyConfigResult>;
+    };
+
+    const ctx = {
+      tenantId: installation.tenantKey,
+      installationId: installation.id,
+      connectorId: installation.connectorId,
+      getAccessToken: async () => "",
+    };
+
+    return connector.importShopifyConfig(ctx);
+  }
+
+  async getShopifyConfig(installationId: string): Promise<ShopifyConfigResult | null> {
+    const db = this.prisma.tenant();
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true },
+    });
+    if (!installation) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "shopify";
+
+    const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
+      getShopifyConfig: (ctx: unknown) => Promise<ShopifyConfigResult | null>;
+    };
+
+    const ctx = {
+      tenantId: installation.tenantKey,
+      installationId: installation.id,
+      connectorId: installation.connectorId,
+      getAccessToken: async () => "",
+    };
+
+    return connector.getShopifyConfig(ctx);
+  }
+
+  // ─── Sprint 8: Delta sync ──────────────────────────────────────────────────
+
+  async getDeltaSyncCandidates(installationId: string): Promise<{ productId: string; version: number }[]> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const db = this.prisma.tenant(tenantKey);
+
+    // Products that have been modified (by version) since last sync for this installation
+    const products = await db.product.findMany({
+      where: { status: "approved" },
+      select: { id: true, version: true },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 500,
+    });
+
+    if (products.length === 0) return [];
+
+    // Fetch sync states for this installation (raw to avoid Prisma type error on new model)
+    // RLS-BYPASS: manual tenant filter
+    const syncStates = await this.prisma.tenant().$queryRawUnsafe<Array<{
+      product_id: string;
+      last_synced_version: number | null;
+    }>>(
+      `SELECT product_id, last_synced_version FROM connector_product_sync_states
+       WHERE tenant_key = $1 AND installation_id = $2`,
+      tenantKey,
+      installationId,
+    );
+
+    const syncMap = new Map(syncStates.map((s) => [s.product_id, s.last_synced_version ?? -1]));
+
+    return products
+      .filter((p) => (p.version ?? 0) > (syncMap.get(p.id) ?? -1))
+      .map((p) => ({ productId: p.id, version: p.version ?? 0 }));
+  }
+
+  async queueDeltaSync(
+    installationId: string,
+    actor?: PolicyActor,
+  ): Promise<{ queued: number; skipped: number }> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const db = this.prisma.tenant(tenantKey);
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true },
+    });
+    if (!installation) throw new NotFoundException("Installation not found.");
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installation.connectorId },
+      select: { slug: true, capabilities: true },
+    });
+    const capabilities = Array.isArray(connectorDef?.capabilities) ? connectorDef.capabilities : [];
+    if (!capabilities.includes("PUBLISH")) {
+      throw new BadRequestException("This connector does not support publish — delta sync not available.");
+    }
+
+    const candidates = await this.getDeltaSyncCandidates(installationId);
+    let queued = 0;
+    let skipped = 0;
+
+    for (const { productId } of candidates) {
+      try {
+        const product = await db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, categoryId: true },
+        });
+        if (!product) { skipped++; continue; }
+
+        await db.marketplaceExportJob.create({
+          data: {
+            productId,
+            categoryId: product.categoryId,
+            channel: connectorDef?.slug ?? "shopify",
+            status: ExportJobStatus.queued,
+            maxRetries: 3,
+            retryCount: 0,
+            createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : "delta_sync",
+          },
+        });
+        queued++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    return { queued, skipped };
+  }
+
+  async upsertSyncState(installationId: string, productId: string, version: number, status: string): Promise<void> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const id = `${tenantKey}_${installationId}_${productId}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 24) + "_" + Date.now().toString(36);
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant().$executeRawUnsafe(
+      `INSERT INTO connector_product_sync_states (id, tenant_key, installation_id, product_id, last_synced_at, last_synced_version, last_synced_status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), NOW())
+       ON CONFLICT (tenant_key, installation_id, product_id)
+       DO UPDATE SET last_synced_at = NOW(), last_synced_version = $5, last_synced_status = $6, updated_at = NOW()`,
+      id, tenantKey, installationId, productId, version, status,
+    );
+  }
+
+  async getSyncStates(installationId: string): Promise<Array<{
+    productId: string;
+    lastSyncedAt: Date | null;
+    lastSyncedVersion: number | null;
+    lastSyncedStatus: string | null;
+  }>> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+      product_id: string;
+      last_synced_at: Date | null;
+      last_synced_version: number | null;
+      last_synced_status: string | null;
+    }>>(
+      `SELECT product_id, last_synced_at, last_synced_version, last_synced_status
+       FROM connector_product_sync_states
+       WHERE tenant_key = $1 AND installation_id = $2
+       ORDER BY last_synced_at DESC NULLS LAST
+       LIMIT 200`,
+      tenantKey, installationId,
+    );
+    return rows.map((r) => ({
+      productId: r.product_id,
+      lastSyncedAt: r.last_synced_at,
+      lastSyncedVersion: r.last_synced_version,
+      lastSyncedStatus: r.last_synced_status,
+    }));
+  }
+
+  // ─── Sprint 9: Scheduled sync ─────────────────────────────────────────────
+
+  async getSchedule(installationId: string): Promise<{
+    id: string;
+    cronExpression: string;
+    scope: string;
+    status: string;
+    lastRunAt: Date | null;
+    nextRunAt: Date | null;
+    lastRunOutcome: string | null;
+  } | null> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+      id: string;
+      cron_expression: string;
+      scope: string;
+      status: string;
+      last_run_at: Date | null;
+      next_run_at: Date | null;
+      last_run_outcome: string | null;
+    }>>(
+      `SELECT id, cron_expression, scope, status, last_run_at, next_run_at, last_run_outcome
+       FROM connector_sync_schedules
+       WHERE tenant_key = $1 AND installation_id = $2
+       LIMIT 1`,
+      tenantKey, installationId,
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      cronExpression: row.cron_expression,
+      scope: row.scope,
+      status: row.status,
+      lastRunAt: row.last_run_at,
+      nextRunAt: row.next_run_at,
+      lastRunOutcome: row.last_run_outcome,
+    };
+  }
+
+  async upsertSchedule(
+    installationId: string,
+    data: { cronExpression: string; scope: string; status: string },
+    actor?: PolicyActor,
+  ): Promise<{ id: string }> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const { cronExpression, scope, status } = data;
+
+    // Validate cron expression — basic 5-field check
+    const fields = cronExpression.trim().split(/\s+/);
+    if (fields.length < 5 || fields.length > 6) {
+      throw new BadRequestException("cronExpression must be a valid 5 or 6-field cron expression.");
+    }
+
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM connector_sync_schedules WHERE tenant_key = $1 AND installation_id = $2 LIMIT 1`,
+      tenantKey, installationId,
+    );
+
+    if (rows[0]) {
+      // RLS-BYPASS: manual tenant filter
+      await this.prisma.tenant().$executeRawUnsafe(
+        `UPDATE connector_sync_schedules
+         SET cron_expression = $1, scope = $2, status = $3, updated_at = NOW()
+         WHERE tenant_key = $4 AND installation_id = $5`,
+        cronExpression, scope, status, tenantKey, installationId,
+      );
+      await this.queueService
+        .registerRepeatableSync(`sync:${installationId}`, { tenantKey, installationId, scope }, cronExpression, status === "active")
+        .catch((err: unknown) => { this.logger.warn("Failed to register repeatable sync", { installationId, error: String(err) }); });
+      return { id: rows[0].id };
+    }
+
+    const id = `sched_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant().$executeRawUnsafe(
+      `INSERT INTO connector_sync_schedules (id, tenant_key, installation_id, cron_expression, scope, status, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+      id, tenantKey, installationId, cronExpression, scope, status, actor?.actorId ?? null,
+    );
+    await this.queueService
+      .registerRepeatableSync(`sync:${installationId}`, { tenantKey, installationId, scope }, cronExpression, status === "active")
+      .catch((err: unknown) => { this.logger.warn("Failed to register repeatable sync", { installationId, error: String(err) }); });
+    return { id };
+  }
+
+  async deleteSchedule(installationId: string): Promise<void> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant().$executeRawUnsafe(
+      `DELETE FROM connector_sync_schedules WHERE tenant_key = $1 AND installation_id = $2`,
+      tenantKey, installationId,
+    );
+    await this.queueService
+      .registerRepeatableSync(`sync:${installationId}`, {}, "", false)
+      .catch((err: unknown) => { this.logger.warn("Failed to remove repeatable sync", { installationId, error: String(err) }); });
+  }
+
+  // ─── Sprint 10: Catalog linking ───────────────────────────────────────────
+
+  async scanCatalogLinks(installationId: string): Promise<{
+    matched: Array<{ productId: string; productTitle: string; shopifyGid: string; shopifySku: string; matchedBy: string; confidence: string }>;
+    unmatched: Array<{ productId: string; productTitle: string; sku: string }>;
+    ambiguous: Array<{ productId: string; productTitle: string; matches: Array<{ shopifyGid: string; matchedBy: string }> }>;
+  }> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const db = this.prisma.tenant(tenantKey);
+    const installation = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true },
+    });
+    if (!installation) throw new NotFoundException("Installation not found.");
+
+    const submissions = await db.connectorSubmission.findMany({
+      where: { installationId, status: "SUCCESS", externalRef: { not: null } },
+      select: { productId: true, externalRef: true },
+      orderBy: [{ submittedAt: "desc" }],
+      distinct: ["productId"],
+    });
+
+    const products = await db.product.findMany({
+      where: { status: "approved" },
+      select: { id: true, title: true, variants: { take: 1, select: { skuCode: true } } },
+      take: 500,
+    });
+
+    const submissionMap = new Map(submissions.map((s) => [s.productId, s.externalRef!]));
+
+    const matched: Array<{ productId: string; productTitle: string; shopifyGid: string; shopifySku: string; matchedBy: string; confidence: string }> = [];
+    const unmatched: Array<{ productId: string; productTitle: string; sku: string }> = [];
+
+    for (const p of products) {
+      const gid = submissionMap.get(p.id);
+      const sku = p.variants[0]?.skuCode ?? "";
+      if (gid) {
+        matched.push({ productId: p.id, productTitle: p.title ?? "", shopifyGid: gid, shopifySku: sku, matchedBy: "submission_ref", confidence: "high" });
+      } else {
+        unmatched.push({ productId: p.id, productTitle: p.title ?? "", sku });
+      }
+    }
+
+    return { matched, unmatched, ambiguous: [] };
+  }
+
+  async confirmCatalogLinks(
+    installationId: string,
+    links: Array<{ productId: string; shopifyGid: string; matchedBy: string }>,
+    actor?: PolicyActor,
+  ): Promise<{ confirmed: number }> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    let confirmed = 0;
+    for (const link of links) {
+      const id = `link_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+      // RLS-BYPASS: manual tenant filter
+      await this.prisma.tenant().$executeRawUnsafe(
+        `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW(), NOW())
+         ON CONFLICT (tenant_key, installation_id, product_id)
+         DO UPDATE SET shopify_gid = $5, matched_by = $6, confirmed_at = NOW(), confirmed_by = $7, updated_at = NOW()`,
+        id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, actor?.actorId ?? null,
+      );
+      confirmed++;
+    }
+    return { confirmed };
+  }
+
+  async getProductLinks(installationId: string): Promise<Array<{
+    productId: string;
+    shopifyGid: string;
+    matchedBy: string;
+    confirmedAt: Date | null;
+  }>> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    // RLS-BYPASS: manual tenant filter
+    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+      product_id: string;
+      shopify_gid: string;
+      matched_by: string;
+      confirmed_at: Date | null;
+    }>>(
+      `SELECT product_id, shopify_gid, matched_by, confirmed_at
+       FROM connector_product_links
+       WHERE tenant_key = $1 AND installation_id = $2
+       ORDER BY confirmed_at DESC NULLS LAST`,
+      tenantKey, installationId,
+    );
+    return rows.map((r) => ({
+      productId: r.product_id,
+      shopifyGid: r.shopify_gid,
+      matchedBy: r.matched_by,
+      confirmedAt: r.confirmed_at,
+    }));
   }
 }

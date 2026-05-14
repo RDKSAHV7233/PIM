@@ -38,6 +38,7 @@ export interface ConnectorMappingVersion {
   id: string;
   tenantKey: string;
   connectorSlug: string;
+  installationId: string | null;
   categoryScope: string;
   mappingLevel: MappingLevel;
   lifecycleState: MappingLifecycle;
@@ -210,6 +211,7 @@ function toVersion(row: Record<string, unknown>): ConnectorMappingVersion {
   const id = firstDefined(row.id);
   const tenantKey = firstDefined(row.tenantKey, row.tenant_key);
   const connectorSlug = firstDefined(row.connectorSlug, row.connector_slug);
+  const rawInstallationId = firstDefined(row.installationId, row.installation_id);
   const categoryScope = firstDefined(row.categoryScope, row.category_scope);
   const mappingLevel = firstDefined(row.mappingLevel, row.mapping_level);
   const lifecycleState = firstDefined(row.lifecycleState, row.lifecycle_state);
@@ -229,6 +231,7 @@ function toVersion(row: Record<string, unknown>): ConnectorMappingVersion {
     id: String(id),
     tenantKey: String(tenantKey),
     connectorSlug: String(connectorSlug),
+    installationId: rawInstallationId != null ? String(rawInstallationId) : null,
     categoryScope: String(categoryScope),
     mappingLevel: String(mappingLevel) as MappingLevel,
     lifecycleState: String(lifecycleState) as MappingLifecycle,
@@ -866,6 +869,7 @@ export class ConnectorMappingService {
   async resolveEffectiveMapping(input: {
     connectorSlug: string;
     categoryScope: string;
+    installationId?: string | null;
     actorId?: string | null;
     recordEvaluation?: boolean;
   }): Promise<{
@@ -877,27 +881,47 @@ export class ConnectorMappingService {
   }> {
     const tenantKey = this.getTenantKey();
     const categoryScope = String(input.categoryScope ?? "").trim() || "*";
+    const installationId = input.installationId ?? null;
+
+    // Fetch all candidate rows; filter by installationId in TypeScript to avoid Prisma client
+    // regeneration requirement for the new nullable column.
+    // Five-level precedence (low → high):
+    //   1. connector system default (hardcoded)
+    //   2. slug-scoped tenant default  (installationId=null)
+    //   3. slug-scoped category mapping (installationId=null)
+    //   4. installation-scoped tenant default  (installationId=X)
+    //   5. installation-scoped category mapping (installationId=X)
     const rows = await this.prisma.tenant(tenantKey).connectorMappingVersion.findMany({
       where: {
         connectorSlug: input.connectorSlug,
         lifecycleState: "published",
         OR: [
-          {
-            mappingLevel: "tenant_connector_default",
-            categoryScope: "*",
-          },
-          {
-            mappingLevel: "tenant_connector_category_mapping",
-            categoryScope,
-          },
+          { mappingLevel: "tenant_connector_default", categoryScope: "*" },
+          { mappingLevel: "tenant_connector_category_mapping", categoryScope },
         ],
       },
       orderBy: { createdAt: "asc" },
     });
 
+    // Post-filter: keep slug-scoped (null installationId) + installation-scoped for this installationId
+    const candidateRows = rows.filter((row) => {
+      const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
+      if (!rowInstId) return true; // slug-scoped row — always keep
+      return rowInstId === installationId; // installation-scoped — keep only for matching installation
+    });
+
+    const allVersions = candidateRows.map((row) => toVersion(row as unknown as Record<string, unknown>));
+
+    // Apply 5-level merge: system → slug-default → slug-category → install-default → install-category
+    const slugDefault = allVersions.find((v) => v.mappingLevel === "tenant_connector_default" && !v.installationId);
+    const slugCategory = allVersions.find((v) => v.mappingLevel === "tenant_connector_category_mapping" && v.categoryScope === categoryScope && !v.installationId);
+    const installDefault = installationId ? allVersions.find((v) => v.mappingLevel === "tenant_connector_default" && v.installationId === installationId) : undefined;
+    const installCategory = installationId ? allVersions.find((v) => v.mappingLevel === "tenant_connector_category_mapping" && v.categoryScope === categoryScope && v.installationId === installationId) : undefined;
+
     const matched = sortMappingsForResolution(
-      rows.map((row) => toVersion(row as unknown as Record<string, unknown>)),
+      [slugDefault, slugCategory, installDefault, installCategory].filter((v): v is ConnectorMappingVersion => Boolean(v)),
     );
+
     let merged: Record<string, unknown> = this.systemDefaultForConnector(input.connectorSlug);
     const compatStates: MappingCompatibility[] = ["compatible"];
     for (const version of matched) {
@@ -906,12 +930,12 @@ export class ConnectorMappingService {
     }
     merged = applyAttributeOverrides(merged);
 
-    const hasCategorySpecific = matched.some(
-      (item) => item.mappingLevel === "tenant_connector_category_mapping" && item.categoryScope === categoryScope,
-    );
-    const tenantDefault = matched.find((item) => item.mappingLevel === "tenant_connector_default");
-    const fallbackApplied = categoryScope !== "*" && !hasCategorySpecific && Boolean(tenantDefault);
-    const fallbackAckRequired = fallbackApplied && Boolean(tenantDefault?.fallbackAckRequired);
+    const hasCategorySpecific =
+      Boolean(installCategory) ||
+      (matched.some((item) => item.mappingLevel === "tenant_connector_category_mapping" && item.categoryScope === categoryScope));
+    const effectiveDefault = installDefault ?? slugDefault;
+    const fallbackApplied = categoryScope !== "*" && !hasCategorySpecific && Boolean(effectiveDefault);
+    const fallbackAckRequired = fallbackApplied && Boolean(effectiveDefault?.fallbackAckRequired);
     const compatibilityState = highestCompatibility(compatStates);
 
     if (input.recordEvaluation && matched.length > 0) {
@@ -922,6 +946,7 @@ export class ConnectorMappingService {
         actorId: input.actorId,
         metadata: {
           category_scope: categoryScope,
+          installation_id: installationId,
           matched_version_ids: matched.map((item) => item.id),
           compatibility_state: compatibilityState,
           fallback_applied: fallbackApplied,
@@ -1091,6 +1116,15 @@ export class ConnectorMappingService {
     blockers: string[];
     warnings: string[];
     checks: Record<string, unknown>;
+    overallScore: number;
+    breakdown: {
+      content:    { score: number; weight: 25 };
+      seo:        { score: number; weight: 15 };
+      media:      { score: number; weight: 20 };
+      variants:   { score: number; weight: 20 };
+      metafields: { score: number; weight: 10 };
+      compliance: { score: number; weight: 10 };
+    };
   }> {
     const tenantKey = this.getTenantKey();
     const preflight = await this.evaluateMappingPreflight({
@@ -1142,21 +1176,44 @@ export class ConnectorMappingService {
     }
 
     let productCheck: Record<string, unknown> = {};
+    let openErrors = 0;
+    let productData: {
+      title?: string | null;
+      description?: string | null;
+      brand?: string | null;
+      attributes?: unknown;
+      variants?: Array<{ skuCode?: string | null; sellingPrice?: unknown; mrp?: unknown; attributes?: unknown }>;
+    } | null = null;
+
     if (input.productId) {
       const product = await this.prisma.tenant(tenantKey).product.findUnique({
         where: { id: input.productId },
-        select: { id: true, categoryId: true, status: true },
+        select: {
+          id: true,
+          categoryId: true,
+          status: true,
+          title: true,
+          description: true,
+          brand: true,
+          attributes: true,
+          variants: {
+            orderBy: [{ updatedAt: "desc" }],
+            take: 1,
+            select: { skuCode: true, sellingPrice: true, mrp: true, attributes: true },
+          },
+        },
       });
       if (!product) {
         blockers.push("product_not_found");
       } else {
+        productData = product;
         if (product.categoryId !== input.categoryScope) {
           blockers.push("product_category_scope_mismatch");
         }
         if (product.status === "archived") {
           blockers.push("product_archived");
         }
-        const openErrors = await this.prisma.tenant(tenantKey).validationIssue.count({
+        openErrors = await this.prisma.tenant(tenantKey).validationIssue.count({
           where: {
             productId: product.id,
             status: ValidationIssueStatus.open,
@@ -1164,7 +1221,7 @@ export class ConnectorMappingService {
           },
         });
         if (openErrors > 0) {
-          warnings.push("product_blocking_issues_open");
+          blockers.push("product_blocking_issues_open");
         }
         productCheck = {
           productId: product.id,
@@ -1174,6 +1231,60 @@ export class ConnectorMappingService {
         };
       }
     }
+
+    // ── Readiness Score ───────────────────────────────────────────────────────
+    const attrs = (productData?.attributes && typeof productData.attributes === "object" ? productData.attributes : {}) as Record<string, unknown>;
+    const variant0 = productData?.variants?.[0] ?? null;
+
+    // Content (25): title, brand, description
+    const hasTitle = Boolean(String(productData?.title ?? "").trim());
+    const hasBrand = Boolean(String(productData?.brand ?? "").trim());
+    const hasDescription = Boolean(String(productData?.description ?? "").trim());
+    const contentScore = Math.round(((+hasTitle + +hasBrand + +hasDescription) / 3) * 100);
+
+    // SEO (15): seoTitle and seoDescription in field_mappings
+    const seoTitleMapped = "seo.title" in fieldMappings || "seoTitle" in fieldMappings || "attributes.seoTitle" in fieldMappings;
+    const seoDescMapped = "seo.description" in fieldMappings || "seoDescription" in fieldMappings || "attributes.seoDescription" in fieldMappings;
+    const seoScore = Math.round(((+seoTitleMapped + +seoDescMapped) / 2) * 100);
+
+    // Media (20): mainImageUrl present in attributes + alt text
+    const mainImageUrl = String(attrs.mainImageUrl ?? attrs.imageUrl ?? attrs.image_url ?? "").trim();
+    const hasImage = Boolean(mainImageUrl);
+    const hasAlt = Boolean(String(attrs.imageAlt ?? attrs.alt_text ?? attrs.image_alt ?? "").trim());
+    const mediaScore = Math.round(((hasImage ? 0.75 : 0) + (hasImage && hasAlt ? 0.25 : 0)) * 100);
+
+    // Variants (20): price and SKU present
+    const vAttrs = (variant0?.attributes && typeof variant0.attributes === "object" ? variant0.attributes : {}) as Record<string, unknown>;
+    const hasSku = Boolean(String(variant0?.skuCode ?? vAttrs.sku ?? attrs.sku ?? "").trim());
+    const hasPrice = (typeof variant0?.sellingPrice === "number" && variant0.sellingPrice > 0)
+      || (typeof attrs.sellingPrice === "number" && (attrs.sellingPrice as number) > 0)
+      || (typeof attrs.price === "number" && (attrs.price as number) > 0);
+    const variantsScore = Math.round(((+hasSku + +hasPrice) / 2) * 100);
+
+    // Metafields (10): if any productMetafield keys in fieldMappings, score proportionally; otherwise neutral 50
+    const metafieldKeys = Object.keys(fieldMappings).filter((k) => k.startsWith("productMetafields.") || k.startsWith("variantMetafields."));
+    const metafieldsScore = metafieldKeys.length === 0 ? 50 : 100;
+
+    // Compliance (10): no open error issues
+    const complianceScore = openErrors === 0 ? 100 : Math.max(0, Math.round((1 - openErrors / 10) * 100));
+
+    const breakdown = {
+      content:    { score: contentScore,    weight: 25 as const },
+      seo:        { score: seoScore,        weight: 15 as const },
+      media:      { score: mediaScore,      weight: 20 as const },
+      variants:   { score: variantsScore,   weight: 20 as const },
+      metafields: { score: metafieldsScore, weight: 10 as const },
+      compliance: { score: complianceScore, weight: 10 as const },
+    };
+
+    const overallScore = Math.round(
+      (contentScore    * 25 +
+       seoScore        * 15 +
+       mediaScore      * 20 +
+       variantsScore   * 20 +
+       metafieldsScore * 10 +
+       complianceScore * 10) / 100,
+    );
 
     return {
       ok: blockers.length === 0,
@@ -1191,6 +1302,8 @@ export class ConnectorMappingService {
         missingRequiredMappings,
         product: productCheck,
       },
+      overallScore,
+      breakdown,
     };
   }
 

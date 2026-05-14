@@ -196,6 +196,17 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
             <p className="mt-2 text-sm text-slate-700">
               Latest field-level evidence is loaded directly into the queue so reviewers can answer what changed before opening product detail.
             </p>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p>
+                <strong>1. Check blockers.</strong> Confirm whether blocking issues are cleared before you approve.
+              </p>
+              <p>
+                <strong>2. Open product context.</strong> Review the product quality tab and the latest workflow updates before recording a final decision.
+              </p>
+              <p>
+                <strong>3. Use rejection intentionally.</strong> Reject items when quality or publish readiness still needs editor follow-up.
+              </p>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusChip
                 label={`${productsWithRevisionEvidence} with revision evidence`}

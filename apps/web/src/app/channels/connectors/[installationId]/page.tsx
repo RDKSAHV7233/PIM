@@ -24,6 +24,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
+import { StoreSwitcher } from "@/components/ui/store-switcher";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ interface ChannelConnectorDetailPageProps {
   searchParams: Promise<{ tab?: string; status?: string }>;
 }
 
-type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access";
+type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
 type CatalogModuleId =
   | "products"
   | "variants"
@@ -50,6 +51,9 @@ const DETAIL_TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "credentials", label: "Credentials" },
   { id: "catalog", label: "Catalog" },
   { id: "mappings", label: "Mappings" },
+  { id: "sync", label: "Sync" },
+  { id: "schedule", label: "Schedule" },
+  { id: "catalog-link", label: "Catalog Link" },
   { id: "issues", label: "Issues" },
   { id: "logs", label: "Logs" },
   { id: "access", label: "Access" },
@@ -570,6 +574,13 @@ export default async function ChannelConnectorDetailPage({
       notFound();
     }
 
+    const siblingStores = installations
+      .filter((item) => item.slug === installation.slug)
+      .map((item) => ({
+        id: item.id,
+        label: readMetadataValue(item.metadata, "shopName") || readMetadataValue(item.metadata, "shopDomain") || item.accountAlias,
+      }));
+
     const shopifyPublicationStatePromise =
       selectedTab === "credentials" && installation.slug === "shopify"
         ? getConnectorPublications(installation.id, { role: actorRole, authHeader })
@@ -949,11 +960,20 @@ export default async function ChannelConnectorDetailPage({
           }
           actions={
             <>
+              <StoreSwitcher currentId={installationId} stores={siblingStores} currentTab={selectedTab !== "overview" ? selectedTab : undefined} />
               <StatusChip label={installation.status} tone={installationStatusTone(installation.status)} />
               <StatusChip
                 label={connectorLaunchLabel(installation.launchStage, installation.implementationStatus)}
                 tone={connectorLaunchTone(installation.launchStage)}
               />
+              {failedSubmissions.length > 0 ? (
+                <Link
+                  href={`/channels/connectors/${encodeURIComponent(installationId)}/recovery`}
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+                >
+                  Recovery ({failedSubmissions.length})
+                </Link>
+              ) : null}
               <Link
                 href={`/connectors/${encodeURIComponent(installation.id)}/mapping`}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -1971,6 +1991,122 @@ export default async function ChannelConnectorDetailPage({
             </div>
           </Card>
         ) : null}
+
+        {/* ─── Sprint 8: Sync tab ─── */}
+        {selectedTab === "sync" ? (
+          <Card>
+            <CardTitle>Delta Sync</CardTitle>
+            <div className="mt-3 space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">Delta sync</p>
+                <p className="mt-1 text-slate-600">
+                  Queues all approved products that have been updated since their last successful sync to this store.
+                  Only products with a version number higher than the last synced version are included.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync&action=delta`}
+                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Queue delta sync
+                </Link>
+                <Link
+                  href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync&action=full`}
+                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Queue full sync (all approved)
+                </Link>
+              </div>
+              <p className="text-xs text-slate-500">
+                Sync jobs run through the standard export queue. Monitor progress in{" "}
+                <Link href="/operations/jobs" className="underline">Jobs workspace</Link>.
+              </p>
+            </div>
+          </Card>
+        ) : null}
+
+        {/* ─── Sprint 9: Schedule tab ─── */}
+        {selectedTab === "schedule" ? (
+          <Card>
+            <CardTitle>Sync Schedule</CardTitle>
+            <div className="mt-3 space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">Automated delta sync schedule</p>
+                <p className="mt-1 text-slate-600">
+                  Configure a recurring schedule to automatically queue delta syncs for this store.
+                  Use standard 5-field cron syntax (minute hour day month weekday).
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                  <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 2 * * *</code> — daily at 2 AM</span>
+                  <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 */12 * * *</code> — every 12 hours</span>
+                  <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 * * * *</code> — hourly</span>
+                  <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 9,17 * * 1-5</code> — weekdays 9 AM + 5 PM</span>
+                </div>
+              </div>
+              <form method="post" action={`/api/marketplace/connectors/shopify/${encodeURIComponent(installation.id)}/schedule`} className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="sched-cron">
+                    Cron expression
+                  </label>
+                  <input
+                    id="sched-cron"
+                    name="cronExpression"
+                    placeholder="0 2 * * *"
+                    required
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="sched-scope">
+                    Scope
+                  </label>
+                  <select id="sched-scope" name="scope" className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
+                    <option value="approved_only">Approved products only</option>
+                    <option value="all">All active products</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                    Save schedule
+                  </button>
+                </div>
+              </form>
+              <p className="text-xs text-slate-500">
+                Schedule changes take effect on the next trigger. Use the Jobs workspace to monitor scheduled run history.
+              </p>
+            </div>
+          </Card>
+        ) : null}
+
+        {/* ─── Sprint 10: Catalog link tab ─── */}
+        {selectedTab === "catalog-link" ? (
+          <Card>
+            <CardTitle>Existing Catalog Linking</CardTitle>
+            <div className="mt-3 space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">Link Vexa products to existing Shopify listings</p>
+                <p className="mt-1 text-slate-600">
+                  If you already have products in Shopify, scan to match them by SKU or barcode.
+                  Confirmed links prevent duplicate Shopify listings on first sync.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Currently matches by submission history (products previously published from Vexa).
+                  SKU and barcode matching will be added in a future update.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Link
+                  href={`/channels/connectors/${encodeURIComponent(installation.id)}/catalog-link`}
+                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Open catalog link workspace
+                </Link>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
       </div>
     );
   } catch (error: unknown) {

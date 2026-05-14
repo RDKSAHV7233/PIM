@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
+  addApprovalComment as addApprovalCommentRequest,
   ApiHttpError,
   type ApiRequestOptions,
   applyBulkEdit as applyBulkEditRequest,
@@ -525,6 +526,18 @@ export async function decideProductReviewAction(formData: FormData) {
     const decisionError = message || "decision_failed";
     redirect(appendQueryParams(returnTo, { decisionError }));
   }
+}
+
+export async function addApprovalCommentAction(formData: FormData) {
+  const productId = String(formData.get("productId") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!productId || !body) {
+    throw new Error("Approval comment requires productId and body.");
+  }
+
+  await addApprovalCommentRequest(productId, body, await resolveActionOptions(formData));
+  revalidatePath("/quality/approvals");
+  revalidatePath(`/products/${productId}`);
 }
 
 export async function createProductAction(formData: FormData) {
@@ -1784,3 +1797,65 @@ export async function applyAiRepairAction(formData: FormData) {
   redirect(`/ai?productId=${encodeURIComponent(productId)}&repairStatus=applied`);
 }
 
+export async function retryConnectorRecoveryGroupAction(
+  installationId: string,
+  errorFamily: string,
+): Promise<{ queued: number }> {
+  const authHeader = await getServerAuthHeader();
+  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
+  const options: ApiRequestOptions = {
+    authHeader,
+    role: "admin",
+    tenantKey,
+  };
+  const result = await postJson<{ queued: number }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/recovery/retry-group`,
+    { errorFamily },
+    options,
+  );
+  revalidatePath(`/channels/connectors/${encodeURIComponent(installationId)}/recovery`);
+  return result;
+}
+
+
+
+export async function importShopifyConfigAction(
+  installationId: string,
+): Promise<{ metafields: number; collections: number; taxonomy: number; fetchedAt: string }> {
+  const authHeader = await getServerAuthHeader();
+  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
+  const options: ApiRequestOptions = {
+    authHeader,
+    role: "admin",
+    tenantKey,
+  };
+  const result = await postJson<{ metafields: unknown[]; collections: unknown[]; taxonomy: unknown[]; fetchedAt: string }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/shopify-config/import`,
+    {},
+    options,
+  );
+  revalidatePath(`/channels/connectors/${encodeURIComponent(installationId)}`);
+  return {
+    metafields: Array.isArray(result.metafields) ? result.metafields.length : 0,
+    collections: Array.isArray(result.collections) ? result.collections.length : 0,
+    taxonomy: Array.isArray(result.taxonomy) ? result.taxonomy.length : 0,
+    fetchedAt: result.fetchedAt,
+  };
+}
+
+export async function confirmCatalogLinksAction(
+  installationId: string,
+  links: Array<{ productId: string; shopifyGid: string; matchedBy: string }>,
+): Promise<{ confirmed: number }> {
+  "use server";
+  const authHeader = await getServerAuthHeader();
+  const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
+  const options: ApiRequestOptions = { authHeader, role: "admin", tenantKey };
+  const result = await postJson<{ confirmed: number }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link/confirm`,
+    { links },
+    options,
+  );
+  revalidatePath(`/channels/connectors/${encodeURIComponent(installationId)}/catalog-link`);
+  return result;
+}

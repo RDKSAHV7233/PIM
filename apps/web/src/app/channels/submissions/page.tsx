@@ -13,6 +13,7 @@ import { ApiHttpError, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
+import { SubmissionsGrid } from "./_components/submissions-grid";
 
 export const dynamic = "force-dynamic";
 

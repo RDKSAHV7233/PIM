@@ -861,6 +861,7 @@ model ConnectorMappingVersion {
   id                         String    @id
   tenantKey                  String    @default("default") @map("tenant_key")
   connectorSlug              String    @map("connector_slug")
+  installationId             String?   @map("installation_id")
   categoryScope              String    @map("category_scope")
   mappingLevel               String    @map("mapping_level")
   lifecycleState             String    @map("lifecycle_state")
@@ -879,6 +880,7 @@ model ConnectorMappingVersion {
 
   @@index([tenantKey, connectorSlug, categoryScope, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_lookup")
   @@index([tenantKey, connectorSlug, compatibilityState, lifecycleState, createdAt(sort: Desc)], map: "idx_connector_mapping_versions_compat")
+  @@index([tenantKey, installationId, categoryScope, lifecycleState], map: "idx_connector_mapping_versions_installation")
   @@map("connector_mapping_versions")
 }
 
@@ -1016,6 +1018,62 @@ model OutboundWebhookEndpoint {
   @@index([tenantKey, eventType, isActive], map: "idx_outbound_webhook_endpoints_tenant_event_active")
   @@index([tenantKey, createdAt(sort: Desc)], map: "idx_outbound_webhook_endpoints_tenant_created")
   @@map("outbound_webhook_endpoints")
+}
+
+// ─── Sprint 8: Delta sync state ──────────────────────────────────────────────
+model ConnectorProductSyncState {
+  id                  String    @id @default(cuid())
+  tenantKey           String    @default("default") @map("tenant_key")
+  installationId      String    @map("installation_id")
+  productId           String    @map("product_id")
+  lastSyncedAt        DateTime? @map("last_synced_at")
+  lastSyncedVersion   Int?      @map("last_synced_version")
+  lastSyncedStatus    String?   @map("last_synced_status")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, installationId, productId], map: "connector_product_sync_state_unique")
+  @@index([tenantKey, installationId, lastSyncedAt(sort: Desc)], map: "idx_connector_product_sync_state_installation")
+  @@index([tenantKey, installationId, lastSyncedVersion], map: "idx_connector_product_sync_state_version")
+  @@map("connector_product_sync_states")
+}
+
+// ─── Sprint 9: Scheduled sync ────────────────────────────────────────────────
+model ConnectorSyncSchedule {
+  id             String    @id @default(cuid())
+  tenantKey      String    @default("default") @map("tenant_key")
+  installationId String    @map("installation_id")
+  cronExpression String    @map("cron_expression")
+  scope          String    @default("approved_only")
+  status         String    @default("active")
+  lastRunAt      DateTime? @map("last_run_at")
+  nextRunAt      DateTime? @map("next_run_at")
+  lastRunOutcome String?   @map("last_run_outcome")
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, installationId], map: "connector_sync_schedule_unique")
+  @@index([tenantKey, installationId, status], map: "idx_connector_sync_schedule_installation_status")
+  @@map("connector_sync_schedules")
+}
+
+// ─── Sprint 10: Existing catalog linking ─────────────────────────────────────
+model ConnectorProductLink {
+  id             String    @id @default(cuid())
+  tenantKey      String    @default("default") @map("tenant_key")
+  installationId String    @map("installation_id")
+  productId      String    @map("product_id")
+  shopifyGid     String    @map("shopify_gid")
+  matchedBy      String    @map("matched_by")
+  confirmedAt    DateTime? @map("confirmed_at")
+  confirmedBy    String?   @map("confirmed_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, installationId, productId], map: "connector_product_link_unique")
+  @@index([tenantKey, installationId, shopifyGid], map: "idx_connector_product_link_gid")
+  @@map("connector_product_links")
 }
 
 model OutboundWebhookDelivery {

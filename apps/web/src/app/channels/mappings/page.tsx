@@ -26,6 +26,8 @@ import {
   resolveConnectorMapping,
   searchConnectorTaxonomy,
 } from "@/lib/api";
+import { getShopifyConfig } from "@/lib/api/connectors";
+import type { ShopifyStoreConfig } from "@/lib/api/core";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSlug, normalizeChannel, resolveStepUpErrorMessage, type ProtectedMappingActionKind } from "@/lib/channel-mappings";
@@ -233,11 +235,14 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const selectedInstallationId = selectedInstallation?.id ?? "";
     const definition = definitionForConnector(connectorDefinitions, connectorSlug);
     const taxonomyQ = String(query.taxonomyQ ?? "").trim();
-    const [mapping, preflight, readiness, categoryAttributes] = await Promise.all([
+    const [mapping, preflight, readiness, categoryAttributes, shopifyConfig] = await Promise.all([
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, { role: actorRole, authHeader }),
       selectedCategoryId ? evaluateConnectorMappingPreflight(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, productId: selectedProductId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve([]),
+      connectorSlug === "shopify" && selectedInstallationId
+        ? getShopifyConfig(selectedInstallationId, { role: actorRole, authHeader }).catch(() => null as ShopifyStoreConfig | null)
+        : Promise.resolve(null as ShopifyStoreConfig | null),
     ]);
     const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct, sampleProductsRaw] = await Promise.all([
       showHistory
@@ -428,6 +433,131 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             {/* mapTarget:: */}
             {/* placeholder={mappingDraftRulesDefault} */}
             <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} sampleProductLabel={sampleProductLabel} sampleProductMode={sampleProductMode} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
+            {connectorSlug === "shopify" && selectedInstallationId && shopifyConfig && shopifyConfig.collections.length > 0 ? (
+              <Card id="shopify-collections">
+                <CardTitle>Shopify Collection Mapping</CardTitle>
+                <p className="mt-1 text-xs text-slate-500">
+                  {shopifyConfig.collections.length} collection{shopifyConfig.collections.length === 1 ? "" : "s"} in your Shopify store.
+                  Map the current category to a collection using the Advanced JSON overrides above.
+                </p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <th className="pb-2 pr-3">Collection</th>
+                        <th className="pb-2 pr-3">Handle</th>
+                        <th className="pb-2">Shopify GID</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {shopifyConfig.collections.slice(0, 25).map((col) => (
+                        <tr key={col.id}>
+                          <td className="py-2 pr-3 font-medium text-slate-800">{col.title}</td>
+                          <td className="py-2 pr-3 font-mono text-xs text-slate-600">{col.handle}</td>
+                          <td className="py-2 font-mono text-xs text-slate-600 max-w-[14rem] truncate" title={col.id}>{col.id}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {shopifyConfig.collections.length > 25 ? (
+                    <p className="mt-2 text-xs text-slate-500">…and {shopifyConfig.collections.length - 25} more collections not shown.</p>
+                  ) : null}
+                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  To assign a collection, add <code className="rounded bg-slate-100 px-1 font-mono">categoryCollectionMap</code> to the Advanced JSON overrides above.
+                  Format: <code className="rounded bg-slate-100 px-1 font-mono">{`[{"vexaCategoryId": "...", "shopifyCollectionId": "gid://shopify/Collection/..."}]`}</code>
+                </p>
+              </Card>
+            ) : null}
+            {connectorSlug === "shopify" && selectedInstallationId ? (
+              <Card id="shopify-metafields">
+                <CardTitle>Shopify Metafields</CardTitle>
+                {shopifyConfig ? (
+                  <>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {shopifyConfig.metafields.length} product metafield definition{shopifyConfig.metafields.length === 1 ? "" : "s"} imported ·{" "}
+                      last refreshed {new Date(shopifyConfig.fetchedAt).toLocaleDateString()}
+                    </p>
+                    {shopifyConfig.metafields.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-600">No metafield definitions found in this Shopify store.</p>
+                    ) : (
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                              <th className="pb-2 pr-3">Name</th>
+                              <th className="pb-2 pr-3">Namespace.key</th>
+                              <th className="pb-2 pr-3">Type</th>
+                              <th className="pb-2">Required</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {shopifyConfig.metafields.map((mf) => (
+                              <tr key={mf.id}>
+                                <td className="py-2 pr-3 font-medium text-slate-800">{mf.name}</td>
+                                <td className="py-2 pr-3 font-mono text-xs text-slate-600">{mf.namespace}.{mf.key}</td>
+                                <td className="py-2 pr-3 text-xs text-slate-600">{mf.type}</td>
+                                <td className="py-2">
+                                  {mf.required ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Required</span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">Optional</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="mt-3 text-xs text-slate-500">
+                      To map metafields, add <code className="rounded bg-slate-100 px-1 font-mono">productMetafields</code> to the Advanced JSON overrides section above.
+                      Format: <code className="rounded bg-slate-100 px-1 font-mono">{`{"productMetafields": [{"namespace": "custom", "key": "size", "sourceField": "attributes.size"}]}`}</code>
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Shopify config not yet imported. Import it to see metafield definitions here.{" "}
+                    <Link
+                      href={`/channels/connectors/${encodeURIComponent(selectedInstallationId)}/import-config`}
+                      className="underline font-medium"
+                    >
+                      Import Shopify config →
+                    </Link>
+                  </div>
+                )}
+              </Card>
+            ) : null}
+            {connectorSlug === "shopify" && selectedInstallationId ? (
+              <Card id="shopify-locales">
+                <CardTitle>Shopify Locale Translations (Sprint 14)</CardTitle>
+                <p className="mt-1 text-xs text-slate-500">
+                  After a successful product publish, Vexa can register translations for additional locales via Shopify's <code className="rounded bg-slate-100 px-1 font-mono">translationsRegister</code> mutation.
+                  Translation failures add a warning to the submission record but do not change the submission status.
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  To configure locales, add <code className="rounded bg-slate-100 px-1 font-mono">localeTranslations</code> to the Advanced JSON overrides above.
+                  Format:
+                </p>
+                <pre className="mt-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-mono text-slate-700 overflow-x-auto">{`{
+  "localeTranslations": [
+    {
+      "locale": "fr",
+      "fieldMappings": {
+        "title": "Translated title in French",
+        "descriptionHtml": "Translated description in French",
+        "seoTitle": "French SEO title",
+        "seoDescription": "French SEO description"
+      }
+    }
+  ]
+}`}</pre>
+                <p className="mt-2 text-xs text-slate-500">
+                  The <code className="rounded bg-slate-100 px-1 font-mono">fieldMappings</code> values are the literal translated strings.
+                  Future versions will support PIM attribute field references.
+                </p>
+              </Card>
+            ) : null}
             {showHistory ? (
               <VersionManagerCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} versions={versions} redirectTo={viewModel.redirectTo} stepUpAction={stepUpAction} stepUpVersionId={stepUpVersionId} fallbackAcknowledged={fallbackAcknowledged} fallbackAckVersionId={fallbackAckVersionId} fallbackAckError={fallbackAckError} />
             ) : (

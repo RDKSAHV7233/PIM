@@ -6,7 +6,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
-import { ApiHttpError, getDashboardHealth } from "@/lib/api";
+import { ApiHttpError, getDashboardHealth, getInstalledConnectors } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -18,7 +18,10 @@ export default async function ChannelsHealthPage() {
   const actorRole = await getServerActorRole();
 
   try {
-    const health = await getDashboardHealth({ role: actorRole, authHeader });
+    const [health, installations] = await Promise.all([
+      getDashboardHealth({ role: actorRole, authHeader }),
+      getInstalledConnectors({ role: actorRole, authHeader }).catch(() => []),
+    ]);
     const connectorEntries = Object.entries(health.snapshot.publishReadyByConnector);
     const totalReady = connectorEntries.reduce((sum, [, count]) => sum + count, 0);
     const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);
@@ -130,6 +133,45 @@ export default async function ChannelsHealthPage() {
             />
           )}
         </Card>
+
+        {installations.length > 0 ? (
+          <Card>
+            <CardTitle>Per Store</CardTitle>
+            <p className="mt-1 text-xs text-slate-500">One row per connected store account.</p>
+            <div className="mt-3 divide-y divide-slate-100">
+              {installations.map((inst) => {
+                const ready = health.snapshot.publishReadyByConnector[inst.slug] ?? 0;
+                const blocked = health.snapshot.blockedByConnector?.[inst.slug] ?? 0;
+                const healthTone = blocked > 0 ? "warning" : ready > 0 ? "success" : "neutral";
+                const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : "No activity";
+                const storeName = (() => {
+                  const meta = inst.metadata && typeof inst.metadata === "object" && !Array.isArray(inst.metadata)
+                    ? inst.metadata as Record<string, unknown>
+                    : {};
+                  return String(meta.shopName ?? meta.shopDomain ?? "").trim() || inst.accountAlias;
+                })();
+                return (
+                  <div key={inst.id} className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/channels/connectors/${encodeURIComponent(inst.id)}`}
+                        className="text-sm font-medium text-blue-700 hover:underline"
+                      >
+                        {storeName}
+                      </Link>
+                      <p className="text-xs text-slate-500">{inst.displayName} · {inst.accountAlias}</p>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-slate-700">{ready} ready</span>
+                      <span className={blocked > 0 ? "text-red-600 font-medium" : "text-slate-400"}>{blocked} blocked</span>
+                      <StatusChip label={healthLabel} tone={healthTone} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ) : null}
       </div>
     );
   } catch (error: unknown) {

@@ -392,4 +392,136 @@ export class MarketplaceController {
   requeueExportJob(@Param("id") jobId: string) {
     return this.marketplaceService.requeueExportJob(jobId);
   }
+
+  @Get("connectors/shopify/:installationId/recovery/groups")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getRecoveryGroups(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getRecoveryGroups(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/recovery/retry-group")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  retryRecoveryGroup(
+    @Param("installationId") installationId: string,
+    @Body() body: { errorFamily: string },
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.marketplaceService.retryRecoveryGroup(installationId, body.errorFamily, this.resolveActor(request));
+  }
+
+  @Post("connectors/shopify/:installationId/products/:productId/preview-changes")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  previewShopifyProductChanges(
+    @Param("installationId") installationId: string,
+    @Param("productId") productId: string,
+  ) {
+    return this.marketplaceService.previewProductChanges(installationId, productId);
+  }
+
+  // ─── Sprint 8: Delta sync ────────────────────────────────────────────────
+
+  @Get("connectors/shopify/:installationId/sync/delta-candidates")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getDeltaSyncCandidates(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getDeltaSyncCandidates(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/sync/delta")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  queueDeltaSync(
+    @Param("installationId") installationId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.marketplaceService.queueDeltaSync(installationId, this.resolveActor(request));
+  }
+
+  @Get("connectors/shopify/:installationId/sync/states")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getSyncStates(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getSyncStates(installationId);
+  }
+
+  // ─── Sprint 9: Scheduled sync ────────────────────────────────────────────
+
+  @Get("connectors/shopify/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getSchedule(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getSchedule(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  upsertSchedule(
+    @Param("installationId") installationId: string,
+    @Body() body: { cronExpression: string; scope?: string; status?: string },
+    @Req() request: { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.marketplaceService.upsertSchedule(
+      installationId,
+      { cronExpression: body.cronExpression, scope: body.scope ?? "approved_only", status: body.status ?? "active" },
+      this.resolveActor(request),
+    );
+  }
+
+  @Delete("connectors/shopify/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(204)
+  deleteSchedule(@Param("installationId") installationId: string) {
+    return this.marketplaceService.deleteSchedule(installationId);
+  }
+
+  // ─── Sprint 10: Catalog linking ──────────────────────────────────────────
+
+  // ─── Sprint 2: Shopify config import ─────────────────────────────────────────
+
+  @Get("connectors/shopify/:installationId/shopify-config")
+  @Roles("admin", "editor")
+  getShopifyConfig(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getShopifyConfig(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/shopify-config/import")
+  @Roles("admin")
+  @HttpCode(200)
+  importShopifyConfig(@Param("installationId") installationId: string) {
+    return this.marketplaceService.importShopifyConfig(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/catalog-link/scan")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  scanCatalogLinks(@Param("installationId") installationId: string) {
+    return this.marketplaceService.scanCatalogLinks(installationId);
+  }
+
+  @Get("connectors/shopify/:installationId/catalog-link")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getProductLinks(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getProductLinks(installationId);
+  }
+
+  @Post("connectors/shopify/:installationId/catalog-link/confirm")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  confirmCatalogLinks(
+    @Param("installationId") installationId: string,
+    @Body() body: { links: Array<{ productId: string; shopifyGid: string; matchedBy: string }> },
+    @Req() request: { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.marketplaceService.confirmCatalogLinks(installationId, body.links ?? [], this.resolveActor(request));
+  }
 }

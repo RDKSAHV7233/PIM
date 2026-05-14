@@ -29,6 +29,11 @@ function makeService(productOverride?: Record<string, unknown>) {
     }),
   };
 
+  const connectorRegistry = {
+    get: jest.fn(),
+    list: jest.fn().mockReturnValue([]),
+  };
+
   const planUsageService = {
     assertExportJobQuota: jest.fn().mockResolvedValue(undefined),
     recordExportJobUsage: jest.fn().mockResolvedValue(undefined),
@@ -65,6 +70,7 @@ function makeService(productOverride?: Record<string, unknown>) {
   return new MarketplaceService(
     prisma as never,
     connectorFramework as never,
+    connectorRegistry as never,
     planUsageService as never,
     queueService as never,
     metricsService as never,
@@ -130,6 +136,7 @@ describe("MarketplaceService.createExportJob — approval gate", () => {
     };
     const svc = new MarketplaceService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

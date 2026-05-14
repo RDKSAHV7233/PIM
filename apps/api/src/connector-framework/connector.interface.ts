@@ -29,6 +29,20 @@ export interface ConnectorContext {
 // PAYLOAD TYPES
 // ─────────────────────────────────────────────
 
+export type ProductVariantPayload = {
+  sku: string;
+  sellingPrice: number;
+  mrp: number;
+  compareAtPrice?: number;
+  barcode?: string;
+  weight?: number;
+  weightUnit?: "KILOGRAMS" | "GRAMS" | "POUNDS" | "OUNCES";
+  taxable?: boolean;
+  inventoryPolicy?: "CONTINUE" | "DENY";
+  imageUrl?: string;
+  attributes?: Record<string, unknown>;
+};
+
 export type ProductPayload = {
   sku: string;
   title: string;
@@ -38,9 +52,16 @@ export type ProductPayload = {
   gstRate: number;
   mrp: number;
   sellingPrice: number;
+  compareAtPrice?: number;
   mainImageUrl: string;    // MediaAsset.cdnUrl — must be permanent public HTTPS URL
   attributes: Record<string, unknown>;
   productType: string;     // channel-specific product type string
+  variants?: ProductVariantPayload[];  // when present, overrides scalar price/sku fields
+  // SEO fields — mapped from product attributes or a dedicated SEO group
+  seoTitle?: string;
+  seoDescription?: string;
+  tags?: string[];
+  status?: 'ACTIVE' | 'DRAFT';
 };
 
 export type ValidationResult = {

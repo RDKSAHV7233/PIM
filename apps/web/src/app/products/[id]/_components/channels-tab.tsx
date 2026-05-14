@@ -21,6 +21,82 @@ import {
   translateReadinessBlocker,
 } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
+import { ExportWithPreviewForm } from "./export-with-preview-form";
+
+const DIMENSION_LABELS: Record<string, string> = {
+  content: "Content",
+  seo: "SEO",
+  media: "Media",
+  variants: "Variants",
+  metafields: "Metafields",
+  compliance: "Compliance",
+};
+
+function ReadinessScoreWidget({ readiness }: { readiness: ConnectorPublishReadiness }) {
+  const score = readiness.overallScore;
+  if (score === undefined || score === null) return null;
+
+  const scoreColor =
+    score >= 80 ? "text-emerald-700" :
+    score >= 60 ? "text-amber-600" :
+    "text-red-600";
+  const scoreBgColor =
+    score >= 80 ? "border-emerald-200 bg-emerald-50" :
+    score >= 60 ? "border-amber-200 bg-amber-50" :
+    "border-red-200 bg-red-50";
+  const statusLabel =
+    score >= 80 && readiness.ok ? "Publish ready" :
+    score >= 60 ? "Ready with warnings" :
+    "Not ready";
+
+  const breakdown = readiness.breakdown;
+
+  return (
+    <div className={`rounded-md border p-3 ${scoreBgColor}`}>
+      <div className="flex items-center gap-4">
+        <div className="flex-shrink-0 text-center">
+          <p className={`text-3xl font-bold tabular-nums ${scoreColor}`}>{score}</p>
+          <p className="text-xs text-slate-500">/ 100</p>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-semibold ${scoreColor}`}>{statusLabel}</p>
+          <p className="text-xs text-slate-500 mt-0.5">Shopify readiness score across content, SEO, media, variants, metafields and compliance</p>
+        </div>
+      </div>
+      {breakdown ? (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs font-medium text-slate-600 hover:text-slate-900">
+            Score breakdown
+          </summary>
+          <table className="mt-2 w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="pb-1 font-medium">Dimension</th>
+                <th className="pb-1 font-medium text-right">Score</th>
+                <th className="pb-1 font-medium text-right">Weight</th>
+                <th className="pb-1 font-medium text-right">Contribution</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(Object.entries(breakdown) as Array<[string, { score: number; weight: number }]>).map(([key, dim]) => (
+                <tr key={key} className="py-1">
+                  <td className="py-1 text-slate-700">{DIMENSION_LABELS[key] ?? key}</td>
+                  <td className="py-1 text-right tabular-nums">
+                    <span className={dim.score >= 80 ? "text-emerald-700" : dim.score >= 60 ? "text-amber-600" : "text-red-600"}>
+                      {dim.score}%
+                    </span>
+                  </td>
+                  <td className="py-1 text-right tabular-nums text-slate-500">{dim.weight}%</td>
+                  <td className="py-1 text-right tabular-nums text-slate-700">{Math.round(dim.score * dim.weight / 100)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      ) : null}
+    </div>
+  );
+}
 
 function submissionStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
   const s = String(status ?? "").trim().toUpperCase();
@@ -145,6 +221,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
       <Card hidden={data.activeTab !== "channels"}>
         <CardTitle>Channel readiness and queued exports</CardTitle>
         <div className="space-y-4">
+          <ReadinessScoreWidget readiness={data.readiness} />
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
             <p className="font-medium text-slate-900">Queue readiness</p>
             <p className="mt-1">

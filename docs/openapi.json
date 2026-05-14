@@ -2441,6 +2441,332 @@
         ]
       }
     },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/recovery/groups": {
+      "get": {
+        "operationId": "MarketplaceController_getRecoveryGroups",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/recovery/retry-group": {
+      "post": {
+        "operationId": "MarketplaceController_retryRecoveryGroup",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/products/{productId}/preview-changes": {
+      "post": {
+        "operationId": "MarketplaceController_previewShopifyProductChanges",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/sync/delta-candidates": {
+      "get": {
+        "operationId": "MarketplaceController_getDeltaSyncCandidates",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/sync/delta": {
+      "post": {
+        "operationId": "MarketplaceController_queueDeltaSync",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/sync/states": {
+      "get": {
+        "operationId": "MarketplaceController_getSyncStates",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/schedule": {
+      "get": {
+        "operationId": "MarketplaceController_getSchedule",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_upsertSchedule",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "delete": {
+        "operationId": "MarketplaceController_deleteSchedule",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/shopify-config": {
+      "get": {
+        "operationId": "MarketplaceController_getShopifyConfig",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/shopify-config/import": {
+      "post": {
+        "operationId": "MarketplaceController_importShopifyConfig",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/catalog-link/scan": {
+      "post": {
+        "operationId": "MarketplaceController_scanCatalogLinks",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/catalog-link": {
+      "get": {
+        "operationId": "MarketplaceController_getProductLinks",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/connectors/shopify/{installationId}/catalog-link/confirm": {
+      "post": {
+        "operationId": "MarketplaceController_confirmCatalogLinks",
+        "parameters": [
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
     "/api/v1/submissions": {
       "get": {
         "operationId": "SubmissionsController_listSubmissions",

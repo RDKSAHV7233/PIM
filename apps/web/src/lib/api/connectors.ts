@@ -5,7 +5,15 @@ import type {
   ConnectorPermission,
   ConnectorPublicationTarget,
   ConnectorPublicationTargetsUpdateResponse,
+  ConnectorRecoveryGroup,
+  ConnectorRecoveryRetryResult,
   PaginatedResponse,
+  ShopifyProductPreview,
+  ShopifyStoreConfig,
+  ConnectorSyncSchedule,
+  ConnectorSyncState,
+  ConnectorCatalogScanResult,
+  ConnectorProductLink,
 } from "./core";
 import { deleteJson, fetchJson, postJson } from "./core";
 
@@ -87,6 +95,139 @@ export async function updateConnectorPublicationTargets(
   return postJson<ConnectorPublicationTargetsUpdateResponse>(
     `/connectors/${encodeURIComponent(installationId)}/publication-targets`,
     body,
+    options,
+  );
+}
+
+export async function getConnectorRecoveryGroups(
+  installationId: string,
+  options?: ApiRequestOptions,
+) {
+  return fetchJson<ConnectorRecoveryGroup[]>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/recovery/groups`,
+    undefined,
+    options,
+  );
+}
+
+export async function retryConnectorRecoveryGroup(
+  installationId: string,
+  errorFamily: string,
+  options?: ApiRequestOptions,
+) {
+  return postJson<ConnectorRecoveryRetryResult>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/recovery/retry-group`,
+    { errorFamily },
+    options,
+  );
+}
+
+export async function previewShopifyProductChanges(
+  installationId: string,
+  productId: string,
+  options?: ApiRequestOptions,
+) {
+  return postJson<ShopifyProductPreview>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/products/${encodeURIComponent(productId)}/preview-changes`,
+    {},
+    options,
+  );
+}
+
+// ─── Sprint 8: Delta sync ─────────────────────────────────────────────────────
+
+export async function getDeltaSyncCandidates(installationId: string, options?: ApiRequestOptions) {
+  return fetchJson<Array<{ productId: string; version: number }>>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/delta-candidates`,
+    options,
+  );
+}
+
+export async function queueDeltaSync(installationId: string, options?: ApiRequestOptions) {
+  return postJson<{ queued: number; skipped: number }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/delta`,
+    {},
+    options,
+  );
+}
+
+export async function getSyncStates(installationId: string, options?: ApiRequestOptions) {
+  return fetchJson<ConnectorSyncState[]>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/states`,
+    options,
+  );
+}
+
+// ─── Sprint 9: Scheduled sync ─────────────────────────────────────────────────
+
+export async function getConnectorSchedule(installationId: string, options?: ApiRequestOptions) {
+  return fetchJson<ConnectorSyncSchedule | null>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    options,
+  );
+}
+
+export async function upsertConnectorSchedule(
+  installationId: string,
+  body: { cronExpression: string; scope?: string; status?: string },
+  options?: ApiRequestOptions,
+) {
+  return postJson<{ id: string }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    body,
+    options,
+  );
+}
+
+export async function deleteConnectorSchedule(installationId: string, options?: ApiRequestOptions) {
+  return deleteJson(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    options,
+  );
+}
+
+// ─── Sprint 2: Shopify config import ─────────────────────────────────────────
+
+export async function getShopifyConfig(installationId: string, options?: ApiRequestOptions) {
+  return fetchJson<ShopifyStoreConfig | null>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/shopify-config`,
+    options,
+  );
+}
+
+export async function importShopifyConfig(installationId: string, options?: ApiRequestOptions) {
+  return postJson<ShopifyStoreConfig>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/shopify-config/import`,
+    {},
+    options,
+  );
+}
+
+// ─── Sprint 10: Catalog linking ───────────────────────────────────────────────
+
+export async function scanCatalogLinks(installationId: string, options?: ApiRequestOptions) {
+  return postJson<ConnectorCatalogScanResult>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link/scan`,
+    {},
+    options,
+  );
+}
+
+export async function getProductLinks(installationId: string, options?: ApiRequestOptions) {
+  return fetchJson<ConnectorProductLink[]>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link`,
+    options,
+  );
+}
+
+export async function confirmCatalogLinks(
+  installationId: string,
+  links: Array<{ productId: string; shopifyGid: string; matchedBy: string }>,
+  options?: ApiRequestOptions,
+) {
+  return postJson<{ confirmed: number }>(
+    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link/confirm`,
+    { links },
     options,
   );
 }

@@ -806,11 +806,87 @@ export interface ConnectorMappingPreflight {
   matchedVersionIds: string[];
 }
 
+export interface ShopifyMetafieldDefinition {
+  id: string;
+  name: string;
+  namespace: string;
+  key: string;
+  type: string;
+  description: string | null;
+  required: boolean;
+  ownerType: string;
+}
+
+export interface ShopifyCollectionItem {
+  id: string;
+  title: string;
+  handle: string;
+}
+
+export interface ShopifyTaxonomyItem {
+  id: string;
+  name: string;
+  level: number;
+  isLeaf: boolean;
+  parentId: string | null;
+}
+
+export interface ShopifyStoreConfig {
+  metafields: ShopifyMetafieldDefinition[];
+  collections: ShopifyCollectionItem[];
+  taxonomy: ShopifyTaxonomyItem[];
+  fetchedAt: string;
+}
+
+export interface ConnectorSyncState {
+  productId: string;
+  lastSyncedAt: string | null;
+  lastSyncedVersion: number | null;
+  lastSyncedStatus: string | null;
+}
+
+export interface ConnectorSyncSchedule {
+  id: string;
+  cronExpression: string;
+  scope: string;
+  status: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastRunOutcome: string | null;
+}
+
+export interface ConnectorCatalogScanResult {
+  matched: Array<{ productId: string; productTitle: string; shopifyGid: string; shopifySku: string; matchedBy: string; confidence: string }>;
+  unmatched: Array<{ productId: string; productTitle: string; sku: string }>;
+  ambiguous: Array<{ productId: string; productTitle: string; matches: Array<{ shopifyGid: string; matchedBy: string }> }>;
+}
+
+export interface ConnectorProductLink {
+  productId: string;
+  shopifyGid: string;
+  matchedBy: string;
+  confirmedAt: string | null;
+}
+
+export interface ReadinessDimension {
+  score: number;
+  weight: number;
+}
+
 export interface ConnectorPublishReadiness {
   ok: boolean;
   blockers: string[];
   warnings: string[];
   checks: Record<string, unknown>;
+  overallScore?: number;
+  breakdown?: {
+    content:    ReadinessDimension;
+    seo:        ReadinessDimension;
+    media:      ReadinessDimension;
+    variants:   ReadinessDimension;
+    metafields: ReadinessDimension;
+    compliance: ReadinessDimension;
+  };
 }
 
 export interface ConnectorTaxonomyItem {
@@ -1437,4 +1513,29 @@ export async function patchJson<T>(path: string, body: unknown, options?: ApiReq
 
 export async function deleteJson(path: string, options?: ApiRequestOptions) {
   return fetchJson<void>(path, { method: "DELETE" }, options);
+}
+
+export interface ShopifyProductChangeItem {
+  field: string;
+  currentValue: string | null;
+  newValue: string | null;
+  changeType: "add" | "update" | "remove";
+  riskLevel: "low" | "medium" | "high";
+}
+
+export interface ShopifyProductPreview {
+  hasExistingProduct: boolean;
+  noChanges: boolean;
+  changes: ShopifyProductChangeItem[];
+}
+
+export interface ConnectorRecoveryGroup {
+  errorFamily: string;
+  affectedCount: number;
+  exampleMessage: string;
+  productIds: string[];
+}
+
+export interface ConnectorRecoveryRetryResult {
+  queued: number;
 }

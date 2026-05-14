@@ -144,6 +144,8 @@ function buildBullConnectionOptions(redisUrlInput: string): BullConnectionOption
   };
 }
 
+const SCHEDULED_SYNC_QUEUE_ID = "connector-sync-schedule";
+
 @Injectable()
 export class QueueService implements OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
@@ -162,12 +164,60 @@ export class QueueService implements OnModuleDestroy {
       : null;
   private metadataRedisReady: Promise<void> | null = null;
 
+  private scheduledSyncQueue: BullQueue | null = null;
+  private scheduledSyncWorker: Worker | null = null;
+  private scheduledSyncHandler: QueueHandler<unknown> | null = null;
+
   getBackend(): QueueBackend {
     return this.backend;
   }
 
   isWorkerEnabled(): boolean {
     return this.workerEnabled;
+  }
+
+  processScheduledSync(handler: QueueHandler<unknown>): void {
+    this.scheduledSyncHandler = handler;
+    if (this.backend === "bullmq" && this.workerEnabled && this.bullConnection && !this.scheduledSyncWorker) {
+      this.scheduledSyncWorker = new Worker(
+        SCHEDULED_SYNC_QUEUE_ID,
+        async (job: Job<unknown>) => { await handler(job.data); },
+        { connection: this.bullConnection, concurrency: 1 },
+      );
+      this.scheduledSyncWorker.waitUntilReady().catch(() => undefined);
+    }
+  }
+
+  async registerRepeatableSync(jobKey: string, payload: unknown, cronPattern: string, active: boolean): Promise<void> {
+    if (this.backend !== "bullmq" || !this.bullConnection) {
+      return;
+    }
+    if (!this.scheduledSyncQueue) {
+      this.scheduledSyncQueue = new BullQueue(SCHEDULED_SYNC_QUEUE_ID, { connection: this.bullConnection });
+      await this.scheduledSyncQueue.waitUntilReady();
+      if (this.workerEnabled && !this.scheduledSyncWorker && this.scheduledSyncHandler) {
+        const h = this.scheduledSyncHandler;
+        this.scheduledSyncWorker = new Worker(
+          SCHEDULED_SYNC_QUEUE_ID,
+          async (job: Job<unknown>) => { await h(job.data); },
+          { connection: this.bullConnection, concurrency: 1 },
+        );
+        await this.scheduledSyncWorker.waitUntilReady().catch(() => undefined);
+      }
+    }
+    const existing = await this.scheduledSyncQueue.getRepeatableJobs();
+    for (const job of existing) {
+      if (job.name === jobKey) {
+        await this.scheduledSyncQueue.removeRepeatableByKey(job.key);
+      }
+    }
+    if (active && cronPattern.trim()) {
+      await this.scheduledSyncQueue.add(jobKey, payload, {
+        repeat: { pattern: cronPattern },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      });
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -186,6 +236,12 @@ export class QueueService implements OnModuleDestroy {
         }
         closeTasks.push(lane.queue.close().catch(() => undefined));
       }
+    }
+    if (this.scheduledSyncWorker) {
+      closeTasks.push(this.scheduledSyncWorker.close().catch(() => undefined));
+    }
+    if (this.scheduledSyncQueue) {
+      closeTasks.push(this.scheduledSyncQueue.close().catch(() => undefined));
     }
     if (this.metadataRedis?.isOpen) {
       closeTasks.push(this.metadataRedis.quit().then(() => undefined).catch(() => undefined));

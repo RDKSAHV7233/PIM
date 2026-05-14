@@ -137,6 +137,115 @@ type ShopifyWebhookProductPayload = {
   }>;
 };
 
+type ShopifyMetafieldDefinitionNode = {
+  id?: string;
+  name?: string;
+  namespace?: string;
+  key?: string;
+  type?: { name?: string } | null;
+  description?: string | null;
+  required?: boolean;
+  validations?: Array<{ name?: string; value?: string | null }>;
+  ownerType?: string;
+};
+
+type ShopifyCollectionNode = {
+  id?: string;
+  title?: string;
+  handle?: string;
+};
+
+type ShopifyTaxonomyNode = {
+  id?: string;
+  name?: string;
+  level?: number;
+  isLeaf?: boolean;
+  parentId?: string | null;
+};
+
+type ShopifyConfigQueryResponse = {
+  metafieldDefinitions?: { nodes?: ShopifyMetafieldDefinitionNode[] } | null;
+  collections?: { nodes?: ShopifyCollectionNode[] } | null;
+  productTaxonomyNodes?: { nodes?: ShopifyTaxonomyNode[] } | null;
+};
+
+export type ShopifyConfigResult = {
+  metafields: Array<{
+    id: string;
+    name: string;
+    namespace: string;
+    key: string;
+    type: string;
+    description: string | null;
+    required: boolean;
+    ownerType: string;
+  }>;
+  collections: Array<{
+    id: string;
+    title: string;
+    handle: string;
+  }>;
+  taxonomy: Array<{
+    id: string;
+    name: string;
+    level: number;
+    isLeaf: boolean;
+    parentId: string | null;
+  }>;
+  fetchedAt: string;
+};
+
+type ShopifyProductStateQueryResponse = {
+  node?: {
+    id?: string;
+    title?: string;
+    handle?: string;
+    descriptionHtml?: string;
+    status?: string;
+    vendor?: string;
+    productType?: string;
+    tags?: string[];
+    seo?: { title?: string; description?: string } | null;
+    variants?: {
+      nodes?: Array<{
+        price?: string;
+        compareAtPrice?: string | null;
+        barcode?: string | null;
+        sku?: string | null;
+        inventoryPolicy?: string;
+        taxable?: boolean;
+      }>;
+    } | null;
+    images?: {
+      nodes?: Array<{ src?: string; altText?: string | null }>;
+    } | null;
+  } | null;
+};
+
+export type ShopifyProductChangeItem = {
+  field: string;
+  currentValue: string | null;
+  newValue: string | null;
+  changeType: "add" | "update" | "remove";
+  riskLevel: "low" | "medium" | "high";
+};
+
+export type ShopifyProductPreview = {
+  hasExistingProduct: boolean;
+  noChanges: boolean;
+  changes: ShopifyProductChangeItem[];
+};
+
+export class ShopifyPublishError extends Error {
+  constructor(
+    public readonly issues: ConnectorIssue[],
+    message: string,
+  ) {
+    super(message);
+    this.name = "ShopifyPublishError";
+  }
+}
+
 type ShopifyBulkUpdateVariantResponse = {
   productVariantsBulkUpdate?: {
     productVariants?: Array<{ id?: string; price?: string }>;
@@ -365,17 +474,97 @@ export class ShopifyConnector implements ConnectorInterface {
   }
 
   normaliseError(errorCode: string, rawMessage: string): ConnectorIssue {
-    const normalizedCode = String(errorCode ?? "").trim().toUpperCase() || "SHOPIFY_ERROR";
-    const sellerMessage =
-      String(rawMessage ?? "").trim() ||
-      "Shopify rejected the sync request. Review connector setup and product mapping before retrying.";
+    return this.parseShopifyUserError(undefined, rawMessage, errorCode);
+  }
 
-    return {
-      code: normalizedCode,
-      fieldPath: "",
-      sellerMessage,
-      severity: "error",
-    };
+  /**
+   * Convert a Shopify GraphQL userError into a structured ConnectorIssue.
+   * `field` is the path array from userErrors[].field (e.g. ["variants","0","price"]).
+   * `message` is userErrors[].message (the raw Shopify message).
+   * `codeHint` is an optional override code (used when called from normaliseError).
+   */
+  private parseShopifyUserError(
+    field: string[] | null | undefined,
+    message: string,
+    codeHint?: string,
+  ): ConnectorIssue {
+    const rawMessage = String(message ?? "").trim();
+    const lower = rawMessage.toLowerCase();
+
+    // Convert Shopify field path array → dot-notation with bracket indices
+    const fieldPath = Array.isArray(field) && field.length > 0
+      ? field
+          .map((segment, i) => {
+            const isIndex = /^\d+$/.test(segment);
+            if (isIndex) {
+              // replace previous segment's trailing dot with bracket notation
+              return `[${segment}]`;
+            }
+            return i === 0 ? segment : `.${segment}`;
+          })
+          .join("")
+      : "";
+
+    // Map well-known Shopify error patterns → seller-friendly messages + codes
+    if (/title.*too long|too long.*title/i.test(rawMessage) || /title.*255/i.test(rawMessage)) {
+      return { code: "TITLE_TOO_LONG", fieldPath: fieldPath || "title", sellerMessage: "Product title must be 255 characters or fewer.", severity: "error" };
+    }
+    if (/title.*blank|title.*required|title.*can't be blank/i.test(rawMessage)) {
+      return { code: "TITLE_REQUIRED", fieldPath: fieldPath || "title", sellerMessage: "Product title is required and cannot be blank.", severity: "error" };
+    }
+    if (/price.*invalid|invalid.*price|price.*format/i.test(rawMessage)) {
+      return { code: "PRICE_INVALID", fieldPath: fieldPath || "variants[0].price", sellerMessage: "Selling price must be a valid number with up to 2 decimal places (e.g. 499.00).", severity: "error" };
+    }
+    if (/price.*must be greater|price.*negative|price.*zero/i.test(rawMessage)) {
+      return { code: "PRICE_NEGATIVE", fieldPath: fieldPath || "variants[0].price", sellerMessage: "Selling price must be greater than zero.", severity: "error" };
+    }
+    if (/barcode.*invalid|invalid.*barcode/i.test(rawMessage)) {
+      return { code: "BARCODE_INVALID", fieldPath: fieldPath || "variants[0].barcode", sellerMessage: "Barcode is not a valid EAN-13, UPC, or ISBN format. Check the barcode value and retry.", severity: "error" };
+    }
+    if (/barcode.*taken|barcode.*already exists|barcode.*duplicate/i.test(rawMessage)) {
+      return { code: "BARCODE_DUPLICATE", fieldPath: fieldPath || "variants[0].barcode", sellerMessage: "This barcode is already used by another product in your Shopify store. Each product must have a unique barcode.", severity: "error" };
+    }
+    if (/sku.*taken|sku.*already exists|sku.*duplicate/i.test(rawMessage)) {
+      return { code: "SKU_DUPLICATE", fieldPath: fieldPath || "variants[0].sku", sellerMessage: "This SKU already exists in your Shopify store. Each variant must have a unique SKU.", severity: "error" };
+    }
+    if (/sku.*blank|sku.*required/i.test(rawMessage)) {
+      return { code: "SKU_REQUIRED", fieldPath: fieldPath || "variants[0].sku", sellerMessage: "Variant SKU is required. Set a unique SKU in the product editor.", severity: "error" };
+    }
+    if (/image.*invalid|invalid.*image|image.*url|src.*invalid/i.test(rawMessage)) {
+      return { code: "IMAGE_URL_INVALID", fieldPath: fieldPath || "mainImageUrl", sellerMessage: "The main image URL is invalid or unreachable. Ensure the image is a public HTTPS URL (min 800×800 px).", severity: "error" };
+    }
+    if (/image.*size|image.*dimension|image.*too small/i.test(rawMessage)) {
+      return { code: "IMAGE_TOO_SMALL", fieldPath: fieldPath || "mainImageUrl", sellerMessage: "The image does not meet Shopify's minimum size requirement (800×800 px).", severity: "error" };
+    }
+    if (/metafield.*type|metafield.*value|metafield.*invalid/i.test(rawMessage)) {
+      return { code: "METAFIELD_TYPE_MISMATCH", fieldPath: fieldPath || "attributes", sellerMessage: "A metafield value does not match the expected type defined in your Shopify store. Check the mapped field value.", severity: "error" };
+    }
+    if (/metafield.*required|required.*metafield/i.test(rawMessage)) {
+      return { code: "METAFIELD_REQUIRED", fieldPath, sellerMessage: "A required metafield is missing. Check the mapping editor and ensure all required Shopify fields are mapped.", severity: "error" };
+    }
+    if (/handle.*taken|handle.*already exists|handle.*duplicate/i.test(rawMessage)) {
+      return { code: "HANDLE_DUPLICATE", fieldPath: fieldPath || "handle", sellerMessage: "This product handle (URL slug) is already in use in your Shopify store. Rename the product title to generate a unique handle.", severity: "error" };
+    }
+    if (/vendor.*too long/i.test(rawMessage)) {
+      return { code: "VENDOR_TOO_LONG", fieldPath: fieldPath || "brand", sellerMessage: "Brand/vendor name exceeds Shopify's maximum length.", severity: "error" };
+    }
+    if (/product type.*too long/i.test(rawMessage)) {
+      return { code: "PRODUCT_TYPE_TOO_LONG", fieldPath: fieldPath || "productType", sellerMessage: "Product type is too long for Shopify. Shorten it to 255 characters or fewer.", severity: "error" };
+    }
+    if (/weight.*invalid|invalid.*weight/i.test(rawMessage)) {
+      return { code: "WEIGHT_INVALID", fieldPath: fieldPath || "variants[0].weight", sellerMessage: "Variant weight must be a positive number.", severity: "error" };
+    }
+    if (lower.includes("throttled") || lower.includes("rate limit")) {
+      return { code: "RATE_LIMITED", fieldPath: "", sellerMessage: "Shopify rate limit reached. The publish will be retried automatically.", severity: "error" };
+    }
+    if (lower.includes("access denied") || lower.includes("unauthorized") || lower.includes("permission")) {
+      return { code: "PERMISSION_DENIED", fieldPath: "", sellerMessage: "The Shopify app does not have permission to perform this action. Re-install the connector or check app scopes.", severity: "error" };
+    }
+
+    // Fallback — preserve code hint if provided, otherwise generic
+    const code = codeHint ? String(codeHint).trim().toUpperCase() || "SHOPIFY_ERROR" : "SHOPIFY_ERROR";
+    const sellerMessage = rawMessage || "Shopify rejected the sync request. Review the product data and mapping before retrying.";
+    return { code, fieldPath, sellerMessage, severity: "error" };
   }
 
   async listPublications(ctx: ConnectorContext): Promise<ConnectorPublicationTarget[]> {
@@ -1025,11 +1214,15 @@ export class ShopifyConnector implements ConnectorInterface {
     });
 
     const mutation = response.productSet;
-    const errors = (Array.isArray(mutation?.userErrors) ? mutation?.userErrors : [])
-      .map((issue) => String(issue?.message ?? "").trim())
-      .filter((message) => message.length > 0);
-    if (errors.length > 0) {
-      throw new Error(`Shopify product sync failed: ${errors.join(" | ")}`);
+    const rawUserErrors = Array.isArray(mutation?.userErrors) ? mutation.userErrors : [];
+    if (rawUserErrors.length > 0) {
+      const issues = rawUserErrors.map((ue) =>
+        this.parseShopifyUserError(ue.field, String(ue.message ?? "").trim()),
+      );
+      throw new ShopifyPublishError(
+        issues,
+        `Shopify product sync failed: ${issues.map((i) => i.sellerMessage).join(" | ")}`,
+      );
     }
 
     if (!mutation?.product?.id) {
@@ -1148,10 +1341,107 @@ export class ShopifyConnector implements ConnectorInterface {
     };
   }
 
+  async previewChanges(
+    ctx: ConnectorContext,
+    product: ProductPayload,
+    shopifyGid: string,
+  ): Promise<ShopifyProductPreview> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const response = await this.graphqlRequest<ShopifyProductStateQueryResponse>({
+      shopDomain,
+      accessToken,
+      query: `
+        query GetProductState($id: ID!) {
+          node(id: $id) {
+            ... on Product {
+              id title handle descriptionHtml status vendor productType tags
+              seo { title description }
+              variants(first: 1) {
+                nodes { price compareAtPrice barcode sku inventoryPolicy taxable }
+              }
+              images(first: 1) { nodes { src altText } }
+            }
+          }
+        }
+      `,
+      variables: { id: shopifyGid },
+    });
+
+    const node = response.node;
+    if (!node) {
+      return { hasExistingProduct: false, noChanges: false, changes: [] };
+    }
+
+    const newInput = this.buildProductSetInput(product);
+    const variant = (node.variants?.nodes ?? [])[0];
+    const image = (node.images?.nodes ?? [])[0];
+
+    const compareField = (
+      field: string,
+      current: string | null | undefined,
+      next: string | null | undefined,
+      riskLevel: ShopifyProductChangeItem["riskLevel"],
+    ): ShopifyProductChangeItem | null => {
+      const cur = current ?? null;
+      const nxt = next ?? null;
+      if (cur === nxt) return null;
+      const changeType = cur === null ? "add" : nxt === null ? "remove" : "update";
+      return { field, currentValue: cur, newValue: nxt, changeType, riskLevel };
+    };
+
+    const newVariant = (Array.isArray(newInput.variants) ? newInput.variants[0] : null) as Record<string, unknown> | null;
+
+    const candidates = [
+      compareField("title", node.title, String(newInput.title ?? ""), "low"),
+      compareField("handle", node.handle, String(newInput.handle ?? ""), "medium"),
+      compareField("status", node.status, String(newInput.status ?? ""), "high"),
+      compareField("vendor", node.vendor ?? null, (newInput.vendor as string | undefined) ?? null, "low"),
+      compareField("productType", node.productType ?? null, (newInput.productType as string | undefined) ?? null, "low"),
+      compareField("price", variant?.price ?? null, newVariant ? String(newVariant.price ?? "") : null, "medium"),
+      compareField("compareAtPrice", variant?.compareAtPrice ?? null, newVariant ? (String(newVariant.compareAtPrice ?? "") || null) : null, "medium"),
+      compareField("image", image?.src ?? null, (Array.isArray(newInput.files) && newInput.files[0]) ? String((newInput.files[0] as Record<string, unknown>).originalSource ?? "") : null, "low"),
+    ];
+
+    const changes = candidates.filter((c): c is ShopifyProductChangeItem => c !== null);
+    return { hasExistingProduct: true, noChanges: changes.length === 0, changes };
+  }
+
+  private buildVariantInput(
+    sku: string,
+    sellingPrice: number,
+    mrp: number,
+    opts?: {
+      compareAtPrice?: number;
+      barcode?: string;
+      weight?: number;
+      weightUnit?: string;
+      taxable?: boolean;
+      inventoryPolicy?: string;
+    },
+  ): Record<string, unknown> {
+    const price = this.formatMoney(sellingPrice);
+    const effectiveCompareAt = opts?.compareAtPrice ?? (mrp > 0 ? mrp : null);
+    const compareAtPrice = effectiveCompareAt && Number.isFinite(effectiveCompareAt) && effectiveCompareAt > 0
+      ? this.formatMoney(effectiveCompareAt)
+      : null;
+    return {
+      price,
+      ...(compareAtPrice ? { compareAtPrice } : {}),
+      inventoryPolicy: opts?.inventoryPolicy ?? "CONTINUE",
+      taxable: opts?.taxable ?? true,
+      inventoryItem: {
+        tracked: false,
+        sku: String(sku).trim(),
+        ...(opts?.weight && opts.weight > 0
+          ? { measurement: { weight: { value: opts.weight, unit: opts.weightUnit ?? "KILOGRAMS" } } }
+          : {}),
+      },
+      ...(opts?.barcode ? { barcode: opts.barcode } : {}),
+    };
+  }
+
   private buildProductSetInput(product: ProductPayload): Record<string, unknown> {
-    const sellingPrice = this.formatMoney(product.sellingPrice);
-    const compareAtPrice =
-      Number.isFinite(product.mrp) && Number(product.mrp) > 0 ? this.formatMoney(product.mrp) : null;
     const productType = this.normalizeOptionalString(product.productType);
     const brand = this.normalizeOptionalString(product.brand);
     const title = String(product.title ?? "").trim();
@@ -1171,13 +1461,38 @@ export class ShopifyConnector implements ConnectorInterface {
       },
     ];
 
+    const variants: Record<string, unknown>[] = product.variants && product.variants.length > 0
+      ? product.variants.map((v) => this.buildVariantInput(v.sku, v.sellingPrice, v.mrp, {
+          compareAtPrice: v.compareAtPrice,
+          barcode: v.barcode,
+          weight: v.weight,
+          weightUnit: v.weightUnit,
+          taxable: v.taxable,
+          inventoryPolicy: v.inventoryPolicy,
+        }))
+      : [this.buildVariantInput(
+          String(product.sku ?? "").trim(),
+          product.sellingPrice,
+          product.mrp,
+          { compareAtPrice: product.compareAtPrice },
+        )];
+
+    const seoTitle = this.normalizeOptionalString(product.seoTitle);
+    const seoDescription = this.normalizeOptionalString(product.seoDescription);
+    const tags = Array.isArray(product.tags) && product.tags.length > 0
+      ? product.tags.map((t) => String(t ?? "").trim()).filter(Boolean)
+      : undefined;
+    const status = product.status === "DRAFT" ? "DRAFT" : "ACTIVE";
+
     return {
       title,
       handle,
       descriptionHtml: String(product.description ?? "").trim(),
-      status: "ACTIVE",
+      status,
       ...(brand ? { vendor: brand } : {}),
       ...(productType ? { productType } : {}),
+      ...(seoTitle || seoDescription ? { seo: { ...(seoTitle ? { title: seoTitle } : {}), ...(seoDescription ? { description: seoDescription } : {}) } } : {}),
+      ...(tags ? { tags } : {}),
       metafields,
     };
   }
