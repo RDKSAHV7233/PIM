@@ -2971,6 +2971,49 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-35",
+      "name": "Enterprise RBAC — publisher, approver, channel_manager, connector_admin roles",
+      "status": "completed",
+      "gate": "C",
+      "gateRequirement": "RG-C2",
+      "pr": "https://github.com/RDKSAHV7233/PIM1/pull/56",
+      "mergedAt": "2026-05-16",
+      "stories": [
+        {
+          "storyId": "ST-RBAC-001",
+          "title": "Expand APP_ROLES to 8 roles, update @Roles guards, allow enterprise specialist role assignment",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "e87706e",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-36",
+      "name": "Localization schema — Market, Currency, PriceList, ProductPrice, ProductTranslation, CategoryTranslation",
+      "status": "in_review",
+      "gate": "C",
+      "gateRequirement": "RG-C3",
+      "pr": "https://github.com/RDKSAHV7233/PIM1/pull/57",
+      "stories": [
+        {
+          "storyId": "ST-L10N-001",
+          "title": "Add localization Prisma models and migration (INC-36 RG-C3)",
+          "status": "in_review",
+          "locked": false,
+          "owner": "claude",
+          "commit": "6ce153f",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        }
+      ]
     }
   ]
 }

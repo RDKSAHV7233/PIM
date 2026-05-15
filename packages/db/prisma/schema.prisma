@@ -149,6 +149,7 @@ model Category {
   bulkImportTemplates  BulkImportTemplate[]
   bulkImportRuns       BulkImportRun[]
   accessScopeAssignments AccessScopeAssignment[]
+  translations         CategoryTranslation[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -193,6 +194,7 @@ model Product {
   gstRate          Float?
   attributes       Json              @default("{}")
   variants         Variant[]
+  translations     ProductTranslation[]
   mediaAssets      MediaAsset[]
   validationIssues ValidationIssue[] @relation("ProductValidationIssues")
   exportJobs       MarketplaceExportJob[]
@@ -222,6 +224,7 @@ model Variant {
   skuCode          String
   mediaAssets      MediaAsset[]
   attributes       Json              @default("{}")
+  prices           ProductPrice[]
   mrp              Float?
   sellingPrice     Float?
   inventoryQty     Int               @default(0)
@@ -1112,4 +1115,115 @@ model ApprovalComment {
 
   @@index([tenantKey, productId, createdAt(sort: Desc)], map: "idx_approval_comments_tenant_product_created")
   @@map("approval_comments")
+}
+
+// ── INC-36: Localization schema ────────────────────────────────────────────
+
+enum MarketStatus {
+  active
+  inactive
+}
+
+model Market {
+  id           String               @id @default(cuid())
+  tenantKey    String               @default("default")
+  code         String               // e.g. "IN", "US"
+  locale       String               // BCP-47 e.g. "en-IN"
+  displayName  String
+  isDefault    Boolean              @default(false)
+  status       MarketStatus         @default(active)
+  priceLists   PriceList[]
+  productTranslations ProductTranslation[]
+  categoryTranslations CategoryTranslation[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@unique([tenantKey, code, locale])
+  @@index([tenantKey])
+  @@index([tenantKey, isDefault])
+}
+
+model Currency {
+  id            String      @id @default(cuid())
+  tenantKey     String      @default("default")
+  code          String      // ISO 4217 e.g. "INR"
+  symbol        String      // e.g. "₹"
+  displayName   String
+  decimalPlaces Int         @default(2)
+  priceLists    PriceList[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([tenantKey, code])
+  @@index([tenantKey])
+}
+
+model PriceList {
+  id         String         @id @default(cuid())
+  tenantKey  String         @default("default")
+  name       String
+  marketId   String
+  market     Market         @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  currencyId String
+  currency   Currency       @relation(fields: [currencyId], references: [id], onDelete: Restrict)
+  isDefault  Boolean        @default(false)
+  status     MarketStatus   @default(active)
+  prices     ProductPrice[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([tenantKey, marketId, currencyId])
+  @@index([tenantKey])
+  @@index([tenantKey, isDefault])
+}
+
+model ProductPrice {
+  id           String    @id @default(cuid())
+  tenantKey    String    @default("default")
+  priceListId  String
+  priceList    PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  variantId    String
+  variant      Variant   @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  mrp          Float?
+  sellingPrice Float?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([priceListId, variantId])
+  @@index([tenantKey])
+  @@index([variantId])
+}
+
+model ProductTranslation {
+  id          String   @id @default(cuid())
+  tenantKey   String   @default("default")
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  title       String?
+  description String?
+  attributes  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, marketId])
+  @@index([tenantKey])
+  @@index([productId])
+}
+
+model CategoryTranslation {
+  id         String   @id @default(cuid())
+  tenantKey  String   @default("default")
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  marketId   String
+  market     Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([categoryId, marketId])
+  @@index([tenantKey])
+  @@index([categoryId])
 }
