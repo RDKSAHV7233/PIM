@@ -20,6 +20,7 @@ try {
   const service = read("apps/api/src/bulk-import/bulk-import.service.ts");
   const webActions = read("apps/web/src/app/actions.ts");
   const importsPage = read("apps/web/src/app/operations/imports/page.tsx");
+  const preflightForm = read("apps/web/src/components/operations/import-preflight-form.tsx");
   const apiTypes = read("apps/web/src/lib/api/core.ts");
 
   assert(!apiPackage.includes('"xlsx"'), "apps/api/package.json must not include xlsx.");
@@ -30,7 +31,7 @@ try {
   assert(jobDto.includes('const SOURCE_FORMATS = ["csv", "json"] as const;'), "CreateBulkImportJobDto must allow only csv/json.");
   assert(templateDto.includes('const SOURCE_FORMATS = ["csv", "json"] as const;'), "CreateBulkImportTemplateDto must allow only csv/json.");
   assert(webActions.includes("Spreadsheet imports are temporarily disabled."), "Server action must explain spreadsheet imports are disabled.");
-  assert(importsPage.includes('accept=".csv,.json"'), "Operations import upload must only accept csv/json.");
+  assert(preflightForm.includes('accept=".csv,.json"'), "Operations import upload must only accept csv/json.");
   assert(!apiTypes.includes('"xlsx" | "xls"'), "Web API bulk import types must not expose xlsx/xls.");
 
   console.log("bulk-import-spreadsheet-disabled: ok");

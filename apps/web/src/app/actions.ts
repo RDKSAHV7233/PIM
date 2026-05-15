@@ -19,6 +19,7 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
+import { startBulkImportRun, uploadBulkImportRun, validateBulkImportRun } from "@/lib/api/operations";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -1481,9 +1482,26 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv or json.");
   }
 
+  const actionOptions = await resolveActionOptions(formData);
+  let linkedRunId: string | undefined;
+  if (sourceFormat === "csv" && sourceFile) {
+    const run = await uploadBulkImportRun(categoryId, sourceFile, sourceName || sourceFile.name, actionOptions);
+    const validatedRun = await validateBulkImportRun(run.id, actionOptions);
+    if (validatedRun.effectiveMode === "large") {
+      if (validatedRun.status === "preflight_ready") {
+        await startBulkImportRun(validatedRun.id, actionOptions);
+      }
+      redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
+    }
+    if (validatedRun.status !== "preflight_ready") {
+      throw new Error("Import file failed pre-validation. Fix the CSV and try again.");
+    }
+    linkedRunId = validatedRun.id;
+  }
+
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {
     categoryId,
-    runId: runId || undefined,
+    runId: linkedRunId,
     sourceFormat,
     sourceName: sourceName || undefined,
     csvContent: sourceFormat === "csv" ? csvContent : undefined,
@@ -1493,9 +1511,13 @@ export async function createBulkImportJobAction(formData: FormData) {
     chunkSize,
     maxRetries,
   });
-  await postJsonForAction(formData, `/bulk-import/jobs/${createdJob.id}/process`, {
-    chunkSize,
-  });
+  try {
+    await postJsonForAction(formData, `/bulk-import/jobs/${createdJob.id}/process`, {
+      chunkSize,
+    });
+  } catch {
+    // If inline processing fails the job stays queued; redirect so the user can start it manually.
+  }
   redirect(`/operations/imports?bulkJobId=${encodeURIComponent(createdJob.id)}`);
 }
 
@@ -1546,9 +1568,15 @@ export async function processBulkImportJobAction(formData: FormData) {
     formData,
     `/operations/imports?bulkJobId=${encodeURIComponent(jobId)}`,
   );
-  await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
-    chunkSize,
-  });
+  try {
+    await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/process`, {
+      chunkSize,
+    });
+  } catch {
+    // Process call can time out under Railway's 30 s limit while the API continues
+    // processing in the background. The job moves to processing/done on its own;
+    // redirect so the user can poll the status rather than seeing an error boundary.
+  }
   revalidatePath("/");
   revalidatePath("/operations/imports");
   redirect(returnTo);

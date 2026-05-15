@@ -164,8 +164,13 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       getBulkImportJobs({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
     ]);
-    const runCollection = await getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader });
-    const runs = normalizeCollection<BulkImportRun>(runCollection);
+    let runs: BulkImportRun[] = [];
+    try {
+      const runCollection = await getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader });
+      runs = normalizeCollection<BulkImportRun>(runCollection);
+    } catch {
+      // Runs endpoint may not be available on all deployments; degrade gracefully.
+    }
     const largeRuns = runs.filter((run) => run.effectiveMode === "large");
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
@@ -193,16 +198,26 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       selectedAttentionRows,
       selectedSuccessfulRows: selectedSuccessfulRows.length,
     });
-    const selectedRun =
-      selectedBulkRunId
-        ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
-          (await getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader }))
-        : null;
-    const selectedRunRows = selectedBulkRunId
-      ? normalizeCollection<BulkImportRunRow>(
+    let selectedRun: BulkImportRun | null = selectedBulkRunId
+      ? (largeRuns.find((run) => run.id === selectedBulkRunId) ?? null)
+      : null;
+    if (selectedBulkRunId && !selectedRun) {
+      try {
+        selectedRun = await getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader });
+      } catch {
+        // Run not found or endpoint unavailable; show page without run detail.
+      }
+    }
+    let selectedRunRows: BulkImportRunRow[] = [];
+    if (selectedBulkRunId) {
+      try {
+        selectedRunRows = normalizeCollection<BulkImportRunRow>(
           await getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader }),
-        )
-      : [];
+        );
+      } catch {
+        // Run rows endpoint unavailable; degrade gracefully.
+      }
+    }
     const selectedRunRowCounts = selectedRunRows.reduce<Record<string, number>>((accumulator, row) => {
       const key = String(row.status ?? "").toLowerCase() || "unknown";
       accumulator[key] = (accumulator[key] ?? 0) + 1;

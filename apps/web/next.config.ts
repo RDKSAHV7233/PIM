@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "2mb",
+      bodySizeLimit: "10mb",
     },
     webpackBuildWorker: false,
     devtoolSegmentExplorer: false,
