@@ -367,16 +367,18 @@ model MarketplaceExportJob {
   maxRetries   Int                    @default(3)
   failureReason String?
   dlqReason    String?
-  payload      Json?
-  exportPayload Json?
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  payload        Json?
+  exportPayload  Json?
+  installationId String?              @map("installation_id")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([productId, channel])
   @@index([status, updatedAt])
   @@index([templateId])
   @@index([tenantKey])
   @@index([tenantKey, createdBy, updatedAt])
+  @@index([installationId])
 }
 
 model BulkImportJob {

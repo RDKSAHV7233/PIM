@@ -9,4 +9,8 @@ export class SimulateMarketplaceDto {
   @IsOptional()
   @IsString()
   templateId?: string;
+
+  @IsOptional()
+  @IsString()
+  installationId?: string;
 }

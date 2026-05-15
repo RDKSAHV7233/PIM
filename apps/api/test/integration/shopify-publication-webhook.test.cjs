@@ -121,7 +121,7 @@ function createShopifyGraphqlStub() {
         return;
       }
 
-      if (query.includes("mutation VexaUpsertProduct")) {
+      if (query.includes("mutation UpsertProduct")) {
         res.end(
           JSON.stringify({
             data: {
@@ -139,7 +139,7 @@ function createShopifyGraphqlStub() {
         return;
       }
 
-      if (query.includes("mutation VexaPublishProduct")) {
+      if (query.includes("mutation PublishProduct")) {
         res.end(
           JSON.stringify({
             data: {
@@ -155,7 +155,7 @@ function createShopifyGraphqlStub() {
         return;
       }
 
-      if (query.includes("query VexaShopifyProductStatus")) {
+      if (query.includes("query GetProductStatus")) {
         res.end(
           JSON.stringify({
             data: {
@@ -352,7 +352,7 @@ async function run() {
     });
     assert(invalidWebhook === null, "Expected invalid Shopify webhook signature to be rejected.");
 
-    const upsertCall = stub.graphqlCalls.find((call) => call.query.includes("mutation VexaUpsertProduct"));
+    const upsertCall = stub.graphqlCalls.find((call) => call.query.includes("mutation UpsertProduct"));
     assert(upsertCall, "Expected Shopify productSet mutation call.");
     assert(
       typeof upsertCall.variables?.identifier?.handle === "string" && upsertCall.variables.identifier.handle.length > 0,
@@ -363,7 +363,7 @@ async function run() {
       `Expected no customId in identifier (deprecated), got ${JSON.stringify(upsertCall.variables?.identifier)}`,
     );
 
-    const publishCall = stub.graphqlCalls.find((call) => call.query.includes("mutation VexaPublishProduct"));
+    const publishCall = stub.graphqlCalls.find((call) => call.query.includes("mutation PublishProduct"));
     assert(publishCall, "Expected Shopify publishablePublish mutation call.");
     assert(
       publishCall.variables?.publicationId === "gid://shopify/Publication/1",

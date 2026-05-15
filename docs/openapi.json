@@ -2208,6 +2208,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

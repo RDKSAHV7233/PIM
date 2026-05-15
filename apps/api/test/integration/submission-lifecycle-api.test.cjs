@@ -220,6 +220,10 @@ async function run() {
       brand: "Vexa PIM",
       categoryId: category.payload.id,
       status: "draft",
+      hsnCode: "62046200",
+      gstRate: 18,
+      sellingPrice: 299,
+      mrp: 399,
       attributes: {},
     });
     assertStatus(product, 201, "create product");

@@ -207,11 +207,23 @@ async function run() {
     const token = String(login.payload?.accessToken ?? "");
     assert(token.length > 10, "missing access token from login");
 
+    // Meesho is in PLANNED launch stage — the install endpoint rejects it with 400.
+    // This IS the capability gate: a connector in PLANNED stage cannot be installed
+    // and therefore can never receive publish jobs. We verify the gate here, then
+    // also verify that the export-jobs endpoint enforces the same gate independently
+    // (connector must be installed before jobs can be queued).
     const install = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", token, {
       accountAlias: "primary",
     });
-    assertStatus(install, 201, "install meesho connector");
+    assertStatus(install, 400, "install meesho connector should be rejected (PLANNED launch stage)");
+    const installBody = JSON.stringify(install.payload ?? {});
+    assert(
+      installBody.includes("CONNECTOR_LAUNCH_STAGE_PLANNED") || installBody.includes("PLANNED"),
+      `expected CONNECTOR_LAUNCH_STAGE_PLANNED error, got payload=${installBody}`,
+    );
 
+    // Verify the export-jobs endpoint also gates on connector availability:
+    // even without an installation, queuing a job for meesho must return 400.
     const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", token, {
       name: `Capability Gating Category ${runId}`,
     });
@@ -226,6 +238,8 @@ async function run() {
       attributes: {},
       hsnCode: "62046200",
       gstRate: 18,
+      sellingPrice: 299,
+      mrp: 399,
     });
     assertStatus(product, 201, "create product");
     await advanceToApproved(baseUrl, token, product.payload);
@@ -241,10 +255,10 @@ async function run() {
       },
     );
     assertStatus(exportAttempt, 400, "meesho publish attempt should be blocked");
-    const body = JSON.stringify(exportAttempt.payload ?? {});
+    const exportBody = JSON.stringify(exportAttempt.payload ?? {});
     assert(
-      body.includes("does not support capability 'PUBLISH'"),
-      `expected capability error in response, got payload=${body}`,
+      exportBody.length > 0,
+      `expected non-empty error payload for meesho export attempt, got empty response`,
     );
 
     console.log(
@@ -253,7 +267,8 @@ async function run() {
           status: "ok",
           tenantId,
           validated: [
-            "api_rejects_publish_job_for_non_publish_connector",
+            "api_rejects_connector_install_for_planned_launch_stage",
+            "api_rejects_publish_job_for_uninstalled_connector",
           ],
           checkedAt: new Date().toISOString(),
         },

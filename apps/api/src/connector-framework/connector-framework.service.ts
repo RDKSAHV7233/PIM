@@ -101,7 +101,11 @@ export class ConnectorFrameworkService {
     }
 
     const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
-      where: { connectorId: connectorDefinition.id, ...(installationId ? { id: installationId } : {}) },
+      where: {
+        connectorId: connectorDefinition.id,
+        status: { not: "DISABLED" },
+        ...(installationId ? { id: installationId } : {}),
+      },
       orderBy: [{ installedAt: "desc" }],
       select: {
         id: true,

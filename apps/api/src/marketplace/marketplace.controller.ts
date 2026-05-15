@@ -300,15 +300,16 @@ export class MarketplaceController {
     @Param("id") productId: string,
     @Query("channel") channel = DEFAULT_MARKETPLACE_CHANNEL,
     @Query("templateId") templateId?: string,
+    @Query("installationId") installationId?: string,
   ) {
-    return this.marketplaceService.simulateProduct(productId, channel, templateId);
+    return this.marketplaceService.simulateProduct(productId, channel, templateId, installationId);
   }
 
   @Post("products/:id/simulate")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
   simulateProductBody(@Param("id") productId: string, @Body() dto: SimulateMarketplaceDto) {
-    return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId);
+    return this.marketplaceService.simulateProduct(productId, dto.channel, dto.templateId, dto.installationId);
   }
 
   @Post("readiness/batch")

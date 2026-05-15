@@ -274,20 +274,24 @@ function withHistory(
   };
 }
 
-function mappingResolutionWeight(level: MappingLevel): number {
-  switch (level) {
-    case "tenant_connector_default":
-      return 1;
-    case "tenant_connector_category_mapping":
-      return 2;
-    default:
-      return 3;
-  }
+// Five-level merge order (ascending weight = merged first = lowest precedence):
+//   0 = slug-scoped tenant default
+//   1 = slug-scoped category mapping
+//   2 = installation-scoped tenant default
+//   3 = installation-scoped category mapping
+// Installation-scoped rows must always come AFTER slug-scoped rows at the same level so that
+// the final deepMerge wins go to the most-specific mapping. Using only mappingLevel previously
+// gave both slug-scoped and installation-scoped defaults the same weight, meaning a slug-default
+// created after an install-default would silently override it via the createdAt tiebreaker.
+function mappingResolutionWeight(version: ConnectorMappingVersion): number {
+  const installOffset = version.installationId ? 2 : 0;
+  const levelOffset = version.mappingLevel === "tenant_connector_category_mapping" ? 1 : 0;
+  return installOffset + levelOffset;
 }
 
 function sortMappingsForResolution(items: ConnectorMappingVersion[]): ConnectorMappingVersion[] {
   return [...items].sort((left, right) => {
-    const weightDiff = mappingResolutionWeight(left.mappingLevel) - mappingResolutionWeight(right.mappingLevel);
+    const weightDiff = mappingResolutionWeight(left) - mappingResolutionWeight(right);
     if (weightDiff !== 0) {
       return weightDiff;
     }
@@ -568,7 +572,11 @@ export class ConnectorMappingService {
         throw new ConflictException("must_validate_before_publish");
       }
 
-      const supersededRows = await tx.connectorMappingVersion.findMany({
+      // Fetch all published rows at same slug+categoryScope, then post-filter by installationId
+      // to avoid Prisma client regeneration requirement for the new nullable column.
+      // Slug-scoped versions (installationId=null) must NOT supersede installation-scoped versions
+      // and vice versa — each scope has its own independent "published" slot.
+      const supersededCandidates = await tx.connectorMappingVersion.findMany({
         where: {
           connectorSlug: input.connectorSlug,
           categoryScope: selected.categoryScope,
@@ -576,6 +584,12 @@ export class ConnectorMappingService {
           NOT: { id: selected.id },
         },
         select: { id: true },
+      });
+      const supersededRows = supersededCandidates.filter((row) => {
+        const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
+        const normalizedRowInstId = rowInstId ?? null;
+        const normalizedSelectedInstId = selected.installationId ?? null;
+        return normalizedRowInstId === normalizedSelectedInstId;
       });
       const supersededIds = supersededRows.map((row) => row.id);
       if (supersededIds.length > 0) {
@@ -692,7 +706,10 @@ export class ConnectorMappingService {
         });
       }
 
-      const currentlyPublishedRows = await tx.connectorMappingVersion.findMany({
+      // Fetch published rows then post-filter by installationId scope — same pattern as
+      // publishMappingVersion — so rolling back a slug-scoped version does not supersede
+      // installation-scoped versions at the same categoryScope and vice versa.
+      const allCurrentlyPublishedRows = await tx.connectorMappingVersion.findMany({
         where: {
           connectorSlug: input.connectorSlug,
           categoryScope: source.categoryScope,
@@ -700,23 +717,32 @@ export class ConnectorMappingService {
         },
         orderBy: { createdAt: "desc" },
       });
+      const currentlyPublishedRows = allCurrentlyPublishedRows.filter((row) => {
+        const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
+        return (rowInstId ?? null) === (source.installationId ?? null);
+      });
 
       const rollbackVersionId = randomUUID();
+      // Copy installationId from source — rolled-back version must share the same scope.
+      // installationId is not in the Prisma-generated types yet (column added in Sprint 11
+      // without client regeneration), so we build the data as a plain Record and cast.
+      const rollbackCreateData: Record<string, unknown> = {
+        id: rollbackVersionId,
+        connectorSlug: input.connectorSlug,
+        categoryScope: source.categoryScope,
+        mappingLevel: source.mappingLevel,
+        lifecycleState: "validated",
+        connectorDefinitionId: source.connectorDefinitionId,
+        connectorDefinitionVersion: source.connectorDefinitionVersion,
+        compatibilityState: source.compatibilityState,
+        mappingRules: source.mappingRules as Prisma.InputJsonValue,
+        fallbackPolicy: source.fallbackPolicy as Prisma.InputJsonValue,
+        fallbackAckRequired: source.fallbackAckRequired,
+        createdBy: input.actorId ?? null,
+        ...(source.installationId ? { installationId: source.installationId } : {}),
+      };
       await tx.connectorMappingVersion.create({
-        data: {
-          id: rollbackVersionId,
-          connectorSlug: input.connectorSlug,
-          categoryScope: source.categoryScope,
-          mappingLevel: source.mappingLevel,
-          lifecycleState: "validated",
-          connectorDefinitionId: source.connectorDefinitionId,
-          connectorDefinitionVersion: source.connectorDefinitionVersion,
-          compatibilityState: source.compatibilityState,
-          mappingRules: source.mappingRules as Prisma.InputJsonValue,
-          fallbackPolicy: source.fallbackPolicy as Prisma.InputJsonValue,
-          fallbackAckRequired: source.fallbackAckRequired,
-          createdBy: input.actorId ?? null,
-        },
+        data: rollbackCreateData as Parameters<typeof tx.connectorMappingVersion.create>[0]["data"],
       });
 
       const supersededIds = currentlyPublishedRows
@@ -973,6 +999,7 @@ export class ConnectorMappingService {
     const resolved = await this.resolveEffectiveMapping({
       connectorSlug: input.connectorSlug,
       categoryScope: input.categoryScope,
+      installationId: input.installationId,
       actorId: input.actorId,
       recordEvaluation: true,
     });
@@ -1155,6 +1182,7 @@ export class ConnectorMappingService {
     const resolved = await this.resolveEffectiveMapping({
       connectorSlug: input.connectorSlug,
       categoryScope: input.categoryScope,
+      installationId: input.installationId,
     });
     const fieldMappings = parseObject(resolved.resolvedMapping.field_mappings);
     const requiredDefs = await this.prisma.tenant(tenantKey).attributeDefinition.findMany({
@@ -1345,6 +1373,10 @@ export class ConnectorMappingService {
     }
 
     if (installationId) {
+      // Find by explicit ID regardless of status — evaluatePublishReadiness checks status
+      // downstream and emits connector_not_active for DISABLED, connector_credentials_expired
+      // for CREDENTIAL_EXPIRED. Filtering here would convert these recoverable warnings into
+      // a misleading connector_not_installed blocker and break the UI status surface.
       const selected = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
         where: {
           id: installationId,
@@ -1365,6 +1397,8 @@ export class ConnectorMappingService {
         : null;
     }
 
+    // Fallback (no installationId): most recent installation, any status.
+    // evaluatePublishReadiness handles the status check and emits appropriate blockers/warnings.
     const fallback = await this.prisma.tenant(tenantKey).connectorInstallation.findFirst({
       where: {
         connectorId: connectorDefinition.id,

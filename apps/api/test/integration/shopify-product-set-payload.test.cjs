@@ -5,8 +5,8 @@
  *
  * Verifies that publishProduct sends:
  *   1. identifier.handle (not customId)
- *   2. input.metafields includes vexa_pim/sku
- *   3. input.variants is absent from productSet
+ *   2. input.metafields includes pim_connector/sku
+ *   3. input.variants is present with optionValues (required by Shopify since API 2024-10)
  *   4. productVariantsBulkUpdate is called after productSet with price + SKU
  */
 const fs = require("node:fs");
@@ -94,7 +94,7 @@ function createShopifyStub() {
         return;
       }
 
-      if (query.includes("mutation VexaUpsertProduct")) {
+      if (query.includes("mutation UpsertProduct")) {
         res.end(JSON.stringify({
           data: {
             productSet: {
@@ -111,7 +111,7 @@ function createShopifyStub() {
         return;
       }
 
-      if (query.includes("mutation VexaBulkUpdateVariant")) {
+      if (query.includes("mutation BulkUpdateVariant")) {
         res.end(JSON.stringify({
           data: {
             productVariantsBulkUpdate: {
@@ -123,7 +123,7 @@ function createShopifyStub() {
         return;
       }
 
-      if (query.includes("mutation VexaPublishProduct")) {
+      if (query.includes("mutation PublishProduct")) {
         res.end(JSON.stringify({
           data: {
             publishablePublish: {
@@ -216,7 +216,7 @@ async function run() {
     assert(result.status === "SUCCESS", `Expected SUCCESS, got ${result.status}`);
 
     // ── Assertion 1: identifier uses handle, not customId ───────────────────
-    const upsertCall = stub.calls.find((c) => c.query.includes("mutation VexaUpsertProduct"));
+    const upsertCall = stub.calls.find((c) => c.query.includes("mutation UpsertProduct"));
     assert(upsertCall, "productSet mutation was not called");
     assert(
       typeof upsertCall.variables?.identifier?.handle === "string" &&
@@ -228,24 +228,31 @@ async function run() {
       `identifier.customId must NOT be present (deprecated) — got ${JSON.stringify(upsertCall.variables?.identifier)}`,
     );
 
-    // ── Assertion 2: metafields include vexa_pim/sku ────────────────────────
+    // ── Assertion 2: metafields include pim_connector/sku ────────────────────────
     const inputMetafields = upsertCall.variables?.input?.metafields ?? [];
     const skuMetafield = inputMetafields.find(
-      (m) => m.namespace === "vexa_pim" && m.key === "sku",
+      (m) => m.namespace === "pim_connector" && m.key === "sku",
     );
     assert(
       skuMetafield && skuMetafield.value === "PAYLOAD-001",
-      `input.metafields must contain {namespace:"vexa_pim", key:"sku", value:"PAYLOAD-001"} — got ${JSON.stringify(inputMetafields)}`,
+      `input.metafields must contain {namespace:"pim_connector", key:"sku", value:"PAYLOAD-001"} — got ${JSON.stringify(inputMetafields)}`,
     );
 
-    // ── Assertion 3: variants absent from productSet input ──────────────────
+    // ── Assertion 3: variants present with optionValues ─────────────────────
+    // Shopify's ProductSet mutation requires optionValues on each variant since API 2024-10.
+    // Single-variant products use [{ optionName: "Title", name: "Default Title" }].
+    const inputVariants = upsertCall.variables?.input?.variants;
     assert(
-      !upsertCall.variables?.input?.variants,
-      `input.variants must NOT be present in productSet (causes API error) — got ${JSON.stringify(upsertCall.variables?.input?.variants)}`,
+      Array.isArray(inputVariants) && inputVariants.length > 0,
+      `input.variants must be present in productSet with optionValues — got ${JSON.stringify(inputVariants)}`,
+    );
+    assert(
+      Array.isArray(inputVariants[0]?.optionValues) && inputVariants[0].optionValues.length > 0,
+      `input.variants[0].optionValues must be present — got ${JSON.stringify(inputVariants[0])}`,
     );
 
     // ── Assertion 4: productVariantsBulkUpdate called with price + SKU ──────
-    const bulkUpdateCall = stub.calls.find((c) => c.query.includes("mutation VexaBulkUpdateVariant"));
+    const bulkUpdateCall = stub.calls.find((c) => c.query.includes("mutation BulkUpdateVariant"));
     assert(bulkUpdateCall, "productVariantsBulkUpdate mutation was not called after productSet");
     const variantInput = bulkUpdateCall.variables?.variants?.[0];
     assert(
@@ -270,8 +277,8 @@ async function run() {
       checkedAt: new Date().toISOString(),
       validated: [
         "productSet_uses_handle_identifier_not_customId",
-        "productSet_input_metafields_includes_vexa_pim_sku",
-        "productSet_input_variants_absent",
+        "productSet_input_metafields_includes_pim_connector_sku",
+        "productSet_input_variants_present_with_optionValues",
         "productVariantsBulkUpdate_called_with_price_and_sku",
       ],
     }, null, 2));

@@ -268,10 +268,12 @@ async function run() {
       "expected active connector installation count to drop after disable",
     );
 
-    const installMeeshoAfterDisable = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", adminToken, {
-      accountAlias: "primary",
+    // Meesho is in PLANNED launch stage and cannot be installed. Use flipkart with a new
+    // alias to verify that freeing an active slot permits a fresh installation on starter plan.
+    const installFlipkartSecondary = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
+      accountAlias: "secondary",
     });
-    assertStatus(installMeeshoAfterDisable, 201, "meesho install after disabling flipkart on starter");
+    assertStatus(installFlipkartSecondary, 201, "flipkart secondary install after freeing active slot on starter");
 
     const editorDeleteDenied = await apiRequest(
       baseUrl,
@@ -343,13 +345,17 @@ async function run() {
     assert(amazonItem, "expected amazon installation in list");
     assert(amazonItem.actions?.reconnect?.allowed === true, "expected reconnect allowed in action matrix for editor");
 
+    // Meesho is in PLANNED launch stage — its install.allowed is always false regardless of plan
+    // tier (applyInstallLaunchStageRule overrides the plan result). Use amazon-in to verify that
+    // the definitions endpoint reflects plan-tier changes: starter plan at capacity → blocked;
+    // after enterprise upgrade → allowed.
     const definitionsBeforeUpgrade = await apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken);
     assertStatus(definitionsBeforeUpgrade, 200, "definitions before upgrade");
-    const meeshoBefore = Array.isArray(definitionsBeforeUpgrade.payload)
-      ? definitionsBeforeUpgrade.payload.find((item) => item.slug === "meesho")
+    const amazonBefore = Array.isArray(definitionsBeforeUpgrade.payload)
+      ? definitionsBeforeUpgrade.payload.find((item) => item.slug === "amazon-in")
       : null;
-    assert(meeshoBefore, "expected meesho definition before upgrade");
-    assert(meeshoBefore.actions?.install?.allowed === false, "meesho install should be blocked before plan upgrade");
+    assert(amazonBefore, "expected amazon-in definition before upgrade");
+    assert(amazonBefore.actions?.install?.allowed === false, "amazon-in install should be blocked before plan upgrade (starter at capacity)");
 
     const setEnterprise = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
     assert(
@@ -359,16 +365,18 @@ async function run() {
 
     const definitionsAfterUpgrade = await apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken);
     assertStatus(definitionsAfterUpgrade, 200, "definitions after upgrade");
-    const meeshoAfter = Array.isArray(definitionsAfterUpgrade.payload)
-      ? definitionsAfterUpgrade.payload.find((item) => item.slug === "meesho")
+    const amazonAfter = Array.isArray(definitionsAfterUpgrade.payload)
+      ? definitionsAfterUpgrade.payload.find((item) => item.slug === "amazon-in")
       : null;
-    assert(meeshoAfter, "expected meesho definition after upgrade");
-    assert(meeshoAfter.actions?.install?.allowed === true, "meesho install should be allowed after plan upgrade");
+    assert(amazonAfter, "expected amazon-in definition after upgrade");
+    assert(amazonAfter.actions?.install?.allowed === true, "amazon-in install should be allowed after plan upgrade (enterprise has capacity)");
 
-    const installMeeshoAfterUpgrade = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", adminToken, {
-      accountAlias: "secondary",
+    // Meesho is in PLANNED launch stage. Verify plan-limit lift by reinstalling flipkart primary
+    // (its record was deleted above) which confirms enterprise plan now allows additional installs.
+    const installFlipkartAfterUpgrade = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
+      accountAlias: "primary",
     });
-    assertStatus(installMeeshoAfterUpgrade, 201, "meesho secondary account install after enterprise upgrade");
+    assertStatus(installFlipkartAfterUpgrade, 201, "flipkart primary reinstall after enterprise upgrade");
 
     const foreignTenantKey = `foreign-tenant-${runId}`;
     await prisma.$executeRawUnsafe(

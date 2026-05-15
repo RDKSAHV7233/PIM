@@ -103,6 +103,13 @@ export async function ProductDetailDeferredSection({
         connector.slug === mapMarketplaceChannelToConnectorSlug(selectedChannel),
     ) ?? null;
 
+  // All active Shopify installations — passed to the export form store selector.
+  // When the tenant has more than one active Shopify installation, the form renders
+  // a dropdown so the user can choose which store to export to.
+  const shopifyInstallations = installedConnectors
+    .filter(c => c.status === "ACTIVE" && c.slug === "shopify")
+    .map(c => ({ id: c.id, accountAlias: c.accountAlias }));
+
   const pageData: ProductDetailPageData = {
     productId,
     product,
@@ -129,6 +136,7 @@ export async function ProductDetailDeferredSection({
     publishableChannels,
     defaultExportChannel,
     mappingManagerInstallation,
+    shopifyInstallations,
     requiredFieldsDefault: JSON.stringify(mapping.requiredFields, null, 2),
     fieldMapDefault: JSON.stringify(mapping.fieldMap, null, 2),
     blockingIssueCount:

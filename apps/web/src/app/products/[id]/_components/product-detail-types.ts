@@ -49,6 +49,8 @@ export type ProductDetailPageData = {
   publishableChannels: MarketplaceChannelConfig[];
   defaultExportChannel: MarketplaceChannel;
   mappingManagerInstallation: ConnectorInstallation | null;
+  /** All ACTIVE Shopify installations for the tenant. Used by export form store selector. */
+  shopifyInstallations: Array<{ id: string; accountAlias: string }>;
   requiredFieldsDefault: string;
   fieldMapDefault: string;
   blockingIssueCount: number;

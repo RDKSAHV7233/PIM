@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+﻿import { Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { LoggerService } from "../../common/logging/logger.service";
 import {
@@ -259,9 +259,9 @@ const DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE = "urn:shopify:params:oauth:token-typ
 const DEFAULT_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
 const DEFAULT_TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
 const DEFAULT_ADMIN_API_VERSION = "2026-04";
-const DEFAULT_CUSTOM_ID_NAMESPACE = "vexa_pim";
+const DEFAULT_CUSTOM_ID_NAMESPACE = "pim_connector";
 const DEFAULT_CUSTOM_ID_KEY = "sku";
-const DEFAULT_VEXA_METAFIELD_NAMESPACE = "vexa_pim";
+const DEFAULT_PIM_METAFIELD_NAMESPACE = "pim_connector";
 const SHOPIFY_WEBHOOK_HMAC_HEADER = "x-shopify-hmac-sha256";
 const SHOPIFY_WEBHOOK_TOPIC_HEADER = "x-shopify-topic";
 const SHOPIFY_WEBHOOK_ID_HEADER = "x-shopify-webhook-id";
@@ -346,7 +346,7 @@ export class ShopifyConnector implements ConnectorInterface {
     let token: ShopifyTokenResponse;
     let authMode: string;
 
-    // Direct admin API token (custom app flow — token copied from Shopify Admin → Apps → API credentials)
+    // Direct admin API token (custom app flow â€” token copied from Shopify Admin â†’ Apps â†’ API credentials)
     const directToken = String(params.accessToken ?? params.access_token ?? "").trim();
 
     if (directToken && !authCode) {
@@ -576,7 +576,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        query VexaShopifyPublications {
+        query GetPublications {
           publications(first: 50) {
             nodes {
               id
@@ -691,7 +691,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        query VexaShopifyProductStatus($id: ID!) {
+        query GetProductStatus($id: ID!) {
           node(id: $id) {
             ... on Product {
               id
@@ -1164,7 +1164,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        query VexaShopifyShopIdentity {
+        query GetShopIdentity {
           shop {
             id
             name
@@ -1192,7 +1192,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        mutation VexaUpsertProduct($input: ProductSetInput!, $identifier: ProductSetIdentifiers!) {
+        mutation UpsertProduct($input: ProductSetInput!, $identifier: ProductSetIdentifiers!) {
           productSet(synchronous: true, input: $input, identifier: $identifier) {
             product {
               id
@@ -1229,10 +1229,18 @@ export class ShopifyConnector implements ConnectorInterface {
       throw new Error("Shopify product sync did not return a product id.");
     }
 
-    const variantId = (mutation.product as any).variants?.edges?.[0]?.node?.id;
     const shopifyProductId = String(mutation.product.id);
-    if (variantId && shopifyProductId) {
-      await this.updateDefaultVariantPrice(ctx, shopifyProductId, variantId, product);
+    // Only run the secondary variant price update for single-variant products.
+    // For multi-variant products the ProductSet mutation already set each variant's
+    // price correctly via buildVariantInput. Applying the product-level scalar price
+    // to whichever variant Shopify returns first (internal order, may differ from PIM
+    // order on updates) would silently corrupt that variant's price.
+    const isMultiVariantPayload = Array.isArray(product.variants) && product.variants.length > 0;
+    if (!isMultiVariantPayload) {
+      const variantId = (mutation.product as any).variants?.edges?.[0]?.node?.id;
+      if (variantId) {
+        await this.updateDefaultVariantPrice(ctx, shopifyProductId, variantId, product);
+      }
     }
 
     return {
@@ -1266,7 +1274,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        mutation VexaBulkUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        mutation BulkUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
           productVariantsBulkUpdate(productId: $productId, variants: $variants) {
             productVariants { id price }
             userErrors { field message }
@@ -1519,7 +1527,7 @@ export class ShopifyConnector implements ConnectorInterface {
       shopDomain,
       accessToken,
       query: `
-        mutation VexaPublishProduct($id: ID!, $publicationId: ID!) {
+        mutation PublishProduct($id: ID!, $publicationId: ID!) {
           publishablePublish(id: $id, input: { publicationId: $publicationId }) {
             publishable {
               publishedOnPublication(publicationId: $publicationId)
@@ -1675,7 +1683,7 @@ export class ShopifyConnector implements ConnectorInterface {
         value: String(product.sku ?? "").trim(),
       },
       {
-        namespace: DEFAULT_VEXA_METAFIELD_NAMESPACE,
+        namespace: DEFAULT_PIM_METAFIELD_NAMESPACE,
         key: "source_sku",
         type: "single_line_text_field",
         value: String(product.sku ?? "").trim(),
@@ -1793,7 +1801,7 @@ export class ShopifyConnector implements ConnectorInterface {
         }),
       });
 
-      // HTTP 429 — Shopify REST-level rate limit
+      // HTTP 429 â€” Shopify REST-level rate limit
       if (response.status === 429) {
         const retryAfterRaw = response.headers.get("Retry-After");
         const retryAfterSec = retryAfterRaw ? parseFloat(retryAfterRaw) : 2;
@@ -1822,7 +1830,7 @@ export class ShopifyConnector implements ConnectorInterface {
         parsed = {};
       }
 
-      // GraphQL THROTTLED error — query cost exceeded the leaky-bucket limit
+      // GraphQL THROTTLED error â€” query cost exceeded the leaky-bucket limit
       const isThrottled = Array.isArray(parsed.errors) &&
         parsed.errors.some((e) => e?.extensions?.code === "THROTTLED");
       if (isThrottled) {
@@ -1882,7 +1890,7 @@ export class ShopifyConnector implements ConnectorInterface {
       return parsed.data;
     }
 
-    // Unreachable — loop always returns or throws
+    // Unreachable â€” loop always returns or throws
     throw new Error("Shopify GraphQL request failed: exhausted retry attempts.");
   }
 
@@ -1997,7 +2005,7 @@ export class ShopifyConnector implements ConnectorInterface {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "vexa-product";
+      .slice(0, 80) || "product";
   }
 
   private requireClientId(): string {

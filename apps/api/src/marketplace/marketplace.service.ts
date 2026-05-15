@@ -54,7 +54,12 @@ type MappingPack = {
 type EffectiveMapping = MappingPack & {
   templateId: string | null;
   templateName: string | null;
-  source: "system_pack" | "saved_template";
+  /** How the effective mapping was resolved.
+   *  "system_pack"               — hardcoded MAPPING_PACKS default (no tenant mapping found)
+   *  "saved_template"            — legacy channelMappingTemplate record
+   *  "connector_mapping_version" — ConnectorMappingVersion record (Sprint 11+, 5-level precedence)
+   */
+  source: "system_pack" | "saved_template" | "connector_mapping_version";
 };
 
 type AuthoritativeChannelIssue = {
@@ -556,7 +561,7 @@ export class MarketplaceService implements OnModuleInit {
     const channel = channelOverride
       ? this.parseChannel(channelOverride)
       : this.mapConnectorSlugToChannel(installation.connectorSlug);
-    const simulation = await this.simulateProduct(productId, channel, templateId);
+    const simulation = await this.simulateProduct(productId, channel, templateId, installationId);
     return {
       installationId: installation.id,
       connectorSlug: installation.connectorSlug,
@@ -613,10 +618,11 @@ export class MarketplaceService implements OnModuleInit {
       throw error;
     }
 
-    const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId);
+    const simulation = await this.simulateProduct(productId, dto.channel, dto.templateId, dto.installationId ?? undefined);
     await this.connectorMappingService.assertPublishReadyForExport({
       connectorSlug,
       categoryScope: product.categoryId,
+      installationId: dto.installationId ?? undefined,
       fallbackAcknowledged: dto.fallbackAcknowledged,
       productId,
     });
@@ -627,6 +633,7 @@ export class MarketplaceService implements OnModuleInit {
         categoryId: product.categoryId,
         channel: simulation.channel,
         templateId: simulation.templateId ?? null,
+        installationId: dto.installationId ?? null,
         status: ExportJobStatus.queued,
         retryCount: 0,
         maxRetries: dto.maxRetries ?? 3,
@@ -1171,6 +1178,7 @@ export class MarketplaceService implements OnModuleInit {
     const installation = await this.connectorFramework.requireInstallation(
       tenantKey,
       String(submission.connectorSlug ?? "").toLowerCase(),
+      String(submission.installationId ?? "").trim() || undefined,   // P3-5: route to the correct store
     );
     const productPayload = await this.buildConnectorProductPayload(String(submission.productId));
     const payloadSnapshot = JSON.parse(JSON.stringify(productPayload)) as Record<string, unknown>;
@@ -1283,13 +1291,19 @@ export class MarketplaceService implements OnModuleInit {
       data: { status: ExportJobStatus.processing },
     });
 
+    // P3-4: declare before try so the catch path can also write sync state for legacy jobs
+    let effectiveInstallationId: string | null = existing.installationId ?? null;
+
     try {
       const simulation = await this.simulateProduct(
         existing.productId,
         existing.channel,
         existing.templateId ?? undefined,
+        existing.installationId ?? undefined,  // bridge: ConnectorMappingVersion 5-level lookup
       );
-      await this.recordConnectorSubmissionIfInstalled(existing, simulation);
+      // P3-4: update with resolved installationId in case job.installationId was null
+      const resolvedInstallationId = await this.recordConnectorSubmissionIfInstalled(existing, simulation);
+      effectiveInstallationId = existing.installationId ?? resolvedInstallationId ?? null;
 
       if (simulation.exportReady) {
         const updated = await this.prisma.tenant().marketplaceExportJob.update({
@@ -1302,6 +1316,21 @@ export class MarketplaceService implements OnModuleInit {
           },
           include: { template: true },
         });
+        // Update per-installation sync state so delta sync doesn't re-queue this product
+        if (effectiveInstallationId) {
+          const syncProduct = await this.prisma.tenant().product.findUnique({
+            where: { id: existing.productId },
+            select: { version: true },
+          });
+          if (syncProduct) {
+            await this.upsertSyncState(
+              effectiveInstallationId,
+              existing.productId,
+              syncProduct.version ?? 1,
+              "SUCCESS",
+            ).catch(() => { /* non-critical — delta sync will re-process next cycle */ });
+          }
+        }
         await this.notificationsService.emitPublishStatus(updated.id, "completed");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;
@@ -1323,6 +1352,21 @@ export class MarketplaceService implements OnModuleInit {
         });
         await this.notificationsService.emitPublishStatus(updated.id, "dead_letter");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+        // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue this product on every run
+        if (effectiveInstallationId) {
+          const syncProduct = await this.prisma.tenant().product.findUnique({
+            where: { id: existing.productId },
+            select: { version: true },
+          }).catch(() => null);
+          if (syncProduct) {
+            await this.upsertSyncState(
+              effectiveInstallationId,
+              existing.productId,
+              syncProduct.version ?? 1,
+              "ERROR",
+            ).catch(() => { /* non-critical */ });
+          }
+        }
         return updated;
       }
 
@@ -1358,6 +1402,21 @@ export class MarketplaceService implements OnModuleInit {
       });
       await this.notificationsService.emitPublishStatus(updated.id, "failed");
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
+      // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue on every subsequent run
+      if (effectiveInstallationId) {
+        const syncProduct = await this.prisma.tenant().product.findUnique({
+          where: { id: existing.productId },
+          select: { version: true },
+        }).catch(() => null);
+        if (syncProduct) {
+          await this.upsertSyncState(
+            effectiveInstallationId,
+            existing.productId,
+            syncProduct.version ?? 1,
+            "ERROR",
+          ).catch(() => { /* non-critical */ });
+        }
+      }
       return updated;
     }
   }
@@ -1474,12 +1533,12 @@ export class MarketplaceService implements OnModuleInit {
     });
   }
 
-  async simulateProduct(productId: string, channelInput: string, templateId?: string) {
+  async simulateProduct(productId: string, channelInput: string, templateId?: string, installationId?: string | null) {
     const product = await this.getProductForSimulation(productId);
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    return this.buildSimulationFromProduct(product, channelInput, templateId);
+    return this.buildSimulationFromProduct(product, channelInput, templateId, undefined, installationId);
   }
 
   async getBatchReadiness(productIdsInput: string[], channelsInput?: string[]) {
@@ -1628,12 +1687,14 @@ export class MarketplaceService implements OnModuleInit {
     channelInput: string,
     templateId?: string,
     mappingCache?: Map<string, EffectiveMapping>,
+    installationId?: string | null,
   ) {
     const mapping = await this.getEffectiveMappingCached(
       channelInput,
       product.categoryId,
       templateId,
       mappingCache,
+      installationId,
     );
     const attributes = this.asRecord(product.attributes);
     const mappedPayload: Record<string, unknown> = {};
@@ -1726,10 +1787,12 @@ export class MarketplaceService implements OnModuleInit {
     channelInput: string,
     categoryId?: string,
     templateId?: string,
+    installationId?: string | null,
   ): Promise<EffectiveMapping> {
     const channel = this.parseChannel(channelInput);
     const basePack = MAPPING_PACKS[channel];
 
+    // Explicit templateId always wins — legacy template pinning.
     if (templateId) {
       const template = await this.prisma.tenant().channelMappingTemplate.findUnique({
         where: { id: templateId },
@@ -1754,6 +1817,7 @@ export class MarketplaceService implements OnModuleInit {
       };
     }
 
+    // Legacy channelMappingTemplate default (category-scoped) — checked next.
     if (categoryId) {
       const defaultTemplate = await this.prisma.tenant().channelMappingTemplate.findFirst({
         where: {
@@ -1776,6 +1840,50 @@ export class MarketplaceService implements OnModuleInit {
       }
     }
 
+    // ── Bridge: ConnectorMappingVersion fallback (Sprint 11+) ────────────────
+    // Tenants that manage mappings through ConnectorMappingVersion (5-level precedence)
+    // have no channelMappingTemplate records. Without this fallback, their simulation
+    // always returns source:"system_pack", exportReady:false inside the job worker, even
+    // though evaluateMappingPreflight/evaluatePublishReadiness correctly resolved
+    // ConnectorMappingVersion. This fallback bridges the two systems so a single mapping
+    // system is sufficient.
+    //
+    // Priority order within this fallback: same 5-level precedence as resolveEffectiveMapping.
+    // Required fields are taken from the system pack baseline (ConnectorMappingVersion does
+    // not separately track required fields; channel-specific requirements live in basePack).
+    if (categoryId) {
+      try {
+        const connectorSlug = mapMarketplaceChannelToConnectorSlug(channel);
+        if (connectorSlug) {
+          const resolved = await this.connectorMappingService.resolveEffectiveMapping({
+            connectorSlug,
+            categoryScope: categoryId,
+            installationId: installationId ?? null,
+          });
+          const rawFieldMappings = resolved.resolvedMapping?.field_mappings;
+          if (
+            rawFieldMappings &&
+            typeof rawFieldMappings === "object" &&
+            !Array.isArray(rawFieldMappings) &&
+            Object.keys(rawFieldMappings).length > 0
+          ) {
+            return {
+              channel,
+              displayName: basePack.displayName,
+              requiredFields: [...basePack.requiredFields],
+              fieldMap: rawFieldMappings as Record<string, string>,
+              templateId: null,
+              templateName: null,
+              source: "connector_mapping_version",
+            };
+          }
+        }
+      } catch {
+        // ConnectorMappingVersion lookup failed — fall through to system pack.
+        // Never let a bridge failure block an existing channelMappingTemplate user.
+      }
+    }
+
     return {
       ...basePack,
       requiredFields: [...basePack.requiredFields],
@@ -1791,12 +1899,15 @@ export class MarketplaceService implements OnModuleInit {
     categoryId?: string,
     templateId?: string,
     cache?: Map<string, EffectiveMapping>,
+    installationId?: string | null,
   ): Promise<EffectiveMapping> {
     if (!cache) {
-      return this.getEffectiveMapping(channelInput, categoryId, templateId);
+      return this.getEffectiveMapping(channelInput, categoryId, templateId, installationId);
     }
 
-    const key = `${String(channelInput ?? "").trim().toLowerCase()}::${categoryId ?? ""}::${templateId ?? ""}`;
+    // installationId is part of the cache key so installation-scoped mappings don't
+    // bleed into slug-scoped lookups within the same batch request.
+    const key = `${String(channelInput ?? "").trim().toLowerCase()}::${categoryId ?? ""}::${templateId ?? ""}::${installationId ?? ""}`;
     const cached = cache.get(key);
     if (cached) {
       return {
@@ -1806,7 +1917,7 @@ export class MarketplaceService implements OnModuleInit {
       };
     }
 
-    const resolved = await this.getEffectiveMapping(channelInput, categoryId, templateId);
+    const resolved = await this.getEffectiveMapping(channelInput, categoryId, templateId, installationId);
     cache.set(key, resolved);
     return {
       ...resolved,
@@ -2170,11 +2281,14 @@ export class MarketplaceService implements OnModuleInit {
     }
   }
 
+  // Returns the resolved installationId so the caller can write sync state even when
+  // job.installationId is null (legacy jobs created before the column was added). (P3-4)
   private async recordConnectorSubmissionIfInstalled(
     job: {
       id: string;
       productId: string;
       channel: string;
+      installationId?: string | null;
       categoryId?: string | null;
     },
     simulation: {
@@ -2189,15 +2303,19 @@ export class MarketplaceService implements OnModuleInit {
       }>;
       validationSource: "local_rules" | "amazon_sp_api";
     },
-  ) {
+  ): Promise<string | null> {
     const connectorSlug = this.mapChannelToConnectorSlug(job.channel);
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     let installation;
     try {
-      installation = await this.connectorFramework.requireInstallation(tenantKey, connectorSlug);
+      installation = await this.connectorFramework.requireInstallation(
+        tenantKey,
+        connectorSlug,
+        job.installationId ?? undefined,
+      );
     } catch (error) {
       if (error instanceof InstallationNotFoundError) {
-        return;
+        return null;
       }
       throw error;
     }
@@ -2352,6 +2470,7 @@ export class MarketplaceService implements OnModuleInit {
       submissionStatus: submission.status,
       attemptNumber: submission.attemptNumber,
     });
+    return installation.id;
   }
 
   private async buildConnectorProductPayload(productId: string): Promise<ProductPayload> {

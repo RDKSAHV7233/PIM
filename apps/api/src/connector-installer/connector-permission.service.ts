@@ -109,7 +109,7 @@ export class ConnectorPermissionService {
       FROM "ConnectorPermission"
       WHERE "tenantKey" = ${tenantKey}
         AND "connectorSlug" = ${normalizedSlug}
-        AND "action" = ${options.action}
+        AND "action"::text = ${options.action}
         AND (
           ("principalType" = 'user' AND "principalId" = ${actor.actorId})
           OR ("principalType" = 'role' AND "principalId" = ${actor.actorRole})
@@ -259,11 +259,11 @@ export class ConnectorPermissionService {
         (
           ${randomUUID()},
           ${tenantKey},
-          ${principalType},
+          ${Prisma.raw(`'${principalType}'::"ConnectorPermissionPrincipalType"`)},
           ${principalId},
           ${connectorSlug},
           ${accountAlias},
-          ${input.action},
+          ${Prisma.raw(`'${input.action}'::"ConnectorPermissionAction"`)},
           ${input.actor.actorId},
           NOW(),
           NOW()
@@ -288,11 +288,11 @@ export class ConnectorPermissionService {
         "updatedAt" AS "updatedAt"
       FROM "ConnectorPermission"
       WHERE "tenantKey" = ${tenantKey}
-        AND "principalType" = ${principalType}
+        AND "principalType"::text = ${principalType}
         AND "principalId" = ${principalId}
         AND "connectorSlug" = ${connectorSlug}
         AND "accountAlias" = ${accountAlias}
-        AND "action" = ${input.action}
+        AND "action"::text = ${input.action}
       ORDER BY "updatedAt" DESC
       LIMIT 1
     `);
