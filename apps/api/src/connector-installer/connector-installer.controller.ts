@@ -35,13 +35,13 @@ export class ConnectorInstallerController {
   }
 
   @Get("definitions")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }
 
   @Post(":slug/install")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @UseGuards(PlanGuard)
   @RequirePlanLimit(["connectors_installations", "connector_accounts"])
   @ApiOperation({ summary: "Install connector for tenant" })
@@ -55,7 +55,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("installed")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @ApiOperation({ summary: "List installed connectors" })
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {
@@ -63,7 +63,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/uninstall")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   uninstall(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.uninstall(installationId, this.resolveActor(request));
   }
@@ -82,13 +82,13 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/reconnect")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
   }
 
   @Post(":id/oauth/callback")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @HttpCode(200)
   @ApiOperation({ summary: "Complete OAuth callback for a connector installation" })
   @ApiResponse({ status: 200, description: "OAuth callback handled and credentials persisted" })
@@ -156,7 +156,7 @@ export class ConnectorInstallerController {
   }
 
   @Get(":id/product-type-schema")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @ApiOperation({ summary: "Fetch connector product type schema for an installed account" })
   @ApiResponse({ status: 200, description: "Product type schema fetched" })
   productTypeSchema(
@@ -179,7 +179,7 @@ export class ConnectorInstallerController {
   }
 
   @Get(":id/publications")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @ApiOperation({ summary: "List publication targets for an installed connector account" })
   @ApiResponse({ status: 200, description: "Publication targets fetched" })
   listPublications(
@@ -193,7 +193,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/publication-targets")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @ApiOperation({ summary: "Persist publication targets for an installed connector account" })
   @ApiResponse({ status: 201, description: "Publication targets saved" })
   updatePublicationTargets(
@@ -209,7 +209,7 @@ export class ConnectorInstallerController {
   }
 
   @Post(":id/payload-preview")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "connector_admin")
   @ApiOperation({ summary: "Generate payload preview for connector installation + product" })
   @ApiResponse({ status: 200, description: "Payload preview generated" })
   payloadPreview(

@@ -134,7 +134,7 @@ export class CatalogController {
 
   @Post("products/:id/review-decision")
   @ApiClientScopes("catalog.write")
-  @Roles("admin", "editor", "reviewer")
+  @Roles("admin", "editor", "reviewer", "approver")
   @ApiOperation({ summary: "Approve or reject an in-review product" })
   @ApiResponse({ status: 201, description: "Review decision applied" })
   decideProductReview(
@@ -147,7 +147,7 @@ export class CatalogController {
 
   @Post("products/:id/review-comments")
   @ApiClientScopes("catalog.write")
-  @Roles("admin", "editor", "reviewer")
+  @Roles("admin", "editor", "reviewer", "approver")
   @ApiOperation({ summary: "Add a comment to the approval thread for a product" })
   @ApiResponse({ status: 201, description: "Comment added" })
   addApprovalComment(

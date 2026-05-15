@@ -57,7 +57,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/mappings/versions")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   listConnectorMappingVersions(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ListConnectorMappingVersionsQueryDto,
@@ -70,7 +70,7 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/versions")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   createConnectorMappingVersion(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: CreateConnectorMappingVersionDto,
@@ -91,7 +91,7 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/validate")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   validateConnectorMappingVersion(
     @Param("connectorSlug") connectorSlug: string,
     @Param("versionId") versionId: string,
@@ -105,7 +105,7 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/publish")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   @UseGuards(StepUpGuard)
   @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.publish")
   publishConnectorMappingVersion(
@@ -123,7 +123,7 @@ export class MarketplaceController {
   }
 
   @Post("connectors/:connectorSlug/mappings/versions/:versionId/rollback")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   @UseGuards(StepUpGuard)
   @RequireStepUp(STEP_UP_SCOPE_MAPPING_HIGH_RISK, "mapping.rollback")
   rollbackConnectorMappingVersion(
@@ -161,7 +161,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/mappings/resolve")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager", "publisher")
   resolveConnectorMapping(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ResolveConnectorMappingQueryDto,
@@ -174,7 +174,7 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/mappings/preflight")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin")
+  @Roles("admin", "channel_manager", "publisher")
   preflightConnectorMapping(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: ConnectorMappingPreflightDto,
@@ -212,7 +212,7 @@ export class MarketplaceController {
 
   @Post("connectors/:connectorSlug/publish-readiness")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
-  @Roles("admin")
+  @Roles("admin", "channel_manager", "publisher")
   evaluateConnectorPublishReadiness(
     @Param("connectorSlug") connectorSlug: string,
     @Body() dto: ConnectorPublishReadinessDto,
@@ -321,7 +321,7 @@ export class MarketplaceController {
   }
 
   @Post("products/:id/export-jobs")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "publisher", "channel_manager")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create marketplace export job" })
@@ -356,7 +356,7 @@ export class MarketplaceController {
   }
 
   @Post("export-job")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "publisher", "channel_manager")
   @UseGuards(PlanGuard)
   @RequirePlanLimit("submissions")
   @ApiOperation({ summary: "Create export job (alias endpoint)" })

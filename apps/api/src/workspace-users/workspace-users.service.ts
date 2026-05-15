@@ -489,6 +489,12 @@ export class WorkspaceUsersService {
       }
       throw new BadRequestException({ error: "ASSIGNED_ROLE_DOES_NOT_WIDEN_BASE_ROLE" });
     }
+    // Enterprise specialist roles — any base role can be granted a specialist role
+    // that is narrower in scope than their base role.
+    const ENTERPRISE_SPECIALIST_ROLES = ["publisher", "approver", "channel_manager", "connector_admin"] as const;
+    if (ENTERPRISE_SPECIALIST_ROLES.includes(assignedRole as (typeof ENTERPRISE_SPECIALIST_ROLES)[number])) {
+      return normalized;
+    }
     if (assignedRole === "product_admin" || assignedRole === "system_admin") {
       if (baseRole !== "admin") {
         throw new BadRequestException({ error: "ADMIN_BOUNDARY_ASSIGNED_ROLE_REQUIRES_ADMIN_BASE_ROLE" });

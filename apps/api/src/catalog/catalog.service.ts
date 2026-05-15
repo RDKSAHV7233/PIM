@@ -19,10 +19,11 @@ import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
+import { type AppRole } from "../common/rbac/roles";
 
 type ActorContext = {
   id: string;
-  role: "admin" | "editor" | "reviewer" | "viewer";
+  role: AppRole;
   tenantId?: string;
   effectiveRoles?: string[];
 };

@@ -9,6 +9,7 @@ import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
 import { PrismaService } from "../prisma/prisma.service";
+import { type AppRole } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateAttributeDefinitionDto } from "./dto/update-attribute-definition.dto";
@@ -16,7 +17,7 @@ import { UpdateCategoryDto } from "./dto/update-category.dto";
 
 type ActorContext = {
   id?: string;
-  role?: "admin" | "editor" | "reviewer" | "viewer";
+  role?: AppRole;
   tenantId?: string;
   effectiveRoles?: string[];
 };
