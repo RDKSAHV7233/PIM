@@ -1227,3 +1227,25 @@ model CategoryTranslation {
   @@index([tenantKey])
   @@index([categoryId])
 }
+
+// ── INC-39: OIDC SSO config ────────────────────────────────────────────────
+
+model OidcConfig {
+  id                      String   @id @default(cuid())
+  tenantKey               String   @unique
+  issuer                  String   // e.g. https://accounts.google.com
+  clientId                String
+  clientSecretEnc         String   @map("client_secret_enc")
+  clientSecretKeyVersion  String   @default("v1") @map("client_secret_key_version")
+  callbackUrl             String   @map("callback_url")
+  scopes           String[] @default(["openid", "email", "profile"])
+  claimsMapping    Json     @default("{}") @map("claims_mapping")
+  status           String   @default("active")
+  createdBy        String?  @map("created_by")
+  updatedBy        String?  @map("updated_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantKey, status])
+  @@map("oidc_configs")
+}

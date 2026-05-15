@@ -12,11 +12,15 @@ import { AuthService } from "./auth.service";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { MfaController } from "./mfa.controller";
 import { MfaService } from "./mfa.service";
+import { OidcAuthService } from "./oidc-auth.service";
+import { OidcConfigService } from "./oidc-config.service";
+import { OidcController } from "./oidc.controller";
+import { OidcService } from "./oidc.service";
 import { StepUpGuard } from "./step-up.guard";
 
 @Module({
   imports: [AuditModule, TenantDirectoryModule, QueueModule],
-  controllers: [AuthController, AuthPolicyController, MfaController],
+  controllers: [AuthController, AuthPolicyController, MfaController, OidcController],
   providers: [
     AuthService,
     AuthPolicyService,
@@ -24,6 +28,9 @@ import { StepUpGuard } from "./step-up.guard";
     AuthExportStorageService,
     JwtBlocklistService,
     MfaService,
+    OidcAuthService,
+    OidcConfigService,
+    OidcService,
     StepUpGuard,
     AccountDeletionWorkerService,
   ],
@@ -34,6 +41,9 @@ import { StepUpGuard } from "./step-up.guard";
     AuthExportStorageService,
     JwtBlocklistService,
     MfaService,
+    OidcAuthService,
+    OidcConfigService,
+    OidcService,
     StepUpGuard,
     AccountDeletionWorkerService,
   ],

@@ -3014,6 +3014,27 @@
           ]
         }
       ]
+    },
+    {
+      "incrementId": "INC-39",
+      "name": "OIDC SSO login flow — per-tenant config CRUD, discovery, PKCE, callback, JWT issuance",
+      "status": "in_review",
+      "gate": "C",
+      "gateRequirement": "RG-C1",
+      "pr": "https://github.com/RDKSAHV7233/PIM1/pull/58",
+      "stories": [
+        {
+          "storyId": "ST-OIDC-001",
+          "title": "OidcConfig schema + OidcConfigService + OidcService + OidcAuthService + OidcController",
+          "status": "in_review",
+          "locked": false,
+          "owner": "claude",
+          "commit": "56b7aba",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        }
+      ]
     }
   ]
 }

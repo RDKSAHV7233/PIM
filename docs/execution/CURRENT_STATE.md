@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
-- Date: 2026-05-13
-- Repo HEAD: merged (branch `claude/interesting-jones-44e66c` + `main`)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, and release-governance state after targeted production-readiness hardening, P0 regression fixes, and the latest live staging snapshot refresh
+- Date: 2026-05-16
+- Repo HEAD: main + feat/localization-schema (PR #57 in review) + feat/oidc-sso-login (PR #58 in review)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, and Gate C enterprise increments (INC-35 RBAC merged, INC-36 localization schema + INC-39 OIDC SSO in review)
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -42,13 +42,13 @@
 - The current local validation bundle is green.
 - Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Enterprise-readiness remains out of scope for the current evidence bundle.
+- Enterprise Gate C work is in progress: INC-35 (8-role RBAC) merged; INC-36 (localization schema) and INC-39 (OIDC SSO login) in review. Enterprise signoff requires PRs #57 and #58 to merge plus RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
 
 ### Not allowed to say
 
-- Enterprise-ready
+- Enterprise-ready (Gate C requires RG-C4/C5/C6 after current PRs merge)
+- OIDC fully enforced (PR #58 in review; no admin UI for IdP config yet)
 - Self-serve billing
-- Fully enforced MFA / OIDC
 - All launch docs current before review
 - All historical review docs are current
 

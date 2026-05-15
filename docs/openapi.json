@@ -589,6 +589,124 @@
         ]
       }
     },
+    "/api/v1/auth/oidc-config": {
+      "post": {
+        "operationId": "OidcController_upsertConfig",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertOidcConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Oidc"
+        ]
+      },
+      "get": {
+        "operationId": "OidcController_getConfig",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Oidc"
+        ]
+      },
+      "delete": {
+        "operationId": "OidcController_deleteConfig",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Oidc"
+        ]
+      }
+    },
+    "/api/v1/auth/oidc/login": {
+      "get": {
+        "operationId": "OidcController_login",
+        "parameters": [
+          {
+            "name": "workspace",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Oidc"
+        ]
+      }
+    },
+    "/api/v1/auth/oidc/callback": {
+      "get": {
+        "operationId": "OidcController_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error_description",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Oidc"
+        ]
+      }
+    },
     "/api/v1/billing/usage": {
       "get": {
         "operationId": "BillingController_usage",
@@ -5093,6 +5211,10 @@
         "properties": {}
       },
       "SubmitMfaCodeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertOidcConfigDto": {
         "type": "object",
         "properties": {}
       },
