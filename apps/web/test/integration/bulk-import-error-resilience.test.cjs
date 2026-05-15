@@ -62,6 +62,21 @@ try {
   const procRedirectIdx = processSource.indexOf("redirect(returnTo);");
   assert(procRedirectIdx > procCatchIdx, "processBulkImportJobAction: redirect must be outside the catch block");
 
+  // --- imports page: primary data fetches must not crash the page on API failure ---
+  const importsPage = read("apps/web/src/app/operations/imports/page.tsx");
+  assert(
+    importsPage.includes("Promise.allSettled("),
+    "imports page must use Promise.allSettled for getBulkImportJobs + getCategoryTree so API failures degrade gracefully instead of crashing",
+  );
+  assert(
+    importsPage.includes('categoriesResult.status === "fulfilled"'),
+    "imports page must guard categories result before use",
+  );
+  assert(
+    importsPage.includes('jobsResult.status === "fulfilled"'),
+    "imports page must guard jobs result before use",
+  );
+
   // --- next.config.ts: body limit must accommodate files up to the API's 8 MB cap ---
   assert(
     nextConfig.includes("bodySizeLimit"),
@@ -87,6 +102,7 @@ try {
           "process_bulk_import_action_process_call_is_guarded",
           "process_bulk_import_action_redirect_always_fires",
           "next_config_body_limit_accommodates_api_max_source_size",
+          "imports_page_primary_fetches_degrade_gracefully_on_api_failure",
         ],
       },
       null,

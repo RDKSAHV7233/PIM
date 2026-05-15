@@ -160,10 +160,20 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const [jobs, categories] = await Promise.all([
+    const [jobsResult, categoriesResult] = await Promise.allSettled([
       getBulkImportJobs({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
     ]);
+    if (jobsResult.status === "rejected") {
+      const err = jobsResult.reason;
+      if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) throw err;
+    }
+    if (categoriesResult.status === "rejected") {
+      const err = categoriesResult.reason;
+      if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) throw err;
+    }
+    const jobs = jobsResult.status === "fulfilled" ? jobsResult.value : [];
+    const categories = categoriesResult.status === "fulfilled" ? categoriesResult.value : [];
     let runs: BulkImportRun[] = [];
     try {
       const runCollection = await getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader });
