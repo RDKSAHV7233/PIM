@@ -264,7 +264,7 @@ export class BulkImportController {
   @UseInterceptors(FileInterceptor("sourceFile"))
   async uploadRun(
     @Body() dto: CreateBulkImportRunDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; size: number },
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
     if (!file) {

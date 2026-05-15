@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getSubmissions } from "@/lib/api";
+import { getInstalledConnectors } from "@/lib/api/connectors";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -21,6 +22,7 @@ interface ChannelsSubmissionsPageProps {
   searchParams: Promise<{
     status?: string;
     connectorSlug?: string;
+    installationId?: string;
   }>;
 }
 
@@ -103,18 +105,24 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
   const query = await searchParams;
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
+  const installationId = String(query.installationId ?? "").trim();
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
 
   try {
-    const submissionsResponse = await getSubmissions(
-      {
-        limit: 100,
-        status: statusFilter || undefined,
-        connectorSlug: connectorSlug || undefined,
-      },
-      { role: actorRole, authHeader },
-    );
+    const [submissionsResponse, allInstallations] = await Promise.all([
+      getSubmissions(
+        {
+          limit: 100,
+          status: statusFilter || undefined,
+          connectorSlug: connectorSlug || undefined,
+          installationId: installationId || undefined,
+        },
+        { role: actorRole, authHeader },
+      ),
+      getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as import("@/lib/api").ConnectorInstallation[]),
+    ]);
+    const shopifyInstallations = allInstallations.filter((i) => i.slug === "shopify");
     const submissions = toItems(submissionsResponse);
     const latestSubmission = submissions[0] ?? null;
     const statusCounts = submissions.reduce<Record<string, number>>((accumulator, submission) => {
@@ -207,7 +215,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
         ) : null}
 
         <FilterBar>
-          <form method="get" className="grid gap-3 md:grid-cols-[220px_240px_auto]">
+          <form method="get" className="grid gap-3 md:grid-cols-[220px_240px_220px_auto]">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="channel-submissions-status">
                 Status
@@ -227,6 +235,21 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
               </label>
               <Input id="channel-submissions-connector" name="connectorSlug" defaultValue={connectorSlug} placeholder="amazon-in / connector slug" />
             </div>
+            {shopifyInstallations.length > 1 ? (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="channel-submissions-store">
+                  Store
+                </label>
+                <Select id="channel-submissions-store" name="installationId" defaultValue={installationId}>
+                  <option value="">All stores</option>
+                  {shopifyInstallations.map((inst) => (
+                    <option key={inst.id} value={inst.id}>
+                      {(inst.metadata as { shopName?: string } | null)?.shopName ?? inst.accountAlias ?? inst.id}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
                 Apply
@@ -240,6 +263,10 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
 
         <Card>
           <CardTitle>Latest Channel Submissions</CardTitle>
+          <p className="mt-1 text-xs text-slate-500">Click any row to open the submission detail drawer and view channel errors with field-level repair links.</p>
+          <div className="mt-3 overflow-x-auto">
+            <SubmissionsGrid submissions={submissions} />
+          </div>
           <div className="mt-3">
             <DataGrid
               columns={[

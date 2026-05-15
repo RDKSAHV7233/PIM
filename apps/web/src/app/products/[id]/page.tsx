@@ -474,7 +474,6 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           mediaAssets={mediaAssets}
           selectedChannel={effectiveSelectedChannel}
           selectedTemplateId={selectedTemplateId}
-          readiness={effectiveReadiness}
           actorRole={actorRole}
           authHeader={authHeader}
           canWrite={canWrite}

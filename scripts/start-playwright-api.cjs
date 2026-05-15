@@ -88,6 +88,20 @@ const workspaceDirectory =
       ? ""
       : process.env.PIM_AUTH_WORKSPACES_JSON;
 
+const prismaGenerate = spawnSync("npm", ["run", "prisma:generate"], {
+  cwd: root,
+  shell: true,
+  stdio: "inherit",
+  env: {
+    ...fileEnv,
+    ...process.env,
+  },
+});
+
+if (prismaGenerate.status !== 0) {
+  process.exit(prismaGenerate.status ?? 1);
+}
+
 const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/api"], {
   cwd: root,
   shell: true,

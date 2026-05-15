@@ -1287,6 +1287,227 @@ export class ShopifyConnector implements ConnectorInterface {
     }
   }
 
+  // ─── Sprint 2: Shopify config import ─────────────────────────────────────────
+
+  async importShopifyConfig(ctx: ConnectorContext): Promise<ShopifyConfigResult> {
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+
+    const [metafieldData, collectionsData, taxonomyData] = await Promise.all([
+      this.graphqlRequest<ShopifyConfigQueryResponse>({
+        shopDomain,
+        accessToken,
+        query: `
+          query VexaFetchMetafieldDefs($ownerType: MetafieldOwnerType!) {
+            metafieldDefinitions(first: 200, ownerType: $ownerType) {
+              nodes {
+                id name namespace key description required ownerType
+                type { name }
+                validations { name value }
+              }
+            }
+          }
+        `,
+        variables: { ownerType: "PRODUCT" },
+      }).catch(() => ({ metafieldDefinitions: null })),
+      this.graphqlRequest<ShopifyConfigQueryResponse>({
+        shopDomain,
+        accessToken,
+        query: `
+          query VexaFetchCollections {
+            collections(first: 250) {
+              nodes { id title handle }
+            }
+          }
+        `,
+      }).catch(() => ({ collections: null })),
+      this.graphqlRequest<ShopifyConfigQueryResponse>({
+        shopDomain,
+        accessToken,
+        query: `
+          query VexaFetchTaxonomy {
+            productTaxonomyNodes(first: 250) {
+              nodes { id name level isLeaf parentId }
+            }
+          }
+        `,
+      }).catch(() => ({ productTaxonomyNodes: null })),
+    ]);
+
+    const metafields = (metafieldData.metafieldDefinitions?.nodes ?? []).map((n) => ({
+      id: String(n.id ?? ""),
+      name: String(n.name ?? ""),
+      namespace: String(n.namespace ?? ""),
+      key: String(n.key ?? ""),
+      type: String(n.type?.name ?? "single_line_text_field"),
+      description: this.normalizeOptionalString(n.description),
+      required: Boolean(n.required),
+      ownerType: String(n.ownerType ?? "PRODUCT"),
+    })).filter((m) => m.id && m.namespace && m.key);
+
+    const collections = (collectionsData.collections?.nodes ?? []).map((n) => ({
+      id: String(n.id ?? ""),
+      title: String(n.title ?? ""),
+      handle: String(n.handle ?? ""),
+    })).filter((c) => c.id);
+
+    const taxonomy = (taxonomyData.productTaxonomyNodes?.nodes ?? []).map((n) => ({
+      id: String(n.id ?? ""),
+      name: String(n.name ?? ""),
+      level: Number(n.level ?? 0),
+      isLeaf: Boolean(n.isLeaf),
+      parentId: this.normalizeOptionalString(n.parentId),
+    })).filter((t) => t.id);
+
+    const result: ShopifyConfigResult = {
+      metafields,
+      collections,
+      taxonomy,
+      fetchedAt: new Date().toISOString(),
+    };
+
+    // Persist into installation metadata using JSONB merge (preserves existing keys)
+    const db = this.prismaDirect.getClient();
+    // RLS-BYPASS: manual tenant filter via tenant_key + installation id.
+    await db.$executeRawUnsafe(
+      `
+      UPDATE connector_installations
+      SET
+        metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('shopifyConfig', $3::jsonb),
+        updated_at = NOW()
+      WHERE tenant_key = $1 AND id = $2
+      `,
+      ctx.tenantId,
+      ctx.installationId,
+      JSON.stringify(result),
+    );
+
+    this.logger.info("Shopify config imported", {
+      installationId: ctx.installationId,
+      metafields: metafields.length,
+      collections: collections.length,
+      taxonomy: taxonomy.length,
+    });
+
+    return result;
+  }
+
+  async getShopifyConfig(ctx: ConnectorContext): Promise<ShopifyConfigResult | null> {
+    const metadata = await this.getInstallationMetadata(ctx);
+    const config = metadata.shopifyConfig;
+    if (!config || typeof config !== "object") {
+      return null;
+    }
+    return config as unknown as ShopifyConfigResult;
+  }
+
+  // ─── Sprint 14: Localized fields ─────────────────────────────────────────────
+
+  /**
+   * Register translations for a published product using Shopify translationsRegister.
+   * Called after a successful productSet publish. Translation failures add warnings (not errors)
+   * — the base publish is already committed and the submission stays SUCCESS.
+   * Returns warning strings for any locale that failed.
+   */
+  async registerTranslations(
+    ctx: ConnectorContext,
+    productGid: string,
+    localeTranslations: Array<{
+      locale: string;
+      fieldMappings: { title?: string; descriptionHtml?: string; seoTitle?: string; seoDescription?: string };
+    }>,
+    product: { title: string; description: string; seoTitle?: string; seoDescription?: string },
+  ): Promise<string[]> {
+    if (!localeTranslations.length) {
+      return [];
+    }
+
+    const shopDomain = await this.requireCredential(ctx, "shop_domain");
+    const accessToken = await this.resolveAccessToken(ctx);
+    const warnings: string[] = [];
+
+    for (const localeConfig of localeTranslations) {
+      const { locale, fieldMappings } = localeConfig;
+      if (!locale) continue;
+
+      const translations: Array<{ key: string; value: string; translatableContentDigest: string; locale: string }> = [];
+
+      if (fieldMappings.title && product.title) {
+        translations.push({
+          key: "title",
+          value: String(fieldMappings.title),
+          translatableContentDigest: Buffer.from(product.title).toString("base64"),
+          locale,
+        });
+      }
+      if (fieldMappings.descriptionHtml && product.description) {
+        translations.push({
+          key: "body_html",
+          value: String(fieldMappings.descriptionHtml),
+          translatableContentDigest: Buffer.from(product.description).toString("base64"),
+          locale,
+        });
+      }
+      if (fieldMappings.seoTitle && product.seoTitle) {
+        translations.push({
+          key: "meta_title",
+          value: String(fieldMappings.seoTitle),
+          translatableContentDigest: Buffer.from(product.seoTitle).toString("base64"),
+          locale,
+        });
+      }
+      if (fieldMappings.seoDescription && product.seoDescription) {
+        translations.push({
+          key: "meta_description",
+          value: String(fieldMappings.seoDescription),
+          translatableContentDigest: Buffer.from(product.seoDescription).toString("base64"),
+          locale,
+        });
+      }
+
+      if (translations.length === 0) continue;
+
+      try {
+        type TranslationsRegisterResponse = {
+          translationsRegister?: {
+            userErrors?: Array<{ field?: string[]; message?: string }>;
+          } | null;
+        };
+        const response = await this.graphqlRequest<TranslationsRegisterResponse>({
+          shopDomain,
+          accessToken,
+          query: `
+            mutation VexaRegisterTranslations($resourceId: ID!, $translations: [TranslationInput!]!) {
+              translationsRegister(resourceId: $resourceId, translations: $translations) {
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+          variables: {
+            resourceId: productGid,
+            translations,
+          },
+        });
+
+        const userErrors = response.translationsRegister?.userErrors ?? [];
+        if (userErrors.length > 0) {
+          const msgs = userErrors.map((e) => String(e.message ?? "")).filter(Boolean).join("; ");
+          warnings.push(`Locale '${locale}' translation failed: ${msgs}`);
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        warnings.push(`Locale '${locale}' translation call failed: ${reason}`);
+      }
+    }
+
+    return warnings;
+  }
+
+  // ─── Sprint 14 end ───────────────────────────────────────────────────────────
+
   private async publishToPublication(
     ctx: ConnectorContext,
     productId: string,
@@ -1494,6 +1715,15 @@ export class ShopifyConnector implements ConnectorInterface {
       ...(seoTitle || seoDescription ? { seo: { ...(seoTitle ? { title: seoTitle } : {}), ...(seoDescription ? { description: seoDescription } : {}) } } : {}),
       ...(tags ? { tags } : {}),
       metafields,
+      files: [
+        {
+          originalSource: String(product.mainImageUrl ?? "").trim(),
+          alt: title,
+          contentType: "IMAGE",
+          filename: `${handle || "vexa-product"}.jpg`,
+        },
+      ],
+      variants,
     };
   }
 

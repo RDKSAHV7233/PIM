@@ -704,6 +704,15 @@ export default async function ChannelConnectorDetailPage({
     const metadataShopId = readMetadataValue(installation.metadata, "shopId");
     const metadataTokenMode = readMetadataValue(installation.metadata, "tokenMode");
     const metadataAuthMode = readMetadataValue(installation.metadata, "authMode");
+    const shopifyConfigRaw = asRecord(installation.metadata).shopifyConfig;
+    const shopifyConfig = shopifyConfigRaw && typeof shopifyConfigRaw === "object" && !Array.isArray(shopifyConfigRaw)
+      ? shopifyConfigRaw as {
+          metafields?: unknown[];
+          collections?: unknown[];
+          taxonomy?: unknown[];
+          fetchedAt?: string;
+        }
+      : null;
     const metadataConnectionStage = readMetadataValue(installation.metadata, "connectionStage");
     const shopifyConnectionComplete =
       installation.slug !== "shopify"
@@ -1179,95 +1188,122 @@ export default async function ChannelConnectorDetailPage({
             </section>
 
             {installation.slug === "shopify" ? (
-              <Card>
-                <CardTitle>Publication Targets</CardTitle>
-                {shopifyPublicationState.error ? (
-                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    {shopifyPublicationState.error}
-                    <div className="mt-2">
-                      <Link
-                        href={buildDetailHref(installation.id, "credentials")}
-                        className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        Retry in Credentials tab →
-                      </Link>
+              <>
+                <Card>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle>Shopify Store Configuration</CardTitle>
+                      {shopifyConfig ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Last imported {shopifyConfig.fetchedAt ? new Date(shopifyConfig.fetchedAt).toLocaleString() : "—"} ·{" "}
+                          {Array.isArray(shopifyConfig.metafields) ? shopifyConfig.metafields.length : 0} metafield definitions ·{" "}
+                          {Array.isArray(shopifyConfig.collections) ? shopifyConfig.collections.length : 0} collections ·{" "}
+                          {Array.isArray(shopifyConfig.taxonomy) ? shopifyConfig.taxonomy.length : 0} taxonomy nodes
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-sm text-amber-700">
+                          Shopify configuration has not been imported yet. Import it to enable metafield mapping and collection assignment in the mapping editor.
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ) : availableShopifyTargets.length === 0 ? (
-                  <div className="mt-2 space-y-3">
-                    <p className="text-sm text-slate-600">
-                      {publicationTargets.length > 0
-                        ? "Saved targets are shown below. To change selection, refresh available channels in the Credentials tab."
-                        : "No publication targets loaded yet. Open the Credentials tab to fetch available channels from your Shopify store."}
-                    </p>
-                    {publicationTargets.length > 0 ? (
-                      <ul className="space-y-2 text-sm">
-                        {publicationTargets.map((target) => (
-                          <li key={target.id} className="rounded-md border border-slate-200 px-3 py-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="font-medium text-slate-800">{target.name}</span>
-                              <StatusChip label={target.selected ? "selected" : "available"} tone={target.selected ? "success" : "neutral"} />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {shopifyConnectionComplete ? (
-                      <Link
-                        href={buildDetailHref(installation.id, "credentials")}
-                        className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        Refresh publication channels →
-                      </Link>
-                    ) : (
-                      <p className="text-xs text-amber-700">
-                        Complete Shopify authorization before refreshing channels.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
-                    <input type="hidden" name="installationId" value={installation.id} />
-                    <input type="hidden" name="tenantKey" value={installation.tenantKey} />
-                    <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "overview")} />
-                    <div className="space-y-2 text-sm">
-                      {availableShopifyTargets.map((target) => (
-                        <label
-                          key={target.id}
-                          className="flex items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50"
-                        >
-                          <input
-                            type="checkbox"
-                            name="publicationId"
-                            value={target.id}
-                            defaultChecked={Boolean(target.selected)}
-                            disabled={actorRole === "viewer"}
-                            className="mt-1 h-4 w-4 rounded border-slate-300"
-                          />
-                          <span className="min-w-0">
-                            <span className="block font-medium text-slate-800">{target.name}</span>
-                            <span className="block text-xs text-slate-500">
-                              {target.catalogTitle ?? target.catalogType ?? target.catalogId ?? target.id}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={actorRole === "viewer"}
-                      className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    <Link
+                      href={`/channels/connectors/${encodeURIComponent(installation.id)}/import-config`}
+                      className="shrink-0 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
                     >
-                      Save publication targets
-                    </button>
-                  </form>
-                )}
-                <p className="mt-3 text-xs text-slate-500">
-                  {publicationTargetsUpdatedAt
-                    ? `Last updated ${formatDateTime(publicationTargetsUpdatedAt)}.`
-                    : "No update timestamp recorded yet."}
-                </p>
-              </Card>
+                      {shopifyConfig ? "Refresh config" : "Import config"}
+                    </Link>
+                  </div>
+                </Card>
+                <Card>
+                  <CardTitle>Publication Targets</CardTitle>
+                  {shopifyPublicationState.error ? (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      {shopifyPublicationState.error}
+                      <div className="mt-2">
+                        <Link
+                          href={buildDetailHref(installation.id, "credentials")}
+                          className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Retry in Credentials tab →
+                        </Link>
+                      </div>
+                    </div>
+                  ) : availableShopifyTargets.length === 0 ? (
+                    <div className="mt-2 space-y-3">
+                      <p className="text-sm text-slate-600">
+                        {publicationTargets.length > 0
+                          ? "Saved targets are shown below. To change selection, refresh available channels in the Credentials tab."
+                          : "No publication targets loaded yet. Open the Credentials tab to fetch available channels from your Shopify store."}
+                      </p>
+                      {publicationTargets.length > 0 ? (
+                        <ul className="space-y-2 text-sm">
+                          {publicationTargets.map((target) => (
+                            <li key={target.id} className="rounded-md border border-slate-200 px-3 py-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium text-slate-800">{target.name}</span>
+                                <StatusChip label={target.selected ? "selected" : "available"} tone={target.selected ? "success" : "neutral"} />
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {shopifyConnectionComplete ? (
+                        <Link
+                          href={buildDetailHref(installation.id, "credentials")}
+                          className="inline-flex rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Refresh publication channels →
+                        </Link>
+                      ) : (
+                        <p className="text-xs text-amber-700">
+                          Complete Shopify authorization before refreshing channels.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
+                      <input type="hidden" name="installationId" value={installation.id} />
+                      <input type="hidden" name="tenantKey" value={installation.tenantKey} />
+                      <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "overview")} />
+                      <div className="space-y-2 text-sm">
+                        {availableShopifyTargets.map((target) => (
+                          <label
+                            key={target.id}
+                            className="flex items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              name="publicationId"
+                              value={target.id}
+                              defaultChecked={Boolean(target.selected)}
+                              disabled={actorRole === "viewer"}
+                              className="mt-1 h-4 w-4 rounded border-slate-300"
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium text-slate-800">{target.name}</span>
+                              <span className="block text-xs text-slate-500">
+                                {target.catalogTitle ?? target.catalogType ?? target.catalogId ?? target.id}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={actorRole === "viewer"}
+                        className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        Save publication targets
+                      </button>
+                    </form>
+                  )}
+                  <p className="mt-3 text-xs text-slate-500">
+                    {publicationTargetsUpdatedAt
+                      ? `Last updated ${formatDateTime(publicationTargetsUpdatedAt)}.`
+                      : "No update timestamp recorded yet."}
+                  </p>
+                </Card>
+              </>
             ) : null}
           </div>
         ) : null}

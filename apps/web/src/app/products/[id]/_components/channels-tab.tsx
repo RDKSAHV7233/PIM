@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Textarea } from "@/components/ui/textarea";
 import { translateExportStatus } from "@/lib/errors";
-import type { ConnectorSubmission } from "@/lib/api";
+import type { ConnectorPublishReadiness, ConnectorSubmission } from "@/lib/api";
 import {
   lifecycleStatusTone,
   RoleHiddenInput,
@@ -300,75 +300,17 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             </div>
           </div>
           {data.canWrite && data.publishableChannels.length > 0 ? (
-            <form action={createExportJobAction} className="grid gap-3 md:grid-cols-4">
-              <RoleHiddenInput role={data.actorRole} />
-              <input type="hidden" name="productId" value={data.productId} />
-              <input
-                type="hidden"
-                name="installationId"
-                value={data.mappingManagerInstallation?.id ?? ""}
-              />
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-channel">
-                  Channel
-                </label>
-                <Select id="export-channel" name="channel" defaultValue={data.defaultExportChannel}>
-                  {data.publishableChannels.map((channel) => (
-                    <option key={channel.channel} value={channel.channel}>
-                      {channel.displayName}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-template-id">
-                  Mapping
-                </label>
-                <Select id="export-template-id" name="templateId" defaultValue={data.selectedTemplateId ?? ""}>
-                  <option value="">Live mapping</option>
-                  {data.templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                      {template.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-max-retries">
-                  Max Retries
-                </label>
-                <Input id="export-max-retries" name="maxRetries" type="number" min={1} max={10} defaultValue={3} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="export-fallback-ack">
-                  Fallback confirmation
-                </label>
-                {data.fallbackAckRequired ? (
-                  <Select
-                    id="export-fallback-ack"
-                    name="fallbackAcknowledged"
-                    defaultValue="false"
-                  >
-                    <option value="false">Not acknowledged</option>
-                    <option value="true">Acknowledge fallback usage</option>
-                  </Select>
-                ) : (
-                  <>
-                    <input type="hidden" name="fallbackAcknowledged" value="true" />
-                    <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      No fallback acknowledgement is required for this export.
-                    </p>
-                  </>
-                )}
-              </div>
-              <PendingSubmitButton
-                type="submit"
-                disabled={!data.canQueueExportWithAck}
-                idleLabel="Queue channel export"
-                pendingLabel="Queueing export..."
-              />
-            </form>
+            <ExportWithPreviewForm
+              productId={data.productId}
+              actorRole={data.actorRole}
+              publishableChannels={data.publishableChannels}
+              templates={data.templates}
+              defaultExportChannel={data.defaultExportChannel}
+              selectedTemplateId={data.selectedTemplateId}
+              fallbackAckRequired={data.fallbackAckRequired}
+              canQueueExportWithAck={data.canQueueExportWithAck}
+              shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
+            />
           ) : data.canWrite ? (
             <p className="text-sm text-slate-600">
               No installed connector with publish capability is available for this tenant.

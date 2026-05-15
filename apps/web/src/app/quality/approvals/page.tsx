@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
-import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getStats } from "@/lib/api";
-import { getProductRevisions } from "@/lib/api/revisions";
+import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getProductRevisions, getStats } from "@/lib/api";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -73,18 +72,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
     const inReviewProducts = products
       .filter((product) => product.status === "in_review")
       .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-    const issuesByProduct = inbox.items.reduce<Map<string, { blocking: number; warning: number }>>((acc, item) => {
-      const current = acc.get(item.productId) ?? { blocking: 0, warning: 0 };
-      if (item.severity === "BLOCKING") {
-        current.blocking += 1;
-      } else {
-        current.warning += 1;
-      }
-      acc.set(item.productId, current);
-      return acc;
-    }, new Map());
-
-    const revisionsByProduct = new Map<string, Awaited<ReturnType<typeof getProductRevisions>>>();
+    const revisionsByProduct = new Map<string, import("@/lib/api").ProductRevision[]>();
     await Promise.all(
       inReviewProducts.map(async (product) => {
         try {
@@ -108,12 +96,22 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
       }),
     );
 
+    const issuesByProduct = inbox.items.reduce<Map<string, { blocking: number; warning: number }>>((acc, item) => {
+      const current = acc.get(item.productId) ?? { blocking: 0, warning: 0 };
+      if (item.severity === "BLOCKING") {
+        current.blocking += 1;
+      } else {
+        current.warning += 1;
+      }
+      acc.set(item.productId, current);
+      return acc;
+    }, new Map());
     const productsWithRevisionEvidence = inReviewProducts.filter(
-      (product) => (revisionsByProduct.get(product.id)?.items.length ?? 0) > 0,
+      (product) => (revisionsByProduct.get(product.id) ?? []).length > 0,
     ).length;
     const productsWithoutRevisionEvidence = inReviewProducts.length - productsWithRevisionEvidence;
-    const revisionsWithDecisionNotes = Array.from(revisionsByProduct.values()).filter((response) =>
-      response.items.some((revision) => summarizeDecisionNote((revision as any).decisionNote)),
+    const revisionsWithDecisionNotes = Array.from(revisionsByProduct.values()).filter((revisions) =>
+      revisions.some((revision) => summarizeDecisionNote(revision.decisionNote)),
     ).length;
 
     return (
@@ -286,9 +284,9 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                       Open product
                     </Link>
                     {(() => {
-                      const productRevisions = revisionsByProduct.get(product.id);
-                      if (!productRevisions || productRevisions.items.length === 0) return null;
-                      const latestRevision = productRevisions.items[0];
+                      const revItems = revisionsByProduct.get(product.id) ?? [];
+                      if (revItems.length === 0) return null;
+                      const latestRevision = revItems[0];
                       const changedFieldCount = latestRevision.changedFields.length;
                       if (changedFieldCount === 0) return null;
                       return (
@@ -298,8 +296,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                           </summary>
                           <div className="border-t border-slate-200 px-3 py-2">
                             {latestRevision.changedFields.map((change) => (
-                              <div key={change.field} className="mb-1 text-xs">
-                                <span className="font-medium text-slate-700">{change.displayLabel ?? change.field}:</span>{" "}
+                              <div key={change.path} className="mb-1 text-xs">
+                                <span className="font-medium text-slate-700">{change.label}:</span>{" "}
                                 <span className="text-slate-500 line-through">
                                   {String(change.before ?? "-").slice(0, MAX_DIFF_VALUE_LENGTH)}
                                 </span>
@@ -396,7 +394,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 header: "Revision Evidence",
                 cellClassName: "align-top",
                 render: (product) => {
-                  const revisions = revisionsByProduct.get(product.id)?.items ?? [];
+                  const revisions = revisionsByProduct.get(product.id) ?? [];
                   const summary = issuesByProduct.get(product.id) ?? { blocking: 0, warning: 0 };
                   const productHref = `/products/${encodeURIComponent(product.id)}?returnTo=${encodeURIComponent(returnTo)}`;
                   const productQualityHref =

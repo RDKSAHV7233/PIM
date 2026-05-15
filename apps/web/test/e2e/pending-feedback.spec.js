@@ -40,81 +40,113 @@ async function resolveCategoryContext(adminToken, token) {
 }
 
 test("editor sees pending feedback while uploading and starting an import", async ({ page }) => {
-  const adminToken = await apiLogin("admin");
-  const editorToken = await apiLogin("editor");
-  const category = await resolveCategoryContext(adminToken, editorToken);
+  let adminToken;
+  let editorToken;
+  let category;
+
+  await test.step("Setup: authenticate admin and editor", async () => {
+    adminToken = await apiLogin("admin");
+    editorToken = await apiLogin("editor");
+    category = await resolveCategoryContext(adminToken, editorToken);
+  });
+
   const categoryId = category.id;
 
   try {
-    await loginViaUi(page, "editor");
-    await page.goto("/operations/imports?hideTestData=false", { waitUntil: "domcontentloaded" });
+    await test.step("Navigate to imports page", async () => {
+      await loginViaUi(page, "editor");
+      await page.goto("/operations/imports?hideTestData=false", { waitUntil: "domcontentloaded" });
+    });
 
     const uploadForm = page.locator("form", {
       has: page.locator('input[name="sourceFile"]'),
     }).first();
     const uploadButton = uploadForm.locator('button[type="submit"]').first();
     const startButtonLabel = "Starting import...";
-    const uploadRows = [
-      "title,description,brand,hsnCode,gstRate,attributes",
-      `"${uniqueName("e2e-pending-upload")}","upload pending proof","Vexa PIM","62046200",18,"{}"`,
-    ].join("\n");
 
-    await page.locator('select[name="categoryId"]').selectOption(categoryId);
-    await page.locator('input[name="sourceFile"]').setInputFiles({
-      name: "pending-feedback.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from(uploadRows, "utf8"),
+    await test.step("Fill upload form — select category and CSV file", async () => {
+      const uploadRows = [
+        "title,description,brand,hsnCode,gstRate,attributes",
+        `"${uniqueName("e2e-pending-upload")}","upload pending proof","Vexa PIM","62046200",18,"{}"`,
+      ].join("\n");
+
+      await page.locator('select[name="categoryId"]').selectOption(categoryId);
+      await page.locator('input[name="sourceFile"]').setInputFiles({
+        name: "pending-feedback.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from(uploadRows, "utf8"),
+      });
     });
 
-    await delayNextPost(page);
-    const uploadClick = uploadButton.click();
-    await expect(uploadButton).toHaveText("Uploading and starting import...");
-    await expect(uploadButton).toBeDisabled();
-    await uploadClick;
-    await expect(page).toHaveURL(/bulkJobId=/);
-
-    const uploadedJobId = new URL(page.url()).searchParams.get("bulkJobId");
-    expect(uploadedJobId).toBeTruthy();
-    await expect.poll(async () => {
-      const job = await apiRequest("GET", `/bulk-import/jobs/${uploadedJobId}`, editorToken);
-      return String(job.status ?? "").toLowerCase();
-    }).not.toBe("queued");
-
-    const queuedJob = await apiRequest("POST", "/bulk-import/jobs", editorToken, {
-      categoryId,
-      sourceFormat: "json",
-      sourceName: "pending-feedback.json",
-      rows: [
-        {
-          title: uniqueName("e2e-pending-start"),
-          description: "start pending proof",
-          brand: "Vexa PIM",
-          hsnCode: "62046200",
-          gstRate: 18,
-          attributes: {},
-        },
-      ],
-      mapping: DEFAULT_MAPPING,
-      chunkSize: 1,
-      maxRetries: 1,
+    await test.step("Validate CSV file before import", async () => {
+      const validateButton = uploadForm.locator('button[type="button"]', { hasText: /Validate import file/ });
+      await validateButton.click();
+      await expect(uploadButton).toHaveText("Start validated import", { timeout: 30000 });
     });
 
-    await page.goto(`/operations/imports?bulkJobId=${queuedJob.id}&hideTestData=false`, { waitUntil: "domcontentloaded" });
-    const queuedRow = page.locator("tbody tr", { hasText: queuedJob.id }).first();
-    const startButton = queuedRow.locator('button[type="submit"]').first();
-    await expect(startButton).toBeVisible();
+    await test.step("Upload CSV and assert pending feedback on button", async () => {
+      await delayNextPost(page);
+      const uploadClick = uploadButton.click();
+      await expect(uploadButton).toHaveText("Uploading and starting import...");
+      await expect(uploadButton).toBeDisabled();
+      await uploadClick;
+    });
 
-    await delayNextPost(page);
-    const startClick = startButton.click();
-    await expect(startButton).toHaveText(startButtonLabel);
-    await expect(startButton).toBeDisabled();
-    await startClick;
-    await expect(page).toHaveURL(new RegExp(`bulkJobId=${queuedJob.id}`));
+    await test.step("Assert upload completes and URL has bulkJobId", async () => {
+      await expect(page).toHaveURL(/bulkJobId=/, { timeout: 30000 });
+      const uploadedJobId = new URL(page.url()).searchParams.get("bulkJobId");
+      expect(uploadedJobId).toBeTruthy();
+      await expect.poll(async () => {
+        const job = await apiRequest("GET", `/bulk-import/jobs/${uploadedJobId}`, editorToken);
+        return String(job.status ?? "").toLowerCase();
+      }, { timeout: 30000 }).not.toBe("queued");
+    });
 
-    await expect.poll(async () => {
-      const job = await apiRequest("GET", `/bulk-import/jobs/${queuedJob.id}`, editorToken);
-      return String(job.status ?? "").toLowerCase();
-    }).not.toBe("queued");
+    let queuedJob;
+    await test.step("Create second queued job via API", async () => {
+      queuedJob = await apiRequest("POST", "/bulk-import/jobs", editorToken, {
+        categoryId,
+        sourceFormat: "json",
+        sourceName: "pending-feedback.json",
+        rows: [
+          {
+            title: uniqueName("e2e-pending-start"),
+            description: "start pending proof",
+            brand: "Vexa PIM",
+            hsnCode: "62046200",
+            gstRate: 18,
+            attributes: {},
+          },
+        ],
+        mapping: DEFAULT_MAPPING,
+        chunkSize: 1,
+        maxRetries: 1,
+      });
+    });
+
+    let startButton;
+    await test.step("Navigate to queued job row", async () => {
+      await page.goto(`/operations/imports?bulkJobId=${queuedJob.id}&hideTestData=false`, { waitUntil: "domcontentloaded" });
+      const queuedRow = page.locator("tbody tr", { hasText: queuedJob.id }).first();
+      startButton = queuedRow.locator('button[type="submit"]').first();
+      await expect(startButton).toBeVisible();
+    });
+
+    await test.step("Start import and assert pending feedback on button", async () => {
+      await delayNextPost(page);
+      const startClick = startButton.click();
+      await expect(startButton).toHaveText(startButtonLabel);
+      await expect(startButton).toBeDisabled();
+      await startClick;
+    });
+
+    await test.step("Assert import started and job leaves queued state", async () => {
+      await expect(page).toHaveURL(new RegExp(`bulkJobId=${queuedJob.id}`));
+      await expect.poll(async () => {
+        const job = await apiRequest("GET", `/bulk-import/jobs/${queuedJob.id}`, editorToken);
+        return String(job.status ?? "").toLowerCase();
+      }, { timeout: 30000 }).not.toBe("queued");
+    });
   } finally {
     if (category.created) {
       try {

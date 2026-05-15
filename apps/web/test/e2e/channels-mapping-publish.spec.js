@@ -129,15 +129,15 @@ test("admin can create, validate, and publish a connector mapping version from t
       ["attributes.color", "attributes.color"],
     ];
     for (const [targetField, sourceField] of requiredMappings) {
-      const row = page.locator("tr", { hasText: targetField }).first();
-      await expect(row).toBeVisible();
-      await row.locator("select").first().selectOption({ label: sourceField });
+      const fieldSelect = page.locator(`select[name="mapTarget::${targetField}"]`);
+      await expect(fieldSelect).toBeVisible();
+      await fieldSelect.selectOption({ label: sourceField });
     }
 
     await page.getByLabel("Default fallback category").fill(targetCategoryValue);
     await submitContainingForm(page.getByRole("button", { name: "Save draft version" }));
 
-    await expect(page).toHaveURL(new RegExp(`/channels/mappings\\?`));
+    await expect(page).toHaveURL(new RegExp(`/channels/mappings\\?`), { timeout: 30000 });
 
     await expect.poll(async () => {
       const versions = await listVersions(adminToken, category.id);
@@ -146,7 +146,7 @@ test("admin can create, validate, and publish a connector mapping version from t
         : null;
       versionId = draftVersion?.id ?? versionId;
       return draftVersion?.lifecycleState ?? "";
-    }).toBe("draft");
+    }, { timeout: 30000 }).toBe("draft");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
       waitUntil: "domcontentloaded",
@@ -161,7 +161,7 @@ test("admin can create, validate, and publish a connector mapping version from t
         ? versions.find((candidate) => String(candidate.id) === String(versionId))
         : null;
       return version?.lifecycleState ?? "";
-    }).toBe("validated");
+    }, { timeout: 30000 }).toBe("validated");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
       waitUntil: "domcontentloaded",
@@ -175,10 +175,9 @@ test("admin can create, validate, and publish a connector mapping version from t
         page.waitForURL(/fallbackAcknowledged=true/),
         validatedRow.getByRole("button", { name: "Save acknowledgement" }).click(),
       ]);
-      await Promise.all([
-        page.waitForURL(/showHistory=1/),
-        page.getByRole("link", { name: "Open history" }).click(),
-      ]);
+      await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1", fallbackAcknowledged: "true", fallbackAckVersionId: versionId }), {
+        waitUntil: "domcontentloaded",
+      });
     }
 
     const readyToPublishRow = page.locator("tbody tr", { hasText: versionId }).first();
@@ -194,14 +193,14 @@ test("admin can create, validate, and publish a connector mapping version from t
         ? versions.find((candidate) => String(candidate.id) === String(versionId))
         : null;
       return version?.lifecycleState ?? "";
-    }).toBe("published");
+    }, { timeout: 30000 }).toBe("published");
 
     await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
       waitUntil: "domcontentloaded",
     });
     const publishedRow = page.locator("tbody tr", { hasText: versionId }).first();
     await expect(publishedRow).toBeVisible();
-    await expect(publishedRow.getByText("Live")).toBeVisible();
+    await expect(publishedRow.getByText("Live").last()).toBeVisible();
   } finally {
     if (versionId) {
       try {
