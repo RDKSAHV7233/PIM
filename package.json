@@ -171,6 +171,9 @@
     "guard:sensitive-gets": "node scripts/validate-sensitive-get-policy.cjs",
     "openapi:generate": "npm run build --workspace @pim1/api && node scripts/generate-openapi.cjs",
     "openapi:check": "npm run openapi:generate && git diff --exit-code -- docs/openapi.yaml docs/openapi.json",
+    "hosting:stage1:verify": "node scripts/staging-postdeploy-check.cjs",
+    "hosting:stage2:verify": "node scripts/staging-postdeploy-check.cjs && node scripts/staging-public-signup-check.cjs",
+    "hosting:stage3:verify": "node scripts/staging-postdeploy-check.cjs && node scripts/staging-public-signup-check.cjs && npm run tenant:verify-rls:ci",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f"

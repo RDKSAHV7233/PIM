@@ -1,0 +1,72 @@
+name: Promote Stage 2
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: "Stage 2 API base URL (e.g. https://<service>.railway.app)"
+        required: true
+        type: string
+
+jobs:
+  promote-stage2:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Health probe
+        shell: bash
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
+        run: |
+          response="$(curl -fsS "${STAGING_URL}/api/v1/health")"
+          echo "health=${response}"
+          echo "${response}" | grep -q "\"status\":\"ok\""
+          echo "${response}" | grep -q "\"workerEnabled\":true"
+
+      - name: Post-deploy auth + trust boundary check
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE2_WEB_URL }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGE2_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGE2_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGE2_SMOKE_PASSWORD }}
+          STAGING_EXPECTED_ENV: staging
+          STAGING_VALIDATE_NON_ADMIN: "true"
+        run: |
+          if [ -z "${STAGING_SMOKE_WORKSPACE}" ]; then
+            echo "Missing STAGE2_SMOKE_WORKSPACE secret."
+            exit 1
+          fi
+          node scripts/staging-postdeploy-check.cjs
+
+      - name: Public signup smoke check
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE2_WEB_URL }}
+          STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: "true"
+          STAGING_EXPECTED_ENV: staging
+        run: |
+          node scripts/staging-public-signup-check.cjs
+
+      - name: Pre-investor checklist summary
+        shell: bash
+        run: |
+          echo "Stage 2 gate passed."
+          echo "Proceed with the 15-step Chrome proof (docs/hosting/stage-2-investor-demo.md)."

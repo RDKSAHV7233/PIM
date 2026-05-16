@@ -94,8 +94,10 @@ Interpretation:
 A HIGH severity advisory for `fast-xml-builder <=1.1.6` was published after the May 6 release closeout
 (GHSA-5wm8-gmm8-39j9, GHSA-45c6-75p6-83cc). This was not present during the original validation run.
 
-`npm audit fix` resolves it via a non-breaking upgrade. This fix must be applied and the audit re-run
-before handing off any pilot environment credentials.
+`npm audit fix` resolves it via a non-breaking upgrade. **This fix has been applied as of 2026-05-17.**
+`npm audit --omit=dev --audit-level=high` now exits 0 (0 high severity advisories). The remaining
+2 moderate advisories are `postcss` bundled inside `next` and cannot be resolved without a breaking
+Next.js downgrade — they are accepted technical debt.
 
 
 ## Review Guidance

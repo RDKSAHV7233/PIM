@@ -1,0 +1,94 @@
+name: Promote Stage 3
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: "Stage 3 API base URL (e.g. https://api.<your-domain>.com)"
+        required: true
+        type: string
+
+jobs:
+  promote-stage3:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply migrations
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.STAGE3_DATABASE_URL_DIRECT }}
+          DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGE3_DATABASE_URL_DIRECT or STAGE3_DATABASE_URL secret."
+            exit 1
+          fi
+          npm run prisma:migrate:deploy
+
+      - name: Health probe
+        shell: bash
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
+        run: |
+          response="$(curl -fsS "${STAGING_URL}/api/v1/health")"
+          echo "health=${response}"
+          echo "${response}" | grep -q "\"status\":\"ok\""
+
+      - name: Post-deploy auth + trust boundary check
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE3_WEB_URL }}
+          STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGE3_SMOKE_WORKSPACE }}
+          STAGING_SMOKE_USER: ${{ secrets.STAGE3_SMOKE_USER }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGE3_SMOKE_PASSWORD }}
+          STAGING_EXPECTED_ENV: production
+          STAGING_VALIDATE_NON_ADMIN: "true"
+        run: |
+          if [ -z "${STAGING_SMOKE_WORKSPACE}" ]; then
+            echo "Missing STAGE3_SMOKE_WORKSPACE secret."
+            exit 1
+          fi
+          node scripts/staging-postdeploy-check.cjs
+
+      - name: Public signup smoke check
+        shell: bash
+        env:
+          STAGING_BASE_URL: ${{ inputs.staging_url }}
+          STAGING_WEB_URL: ${{ secrets.STAGE3_WEB_URL }}
+          STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: "true"
+          STAGING_EXPECTED_ENV: production
+        run: |
+          node scripts/staging-public-signup-check.cjs
+
+      - name: Tenant RLS isolation check
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.STAGE3_DATABASE_URL }}
+          DATABASE_URL_DIRECT: ${{ secrets.STAGE3_DATABASE_URL_DIRECT }}
+        run: |
+          node scripts/verify-tenant-rls.cjs
+
+      - name: Stage 3 readiness summary
+        shell: bash
+        run: |
+          echo "Stage 3 gate passed."
+          echo "Verify daily backup and complete pilot go-live checklist (docs/hosting/stage-3-pilot-ready.md)."
