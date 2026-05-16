@@ -179,6 +179,11 @@ const READ_POLICY_CONFIG = {
     responseHandling: "redact",
     apiClientPolicy: "denied_human_only",
   },
+  oidc_config_governance_redacted: {
+    classification: "admin_only",
+    responseHandling: "none",
+    apiClientPolicy: "denied_human_only",
+  },
   issue_inbox_scoped: {
     classification: "scope_filtered",
     responseHandling: "none",

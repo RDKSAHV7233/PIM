@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
 - Date: 2026-05-16
-- Repo HEAD: main + feat/localization-schema (PR #57 in review) + feat/oidc-sso-login (PR #58 in review)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, and Gate C enterprise increments (INC-35 RBAC merged, INC-36 localization schema + INC-39 OIDC SSO in review)
+- Repo HEAD: main (INC-35, INC-36, INC-39 all merged via PRs #55–#58) + fix/oidc-guard-policy (guard fix, PR in review)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, and Gate C enterprise increments (INC-35 RBAC, INC-36 localization schema, INC-39 OIDC SSO — all merged)
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -42,12 +42,12 @@
 - The current local validation bundle is green.
 - Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Enterprise Gate C work is in progress: INC-35 (8-role RBAC) merged; INC-36 (localization schema) and INC-39 (OIDC SSO login) in review. Enterprise signoff requires PRs #57 and #58 to merge plus RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
+- Enterprise Gate C work: INC-35 (8-role RBAC), INC-36 (localization schema), INC-39 (OIDC SSO login) all merged to main. Enterprise signoff requires RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
 
 ### Not allowed to say
 
 - Enterprise-ready (Gate C requires RG-C4/C5/C6 after current PRs merge)
-- OIDC fully enforced (PR #58 in review; no admin UI for IdP config yet)
+- OIDC fully enforced (PR #58 merged; OIDC login and per-tenant config API are live; no admin UI for IdP config yet)
 - Self-serve billing
 - All launch docs current before review
 - All historical review docs are current
@@ -58,7 +58,7 @@
 - Controlled pilot posture: allowed (2026-05-12 rollout snapshot: all gates green)
 - Paid SMB / early mid-market posture: allowed with the documented claim boundary
 - Production signoff: allowed pending final enterprise-readiness checklist
-- Enterprise signoff: blocked
+- Enterprise signoff: blocked (RG-C4/C5/C6 open)
 
 ## 5. Validation Snapshot
 
