@@ -78,6 +78,17 @@ export async function getSubmissionIssues(submissionId: string, options?: ApiReq
   );
 }
 
+export async function retrySubmission(
+  submissionId: string,
+  options?: ApiRequestOptions,
+) {
+  return postJson<{ queued: boolean; submissionId: string; mode?: string }>(
+    `/submissions/${encodeURIComponent(submissionId)}/retry`,
+    {},
+    options,
+  );
+}
+
 export async function getBulkImportJobs(options?: ApiRequestOptions) {
   return fetchJson<BulkImportJob[]>("/bulk-import/jobs", undefined, options);
 }

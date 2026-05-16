@@ -15,14 +15,23 @@ export const VALID_APPAREL_PRODUCT: ProductPayload = {
   mrp: 999,
   sellingPrice: 799,
   mainImageUrl: 'https://your-cdn.example.com/test/apparel-001.jpg', // replace with real CDN URL
+  // Sprint A fields — required by Amazon local validation (Sprint B)
+  countryOfOrigin: 'India',
+  condition: 'new',
+  bulletPoints: [
+    'Comfortable 100% cotton fabric suitable for daily wear',
+    'Machine washable — easy care',
+    'Available in multiple sizes',
+  ],
   attributes: {
     color: 'Blue',
+    material: 'Cotton',  // renamed from 'fabric' — Amazon requires attributes.material
     size: 'M',
-    fabric: 'Cotton',
+    fabric: 'Cotton',    // kept for backward compatibility with non-Amazon connectors
     pattern: 'Solid',
     occasion: 'Casual',
     fit: 'Regular',
-    countryOfOrigin: 'India',
+    countryOfOrigin: 'India', // kept in attributes for Flipkart/Meesho; top-level used by Amazon
   },
   productType: 'SHIRT', // Amazon product type — check SP-API definition catalogue
 };

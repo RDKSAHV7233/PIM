@@ -483,6 +483,72 @@ export class MarketplaceController {
     return this.marketplaceService.deleteSchedule(installationId);
   }
 
+  // ─── Sprint G: Generic connector sync routes ────────────────────────────
+  // These sit at connectors/:installationId/... (without the /shopify/ segment)
+  // and work for any connector slug. NestJS resolves static segments first,
+  // so connectors/shopify/:id routes above continue to match Shopify requests
+  // arriving via the legacy path; these generic routes handle Amazon/Flipkart
+  // (and Shopify installations that have been migrated to the generic path).
+
+  @Get("connectors/:installationId/sync/delta-candidates")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getConnectorDeltaSyncCandidates(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getDeltaSyncCandidates(installationId);
+  }
+
+  @Post("connectors/:installationId/sync/delta")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  queueConnectorDeltaSync(
+    @Param("installationId") installationId: string,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.marketplaceService.queueDeltaSync(installationId, this.resolveActor(request));
+  }
+
+  @Get("connectors/:installationId/sync/states")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getConnectorSyncStates(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getSyncStates(installationId);
+  }
+
+  @Get("connectors/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getConnectorSchedule(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getSchedule(installationId);
+  }
+
+  @Post("connectors/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  upsertConnectorSchedule(
+    @Param("installationId") installationId: string,
+    @Body() body: { cronExpression: string; scope?: string; status?: string },
+    @Req() request: { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.marketplaceService.upsertSchedule(
+      installationId,
+      {
+        cronExpression: body.cronExpression,
+        scope: body.scope ?? "approved_only",
+        status: body.status ?? "active",
+      },
+      this.resolveActor(request),
+    );
+  }
+
+  @Delete("connectors/:installationId/schedule")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(204)
+  deleteConnectorSchedule(@Param("installationId") installationId: string) {
+    return this.marketplaceService.deleteSchedule(installationId);
+  }
+
   // ─── Sprint 10: Catalog linking ──────────────────────────────────────────
 
   // ─── Sprint 2: Shopify config import ─────────────────────────────────────────

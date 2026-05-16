@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -9,6 +9,7 @@ import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
+import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
@@ -85,6 +86,18 @@ export class ConnectorInstallerController {
   @Roles("admin", "editor", "connector_admin")
   reconnect(@Param("id") installationId: string, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.reconnect(installationId, this.resolveActor(request));
+  }
+
+  @Patch(":id/configure")
+  @Roles("admin", "editor", "connector_admin")
+  @ApiOperation({ summary: "Update connector installation configuration (marketplace ID, default product type, etc.)" })
+  @ApiResponse({ status: 200, description: "Configuration updated" })
+  configure(
+    @Param("id") installationId: string,
+    @Body() dto: ConfigureConnectorDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.connectorInstallerService.configure(installationId, dto, this.resolveActor(request));
   }
 
   @Post(":id/oauth/callback")

@@ -37,8 +37,20 @@ export default async function ChannelsHealthPage() {
       { key: "ready", header: "Ready", render: (entry) => entry.ready },
       { key: "blocked", header: "Blocked", render: (entry) => entry.blocked },
       {
+        key: "score",
+        header: "Readiness",
+        render: (entry) => {
+          const total = entry.ready + entry.blocked;
+          if (total === 0) return <span className="text-slate-400 text-xs">—</span>;
+          const pct = Math.round((entry.ready / total) * 100);
+          const colorClass =
+            pct === 100 ? "text-green-700" : pct >= 80 ? "text-amber-700" : "text-red-600";
+          return <span className={`font-semibold text-sm ${colorClass}`}>{pct}%</span>;
+        },
+      },
+      {
         key: "health",
-        header: "Health",
+        header: "Status",
         render: (entry) => {
           const ready = entry.ready;
           const blocked = entry.blocked;
@@ -46,6 +58,18 @@ export default async function ChannelsHealthPage() {
           const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : "No activity";
           return <StatusChip label={healthLabel} tone={healthTone} />;
         },
+      },
+      {
+        key: "actions",
+        header: "",
+        render: (entry) => (
+          <Link
+            href={`/channels/submissions?connectorSlug=${encodeURIComponent(entry.slug)}&status=REJECTED`}
+            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+          >
+            View errors →
+          </Link>
+        ),
       },
     ];
     const connectorRows = connectorEntries.map(([slug, ready]) => ({

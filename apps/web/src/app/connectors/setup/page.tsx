@@ -261,25 +261,84 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     return (
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Amazon India live install needs seller ID plus validated LWA credentials. These values are encrypted on save and never shown again.
+          Amazon India live install needs seller ID plus validated LWA (Login with Amazon) credentials. Values are encrypted on save and never shown again.
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-client-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Client ID
           </label>
-          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="amzn-client-id" />
+          <Input id={`install-client-id-${definitionId}`} name="clientId" autoComplete="off" placeholder="amzn1.application-oa2-client.xxxxxxxx" />
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Client Secret
           </label>
-          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Amazon client secret" />
+          <Input id={`install-client-secret-${definitionId}`} name="clientSecret" type="password" autoComplete="new-password" placeholder="Enter Amazon LWA client secret" />
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-refresh-token-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Refresh Token
           </label>
-          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Amazon refresh token" />
+          <Input id={`install-refresh-token-${definitionId}`} name="refreshToken" type="password" autoComplete="new-password" placeholder="Enter Amazon SP-API refresh token" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-marketplace-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Marketplace ID
+          </label>
+          {/* datalist gives autocomplete while still allowing any valid ID */}
+          <datalist id={`amazon-marketplace-list-${definitionId}`}>
+            <option value="A21TJRUUN4KGV" />
+            <option value="ATVPDKIKX0DER" />
+            <option value="A2EUQ1WTGCTBG2" />
+            <option value="A1F83G8C2ARO7P" />
+            <option value="A1PA6795UKMFR9" />
+            <option value="A13V1IB3VIYZZH" />
+            <option value="APJ6JRA9NG5V4" />
+            <option value="A1VC38T7YXB528" />
+            <option value="A39IBJ37TRP1C6" />
+            <option value="A2VIGQ35RCS4UG" />
+          </datalist>
+          <Input
+            id={`install-marketplace-${definitionId}`}
+            name="marketplaceId"
+            list={`amazon-marketplace-list-${definitionId}`}
+            defaultValue="A21TJRUUN4KGV"
+            placeholder="A21TJRUUN4KGV"
+            autoComplete="off"
+          />
+          <p className="text-xs text-slate-500">
+            Pre-filled: A21TJRUUN4KGV (India). Common IDs — US: ATVPDKIKX0DER · UK: A1F83G8C2ARO7P · DE: A1PA6795UKMFR9 · JP: A1VC38T7YXB528
+          </p>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-default-product-type-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Default Product Type <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <datalist id={`amazon-product-type-list-${definitionId}`}>
+            <option value="SHIRT" />
+            <option value="DRESS" />
+            <option value="PANTS" />
+            <option value="SHOES" />
+            <option value="CONSUMER_ELECTRONICS" />
+            <option value="MOBILE_PHONE" />
+            <option value="HOME_FURNISHING" />
+            <option value="KITCHEN" />
+            <option value="BEAUTY" />
+            <option value="BOOKS" />
+            <option value="TOYS_AND_GAMES" />
+            <option value="BABY_PRODUCT" />
+            <option value="SPORTS" />
+          </datalist>
+          <Input
+            id={`install-default-product-type-${definitionId}`}
+            name="defaultProductType"
+            list={`amazon-product-type-list-${definitionId}`}
+            placeholder="e.g. SHIRT"
+            autoComplete="off"
+          />
+          <p className="text-xs text-slate-500">
+            Used when no per-product type is set. Leave blank if your catalog has mixed product types — you can set this per-product or update it later in the connector settings.
+          </p>
         </div>
       </>
     );

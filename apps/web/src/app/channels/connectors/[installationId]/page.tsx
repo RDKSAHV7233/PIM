@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { updateConnectorPublicationTargetsAction } from "@/app/actions";
+import {
+  configureAmazonAction,
+  deleteConnectorSyncScheduleAction,
+  queueConnectorDeltaSyncAction,
+  updateConnectorPublicationTargetsAction,
+  upsertConnectorSyncScheduleAction,
+} from "@/app/actions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
+import { Input } from "@/components/ui/input";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
@@ -12,6 +20,8 @@ import {
   getConnectorPublications,
   getConnectorPermissions,
   getConnectorPayloadPreview,
+  getConnectorSchedule,
+  getDeltaSyncCandidates,
   getInstalledConnectors,
   getProductList,
   getProductIssues,
@@ -19,6 +29,7 @@ import {
   getSubmissions,
   getMediaAssets,
   type ConnectorPublicationTarget,
+  type ConnectorSyncSchedule,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
@@ -30,7 +41,7 @@ export const dynamic = "force-dynamic";
 
 interface ChannelConnectorDetailPageProps {
   params: Promise<{ installationId: string }>;
-  searchParams: Promise<{ tab?: string; status?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; action?: string }>;
 }
 
 type DetailTab = "overview" | "credentials" | "catalog" | "mappings" | "issues" | "logs" | "access" | "sync" | "schedule" | "catalog-link";
@@ -205,6 +216,20 @@ function formatCapabilityList(capabilities: string[]): string {
   return capabilities.length > 0 ? capabilities.map(formatCapabilityLabel).join(", ") : "-";
 }
 
+// Amazon SP-API marketplace ID → friendly region label
+const AMAZON_MARKETPLACE_LABELS: Record<string, string> = {
+  A21TJRUUN4KGV: "Amazon India",
+  ATVPDKIKX0DER: "Amazon US",
+  A2EUQ1WTGCTBG2: "Amazon Canada",
+  A1F83G8C2ARO7P: "Amazon UK",
+  A1PA6795UKMFR9: "Amazon Germany",
+  A13V1IB3VIYZZH: "Amazon France",
+  APJ6JRA9NG5V4: "Amazon Italy",
+  A1VC38T7YXB528: "Amazon Japan",
+  A39IBJ37TRP1C6: "Amazon Australia",
+  A2VIGQ35RCS4UG: "Amazon UAE",
+};
+
 function formatStatusSummary(status: string): string {
   const normalized = String(status ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE") {
@@ -347,6 +372,42 @@ function connectorDetailStatusMessage(status: string | undefined): {
     return {
       tone: "danger",
       message: "Unable to save Shopify publication targets right now. Try again after checking connector health.",
+    };
+  }
+  if (normalized === "amazon-configured") {
+    return {
+      tone: "success",
+      message: "Amazon marketplace configuration saved. The new settings will apply on the next validation and publish cycle.",
+    };
+  }
+  if (normalized === "delta-sync-queued") {
+    return {
+      tone: "success",
+      message: "Delta sync queued. Changed products will be picked up by the export worker shortly.",
+    };
+  }
+  if (normalized === "delta-sync-error") {
+    return {
+      tone: "danger",
+      message: "Unable to queue delta sync right now. Check connector health and try again.",
+    };
+  }
+  if (normalized === "schedule-saved") {
+    return {
+      tone: "success",
+      message: "Sync schedule saved. The cron job will trigger delta syncs at the configured interval.",
+    };
+  }
+  if (normalized === "schedule-deleted") {
+    return {
+      tone: "success",
+      message: "Sync schedule removed. Automated delta syncs will no longer run for this installation.",
+    };
+  }
+  if (normalized === "schedule-error") {
+    return {
+      tone: "danger",
+      message: "Unable to update the sync schedule. Check that the cron expression is valid and try again.",
     };
   }
   return null;
@@ -699,6 +760,7 @@ export default async function ChannelConnectorDetailPage({
     const publicationTargetSummary = summarizePublicationTargets(publicationTargets);
     const metadataSellerId = readMetadataValue(installation.metadata, "sellerId");
     const metadataMarketplaceId = readMetadataValue(installation.metadata, "marketplaceId");
+    const metadataDefaultProductType = readMetadataValue(installation.metadata, "defaultProductType");
     const metadataShopDomain = readMetadataValue(installation.metadata, "shopDomain");
     const metadataShopName = readMetadataValue(installation.metadata, "shopName");
     const metadataShopId = readMetadataValue(installation.metadata, "shopId");
@@ -826,6 +888,21 @@ export default async function ChannelConnectorDetailPage({
             },
           ]
         : [];
+
+    // ─── Sprint G: Load schedule + delta sync candidates per tab ────────────
+    const [connectorScheduleResult, deltaCandidatesResult] = await Promise.allSettled([
+      selectedTab === "schedule"
+        ? getConnectorSchedule(installation.id, { role: actorRole, authHeader })
+        : Promise.resolve(null as ConnectorSyncSchedule | null),
+      selectedTab === "sync"
+        ? getDeltaSyncCandidates(installation.id, { role: actorRole, authHeader })
+        : Promise.resolve([] as Array<{ productId: string; version: number }>),
+    ]);
+    const connectorSchedule =
+      connectorScheduleResult.status === "fulfilled" ? connectorScheduleResult.value : null;
+    const deltaCandidates =
+      deltaCandidatesResult.status === "fulfilled" ? deltaCandidatesResult.value : [];
+
     const catalogColumns: Column<(typeof catalogEntries)[number]>[] = [
       {
         key: "product",
@@ -1381,6 +1458,100 @@ export default async function ChannelConnectorDetailPage({
                 </ul>
               </div>
             </Card>
+
+            {installation.slug === "amazon-in" ? (
+              <Card>
+                <CardTitle>Amazon Marketplace Configuration</CardTitle>
+                <p className="mt-1 text-sm text-slate-600">
+                  Configure the target marketplace and optional default product type for this installation.
+                  Changes apply on the next validation and publish cycle.
+                </p>
+
+                {/* Current configuration at a glance */}
+                <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <dl className="grid grid-cols-[180px_1fr] gap-y-1">
+                    <dt className="text-slate-500">Marketplace ID</dt>
+                    <dd className="font-mono text-xs text-slate-700">
+                      {metadataMarketplaceId
+                        ? `${metadataMarketplaceId}${AMAZON_MARKETPLACE_LABELS[metadataMarketplaceId] ? ` — ${AMAZON_MARKETPLACE_LABELS[metadataMarketplaceId]}` : ""}`
+                        : "A21TJRUUN4KGV — Amazon India (default)"}
+                    </dd>
+                    <dt className="text-slate-500">Default product type</dt>
+                    <dd className="font-mono text-xs text-slate-700">
+                      {metadataDefaultProductType || <span className="text-slate-400">Not set</span>}
+                    </dd>
+                  </dl>
+                </div>
+
+                {/* Edit form */}
+                <form action={configureAmazonAction} className="mt-4 space-y-4">
+                  <input type="hidden" name="installationId" value={installation.id} />
+                  <input type="hidden" name="returnTo" value={buildDetailHref(installation.id, "credentials")} />
+
+                  <div className="space-y-1">
+                    <label htmlFor="amazon-configure-marketplace" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Marketplace ID
+                    </label>
+                    <datalist id="amazon-configure-marketplace-list">
+                      <option value="A21TJRUUN4KGV" />
+                      <option value="ATVPDKIKX0DER" />
+                      <option value="A2EUQ1WTGCTBG2" />
+                      <option value="A1F83G8C2ARO7P" />
+                      <option value="A1PA6795UKMFR9" />
+                      <option value="A13V1IB3VIYZZH" />
+                      <option value="APJ6JRA9NG5V4" />
+                      <option value="A1VC38T7YXB528" />
+                      <option value="A39IBJ37TRP1C6" />
+                      <option value="A2VIGQ35RCS4UG" />
+                    </datalist>
+                    <Input
+                      id="amazon-configure-marketplace"
+                      name="marketplaceId"
+                      list="amazon-configure-marketplace-list"
+                      defaultValue={metadataMarketplaceId || "A21TJRUUN4KGV"}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-slate-500">
+                      IN: A21TJRUUN4KGV · US: ATVPDKIKX0DER · UK: A1F83G8C2ARO7P · DE: A1PA6795UKMFR9 · JP: A1VC38T7YXB528
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="amazon-configure-product-type" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Default Product Type <span className="font-normal text-slate-400">(optional — clears if left blank)</span>
+                    </label>
+                    <datalist id="amazon-configure-product-type-list">
+                      <option value="SHIRT" />
+                      <option value="DRESS" />
+                      <option value="PANTS" />
+                      <option value="SHOES" />
+                      <option value="CONSUMER_ELECTRONICS" />
+                      <option value="MOBILE_PHONE" />
+                      <option value="HOME_FURNISHING" />
+                      <option value="KITCHEN" />
+                      <option value="BEAUTY" />
+                      <option value="BOOKS" />
+                      <option value="TOYS_AND_GAMES" />
+                      <option value="BABY_PRODUCT" />
+                      <option value="SPORTS" />
+                    </datalist>
+                    <Input
+                      id="amazon-configure-product-type"
+                      name="defaultProductType"
+                      list="amazon-configure-product-type-list"
+                      defaultValue={metadataDefaultProductType || ""}
+                      placeholder="e.g. SHIRT"
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Used when no per-product type override is set. Leave blank for mixed-type catalogs.
+                    </p>
+                  </div>
+
+                  <PendingSubmitButton idleLabel="Save Amazon configuration" />
+                </form>
+              </Card>
+            ) : null}
 
             {installation.slug === "shopify" ? (
               <Card>
@@ -2028,7 +2199,7 @@ export default async function ChannelConnectorDetailPage({
           </Card>
         ) : null}
 
-        {/* ─── Sprint 8: Sync tab ─── */}
+        {/* ─── Sprint 8 / Sprint G: Sync tab ─── */}
         {selectedTab === "sync" ? (
           <Card>
             <CardTitle>Delta Sync</CardTitle>
@@ -2036,33 +2207,47 @@ export default async function ChannelConnectorDetailPage({
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 <p className="font-medium text-slate-900">Delta sync</p>
                 <p className="mt-1 text-slate-600">
-                  Queues all approved products that have been updated since their last successful sync to this store.
+                  Queues all approved products that have been updated since their last successful sync to this connector.
                   Only products with a version number higher than the last synced version are included.
+                  Works for Shopify, Amazon, Flipkart, and all connectors that support the{" "}
+                  <code className="font-mono text-xs bg-white border border-slate-200 px-1 rounded">PUBLISH</code>{" "}
+                  capability.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
+              {deltaCandidates.length > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <span className="font-medium">{deltaCandidates.length} product{deltaCandidates.length !== 1 ? "s" : ""} pending sync</span>
+                  {" "}— version has advanced since last successful push.
+                </div>
+              ) : deltaCandidatesResult.status === "fulfilled" ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  All products are up to date. No delta sync candidates found.
+                </div>
+              ) : null}
+              <form action={queueConnectorDeltaSyncAction} className="flex flex-wrap items-center gap-3">
+                <input type="hidden" name="installationId" value={installation.id} />
+                <input
+                  type="hidden"
+                  name="returnTo"
+                  value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
+                />
+                <PendingSubmitButton idleLabel="Queue delta sync" />
                 <Link
-                  href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync&action=delta`}
-                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                >
-                  Queue delta sync
-                </Link>
-                <Link
-                  href={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync&action=full`}
+                  href="/operations/jobs"
                   className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Queue full sync (all approved)
+                  View sync jobs →
                 </Link>
-              </div>
+              </form>
               <p className="text-xs text-slate-500">
-                Sync jobs run through the standard export queue. Monitor progress in{" "}
+                Sync jobs run through the standard export queue. Monitor progress in the{" "}
                 <Link href="/operations/jobs" className="underline">Jobs workspace</Link>.
               </p>
             </div>
           </Card>
         ) : null}
 
-        {/* ─── Sprint 9: Schedule tab ─── */}
+        {/* ─── Sprint 9 / Sprint G: Schedule tab ─── */}
         {selectedTab === "schedule" ? (
           <Card>
             <CardTitle>Sync Schedule</CardTitle>
@@ -2070,8 +2255,10 @@ export default async function ChannelConnectorDetailPage({
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 <p className="font-medium text-slate-900">Automated delta sync schedule</p>
                 <p className="mt-1 text-slate-600">
-                  Configure a recurring schedule to automatically queue delta syncs for this store.
-                  Use standard 5-field cron syntax (minute hour day month weekday).
+                  Configure a recurring schedule to automatically queue delta syncs for this connector.
+                  Works for Shopify, Amazon, Flipkart, and all connectors with the{" "}
+                  <code className="font-mono text-xs bg-white border border-slate-200 px-1 rounded">PUBLISH</code>{" "}
+                  capability. Use standard 5-field cron syntax (minute hour day month weekday).
                 </p>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-500">
                   <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 2 * * *</code> — daily at 2 AM</span>
@@ -2080,7 +2267,33 @@ export default async function ChannelConnectorDetailPage({
                   <span><code className="font-mono bg-white border border-slate-200 px-1 rounded">0 9,17 * * 1-5</code> — weekdays 9 AM + 5 PM</span>
                 </div>
               </div>
-              <form method="post" action={`/api/marketplace/connectors/shopify/${encodeURIComponent(installation.id)}/schedule`} className="grid gap-3 md:grid-cols-3">
+
+              {connectorSchedule ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <span className="font-medium">Active schedule:</span>{" "}
+                  <code className="font-mono text-xs">{connectorSchedule.cronExpression}</code>
+                  {connectorSchedule.scope ? (
+                    <span className="ml-2 text-xs text-emerald-700">
+                      · scope: {connectorSchedule.scope.replace(/_/g, " ")}
+                    </span>
+                  ) : null}
+                  {connectorSchedule.status && connectorSchedule.status !== "active" ? (
+                    <span className="ml-2 text-xs text-amber-700 font-medium">({connectorSchedule.status})</span>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                  No schedule configured. This connector will only sync when manually triggered.
+                </div>
+              )}
+
+              <form action={upsertConnectorSyncScheduleAction} className="grid gap-3 md:grid-cols-3">
+                <input type="hidden" name="installationId" value={installation.id} />
+                <input
+                  type="hidden"
+                  name="returnTo"
+                  value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=schedule`}
+                />
                 <div className="space-y-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="sched-cron">
                     Cron expression
@@ -2089,6 +2302,7 @@ export default async function ChannelConnectorDetailPage({
                     id="sched-cron"
                     name="cronExpression"
                     placeholder="0 2 * * *"
+                    defaultValue={connectorSchedule?.cronExpression ?? ""}
                     required
                     className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
@@ -2097,19 +2311,38 @@ export default async function ChannelConnectorDetailPage({
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="sched-scope">
                     Scope
                   </label>
-                  <select id="sched-scope" name="scope" className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm">
+                  <select
+                    id="sched-scope"
+                    name="scope"
+                    defaultValue={connectorSchedule?.scope ?? "approved_only"}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  >
                     <option value="approved_only">Approved products only</option>
                     <option value="all">All active products</option>
                   </select>
                 </div>
                 <div className="flex items-end">
-                  <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-                    Save schedule
-                  </button>
+                  <PendingSubmitButton idleLabel={connectorSchedule ? "Update schedule" : "Save schedule"} />
                 </div>
               </form>
+
+              {connectorSchedule ? (
+                <form action={deleteConnectorSyncScheduleAction} className="flex items-center gap-2">
+                  <input type="hidden" name="installationId" value={installation.id} />
+                  <input
+                    type="hidden"
+                    name="returnTo"
+                    value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=schedule`}
+                  />
+                  <PendingSubmitButton idleLabel="Remove schedule" />
+                  <span className="text-xs text-slate-500">Removes the automated trigger. Manual delta sync will still work.</span>
+                </form>
+              ) : null}
+
               <p className="text-xs text-slate-500">
-                Schedule changes take effect on the next trigger. Use the Jobs workspace to monitor scheduled run history.
+                Schedule changes take effect on the next trigger. Use the{" "}
+                <Link href="/operations/jobs" className="underline">Jobs workspace</Link>{" "}
+                to monitor scheduled run history.
               </p>
             </div>
           </Card>

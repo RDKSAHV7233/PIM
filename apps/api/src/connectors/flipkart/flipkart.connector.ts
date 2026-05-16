@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Buffer } from "node:buffer";
+import ExcelJS from "exceljs";
 import { LoggerService } from "../../common/logging/logger.service";
 import {
   buildEncryptedCredential,
@@ -14,12 +15,19 @@ import {
   ConnectorContext,
   ConnectorInterface,
   ConnectorIssue,
+  ExportFile,
   ProductPayload,
+  ProductTypeSchema,
   SubmissionRef,
   SubmissionStatusUpdate,
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import {
+  getCategoryRule,
+  ruleToProductTypeSchema,
+  FieldRule,
+} from "./flipkart-category-rules";
 
 type CredentialRow = {
   id: string;
@@ -55,6 +63,7 @@ type FlipkartListingPayload = {
   packageHeight: number;
   hsn?: string;
   taxCode?: string;
+  images?: Array<{ url: string; sequence: number }>;
   attributes?: Record<string, string | number | boolean>;
 };
 
@@ -74,17 +83,9 @@ const DEFAULT_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_TOKEN_WARNING_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_OAUTH_BASE_URL = "https://api.flipkart.net";
 const DEFAULT_REQUEST_DELAY_MS = 100;
-const REQUIRED_FIELDS = [
-  { fieldPath: "sku", message: "Add a seller SKU before publishing to Flipkart." },
-  { fieldPath: "title", message: "Product title is required for Flipkart publish." },
-  { fieldPath: "brand", message: "Brand is required for Flipkart publish." },
-  { fieldPath: "description", message: "Description is required for Flipkart publish." },
-  { fieldPath: "hsnCode", message: "HSN code is required for Flipkart publish." },
-  { fieldPath: "gstRate", message: "GST rate is required for Flipkart publish." },
-  { fieldPath: "mainImageUrl", message: "Add a primary HTTPS image before publishing to Flipkart." },
-  { fieldPath: "attributes.size", message: "Size is required for Flipkart listings." },
-  { fieldPath: "attributes.color", message: "Color is required for Flipkart listings." },
-] as const;
+
+// Static REQUIRED_FIELDS removed — validation is now driven by the category rule
+// registry in flipkart-category-rules.ts. See getCategoryRule() + validateProduct().
 
 const ERROR_MESSAGES: Record<string, string> = {
   CATEGORY_MISMATCH: "Product category does not match Flipkart's category tree. Re-map the category.",
@@ -107,6 +108,7 @@ export class FlipkartConnector implements ConnectorInterface {
     "PUBLISH",
     "VALIDATE",
     "STATUS_SYNC",
+    "EXCEL_EXPORT",
   ];
 
   private readonly keys = loadCredentialEncryptionKeys(process.env);
@@ -170,29 +172,57 @@ export class FlipkartConnector implements ConnectorInterface {
     const errors: ConnectorIssue[] = [];
     const warnings: ConnectorIssue[] = [];
 
-    for (const field of REQUIRED_FIELDS) {
+    // Resolve category-specific rule set — falls back to 'default' for unknown categories.
+    const categorySlug = String(product.productType ?? "").trim().toLowerCase();
+    const rule = getCategoryRule(categorySlug);
+
+    // ── Category field rules ──────────────────────────────────────────────────
+    for (const field of rule.fields) {
       const value = this.getFieldValue(product, field.fieldPath);
       if (this.isEmpty(value)) {
-        errors.push({
-          code: "REQUIRED_FIELD_MISSING",
-          fieldPath: field.fieldPath,
-          sellerMessage: field.message,
-          severity: "error",
-        });
+        if (field.required) {
+          errors.push({
+            code: "REQUIRED_FIELD_MISSING",
+            fieldPath: field.fieldPath,
+            sellerMessage: field.sellerMessage,
+            severity: "error",
+          });
+        } else {
+          warnings.push({
+            code: "RECOMMENDED_FIELD_MISSING",
+            fieldPath: field.fieldPath,
+            sellerMessage: field.sellerMessage,
+            severity: "warning",
+          });
+        }
       }
     }
 
-    if (typeof product.mainImageUrl === "string" && product.mainImageUrl.trim().length > 0) {
-      if (!/^https:\/\//i.test(product.mainImageUrl.trim())) {
-        errors.push({
-          code: "IMAGE_URL_NOT_HTTPS",
-          fieldPath: "mainImageUrl",
-          sellerMessage: "Flipkart images must use a permanent HTTPS URL.",
-          severity: "error",
-        });
-      }
+    // ── Image HTTPS check ─────────────────────────────────────────────────────
+    const mainUrl = typeof product.mainImageUrl === "string" ? product.mainImageUrl.trim() : "";
+    if (mainUrl.length > 0 && !/^https:\/\//i.test(mainUrl)) {
+      errors.push({
+        code: "IMAGE_URL_NOT_HTTPS",
+        fieldPath: "mainImageUrl",
+        sellerMessage: "Flipkart images must use a permanent HTTPS URL.",
+        severity: "error",
+      });
+    }
+    if (Array.isArray(product.additionalImageUrls)) {
+      product.additionalImageUrls.forEach((url, index) => {
+        const trimmed = typeof url === "string" ? url.trim() : "";
+        if (trimmed.length > 0 && !/^https:\/\//i.test(trimmed)) {
+          errors.push({
+            code: "IMAGE_URL_NOT_HTTPS",
+            fieldPath: `additionalImageUrls[${index}]`,
+            sellerMessage: `Additional image ${index + 1} must use a permanent HTTPS URL.`,
+            severity: "error",
+          });
+        }
+      });
     }
 
+    // ── Price logic ───────────────────────────────────────────────────────────
     if (this.isNumber(product.mrp) && this.isNumber(product.sellingPrice) && product.sellingPrice > product.mrp) {
       warnings.push({
         code: "SELLING_PRICE_GT_MRP",
@@ -202,13 +232,33 @@ export class FlipkartConnector implements ConnectorInterface {
       });
     }
 
-    if (this.isEmpty(this.getFieldValue(product, "attributes.material"))) {
-      warnings.push({
-        code: "ATTRIBUTE_RECOMMENDED",
-        fieldPath: "attributes.material",
-        sellerMessage: "Material is recommended for stronger Flipkart category compliance.",
-        severity: "warning",
-      });
+    // ── Overwrite safety guard ────────────────────────────────────────────────
+    // Flipkart's update API overwrites listing data. Warn operator before submit.
+    warnings.push({
+      code: "FLIPKART_OVERWRITE_WARNING",
+      fieldPath: "sku",
+      sellerMessage:
+        "Publishing to Flipkart will overwrite any existing listing for this SKU. Confirm before proceeding.",
+      severity: "warning",
+    });
+
+    // ── Valid values check ────────────────────────────────────────────────────
+    if (rule.validValues) {
+      for (const [attrKey, allowed] of Object.entries(rule.validValues)) {
+        const fieldPath = `attributes.${attrKey}`;
+        const value = this.getFieldValue(product, fieldPath);
+        if (typeof value === "string" && value.trim().length > 0) {
+          const trimmed = value.trim();
+          if (!allowed.includes(trimmed)) {
+            warnings.push({
+              code: "ATTRIBUTE_VALUE_NOT_IN_LIST",
+              fieldPath,
+              sellerMessage: `"${trimmed}" is not in Flipkart's accepted values for ${attrKey}. Accepted: ${allowed.join(", ")}.`,
+              severity: "warning",
+            });
+          }
+        }
+      }
     }
 
     return {
@@ -216,6 +266,104 @@ export class FlipkartConnector implements ConnectorInterface {
       errors,
       warnings,
       source: "LOCAL_RULES",
+    };
+  }
+
+  async fetchProductTypeSchema(
+    _ctx: ConnectorContext,
+    productType: string,
+  ): Promise<ProductTypeSchema> {
+    const slug = String(productType ?? "").trim().toLowerCase();
+    const rule = getCategoryRule(slug);
+    return ruleToProductTypeSchema(slug || "default", rule);
+  }
+
+  async generateExportFile(
+    _ctx: ConnectorContext,
+    products: ProductPayload[],
+  ): Promise<ExportFile> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Vexa PIM";
+    workbook.created = new Date();
+
+    // Determine the dominant category from the product set (first product wins).
+    const categorySlug = String(products[0]?.productType ?? "").trim().toLowerCase();
+    const rule = getCategoryRule(categorySlug);
+    const schema = ruleToProductTypeSchema(categorySlug || "default", rule);
+
+    const sheet = workbook.addWorksheet("Flipkart Listings", {
+      views: [{ state: "frozen", ySplit: 2 }],
+    });
+
+    // ── Build column definitions from schema ────────────────────────────────
+    const columnDefs = this.buildExcelColumns(schema);
+    sheet.columns = columnDefs.map((col) => ({
+      header: col.label,
+      key: col.key,
+      width: col.width,
+    }));
+
+    // ── Header row 1 — field labels ─────────────────────────────────────────
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1A73E8" },
+    };
+    headerRow.alignment = { vertical: "middle", wrapText: true };
+    headerRow.height = 30;
+
+    // ── Header row 2 — required/optional hints ──────────────────────────────
+    const hintRow = sheet.getRow(2);
+    columnDefs.forEach((col, idx) => {
+      const cell = hintRow.getCell(idx + 1);
+      cell.value = col.required ? "Required" : "Optional";
+      cell.font = {
+        italic: true,
+        size: 9,
+        color: { argb: col.required ? "FFCC0000" : "FF666666" },
+      };
+    });
+    hintRow.height = 18;
+
+    // ── Data rows ───────────────────────────────────────────────────────────
+    for (const product of products) {
+      const rowData = this.buildExcelRow(product, columnDefs);
+      const dataRow = sheet.addRow(rowData);
+      dataRow.height = 20;
+    }
+
+    // ── Add data-validation dropdowns for valid-value columns ───────────────
+    // ExcelJS 4.x types don't expose dataValidations on the Worksheet type, but it
+    // exists at runtime (confirmed: Object.getPrototypeOf(ws.dataValidations).add).
+    const sheetAny = sheet as unknown as Record<string, { add(ref: string, rule: Record<string, unknown>): void }>;
+    const dataValidations = sheetAny["dataValidations"];
+    if (rule.validValues) {
+      for (const [attrKey, allowed] of Object.entries(rule.validValues)) {
+        const colKey = `attr_${attrKey}`;
+        const colDef = columnDefs.find((c) => c.key === colKey);
+        if (colDef) {
+          const colIndex = columnDefs.indexOf(colDef) + 1;
+          const colLetter = this.columnIndexToLetter(colIndex);
+          dataValidations.add(`${colLetter}3:${colLetter}10000`, {
+            type: "list",
+            allowBlank: true,
+            formulae: [`"${allowed.join(",")}"`],
+            showDropDown: false,
+          });
+        }
+      }
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const filename = `flipkart_listing_${categorySlug || "general"}_${dateStr}.xlsx`;
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    return {
+      buffer,
+      filename,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     };
   }
 
@@ -720,6 +868,8 @@ export class FlipkartConnector implements ConnectorInterface {
     const productId = this.readOptionalString(attributes.flipkartProductId ?? attributes.productId);
     const taxCode = this.readOptionalString(attributes.taxCode);
 
+    const images = this.buildImageList(product.mainImageUrl, product.additionalImageUrls);
+
     return {
       skuId: product.sku,
       ...(productId ? { productId } : {}),
@@ -737,6 +887,7 @@ export class FlipkartConnector implements ConnectorInterface {
       packageHeight,
       ...(product.hsnCode ? { hsn: product.hsnCode } : {}),
       ...(taxCode ? { taxCode } : {}),
+      ...(images.length > 0 ? { images } : {}),
       attributes,
     };
   }
@@ -1005,5 +1156,104 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private isNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
+  }
+
+  // ── Excel export helpers ────────────────────────────────────────────────────
+
+  private buildExcelColumns(
+    schema: ReturnType<typeof ruleToProductTypeSchema>,
+  ): Array<{ key: string; label: string; required: boolean; width: number; attrKey?: string }> {
+    const cols: Array<{ key: string; label: string; required: boolean; width: number; attrKey?: string }> = [
+      { key: "sku",         label: "Seller SKU *",          required: true,  width: 22 },
+      { key: "title",       label: "Product Title *",        required: true,  width: 40 },
+      { key: "brand",       label: "Brand *",                required: true,  width: 18 },
+      { key: "description", label: "Description *",          required: true,  width: 50 },
+      { key: "mrp",         label: "MRP (paise) *",          required: true,  width: 14 },
+      { key: "sellingPrice",label: "Selling Price (paise) *",required: true,  width: 20 },
+      { key: "hsnCode",     label: "HSN Code *",             required: true,  width: 14 },
+      { key: "mainImageUrl",label: "Main Image URL *",       required: true,  width: 50 },
+    ];
+
+    // Dynamically add attribute columns from schema, skip ones already in fixed cols.
+    const fixedKeys = new Set(cols.map((c) => c.key));
+    for (const fieldPath of [...schema.requiredAttributes, ...schema.optionalAttributes]) {
+      if (!fieldPath.startsWith("attributes.")) continue;
+      const attrKey = fieldPath.slice("attributes.".length);
+      const colKey = `attr_${attrKey}`;
+      if (fixedKeys.has(colKey)) continue;
+      const isRequired = schema.requiredAttributes.includes(fieldPath);
+      cols.push({
+        key: colKey,
+        label: `${attrKey.charAt(0).toUpperCase()}${attrKey.slice(1).replace(/([A-Z])/g, " $1")}${isRequired ? " *" : ""}`,
+        required: isRequired,
+        width: 20,
+        attrKey,
+      });
+      fixedKeys.add(colKey);
+    }
+
+    cols.push({ key: "additionalImageUrls", label: "Additional Image URLs (comma-separated)", required: false, width: 60 });
+    return cols;
+  }
+
+  private buildExcelRow(
+    product: ProductPayload,
+    columns: ReturnType<typeof this.buildExcelColumns>,
+  ): Record<string, string | number> {
+    const row: Record<string, string | number> = {};
+    for (const col of columns) {
+      if (col.attrKey !== undefined) {
+        const val = product.attributes?.[col.attrKey];
+        row[col.key] = val !== undefined && val !== null ? String(val) : "";
+      } else {
+        switch (col.key) {
+          case "sku":         row[col.key] = product.sku; break;
+          case "title":       row[col.key] = product.title; break;
+          case "brand":       row[col.key] = product.brand; break;
+          case "description": row[col.key] = product.description; break;
+          case "mrp":         row[col.key] = Math.round(product.mrp * 100); break;
+          case "sellingPrice":row[col.key] = Math.round(product.sellingPrice * 100); break;
+          case "hsnCode":     row[col.key] = product.hsnCode ?? ""; break;
+          case "mainImageUrl":row[col.key] = product.mainImageUrl; break;
+          case "additionalImageUrls":
+            row[col.key] = Array.isArray(product.additionalImageUrls)
+              ? product.additionalImageUrls.join(", ")
+              : "";
+            break;
+          default:            row[col.key] = ""; break;
+        }
+      }
+    }
+    return row;
+  }
+
+  private columnIndexToLetter(index: number): string {
+    let result = "";
+    while (index > 0) {
+      const remainder = (index - 1) % 26;
+      result = String.fromCharCode(65 + remainder) + result;
+      index = Math.floor((index - 1) / 26);
+    }
+    return result;
+  }
+
+  private buildImageList(
+    mainImageUrl: string,
+    additionalImageUrls?: string[],
+  ): Array<{ url: string; sequence: number }> {
+    const images: Array<{ url: string; sequence: number }> = [];
+    const mainTrimmed = typeof mainImageUrl === "string" ? mainImageUrl.trim() : "";
+    if (mainTrimmed.length > 0) {
+      images.push({ url: mainTrimmed, sequence: 1 });
+    }
+    if (Array.isArray(additionalImageUrls)) {
+      for (const url of additionalImageUrls) {
+        const trimmed = typeof url === "string" ? url.trim() : "";
+        if (trimmed.length > 0 && images.length < 9) {
+          images.push({ url: trimmed, sequence: images.length + 1 });
+        }
+      }
+    }
+    return images;
   }
 }

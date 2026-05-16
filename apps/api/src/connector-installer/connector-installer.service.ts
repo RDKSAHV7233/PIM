@@ -30,6 +30,7 @@ import {
   ConnectorPermissionService,
 } from "./connector-permission.service";
 import { ConnectorCredentialEncryptionService } from "./credential-encryption.service";
+import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { InstallConnectorDto } from "./dto/install-connector.dto";
 import { ListInstalledConnectorsDto } from "./dto/list-installed-connectors.dto";
@@ -1185,13 +1186,17 @@ export class ConnectorInstallerService {
       metadata: { source: "install_form" },
     });
 
+    // Prefer the caller-supplied marketplace ID; fall back to India default.
+    const marketplaceId = String(input.dto.marketplaceId ?? "").trim() || "A21TJRUUN4KGV";
+    const defaultProductType = String(input.dto.defaultProductType ?? "").trim().toUpperCase() || null;
+
     const connector = this.connectorRegistry.getConnector("amazon-in");
     const validated = await connector.validateCredentials({
       tenantId: input.tenantKey,
       installationId: input.installationId,
       connectorId: input.connectorId,
       sellerId: input.externalAccountRef ?? undefined,
-      marketplaceId: "A21TJRUUN4KGV",
+      marketplaceId,
       getAccessToken: async () => "",
     });
 
@@ -1201,6 +1206,75 @@ export class ConnectorInstallerService {
         message: "Amazon credentials could not be validated. Check the client ID, client secret, and refresh token.",
       });
     }
+
+    // Persist marketplace config into installation metadata so it is available
+    // at runtime without needing a separate lookup.
+    const metadataPatch: Record<string, unknown> = { marketplaceId };
+    if (defaultProductType) {
+      metadataPatch.defaultProductType = defaultProductType;
+    }
+    await this.patchInstallationMetadata(input.tenantKey, input.installationId, metadataPatch);
+  }
+
+  /**
+   * Merge a partial metadata object into the installation row.
+   * Uses PostgreSQL's || operator so existing keys not present in the patch
+   * are preserved.
+   */
+  private async patchInstallationMetadata(
+    tenantKey: string,
+    installationId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    // RLS-BYPASS: manual tenant filter
+    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
+      `
+      UPDATE connector_installations
+      SET metadata = metadata || $1::jsonb
+      WHERE id = $2 AND tenant_key = $3
+      `,
+      JSON.stringify(patch),
+      installationId,
+      tenantKey,
+    );
+  }
+
+  /**
+   * Update connector-level configuration (marketplaceId, defaultProductType, etc.)
+   * post-install without touching credentials.
+   */
+  async configure(
+    installationId: string,
+    dto: ConfigureConnectorDto,
+    actor: ConnectorActor,
+  ): Promise<{ updated: boolean }> {
+    const tenantKey = this.getTenantKey();
+    const patch: Record<string, unknown> = {};
+
+    if (dto.marketplaceId !== undefined && dto.marketplaceId.trim()) {
+      patch.marketplaceId = dto.marketplaceId.trim();
+    }
+    if (dto.defaultProductType !== undefined) {
+      // Allow clearing the default product type by passing an empty string.
+      patch.defaultProductType = dto.defaultProductType.trim().toUpperCase() || null;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { updated: false };
+    }
+
+    await this.patchInstallationMetadata(tenantKey, installationId, patch);
+
+    await this.auditService.record({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "CONNECTOR_CONFIGURE",
+      resource: "CONNECTOR_INSTALLATION",
+      resourceId: installationId,
+      metadata: { patch },
+    });
+
+    return { updated: true };
   }
 
   private async captureShopifyInstallContext(input: {

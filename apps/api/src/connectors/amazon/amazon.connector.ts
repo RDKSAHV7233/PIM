@@ -35,6 +35,7 @@ import {
   buildAmazonMappedPayload,
   collectAmazonMissingFields,
   runAmazonAuthoritativeValidation,
+  runAmazonLocalValidation,
 } from "./amazon-validation";
 
 type CredentialRow = {
@@ -177,28 +178,49 @@ export class AmazonConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     product: ProductPayload,
   ): Promise<ValidationResult> {
+    // Run rich local validation first — covers title length, image HTTPS, bullet
+    // points count, variation consistency, price rules, and India-specific fields.
+    const isIndia = this.resolveMarketplaceId(ctx) === DEFAULT_MARKETPLACE_ID;
+    const localIssues = runAmazonLocalValidation(product, this.displayName, { isIndia });
+
+    // Build the legacy missing-field list for the authoritative endpoint contract.
     const fallbackMissingFields = collectAmazonMissingFields(product, AMAZON_DEFAULT_REQUIRED_FIELDS);
-    const fallbackIssues = buildAmazonFallbackIssues(this.displayName, fallbackMissingFields);
-    const validation = await runAmazonAuthoritativeValidation({
+    // Merge: local issues already cover required fields; avoid duplicating them in fallback.
+    const localFieldPaths = new Set(localIssues.map((i) => i.fieldPath));
+    const extraFallbackIssues = buildAmazonFallbackIssues(
+      this.displayName,
+      fallbackMissingFields.filter((f) => !localFieldPaths.has(f)),
+    );
+    const mergedFallbackIssues = [...localIssues, ...extraFallbackIssues];
+
+    // Attempt authoritative SP-API validation when the feature flag is on.
+    const authoritativeValidation = await runAmazonAuthoritativeValidation({
       productId: product.sku,
       displayName: this.displayName,
       requiredFields: AMAZON_DEFAULT_REQUIRED_FIELDS,
       mappedPayload: buildAmazonMappedPayload(product),
       fallbackMissingFields,
-      fallbackIssues,
+      fallbackIssues: mergedFallbackIssues,
     });
-    if (validation) {
+
+    if (authoritativeValidation) {
+      // Merge authoritative issues with local content-level issues that the
+      // SP-API endpoint doesn't check (e.g. title length, image HTTPS format).
+      const authFieldPaths = new Set(authoritativeValidation.issues.map((i) => i.fieldPath));
+      const localOnlyIssues = localIssues.filter((i) => !authFieldPaths.has(i.fieldPath));
+      const merged = [...authoritativeValidation.issues, ...localOnlyIssues];
       return {
-        isValid: !validation.issues.some((issue) => issue.severity === "error"),
-        errors: validation.issues.filter((issue) => issue.severity === "error"),
-        warnings: validation.issues.filter((issue) => issue.severity === "warning"),
-        source: validation.source,
+        isValid: !merged.some((issue) => issue.severity === "error"),
+        errors: merged.filter((issue) => issue.severity === "error"),
+        warnings: merged.filter((issue) => issue.severity === "warning"),
+        source: authoritativeValidation.source,
       };
     }
+
     return {
-      isValid: fallbackIssues.length === 0,
-      errors: fallbackIssues,
-      warnings: [],
+      isValid: !mergedFallbackIssues.some((issue) => issue.severity === "error"),
+      errors: mergedFallbackIssues.filter((issue) => issue.severity === "error"),
+      warnings: mergedFallbackIssues.filter((issue) => issue.severity === "warning"),
       source: "LOCAL_RULES",
     };
   }
@@ -795,13 +817,74 @@ export class AmazonConnector implements ConnectorInterface {
     const color = String(product.attributes?.color ?? "").trim();
     const material = String(product.attributes?.material ?? "").trim();
     const size = String(product.attributes?.size ?? "").trim();
+
+    const conditionValue = this.mapConditionToAmazon(product.condition);
+
+    const bulletPointAttributes =
+      Array.isArray(product.bulletPoints) && product.bulletPoints.length > 0
+        ? {
+            bullet_point: product.bulletPoints
+              .slice(0, 5)
+              .map((point) => ({ value: String(point).trim(), language_tag: locale, marketplace_id: marketplaceId }))
+              .filter((entry) => entry.value.length > 0),
+          }
+        : {};
+
+    const additionalImageAttributes =
+      Array.isArray(product.additionalImageUrls) && product.additionalImageUrls.length > 0
+        ? {
+            other_product_image_locator_1: product.additionalImageUrls.slice(0, 8).map((url) => ({
+              media_location: url,
+              marketplace_id: marketplaceId,
+            })),
+          }
+        : {};
+
+    const countryOfOriginAttribute =
+      typeof product.countryOfOrigin === "string" && product.countryOfOrigin.trim().length > 0
+        ? {
+            country_of_origin: [
+              {
+                value: product.countryOfOrigin.trim(),
+                marketplace_id: marketplaceId,
+              },
+            ],
+          }
+        : {};
+
+    // parentage_level and child_parent_sku_relationship are only set for variation families.
+    // variationTheme uses Amazon's variation_theme attribute (e.g. "SIZE", "COLOR", "SIZE_COLOR").
+    const variationAttributes =
+      typeof product.parentSku === "string" && product.parentSku.trim().length > 0
+        ? {
+            parentage_level: [{ value: "child", marketplace_id: marketplaceId }],
+            child_parent_sku_relationship: [
+              {
+                child_relationship_type: "variation",
+                parent_sku: product.parentSku.trim(),
+                marketplace_id: marketplaceId,
+              },
+            ],
+            ...(typeof product.variationTheme === "string" && product.variationTheme.trim().length > 0
+              ? {
+                  variation_theme: [
+                    {
+                      name: product.variationTheme.trim(),
+                      marketplace_id: marketplaceId,
+                    },
+                  ],
+                }
+              : {}),
+          }
+        : {};
+
     return {
       requirements: "LISTING",
       productType: product.productType,
       attributes: {
         condition_type: [
           {
-            value: "new_new",
+            value: conditionValue,
             marketplace_id: marketplaceId,
           },
         ],
@@ -830,6 +913,7 @@ export class AmazonConnector implements ConnectorInterface {
               ],
             }
           : {}),
+        ...bulletPointAttributes,
         ...(color
           ? {
               color: [
@@ -866,6 +950,7 @@ export class AmazonConnector implements ConnectorInterface {
             marketplace_id: marketplaceId,
           },
         ],
+        ...additionalImageAttributes,
         purchasable_offer: [
           {
             audience: "ALL",
@@ -887,9 +972,23 @@ export class AmazonConnector implements ConnectorInterface {
             value_with_tax: product.mrp,
           },
         ],
+        ...countryOfOriginAttribute,
+        ...variationAttributes,
       },
       marketplaceIds: [marketplaceId],
     };
+  }
+
+  private mapConditionToAmazon(condition: ProductPayload["condition"]): string {
+    switch (condition) {
+      case "used":
+        return "used_like_new";
+      case "refurbished":
+        return "refurbished_refurbished";
+      case "new":
+      default:
+        return "new_new";
+    }
   }
 
   private async fetchWithTokenRetry(

@@ -54,6 +54,13 @@ export type ProductPayload = {
   sellingPrice: number;
   compareAtPrice?: number;
   mainImageUrl: string;    // MediaAsset.cdnUrl — must be permanent public HTTPS URL
+  additionalImageUrls?: string[];  // secondary images (up to 8 for Amazon, varies for Flipkart)
+  bulletPoints?: string[];         // Amazon: up to 5 bullet_point attributes
+  asin?: string;                   // Amazon: existing catalog ASIN for offer-mode updates
+  condition?: 'new' | 'used' | 'refurbished';
+  countryOfOrigin?: string;        // Amazon India + other marketplace compliance
+  parentSku?: string;              // variation family parent SKU
+  variationTheme?: string;         // e.g. "SIZE", "COLOR", "SIZE_COLOR"
   attributes: Record<string, unknown>;
   productType: string;     // channel-specific product type string
   variants?: ProductVariantPayload[];  // when present, overrides scalar price/sku fields

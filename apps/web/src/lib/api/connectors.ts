@@ -15,7 +15,7 @@ import type {
   ConnectorCatalogScanResult,
   ConnectorProductLink,
 } from "./core";
-import { deleteJson, fetchJson, postJson } from "./core";
+import { deleteJson, fetchJson, patchJson, postJson } from "./core";
 
 const SHOPIFY_LIVE_LAUNCH_NOTE =
   "Shopify supports managed install, expiring offline token exchange, publication target selection, publish, status sync, and webhook relay handling.";
@@ -135,17 +135,20 @@ export async function previewShopifyProductChanges(
 }
 
 // ─── Sprint 8: Delta sync ─────────────────────────────────────────────────────
+// Generic routes (Sprint G) — work for any connector slug (Amazon, Flipkart, Shopify).
+// The backend resolves connectors/shopify/:id (static) before connectors/:id (dynamic)
+// so Shopify installations arriving at the legacy path continue to work unchanged.
 
 export async function getDeltaSyncCandidates(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<Array<{ productId: string; version: number }>>(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/delta-candidates`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta-candidates`,
     options,
   );
 }
 
 export async function queueDeltaSync(installationId: string, options?: ApiRequestOptions) {
   return postJson<{ queued: number; skipped: number }>(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/delta`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta`,
     {},
     options,
   );
@@ -153,7 +156,7 @@ export async function queueDeltaSync(installationId: string, options?: ApiReques
 
 export async function getSyncStates(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ConnectorSyncState[]>(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/sync/states`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/states`,
     options,
   );
 }
@@ -162,7 +165,7 @@ export async function getSyncStates(installationId: string, options?: ApiRequest
 
 export async function getConnectorSchedule(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ConnectorSyncSchedule | null>(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`,
     options,
   );
 }
@@ -173,7 +176,7 @@ export async function upsertConnectorSchedule(
   options?: ApiRequestOptions,
 ) {
   return postJson<{ id: string }>(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`,
     body,
     options,
   );
@@ -181,7 +184,21 @@ export async function upsertConnectorSchedule(
 
 export async function deleteConnectorSchedule(installationId: string, options?: ApiRequestOptions) {
   return deleteJson(
-    `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/schedule`,
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`,
+    options,
+  );
+}
+
+// ─── Sprint D: Amazon marketplace configuration ───────────────────────────────
+
+export async function configureConnector(
+  installationId: string,
+  config: { marketplaceId?: string; defaultProductType?: string },
+  options?: ApiRequestOptions,
+) {
+  return patchJson<{ updated: boolean }>(
+    `/connectors/${encodeURIComponent(installationId)}/configure`,
+    config,
     options,
   );
 }

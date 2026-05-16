@@ -2552,6 +2552,28 @@ export class MarketplaceService implements OnModuleInit {
     const statusRaw = this.firstNonEmptyString(attributes.status);
     const status = statusRaw === "DRAFT" ? ("DRAFT" as const) : ("ACTIVE" as const);
 
+    const bulletPoints = Array.isArray(attributes.bulletPoints)
+      ? (attributes.bulletPoints as unknown[]).map((b) => String(b ?? "").trim()).filter(Boolean)
+      : undefined;
+
+    const additionalImageUrls = Array.isArray(attributes.additionalImageUrls)
+      ? (attributes.additionalImageUrls as unknown[]).map((u) => String(u ?? "").trim()).filter(Boolean)
+      : undefined;
+
+    const asin = this.firstNonEmptyString(attributes.asin) || undefined;
+
+    const rawCondition = this.firstNonEmptyString(attributes.condition);
+    const condition =
+      rawCondition === "used" || rawCondition === "refurbished"
+        ? (rawCondition as "used" | "refurbished")
+        : rawCondition === "new"
+          ? ("new" as const)
+          : undefined;
+
+    const countryOfOrigin = this.firstNonEmptyString(attributes.countryOfOrigin, attributes.country_of_origin) || undefined;
+    const parentSku = this.firstNonEmptyString(attributes.parentSku, attributes.parent_sku) || undefined;
+    const variationTheme = this.firstNonEmptyString(attributes.variationTheme, attributes.variation_theme) || undefined;
+
     return {
       sku,
       title: this.firstNonEmptyString(product.title),
@@ -2562,6 +2584,13 @@ export class MarketplaceService implements OnModuleInit {
       mrp,
       sellingPrice,
       mainImageUrl,
+      ...(bulletPoints && bulletPoints.length > 0 ? { bulletPoints } : {}),
+      ...(additionalImageUrls && additionalImageUrls.length > 0 ? { additionalImageUrls } : {}),
+      ...(asin ? { asin } : {}),
+      ...(condition ? { condition } : {}),
+      ...(countryOfOrigin ? { countryOfOrigin } : {}),
+      ...(parentSku ? { parentSku } : {}),
+      ...(variationTheme ? { variationTheme } : {}),
       attributes: {
         ...attributes,
         ...primaryVariantAttributes,

@@ -891,6 +891,27 @@ paths:
         "201":
           description: ""
       tags: *a13
+  /api/v1/connectors/{id}/configure:
+    patch:
+      operationId: ConnectorInstallerController_configure
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigureConnectorDto"
+      responses:
+        "200":
+          description: Configuration updated
+      summary: Update connector installation configuration (marketplace ID, default
+        product type, etc.)
+      tags: *a13
   /api/v1/connectors/{id}/oauth/callback:
     post:
       operationId: ConnectorInstallerController_oauthCallback
@@ -1620,6 +1641,82 @@ paths:
       tags: *a14
     delete:
       operationId: MarketplaceController_deleteSchedule
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/sync/delta-candidates:
+    get:
+      operationId: MarketplaceController_getConnectorDeltaSyncCandidates
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/sync/delta:
+    post:
+      operationId: MarketplaceController_queueConnectorDeltaSync
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/sync/states:
+    get:
+      operationId: MarketplaceController_getConnectorSyncStates
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/schedule:
+    get:
+      operationId: MarketplaceController_getConnectorSchedule
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
+    post:
+      operationId: MarketplaceController_upsertConnectorSchedule
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags: *a14
+    delete:
+      operationId: MarketplaceController_deleteConnectorSchedule
       parameters:
         - name: installationId
           required: true
@@ -3367,6 +3464,9 @@ components:
       type: object
       properties: {}
     InstallConnectorDto:
+      type: object
+      properties: {}
+    ConfigureConnectorDto:
       type: object
       properties: {}
     UpdatePublicationTargetsDto:

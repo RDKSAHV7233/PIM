@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { ConnectorSubmission } from "@/lib/api";
+import { retrySubmission } from "@/lib/api";
 
 function normalizeStatus(status: string): string {
   return String(status ?? "").trim().toUpperCase() || "UNKNOWN";
@@ -35,8 +37,34 @@ interface SubmissionsGridProps {
 }
 
 export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
+  const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retrySuccessId, setRetrySuccessId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
   const selected = submissions.find((s) => s.id === selectedId) ?? null;
+
+  function canRetry(status: string): boolean {
+    const s = normalizeStatus(status);
+    return s === "REJECTED" || s === "ERROR";
+  }
+
+  async function handleRetry(submissionId: string) {
+    setRetryingId(submissionId);
+    setRetrySuccessId(null);
+    setRetryError(null);
+    try {
+      await retrySubmission(submissionId);
+      setRetrySuccessId(submissionId);
+      // Refresh server-rendered data after a short delay so the status change is visible
+      setTimeout(() => router.refresh(), 1000);
+    } catch {
+      setRetryError("Retry request failed — check your connection and try again.");
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   return (
     <>
@@ -189,7 +217,23 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
             )}
 
             {/* Actions */}
-            <section className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            <section className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              {canRetry(selected.status) ? (
+                retrySuccessId === selected.id ? (
+                  <span className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+                    ✓ Retry queued — refreshing…
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={retryingId === selected.id}
+                    onClick={() => handleRetry(selected.id)}
+                    className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {retryingId === selected.id ? "Retrying…" : "Retry submission"}
+                  </button>
+                )
+              ) : null}
               <Link
                 href={`/products/${encodeURIComponent(selected.productId)}?tab=channels`}
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -203,6 +247,9 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
               >
                 Open jobs workspace
               </Link>
+              {retryError ? (
+                <p className="w-full text-xs text-red-600">{retryError}</p>
+              ) : null}
             </section>
           </div>
         </AppDrawer>

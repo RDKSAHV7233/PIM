@@ -143,6 +143,13 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
           }
           actions={
             <>
+              <a
+                href={`/api/marketplace/submissions/error-report${connectorSlug ? `?connectorSlug=${encodeURIComponent(connectorSlug)}` : ""}`}
+                download
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Download Error Report
+              </a>
               <Link href="/channels/health" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
                 Channel Health
               </Link>

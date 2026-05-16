@@ -814,17 +814,26 @@ export async function createVariantAction(formData: FormData) {
     throw new Error("Product and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
-    skuCode,
-    attributes,
-    mrp: parseNumber(formData.get("mrp")),
-    sellingPrice: parseNumber(formData.get("sellingPrice")),
-    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-    status: String(formData.get("status") ?? "draft"),
-  });
-
-  revalidatePath(`/products/${productId}`);
+  try {
+    await postJsonForAction(formData, `/catalog/products/${productId}/variants`, {
+      skuCode,
+      attributes,
+      mrp: parseNumber(formData.get("mrp")),
+      sellingPrice: parseNumber(formData.get("sellingPrice")),
+      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+      status: String(formData.get("status") ?? "draft"),
+    });
+    revalidatePath(`/products/${productId}`);
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
+    }
+    redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
+  }
 }
 
 export async function updateVariantAction(formData: FormData) {
@@ -835,17 +844,26 @@ export async function updateVariantAction(formData: FormData) {
     throw new Error("Product, variant, and SKU are required.");
   }
   const attributes = parseJsonObject(formData.get("attributes"), "Attributes");
+  const basePath = `/products/${encodeURIComponent(productId)}`;
 
-  await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
-    skuCode,
-    attributes,
-    mrp: parseNumber(formData.get("mrp")),
-    sellingPrice: parseNumber(formData.get("sellingPrice")),
-    inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
-    status: String(formData.get("status") ?? "draft"),
-  });
-
-  revalidatePath(`/products/${productId}`);
+  try {
+    await patchJsonForAction(formData, `/catalog/variants/${encodeURIComponent(variantId)}`, {
+      skuCode,
+      attributes,
+      mrp: parseNumber(formData.get("mrp")),
+      sellingPrice: parseNumber(formData.get("sellingPrice")),
+      inventoryQty: parseNumber(formData.get("inventoryQty")) ?? 0,
+      status: String(formData.get("status") ?? "draft"),
+    });
+    revalidatePath(`/products/${productId}`);
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("WORKFLOW_CONTENT_LOCKED")) {
+      redirect(appendQueryParams(basePath, { tab: "variants", error: "CONTENT_LOCKED" }));
+    }
+    redirect(appendQueryParams(basePath, { tab: "variants", error: "VARIANT_ERROR" }));
+  }
 }
 
 export async function deleteVariantAction(formData: FormData) {
@@ -987,6 +1005,9 @@ export async function installConnectorAction(formData: FormData) {
   const clientSecret = String(formData.get("clientSecret") ?? "").trim();
   const refreshToken = String(formData.get("refreshToken") ?? "").trim();
   const accessToken = String(formData.get("accessToken") ?? "").trim();
+  // Amazon-specific fields
+  const marketplaceId = String(formData.get("marketplaceId") ?? "").trim();
+  const defaultProductType = String(formData.get("defaultProductType") ?? "").trim().toUpperCase();
   const returnTo = String(formData.get("returnTo") ?? "").trim() || "/channels/connectors";
   if (!slug) {
     throw new Error("Connector slug is required.");
@@ -1001,6 +1022,8 @@ export async function installConnectorAction(formData: FormData) {
       clientSecret: clientSecret || undefined,
       refreshToken: refreshToken || undefined,
       accessToken: accessToken || undefined,
+      marketplaceId: marketplaceId || undefined,
+      defaultProductType: defaultProductType || undefined,
     });
   } catch (error: unknown) {
     rethrowRedirectError(error);
@@ -1026,6 +1049,30 @@ export async function installConnectorAction(formData: FormData) {
       connectorSlug: slug,
     }),
   );
+}
+
+export async function configureAmazonAction(formData: FormData) {
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const marketplaceId = String(formData.get("marketplaceId") ?? "").trim();
+  const defaultProductType = String(formData.get("defaultProductType") ?? "").trim().toUpperCase();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=credentials`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+  try {
+    await patchJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/configure`, {
+      marketplaceId: marketplaceId || undefined,
+      defaultProductType: defaultProductType || undefined,
+    });
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    throw error;
+  }
+  revalidatePath(`/channels/connectors/${installationId}`);
+  revalidatePath("/channels/connectors");
+  redirect(appendQueryParams(returnTo, { status: "amazon-configured" }));
 }
 
 export async function reconnectConnectorAction(formData: FormData) {
@@ -1869,6 +1916,71 @@ export async function importShopifyConfigAction(
     taxonomy: Array.isArray(result.taxonomy) ? result.taxonomy.length : 0,
     fetchedAt: result.fetchedAt,
   };
+}
+
+// ─── Sprint G: Generic connector sync + schedule actions ────────────────────
+
+export async function queueConnectorDeltaSyncAction(formData: FormData) {
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=sync`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+  try {
+    await postJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta`, {});
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    redirect(appendQueryParams(returnTo, { status: "delta-sync-error" }));
+  }
+  revalidatePath(`/channels/connectors/${installationId}`);
+  redirect(appendQueryParams(returnTo, { status: "delta-sync-queued" }));
+}
+
+export async function upsertConnectorSyncScheduleAction(formData: FormData) {
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const cronExpression = String(formData.get("cronExpression") ?? "").trim();
+  const scope = String(formData.get("scope") ?? "approved_only").trim();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=schedule`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+  if (!cronExpression) {
+    throw new Error("Cron expression is required.");
+  }
+  try {
+    await postJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`, {
+      cronExpression,
+      scope,
+      status: "active",
+    });
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
+  }
+  revalidatePath(`/channels/connectors/${installationId}`);
+  redirect(appendQueryParams(returnTo, { status: "schedule-saved" }));
+}
+
+export async function deleteConnectorSyncScheduleAction(formData: FormData) {
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=schedule`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+  try {
+    await deleteJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`);
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    redirect(appendQueryParams(returnTo, { status: "schedule-error" }));
+  }
+  revalidatePath(`/channels/connectors/${installationId}`);
+  redirect(appendQueryParams(returnTo, { status: "schedule-deleted" }));
 }
 
 export async function confirmCatalogLinksAction(
