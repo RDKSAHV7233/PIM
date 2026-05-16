@@ -553,6 +553,19 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 ),
               },
               {
+                key: "externalRef",
+                header: "Shopify / External Ref",
+                cellClassName: "font-mono text-xs text-slate-700",
+                render: (s: ConnectorSubmission) => {
+                  if (!s.externalRef) return <span className="text-slate-400">—</span>;
+                  const gidMatch = s.externalRef.match(/gid:\/\/shopify\/Product\/(\d+)/);
+                  if (gidMatch) {
+                    return <span title={s.externalRef}>shopify:{gidMatch[1]}</span>;
+                  }
+                  return <span title={s.externalRef}>{s.externalRef.slice(0, 40)}</span>;
+                },
+              },
+              {
                 key: "attemptNumber",
                 header: "Attempt",
                 render: (s: ConnectorSubmission) => s.attemptNumber,
