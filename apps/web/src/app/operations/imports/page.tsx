@@ -537,47 +537,39 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         {largeRuns.length > 0 ? (
           <Card aria-live="polite" aria-atomic="true">
             <CardTitle>Large Import Runs</CardTitle>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[920px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="py-2">Run</th>
-                    <th className="py-2">Category</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Rows</th>
-                    <th className="py-2">Batches</th>
-                    <th className="py-2">Needs Attention</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {largeRuns.map((run) => {
-                    const processedRows =
-                      (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
-                    return (
-                      <tr key={run.id} className="border-t border-border">
-                        <td className="py-2 font-mono text-xs">{run.id}</td>
-                        <td className="py-2">{run.category?.path ?? run.categoryId}</td>
-                        <td className="py-2">{translateJobStatus(run.status)}</td>
-                        <td className="py-2">
-                          {processedRows}/{run.totalRows ?? 0}
-                        </td>
-                        <td className="py-2">{run.estimatedBatchCount ?? "-"}</td>
-                        <td className="py-2">{(run.failedRows ?? 0) + (run.deadLetterRows ?? 0)}</td>
-                        <td className="py-2">
-                          <Link
-                            href={buildRunHref(run.id)}
-                            className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm"
-                          >
-                            View run
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataGrid
+              className="mt-3"
+              columns={[
+                { key: "id", header: "Run", cellClassName: "font-mono text-xs" },
+                { key: "category", header: "Category", render: (run) => run.category?.path ?? run.categoryId },
+                { key: "status", header: "Status", render: (run) => translateJobStatus(run.status) },
+                {
+                  key: "rows",
+                  header: "Rows",
+                  render: (run) => {
+                    const processedRows = (run.acceptedRows ?? 0) + (run.failedRows ?? 0) + (run.deadLetterRows ?? 0);
+                    return `${processedRows}/${run.totalRows ?? 0}`;
+                  },
+                },
+                { key: "batches", header: "Batches", render: (run) => run.estimatedBatchCount ?? "-", mobileHide: true },
+                {
+                  key: "attention",
+                  header: "Needs Attention",
+                  render: (run) => (run.failedRows ?? 0) + (run.deadLetterRows ?? 0),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (run) => (
+                    <Link href={buildRunHref(run.id)} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                      View run
+                    </Link>
+                  ),
+                },
+              ] as Column<BulkImportRun>[]}
+              rows={largeRuns}
+              getRowKey={(run) => run.id}
+            />
           </Card>
         ) : null}
 
@@ -622,43 +614,51 @@ export default async function OperationsImportsPage({ searchParams }: Operations
                     : "No row-level result data is available for this large import run yet."}
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[920px] text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Row</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Catalog result</th>
-                        <th className="px-3 py-2">Error</th>
-                        <th className="px-3 py-2">Attempts</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRunRows.map((row) => {
+                <DataGrid<BulkImportRunRow>
+                  columns={[
+                    {
+                      key: "rowNumberGlobal",
+                      header: "Row",
+                      cellClassName: "font-mono text-xs",
+                      render: (row) => String(row.rowNumberGlobal ?? row.rowNumber ?? ""),
+                    },
+                    {
+                      key: "status",
+                      header: "Status",
+                      render: (row) => translateJobStatus(row.status),
+                    },
+                    {
+                      key: "productId",
+                      header: "Catalog result",
+                      render: (row) =>
+                        row.productId ? (
+                          <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
+                            View product
+                          </Link>
+                        ) : (
+                          <span className="text-slate-500">No product created</span>
+                        ),
+                    },
+                    {
+                      key: "errorMessage",
+                      header: "Error",
+                      cellClassName: "text-xs text-slate-600",
+                      render: (row) => {
+                        if (!row.errorMessage) return "None";
                         const translatedError = translateError(extractErrorCode(row.errorMessage));
-                        return (
-                          <tr key={row.id} className="border-t border-slate-200">
-                            <td className="px-3 py-2.5 font-mono text-xs">{row.rowNumberGlobal ?? row.rowNumber}</td>
-                            <td className="px-3 py-2.5">{translateJobStatus(row.status)}</td>
-                            <td className="px-3 py-2.5">
-                              {row.productId ? (
-                                <Link href={`/products/${encodeURIComponent(row.productId)}`} className="font-medium text-slate-900 underline">
-                                  View product
-                                </Link>
-                              ) : (
-                                <span className="text-slate-500">No product created</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-slate-600">
-                              {row.errorMessage ? `${translatedError.title}: ${translatedError.description}` : "None"}
-                            </td>
-                            <td className="px-3 py-2.5">{row.retryCount}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        return `${translatedError.title}: ${translatedError.description}`;
+                      },
+                    },
+                    {
+                      key: "retryCount",
+                      header: "Attempts",
+                      mobileHide: true,
+                      render: (row) => String(row.retryCount ?? 0),
+                    },
+                  ] satisfies Column<BulkImportRunRow>[]}
+                  rows={selectedRunRows}
+                  getRowKey={(row) => row.id}
+                />
               )}
             </div>
           </Card>

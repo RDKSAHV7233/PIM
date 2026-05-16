@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -87,38 +88,50 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
               <Card>
                 <CardTitle>Matched ({scanResult.matched.length})</CardTitle>
                 <p className="mt-1 text-xs text-slate-500">These products were matched to existing Shopify listings. Confirm to save the links.</p>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                        <th className="pb-2 pr-3">Vexa Product</th>
-                        <th className="pb-2 pr-3">SKU</th>
-                        <th className="pb-2 pr-3">Shopify GID</th>
-                        <th className="pb-2 pr-3">Matched by</th>
-                        <th className="pb-2">Confidence</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {scanResult.matched.map((m) => (
-                        <tr key={m.productId}>
-                          <td className="py-2 pr-3">
-                            <Link href={`/products/${m.productId}`} className="underline text-slate-700 hover:text-slate-900">
-                              {m.productTitle || m.productId.slice(0, 8)}
-                            </Link>
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-xs text-slate-600">{m.shopifySku || "—"}</td>
-                          <td className="py-2 pr-3 font-mono text-xs text-slate-600 max-w-[14rem] truncate" title={m.shopifyGid}>{m.shopifyGid}</td>
-                          <td className="py-2 pr-3 text-slate-600">{m.matchedBy.replace(/_/g, " ")}</td>
-                          <td className="py-2">
-                            <StatusChip
-                              label={m.confidence}
-                              tone={m.confidence === "high" ? "success" : "warning"}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-3">
+                  <DataGrid
+                    columns={[
+                      {
+                        key: "productTitle",
+                        header: "Vexa Product",
+                        render: (m) => (
+                          <Link href={`/products/${m.productId}`} className="underline text-slate-700 hover:text-slate-900">
+                            {m.productTitle || m.productId.slice(0, 8)}
+                          </Link>
+                        ),
+                      },
+                      {
+                        key: "shopifySku",
+                        header: "SKU",
+                        cellClassName: "font-mono text-xs text-slate-600",
+                        render: (m) => m.shopifySku || "—",
+                      },
+                      {
+                        key: "shopifyGid",
+                        header: "Shopify GID",
+                        cellClassName: "font-mono text-xs text-slate-600 max-w-[14rem] truncate",
+                        render: (m) => m.shopifyGid,
+                      },
+                      {
+                        key: "matchedBy",
+                        header: "Matched by",
+                        cellClassName: "text-slate-600",
+                        render: (m) => m.matchedBy.replace(/_/g, " "),
+                      },
+                      {
+                        key: "confidence",
+                        header: "Confidence",
+                        render: (m) => (
+                          <StatusChip
+                            label={m.confidence}
+                            tone={m.confidence === "high" ? "success" : "warning"}
+                          />
+                        ),
+                      },
+                    ] as Column<(typeof scanResult.matched)[number]>[]}
+                    rows={scanResult.matched}
+                    getRowKey={(m) => m.productId}
+                  />
                 </div>
                 <div className="mt-4">
                   <ConfirmLinksButton
@@ -158,29 +171,41 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
         {existingLinks.length > 0 ? (
           <Card>
             <CardTitle>Confirmed Links ({existingLinks.length})</CardTitle>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                    <th className="pb-2 pr-3">Product ID</th>
-                    <th className="pb-2 pr-3">Shopify GID</th>
-                    <th className="pb-2 pr-3">Method</th>
-                    <th className="pb-2">Confirmed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {existingLinks.map((link) => (
-                    <tr key={link.productId}>
-                      <td className="py-2 pr-3">
-                        <Link href={`/products/${link.productId}`} className="underline font-mono text-xs text-slate-700">{link.productId.slice(0, 10)}…</Link>
-                      </td>
-                      <td className="py-2 pr-3 font-mono text-xs text-slate-600 max-w-[14rem] truncate" title={link.shopifyGid}>{link.shopifyGid}</td>
-                      <td className="py-2 pr-3 text-slate-600">{link.matchedBy.replace(/_/g, " ")}</td>
-                      <td className="py-2 text-xs text-slate-600">{link.confirmedAt ? new Date(link.confirmedAt).toLocaleDateString() : "Auto"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-3">
+              <DataGrid
+                columns={[
+                  {
+                    key: "productId",
+                    header: "Product ID",
+                    render: (link) => (
+                      <Link href={`/products/${link.productId}`} className="underline font-mono text-xs text-slate-700">
+                        {link.productId.slice(0, 10)}…
+                      </Link>
+                    ),
+                  },
+                  {
+                    key: "shopifyGid",
+                    header: "Shopify GID",
+                    cellClassName: "font-mono text-xs text-slate-600 max-w-[14rem] truncate",
+                    render: (link) => link.shopifyGid,
+                  },
+                  {
+                    key: "matchedBy",
+                    header: "Method",
+                    cellClassName: "text-slate-600",
+                    render: (link) => link.matchedBy.replace(/_/g, " "),
+                  },
+                  {
+                    key: "confirmedAt",
+                    header: "Confirmed",
+                    cellClassName: "text-xs text-slate-600",
+                    mobileHide: true,
+                    render: (link) => (link.confirmedAt ? new Date(link.confirmedAt).toLocaleDateString() : "Auto"),
+                  },
+                ] as Column<(typeof existingLinks)[number]>[]}
+                rows={existingLinks}
+                getRowKey={(link) => link.productId}
+              />
             </div>
           </Card>
         ) : null}
