@@ -602,6 +602,7 @@ export class AuthService implements OnModuleDestroy {
       role: claims.role,
       assignedRoles: claims.assignedRoles,
       tokenType: "access",
+      mfaVerified: true,
       expiresInSeconds,
       minimumExpiresInSeconds: 60,
     });

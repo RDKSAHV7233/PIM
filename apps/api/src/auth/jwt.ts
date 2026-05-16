@@ -21,6 +21,7 @@ export interface PimJwtClaims {
   tokenType?: PimJwtTokenType;
   stepUpScope?: StepUpScope;
   parentJti?: string;
+  mfaVerified?: boolean;
   iat: number;
   exp: number;
 }
@@ -36,6 +37,7 @@ interface SignJwtInput {
   stepUpScope?: StepUpScope;
   parentJti?: string;
   minimumExpiresInSeconds?: number;
+  mfaVerified?: boolean;
 }
 
 function getJwtSecret(): string {
@@ -103,6 +105,7 @@ export function signPimJwt(input: SignJwtInput): string {
     tokenType,
     stepUpScope: tokenType === "step_up" ? input.stepUpScope : undefined,
     parentJti: tokenType === "step_up" ? input.parentJti?.trim() : undefined,
+    mfaVerified: input.mfaVerified === true ? true : undefined,
     iat: now,
     exp: now + expiresInSeconds,
   };
@@ -129,6 +132,7 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     const tokenType = isTokenType(payload.tokenType) ? payload.tokenType : "access";
     const stepUpScope = isStepUpScope(payload.stepUpScope) ? payload.stepUpScope : undefined;
     const parentJti = typeof payload.parentJti === "string" ? payload.parentJti.trim() : undefined;
+    const mfaVerified = payload.mfaVerified === true ? true : undefined;
 
     if (!sub || !tenantId || !jti || !Number.isFinite(iat) || !Number.isFinite(exp)) {
       return null;
@@ -136,7 +140,7 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     if (tokenType === "step_up" && (!stepUpScope || !parentJti)) {
       return null;
     }
-    return { sub, tenantId, jti, role, assignedRoles, tokenType, stepUpScope, parentJti, iat, exp };
+    return { sub, tenantId, jti, role, assignedRoles, tokenType, stepUpScope, parentJti, mfaVerified, iat, exp };
   } catch {
     return null;
   }

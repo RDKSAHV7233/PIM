@@ -9,6 +9,7 @@ import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import { extractApiKeyFromHeaders } from "../api-keys/api-key-auth";
 import { ApiKeysService, type ResolvedApiKeyIdentity } from "../api-keys/api-keys.service";
+import { AuthPolicyService } from "./auth-policy.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { resolveDefaultRole, resolveEffectiveRoles } from "../common/rbac/role-utils";
 import { AppRole } from "../common/rbac/roles";
@@ -40,6 +41,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly apiKeysService: ApiKeysService,
     private readonly planUsageService: PlanUsageService,
     private readonly prisma: PrismaService,
+    private readonly authPolicyService: AuthPolicyService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -87,6 +89,10 @@ export class JwtAuthGuard implements CanActivate {
         await this.assertTenantAccessActive(tenantId);
       }
       await this.assertUserAccessActive(tenantId, claims.sub);
+      const { mfaRequired } = await this.authPolicyService.getEffectiveMfaPolicy(tenantId);
+      if (mfaRequired && !claims.mfaVerified) {
+        throw new UnauthorizedException({ error: "MFA_REQUIRED" });
+      }
       const resolvedRoles = resolveEffectiveRoles({
         legacyRole: claims.role ?? resolveDefaultRole(),
         assignedRoles: claims.assignedRoles,
