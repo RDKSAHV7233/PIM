@@ -24,6 +24,16 @@ module.exports = async function globalSetup() {
   await assertReachable(`${baseURL}/login`, 200, "web login reachability");
   await assertReachable(`${apiURL}/health`, 200, "api health reachability");
 
+  if (process.env.PLAYWRIGHT_SIGNUP_OUTBOX_DIR) {
+    const signupRes = await fetch(`${apiURL}/signup/check-availability?slug=playwright-preflight-check`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (signupRes.status === 404) {
+      console.warn("[global-setup] Signup feature disabled — Phase 9 specs will be skipped.");
+      process.env.PLAYWRIGHT_SIGNUP_DISABLED = "true";
+    }
+  }
+
   console.log(
     JSON.stringify(
       {

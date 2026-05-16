@@ -3,6 +3,8 @@ const path = require("node:path");
 const { test, expect } = require("@playwright/test");
 const { PrismaClient } = require("@prisma/client");
 
+const { DEFAULT_WORKSPACE } = require("./helpers/vexa-pim.cjs");
+
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const SIGNUP_OUTBOX_DIR = String(process.env.PLAYWRIGHT_SIGNUP_OUTBOX_DIR || "").trim();
 
@@ -237,4 +239,18 @@ test("public signup can verify a workspace and reach trial plan state through th
       console.error("Signup browser flow cleanup failed:", error instanceof Error ? error.message : String(error));
     }
   }
+});
+
+test("duplicate workspace slug is rejected with unavailable feedback", async ({ page }) => {
+  await page.goto("/signup", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Create your Vexa PIM workspace" })).toBeVisible();
+
+  const workspaceInput = page.getByLabel("Workspace", { exact: true });
+  await workspaceInput.fill(DEFAULT_WORKSPACE);
+  await workspaceInput.blur();
+
+  await expect(
+    page.getByText(/taken|unavailable|already exists|already in use/i).first(),
+  ).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText("Workspace ID is available.")).not.toBeVisible();
 });

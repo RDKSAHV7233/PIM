@@ -36,6 +36,7 @@ module.exports = defineConfig({
   ],
   use: {
     baseURL,
+    storageState: undefined,
     extraHTTPHeaders: {
       "x-playwright-suite": "vexa-pim-e2e",
     },

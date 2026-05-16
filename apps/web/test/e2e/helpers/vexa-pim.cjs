@@ -59,7 +59,7 @@ async function apiLoginPayload(role, apiUrl = DEFAULT_API_URL, workspaceSlug = D
     workspaceSlug,
     userId: identity.userId,
     password: DEFAULT_PASSWORD,
-    expiresInMinutes: 30,
+    expiresInMinutes: 360,
   }, apiUrl);
   LOGIN_CACHE.set(cacheKey, payload);
   return payload;

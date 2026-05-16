@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { DEFAULT_BASE_URL, USERS, apiLoginPayload, loginViaUi } = require("./helpers/vexa-pim.cjs");
+const { DEFAULT_BASE_URL, DEFAULT_WORKSPACE, USERS, apiLoginPayload, loginViaUi } = require("./helpers/vexa-pim.cjs");
 
 const roles = ["admin", "editor", "reviewer", "viewer"];
 
@@ -12,6 +12,30 @@ for (const role of roles) {
     await expect(page.getByRole("button", { name: "Open notifications" })).toBeVisible();
   });
 }
+
+test("wrong password is rejected and URL stays at /login", async ({ page }) => {
+  await page.goto(`${DEFAULT_BASE_URL}/login`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Workspace").fill(DEFAULT_WORKSPACE);
+  await page.getByLabel("User ID").fill(USERS.admin.userId);
+  await page.getByLabel("Password").fill("wrong-password-xyz-not-real-12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.locator('[role="alert"]').or(page.getByText(/invalid|incorrect|failed|credentials/i)).first()).toBeVisible();
+});
+
+test("HTTP-only session cookie is set after login", async ({ page }) => {
+  await loginViaUi(page, "editor");
+  const cookies = await page.context().cookies();
+  const httpOnlyCookies = cookies.filter((c) => c.httpOnly === true);
+  expect(httpOnlyCookies.length).toBeGreaterThan(0);
+});
+
+test("expired session redirects to /login on protected route", async ({ page }) => {
+  await loginViaUi(page, "editor");
+  await page.context().clearCookies();
+  await page.goto(`${DEFAULT_BASE_URL}/dashboard`, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/login/);
+});
 
 test("unknown workspace is rejected before credentials are accepted", async ({ page }) => {
   await page.goto(`${DEFAULT_BASE_URL}/login`, { waitUntil: "domcontentloaded" });

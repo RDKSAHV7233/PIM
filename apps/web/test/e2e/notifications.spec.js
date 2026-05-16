@@ -14,6 +14,22 @@ const {
   updateProduct,
 } = require("./helpers/vexa-pim.cjs");
 
+test("notification panel closes when clicking outside it", async ({ page }) => {
+  await loginViaUi(page, "editor");
+  await page.getByRole("button", { name: "Open notifications" }).click();
+  const panel = page.locator("aside").filter({ has: page.getByRole("heading", { name: "Notifications" }) });
+  await expect(panel).toBeVisible();
+
+  await page.mouse.click(10, 10);
+  await expect(panel).toBeHidden({ timeout: 5_000 });
+});
+
+test("full notification center renders at /notifications", async ({ page }) => {
+  await loginViaUi(page, "editor");
+  await page.goto("/notifications", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /notifications/i }).first()).toBeVisible();
+});
+
 test("editor can open notification center and mark approval notifications read", async ({ page }) => {
   const reviewerAuth = await apiLoginPayload("reviewer");
   test.skip(reviewerAuth.role !== "reviewer", `reviewer identity resolves as ${reviewerAuth.role} in current local environment`);
