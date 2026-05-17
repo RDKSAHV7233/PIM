@@ -324,6 +324,63 @@ function emitRailwayServiceDiscoveryHint(config, env = process.env) {
   }
 }
 
+function emitRecentRailwayDeployLogs(config, serviceTarget, env = process.env) {
+  const linkResult = runCommandCapture(
+    config.railwayBin,
+    ["link", "--project", config.projectId, "--environment", config.environmentName, "--service", serviceTarget, "--json"],
+    { cwd: config.repoRoot, env },
+  );
+
+  if (linkResult.error || linkResult.status !== 0) {
+    console.error(`[railway-deploy] Could not link Railway project context to fetch logs for service '${serviceTarget}'.`);
+    if (linkResult.stdout) {
+      process.stdout.write(linkResult.stdout);
+    }
+    if (linkResult.stderr) {
+      process.stderr.write(linkResult.stderr);
+    }
+    return;
+  }
+
+  const deploymentListResult = runCommandCapture(
+    config.railwayBin,
+    ["deployment", "list", "--service", serviceTarget, "--environment", config.environmentName, "--limit", "5", "--json"],
+    { cwd: config.repoRoot, env },
+  );
+  if (deploymentListResult.stdout) {
+    console.error(`[railway-deploy] Recent deployments for service '${serviceTarget}':`);
+    process.stdout.write(deploymentListResult.stdout);
+  }
+  if (deploymentListResult.stderr) {
+    process.stderr.write(deploymentListResult.stderr);
+  }
+
+  const logCommands = [
+    {
+      label: "build",
+      args: ["logs", "--build", "--service", serviceTarget, "--environment", config.environmentName, "--latest", "--lines", "200"],
+    },
+    {
+      label: "deployment",
+      args: ["logs", "--deployment", "--service", serviceTarget, "--environment", config.environmentName, "--latest", "--lines", "200"],
+    },
+  ];
+
+  for (const command of logCommands) {
+    const result = runCommandCapture(config.railwayBin, command.args, {
+      cwd: config.repoRoot,
+      env,
+    });
+    if (result.stdout) {
+      console.error(`[railway-deploy] Latest Railway ${command.label} logs for service '${serviceTarget}':`);
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+  }
+}
+
 function emitActionableDeployHint(error, config) {
   const combined = [
     error instanceof Error ? error.message : String(error),
@@ -389,6 +446,7 @@ function runDeployCommandAcrossServiceTargets(command, options) {
     } catch (error) {
       lastError = error;
       if (!isServiceNotFoundRailwayError(error) || serviceTarget === command.serviceTargets[command.serviceTargets.length - 1]) {
+        emitRecentRailwayDeployLogs(options.config, serviceTarget, options.env);
         throw error;
       }
       console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
