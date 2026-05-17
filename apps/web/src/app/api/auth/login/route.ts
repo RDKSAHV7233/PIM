@@ -7,11 +7,6 @@ function useSecureCookies(): boolean {
   return appEnv === "production" || appEnv === "staging";
 }
 
-function includeUpstreamDiagnostics(): boolean {
-  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
-  return appEnv !== "production";
-}
-
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
   const parsedExpiry = Number(body?.expiresInMinutes);
@@ -41,12 +36,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: "AUTH_UPSTREAM_UNAVAILABLE",
-        ...(includeUpstreamDiagnostics()
-          ? {
-              apiBaseUrl,
-              detail: error instanceof Error ? error.message : String(error ?? "upstream fetch failed"),
-            }
-          : {}),
+        apiBaseUrl,
+        detail: error instanceof Error ? error.message : String(error ?? "upstream fetch failed"),
       },
       {
         status: 503,
