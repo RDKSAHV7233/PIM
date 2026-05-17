@@ -1,15 +1,19 @@
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api/v1";
 
 function normalizeApiBaseUrl(value: string): string {
+  const trimmedValue = String(value ?? "").trim();
+  if (!trimmedValue) {
+    return "";
+  }
   try {
-    const parsed = new URL(value);
+    const parsed = new URL(trimmedValue);
     const pathname = parsed.pathname.replace(/\/+$/, "");
     parsed.pathname = !pathname || pathname === "/" ? "/api/v1" : pathname;
     parsed.search = "";
     parsed.hash = "";
     return parsed.toString().replace(/\/$/, "");
   } catch {
-    return value.replace(/\/+$/, "") || DEFAULT_API_BASE_URL;
+    return trimmedValue.replace(/\/+$/, "");
   }
 }
 
