@@ -53,6 +53,23 @@ jobs:
           fi
           npm run prisma:migrate:deploy
 
+      - name: Backfill legacy auth hashes
+        shell: bash
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          PIM_AUTH_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+        run: |
+          if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
+            echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth hash backfill."
+            exit 1
+          fi
+          if [ -z "${PIM_AUTH_PASSWORD}" ]; then
+            echo "Missing STAGING_SMOKE_PASSWORD secret for auth hash backfill."
+            exit 1
+          fi
+          node scripts/migrate-legacy-auth-password-hashes.cjs
+
       - name: Build API
         run: npm run build --workspace @pim1/api
 
@@ -68,6 +85,8 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_API_SERVICE: ${{ secrets.RAILWAY_API_SERVICE || 'Vexa API' }}
+          RAILWAY_WEB_SERVICE: ${{ secrets.RAILWAY_WEB_SERVICE || 'App Vexa' }}
           RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
           RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_NAME: Staging

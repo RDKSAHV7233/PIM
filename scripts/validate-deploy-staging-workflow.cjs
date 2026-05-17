@@ -90,6 +90,27 @@ function main() {
     "Apply migrations",
   );
   requireRunContains(migrationsStep, "npm run prisma:migrate:deploy", "Apply migrations");
+  const authHashBackfillStep = requireStep(steps, "Backfill legacy auth hashes");
+  requireEnvVar(authHashBackfillStep, "DATABASE_URL_DIRECT", "Backfill legacy auth hashes");
+  requireEnvVar(authHashBackfillStep, "DATABASE_URL", "Backfill legacy auth hashes");
+  requireEnvVar(authHashBackfillStep, "PIM_AUTH_PASSWORD", "Backfill legacy auth hashes");
+  requireRunContains(
+    authHashBackfillStep,
+    "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth hash backfill.",
+    "Backfill legacy auth hashes",
+  );
+  requireRunContains(
+    authHashBackfillStep,
+    "Missing STAGING_SMOKE_PASSWORD secret for auth hash backfill.",
+    "Backfill legacy auth hashes",
+  );
+  requireRunContains(
+    authHashBackfillStep,
+    "node scripts/migrate-legacy-auth-password-hashes.cjs",
+    "Backfill legacy auth hashes",
+  );
+  requireStepOrder(steps, "Apply migrations", "Backfill legacy auth hashes");
+  requireStepOrder(steps, "Backfill legacy auth hashes", "Build API");
   requireStep(steps, "Build API");
   requireStep(steps, "Build Web");
   requireStep(steps, "Install Railway CLI");
@@ -185,6 +206,7 @@ function main() {
           "workflow_dispatch_trigger_present",
           "deploy_job_serialized_with_environment_protection",
           "migration_step_has_database_secret_guard",
+          "legacy_auth_hash_backfill_runs_before_builds",
           "railway_cli_install_step_present_before_deploy",
           "deploy_step_uses_checked_in_railway_script",
           "staging_smoke_checks_health_and_env",

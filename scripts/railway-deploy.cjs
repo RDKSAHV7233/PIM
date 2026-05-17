@@ -31,6 +31,10 @@ function dedupe(values) {
   return Array.from(new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean)));
 }
 
+function normalizeServiceTarget(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function deriveRailwayHostSlug(urlValue) {
   const value = String(urlValue ?? "").trim();
   if (!value) {
@@ -52,6 +56,11 @@ function resolveServiceTargets(primaryNames, fallbackUrl, env = process.env) {
     ...primaryNames.map((name) => optionalEnv(name, env)),
     deriveRailwayHostSlug(fallbackUrl),
   ]);
+}
+
+function findOverlappingServiceTargets(apiServiceTargets, webServiceTargets) {
+  const webTargetSet = new Set(webServiceTargets.map((value) => normalizeServiceTarget(value)).filter(Boolean));
+  return apiServiceTargets.filter((value) => webTargetSet.has(normalizeServiceTarget(value)));
 }
 
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
@@ -83,6 +92,12 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   }
   if (webServiceTargets.length === 0) {
     throw new Error("Missing Railway web service target. Set RAILWAY_WEB_SERVICE_ID or RAILWAY_WEB_SERVICE.");
+  }
+  const overlappingServiceTargets = findOverlappingServiceTargets(apiServiceTargets, webServiceTargets);
+  if (overlappingServiceTargets.length > 0) {
+    throw new Error(
+      `Railway API and web service targets overlap (${overlappingServiceTargets.join(", ")}). Verify RAILWAY_API_SERVICE/RAILWAY_API_SERVICE_ID point to the API service and RAILWAY_WEB_SERVICE/RAILWAY_WEB_SERVICE_ID point to the web service.`,
+    );
   }
 
   return {
@@ -427,6 +442,10 @@ function emitActionableDeployHint(error, config) {
       `[railway-deploy] Railway could resolve project '${config.projectId}' but none of the configured service targets matched. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
     );
     emitRailwayServiceDiscoveryHint(config, process.env);
+  } else if (combined.includes("service targets overlap")) {
+    console.error(
+      `[railway-deploy] Railway deploy targets are miswired. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
+    );
   }
 }
 
@@ -564,10 +583,12 @@ module.exports = {
   buildDeployCommands,
   classifyDeployTargets,
   buildRailwayExecutionEnv,
+  findOverlappingServiceTargets,
   getChangedFiles,
   isRetryableRailwayDeployError,
   isServiceNotFoundRailwayError,
   main,
+  normalizeServiceTarget,
   resolveConfig,
   resolveServiceTargets,
   runDeployCommandWithRetry,
