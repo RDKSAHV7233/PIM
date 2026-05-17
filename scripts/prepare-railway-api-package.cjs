@@ -7,6 +7,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "api");
 const schemaSource = path.join(repoRoot, "packages", "db", "prisma", "schema.prisma");
+const migrateScriptSource = path.join(repoRoot, "scripts", "prisma-migrate-deploy.cjs");
 const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-api-service");
 
@@ -15,7 +16,7 @@ function ensureDir(dir) {
 }
 
 function removeDir(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 function copyDir(source, target) {
@@ -45,6 +46,9 @@ function main() {
   if (!fs.existsSync(tsconfigBaseSource)) {
     throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
   }
+  if (!fs.existsSync(migrateScriptSource)) {
+    throw new Error(`Prisma migrate helper not found: ${migrateScriptSource}`);
+  }
 
   removeDir(outputDir);
   copyDir(sourceDir, outputDir);
@@ -60,6 +64,14 @@ function main() {
   ensureDir(prismaDir);
   fs.copyFileSync(schemaSource, path.join(prismaDir, "schema.prisma"));
 
+  const outputScriptsDir = path.join(outputDir, "scripts");
+  ensureDir(outputScriptsDir);
+  const migrateScriptContents = fs
+    .readFileSync(migrateScriptSource, "utf8")
+    .replaceAll("packages/db/prisma/schema.prisma", "prisma/schema.prisma");
+  const migrateScriptPath = path.join(outputScriptsDir, "prisma-migrate-deploy.cjs");
+  fs.writeFileSync(migrateScriptPath, migrateScriptContents, "utf8");
+
   const packageJsonPath = path.join(outputDir, "package.json");
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   packageJson.devDependencies = {
@@ -72,6 +84,21 @@ function main() {
   };
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 
+  const railwayTomlContents = [
+    "[build]",
+    'buildCommand = "npm install && npm run build"',
+    "",
+    "[deploy]",
+    'startCommand = "node scripts/prisma-migrate-deploy.cjs && node dist/main.js"',
+    'healthcheckPath = "/api/v1/health"',
+    "healthcheckTimeout = 300",
+    'restartPolicyType = "ON_FAILURE"',
+    "restartPolicyMaxRetries = 10",
+    "",
+  ].join("\n");
+  const railwayTomlPath = path.join(outputDir, "railway.toml");
+  fs.writeFileSync(railwayTomlPath, railwayTomlContents, "utf8");
+
   console.log(
     JSON.stringify(
       {
@@ -80,6 +107,8 @@ function main() {
         tsconfig: path.relative(repoRoot, tsconfigPath),
         schema: path.relative(repoRoot, path.join(prismaDir, "schema.prisma")),
         packageJson: path.relative(repoRoot, packageJsonPath),
+        railwayToml: path.relative(repoRoot, railwayTomlPath),
+        migrateScript: path.relative(repoRoot, migrateScriptPath),
       },
       null,
       2,
