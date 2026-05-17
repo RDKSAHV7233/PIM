@@ -1,0 +1,315 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  deleteOidcConfigAction,
+  upsertOidcConfigAction,
+} from "@/app/admin/auth-policy/oidc/actions";
+import { ApiHttpError, getOidcConfig, type OidcConfigView } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerAuthHeader } from "@/lib/server-auth";
+import { getServerActorRole } from "@/lib/server-session";
+import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusChip } from "@/components/ui/status-chip";
+
+export const dynamic = "force-dynamic";
+
+interface AdminOidcConfigPageProps {
+  searchParams: Promise<Record<string, string | undefined>>;
+}
+
+function StatusBanner({ tone, message }: { tone: "success" | "error" | "info"; message: string }) {
+  const classes =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : tone === "error"
+        ? "border-rose-200 bg-rose-50 text-rose-800"
+        : "border-sky-200 bg-sky-50 text-sky-800";
+  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
+}
+
+async function loadConfig(): Promise<OidcConfigView | null> {
+  try {
+    const config = await getOidcConfig({
+      role: await getServerActorRole(),
+      authHeader: await getServerAuthHeader(),
+    });
+    return config ?? null;
+  } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export default async function AdminOidcConfigPage({ searchParams }: AdminOidcConfigPageProps) {
+  const query = await searchParams;
+  const authHeader = await getServerAuthHeader();
+  if (!authHeader) {
+    redirect(buildLoginRedirect("/admin/auth-policy/oidc", 401));
+  }
+
+  const actorRole = await getServerActorRole();
+  const status = String(query.status ?? "").trim();
+  const message = String(query.message ?? "").trim();
+
+  if (actorRole !== "admin") {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="OIDC SSO Configuration"
+          description="Tenant OIDC identity provider configuration is limited to workspace admins."
+          breadcrumb={
+            <>
+              Dashboard / Admin / Auth Policy /{" "}
+              <span className="font-semibold text-slate-700">OIDC</span>
+            </>
+          }
+        />
+        <Card>
+          <CardTitle>Restricted</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Only workspace administrators can view or change OIDC SSO configuration.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  const config = await loadConfig();
+  const banner =
+    status === "oidc-saved"
+      ? <StatusBanner tone="success" message="OIDC configuration saved. Test the sign-in flow before announcing to your team." />
+      : status === "oidc-deleted"
+        ? <StatusBanner tone="info" message="OIDC configuration removed. Sign-in via OIDC is now disabled for this workspace." />
+        : status === "oidc-error"
+          ? <StatusBanner tone="error" message={message || "Unable to update OIDC configuration."} />
+          : null;
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="OIDC SSO Configuration"
+        description="Connect your identity provider (Okta, Azure AD, Google Workspace, Auth0, etc.) for sign-in. This is a pilot-period administrative surface; some advanced controls are operator-mediated."
+        breadcrumb={
+          <>
+            Dashboard / Admin / <Link className="underline" href="/admin/auth-policy">Auth Policy</Link> /{" "}
+            <span className="font-semibold text-slate-700">OIDC</span>
+          </>
+        }
+      />
+
+      {banner}
+
+      <Card>
+        <div className="flex items-center justify-between">
+          <CardTitle>Current status</CardTitle>
+          <StatusChip
+            label={config ? `Configured (${config.status})` : "Not configured"}
+            tone={config && config.status === "active" ? "success" : "neutral"}
+          />
+        </div>
+        {config ? (
+          <dl className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+            <div>
+              <dt className="text-slate-500">Issuer</dt>
+              <dd className="font-mono break-all text-slate-800">{config.issuer}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Client ID</dt>
+              <dd className="font-mono break-all text-slate-800">{config.clientId}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Callback URL</dt>
+              <dd className="font-mono break-all text-slate-800">{config.callbackUrl}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Scopes</dt>
+              <dd className="text-slate-800">{config.scopes.join(" ") || "—"}</dd>
+            </div>
+            <div className="md:col-span-2">
+              <dt className="text-slate-500">Last updated</dt>
+              <dd className="text-slate-800">{new Date(config.updatedAt).toLocaleString()}</dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600">
+            No identity provider is configured yet. Fill out the form below to connect your IdP. Client secrets are
+            encrypted at rest with the tenant credential key.
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        <CardTitle>{config ? "Update configuration" : "Connect identity provider"}</CardTitle>
+        <form action={upsertOidcConfigAction} className="mt-3 grid gap-4">
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Issuer URL <span className="text-rose-600">*</span>
+            </span>
+            <input
+              type="url"
+              name="issuer"
+              required
+              defaultValue={config?.issuer ?? ""}
+              placeholder="https://login.example.com/oidc"
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            />
+            <span className="text-xs text-slate-500">
+              The OIDC issuer (the base of <code>/.well-known/openid-configuration</code>). Trailing slashes are removed.
+            </span>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Client ID <span className="text-rose-600">*</span>
+            </span>
+            <input
+              type="text"
+              name="clientId"
+              required
+              defaultValue={config?.clientId ?? ""}
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Client Secret <span className="text-rose-600">*</span>
+            </span>
+            <input
+              type="password"
+              name="clientSecret"
+              required
+              placeholder={config ? "•••••••• (enter to replace)" : ""}
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            />
+            <span className="text-xs text-slate-500">
+              Stored encrypted with the tenant credential key. Submitting a new value replaces the existing secret.
+            </span>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Callback URL <span className="text-rose-600">*</span>
+            </span>
+            <input
+              type="url"
+              name="callbackUrl"
+              required
+              defaultValue={config?.callbackUrl ?? ""}
+              placeholder="https://app.vexa.example.com/auth/oidc/callback"
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            />
+            <span className="text-xs text-slate-500">
+              Register this exact URL as an authorized redirect URI in your IdP.
+            </span>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">Scopes</span>
+            <input
+              type="text"
+              name="scopes"
+              defaultValue={(config?.scopes ?? ["openid", "email", "profile"]).join(" ")}
+              placeholder="openid email profile"
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            />
+            <span className="text-xs text-slate-500">
+              Space-separated. Defaults to <code>openid email profile</code> if left blank.
+            </span>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium text-slate-700">Claims mapping (JSON)</span>
+            <textarea
+              name="claimsMapping"
+              rows={4}
+              defaultValue={JSON.stringify(config?.claimsMapping ?? {}, null, 2)}
+              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+            />
+            <span className="text-xs text-slate-500">
+              Optional. Map IdP claim values to Vexa roles. Example:{" "}
+              <code>{'{ "roles": { "pim_admin": "admin", "pim_editor": "editor" } }'}</code>
+            </span>
+          </label>
+
+          <label className="grid gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm">
+            <span className="font-medium text-amber-900">
+              Confirm with your password <span className="text-rose-600">*</span>
+            </span>
+            <input
+              type="password"
+              name="stepUpPassword"
+              required
+              autoComplete="current-password"
+              className="rounded-md border border-amber-300 bg-white px-3 py-2 font-mono text-sm"
+            />
+            <span className="text-xs text-amber-800">
+              Step-up authentication is required for auth-config changes. Your password is never stored; it confirms a
+              fresh proof of session ownership.
+            </span>
+          </label>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              {config ? "Save changes" : "Connect"}
+            </button>
+            <Link
+              href="/admin/auth-policy"
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              Back to Auth Policy
+            </Link>
+          </div>
+        </form>
+      </Card>
+
+      {config ? (
+        <Card>
+          <CardTitle>Disconnect identity provider</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Removing the configuration disables OIDC sign-in for this workspace. Existing OIDC sessions are not
+            invalidated automatically; rotate JWT secrets if you need an immediate revocation.
+          </p>
+          <form action={deleteOidcConfigAction} className="mt-3 grid gap-3">
+            <label className="grid gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm">
+              <span className="font-medium text-amber-900">
+                Confirm with your password <span className="text-rose-600">*</span>
+              </span>
+              <input
+                type="password"
+                name="stepUpPassword"
+                required
+                autoComplete="current-password"
+                className="rounded-md border border-amber-300 bg-white px-3 py-2 font-mono text-sm"
+              />
+              <span className="text-xs text-amber-800">
+                Step-up authentication is required to remove OIDC sign-in. Your password is never stored.
+              </span>
+            </label>
+            <div>
+              <button
+                type="submit"
+                className="rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+              >
+                Remove OIDC configuration
+              </button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+
+      <p className="text-xs text-slate-500">
+        Pilot note: this surface configures the identity provider connection only and requires step-up password
+        confirmation on every mutation. Enforcement (whether OIDC is required for all users, MFA grace, etc.) lives on
+        the parent Auth Policy page. Full OIDC enforcement claims remain gated until Gate C is complete — see PO
+        sign-off V4 for the current claim boundary.
+      </p>
+    </div>
+  );
+}

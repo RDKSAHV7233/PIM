@@ -5,6 +5,46 @@ export async function getTenantAuthPolicy(options?: ApiRequestOptions) {
   return fetchJson<TenantAuthPolicy>("/admin/auth-policy", undefined, options);
 }
 
+// ── OIDC tenant configuration ────────────────────────────────────────────────
+// Backend lives at /auth/oidc-config (not /admin/...) because the OIDC controller
+// is part of the auth module. The admin role gate is enforced at the controller.
+
+export interface OidcConfigView {
+  issuer: string;
+  clientId: string;
+  callbackUrl: string;
+  scopes: string[];
+  claimsMapping: Record<string, unknown>;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertOidcConfigInput {
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  callbackUrl: string;
+  scopes?: string[];
+  claimsMapping?: Record<string, unknown>;
+}
+
+export async function getOidcConfig(options?: ApiRequestOptions) {
+  return fetchJson<OidcConfigView | null>("/auth/oidc-config", undefined, options);
+}
+
+export async function upsertOidcConfig(dto: UpsertOidcConfigInput, options?: ApiRequestOptions) {
+  return postJson<OidcConfigView>("/auth/oidc-config", dto, options);
+}
+
+export async function deleteOidcConfig(options?: ApiRequestOptions) {
+  return fetchJson<{ deleted: true }>(
+    "/auth/oidc-config",
+    { method: "DELETE" },
+    options,
+  );
+}
+
 export async function updateTenantAuthPolicy(
   dto: {
     externalIdentityMode?: boolean;

@@ -4,7 +4,14 @@ import { FOUNDATION_ROLES, type FoundationRole, APP_ROLES, AppRole } from "../co
 
 const DEFAULT_EXPIRY_SECONDS = 4 * 60 * 60;
 export const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
-export type StepUpScope = typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK;
+// Auth-config step-up scope guards tenant authentication-policy mutations: OIDC IdP
+// configuration upsert/delete and any future change that affects how users sign in.
+// Mutating these without a fresh password proof would let a hijacked admin session
+// silently rewire sign-in. Added 2026-05-17 with the OIDC admin UI.
+export const STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk";
+export type StepUpScope =
+  | typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK
+  | typeof STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK;
 export type PimJwtTokenType = "access" | "step_up" | "mfa_pending" | "mfa_enrollment";
 
 interface JwtHeader {
@@ -81,7 +88,10 @@ function isTokenType(value: unknown): value is PimJwtTokenType {
 }
 
 function isStepUpScope(value: unknown): value is StepUpScope {
-  return value === STEP_UP_SCOPE_MAPPING_HIGH_RISK;
+  return (
+    value === STEP_UP_SCOPE_MAPPING_HIGH_RISK ||
+    value === STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK
+  );
 }
 
 export function signPimJwt(input: SignJwtInput): string {
