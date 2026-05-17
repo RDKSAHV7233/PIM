@@ -13,14 +13,39 @@ function normalizeApiBaseUrl(value: string): string {
   }
 }
 
-export function getApiBaseUrl(): string {
-  const configuredValue = [process.env.PIM_API_BASE_URL, process.env.NEXT_PUBLIC_API_URL]
-    .map((value) => String(value ?? "").trim())
-    .find((value) => value.length > 0);
+function isUsableApiBaseUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.trim().toLowerCase();
+    if (!hostname) {
+      return false;
+    }
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return true;
+    }
+    if (hostname.endsWith(".railway.internal")) {
+      return true;
+    }
+    return hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
 
-  if (!configuredValue) {
-    return DEFAULT_API_BASE_URL;
+export function getApiBaseUrl(): string {
+  const configuredValues = [
+    process.env.PIM_API_BASE_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.PIM_API_BASE_URL_FALLBACK,
+  ]
+    .map((value) => normalizeApiBaseUrl(String(value ?? "").trim()))
+    .filter((value) => value.length > 0);
+
+  for (const candidate of configuredValues) {
+    if (isUsableApiBaseUrl(candidate)) {
+      return candidate;
+    }
   }
 
-  return normalizeApiBaseUrl(configuredValue);
+  return DEFAULT_API_BASE_URL;
 }

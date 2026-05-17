@@ -41,12 +41,18 @@ try {
   );
 
   assert(
-    helper.includes("[process.env.PIM_API_BASE_URL, process.env.NEXT_PUBLIC_API_URL]"),
-    "Shared API base URL helper must fall back from PIM_API_BASE_URL to NEXT_PUBLIC_API_URL for Railway web deployments.",
+    helper.includes("process.env.PIM_API_BASE_URL_FALLBACK") &&
+      helper.includes("[\n    process.env.PIM_API_BASE_URL,\n    process.env.NEXT_PUBLIC_API_URL,\n    process.env.PIM_API_BASE_URL_FALLBACK,"),
+    "Shared API base URL helper must support a packaged fallback API base URL after the canonical and legacy env vars for Railway web deployments.",
   );
   assert(
     helper.includes('parsed.pathname = !pathname || pathname === "/" ? "/api/v1" : pathname;'),
     "Shared API base URL helper must normalize root Railway URLs to the canonical /api/v1 base path.",
+  );
+  assert(
+    helper.includes('if (hostname.endsWith(".railway.internal"))') &&
+      helper.includes('return hostname.includes(".");'),
+    "Shared API base URL helper must reject malformed shorthand hosts like `api` while preserving localhost and railway.internal private-network URLs.",
   );
   assert(
     core.includes('import { getApiBaseUrl } from "../api-base-url";') &&
@@ -71,8 +77,9 @@ try {
       {
         status: "ok",
         validated: [
-          "api_base_url_helper_supports_legacy_railway_env_name",
+          "api_base_url_helper_supports_packaged_fallback_api_base_url",
           "api_base_url_helper_normalizes_root_urls_to_api_v1",
+          "api_base_url_helper_rejects_malformed_shorthand_hosts",
           "ssr_client_uses_shared_api_base_url_helper",
           "api_route_proxies_use_shared_api_base_url_helper",
           "dockerfile_web_supports_canonical_and_legacy_api_base_env_names",

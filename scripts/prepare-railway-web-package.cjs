@@ -113,7 +113,12 @@ function main() {
   const apiBaseUrl = resolveApiBaseUrl(process.env);
   let appEnvFile = null;
   if (apiBaseUrl) {
-    const envContents = [`PIM_API_BASE_URL=${apiBaseUrl}`, `NEXT_PUBLIC_API_URL=${apiBaseUrl}`, ""].join("\n");
+    const envContents = [
+      `PIM_API_BASE_URL=${apiBaseUrl}`,
+      `NEXT_PUBLIC_API_URL=${apiBaseUrl}`,
+      `PIM_API_BASE_URL_FALLBACK=${apiBaseUrl}`,
+      "",
+    ].join("\n");
     appEnvFile = path.join(appOutputDir, ".env.production");
     fs.writeFileSync(appEnvFile, envContents, "utf8");
   }
