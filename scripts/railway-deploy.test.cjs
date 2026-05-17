@@ -5,9 +5,12 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const {
+  buildRailwayExecutionEnv,
   buildDeployCommands,
   classifyDeployTargets,
+  findOverlappingServiceTargets,
   isRetryableRailwayDeployError,
+  normalizeServiceTarget,
   resolveConfig,
 } = require("./railway-deploy.cjs");
 
@@ -15,9 +18,10 @@ function main() {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(
     {
+      RAILWAY_TOKEN: "token_123",
       RAILWAY_PROJECT_ID: "proj_123",
-      RAILWAY_API_SERVICE: "API",
-      RAILWAY_WEB_SERVICE: "PIM1",
+      RAILWAY_API_SERVICE: "Vexa API",
+      RAILWAY_WEB_SERVICE: "App Vexa",
       RAILWAY_API_SERVICE_ID: "svc_api",
       RAILWAY_WEB_SERVICE_ID: "svc_web",
       RAILWAY_ENVIRONMENT_NAME: "staging",
@@ -29,40 +33,60 @@ function main() {
   );
 
   assert.equal(config.projectId, "proj_123");
-  assert.equal(config.apiServiceTarget, "svc_api");
-  assert.equal(config.webServiceTarget, "svc_web");
+  assert.deepEqual(config.apiServiceTargets, ["Vexa API", "svc_api"]);
+  assert.deepEqual(config.webServiceTargets, ["App Vexa", "svc_web"]);
   assert.equal(config.environmentName, "staging");
   assert.equal(path.relative(repoRoot, config.apiSourcePath), path.join(".tmp", "railway-api-service"));
   assert.equal(path.relative(repoRoot, config.webSourcePath), path.join(".tmp", "railway-web-service"));
   assert.equal(config.deployRetries, 3);
   assert.equal(config.deployRetryDelayMs, 5000);
+  assert.equal(normalizeServiceTarget(" App Vexa "), "app vexa");
+  assert.deepEqual(
+    findOverlappingServiceTargets(
+      ["Vexa API", "0ffdffda-6a11-45c1-9075-e125bdd48ad8"],
+      ["App Vexa", "cd011ea5-2de8-4d46-a35f-ffc27cd193ff"],
+    ),
+    [],
+    "Distinct API and web targets should not overlap.",
+  );
+
+  assert.deepEqual(
+    buildRailwayExecutionEnv({
+      RAILWAY_TOKEN: "project_token",
+      RAILWAY_API_TOKEN: "workspace_token",
+      OTHER_ENV: "preserved",
+    }),
+    {
+      RAILWAY_TOKEN: "workspace_token",
+      RAILWAY_API_TOKEN: "workspace_token",
+      OTHER_ENV: "preserved",
+    },
+    "Railway CLI should prefer the workspace token when both token types are present.",
+  );
+  assert.deepEqual(
+    buildRailwayExecutionEnv({
+      RAILWAY_TOKEN: "project_token",
+      OTHER_ENV: "preserved",
+    }),
+    {
+      RAILWAY_TOKEN: "project_token",
+      OTHER_ENV: "preserved",
+    },
+    "Railway CLI should keep using the project token when no workspace token is available.",
+  );
 
   const commands = buildDeployCommands(config);
   assert.equal(commands.length, 2, "Expected API and Web deploy commands");
-  assert.deepEqual(commands[0].args, [
-    "up",
-    path.join(".tmp", "railway-api-service"),
-    "--service",
-    "svc_api",
-    "--project",
-    "proj_123",
-    "--environment",
-    "staging",
-    "--path-as-root",
-    "--ci",
-  ]);
-  assert.deepEqual(commands[1].args, [
-    "up",
-    path.join(".tmp", "railway-web-service"),
-    "--service",
-    "svc_web",
-    "--project",
-    "proj_123",
-    "--environment",
-    "staging",
-    "--path-as-root",
-    "--ci",
-  ]);
+  assert.deepEqual(commands[0], {
+    label: "API",
+    pathArg: path.join(".tmp", "railway-api-service"),
+    serviceTargets: ["Vexa API", "svc_api"],
+  });
+  assert.deepEqual(commands[1], {
+    label: "Web",
+    pathArg: path.join(".tmp", "railway-web-service"),
+    serviceTargets: ["App Vexa", "svc_web"],
+  });
 
   assert.equal(
     isRetryableRailwayDeployError({
@@ -91,25 +115,32 @@ function main() {
 
   const legacyConfig = resolveConfig(
     {
+      RAILWAY_TOKEN: "token_legacy",
       RAILWAY_PROJECT_ID: "proj_legacy",
       RAILWAY_API_SERVICE_ID: "svc_api_legacy",
       RAILWAY_WEB_SERVICE_ID: "svc_web_legacy",
     },
     repoRoot,
   );
-  assert.equal(legacyConfig.apiServiceTarget, "svc_api_legacy");
-  assert.equal(legacyConfig.webServiceTarget, "svc_web_legacy");
+  assert.deepEqual(legacyConfig.apiServiceTargets, ["svc_api_legacy"]);
+  assert.deepEqual(legacyConfig.webServiceTargets, ["svc_web_legacy"]);
 
-  const nameFallbackConfig = resolveConfig(
-    {
-      RAILWAY_PROJECT_ID: "proj_name_fallback",
-      RAILWAY_API_SERVICE: "API",
-      RAILWAY_WEB_SERVICE: "PIM1",
-    },
-    repoRoot,
+  assert.throws(
+    () =>
+      resolveConfig(
+        {
+          RAILWAY_TOKEN: "token_overlap",
+          RAILWAY_PROJECT_ID: "proj_overlap",
+          RAILWAY_API_SERVICE: "Vexa API",
+          RAILWAY_WEB_SERVICE: "App Vexa",
+          RAILWAY_API_SERVICE_ID: "0ffdffda-6a11-45c1-9075-e125bdd48ad8",
+          RAILWAY_WEB_SERVICE_ID: "0ffdffda-6a11-45c1-9075-e125bdd48ad8",
+        },
+        repoRoot,
+      ),
+    /service targets overlap/i,
+    "Deploy config must fail fast when API and web Railway targets point to the same service.",
   );
-  assert.equal(nameFallbackConfig.apiServiceTarget, "API");
-  assert.equal(nameFallbackConfig.webServiceTarget, "PIM1");
 
   assert.deepEqual(
     classifyDeployTargets([

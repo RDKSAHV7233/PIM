@@ -57,12 +57,12 @@ function resolveServiceTargets(primaryNames, fallbackUrl, env = process.env) {
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
   const apiServiceTargets = resolveServiceTargets(
-    ["RAILWAY_API_SERVICE_ID", "RAILWAY_API_SERVICE"],
+    ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"],
     optionalEnv("STAGING_BASE_URL", env),
     env,
   );
   const webServiceTargets = resolveServiceTargets(
-    ["RAILWAY_WEB_SERVICE_ID", "RAILWAY_WEB_SERVICE"],
+    ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"],
     optionalEnv("STAGING_WEB_URL", env),
     env,
   );
@@ -263,6 +263,18 @@ function isServiceNotFoundRailwayError(error) {
   return combined.includes("service not found");
 }
 
+function isServiceConfigMissingRailwayError(error) {
+  const combined = [
+    error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.stdout ?? "") : "",
+    error && typeof error === "object" ? String(error.stderr ?? "") : "",
+    error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return combined.includes("service config at") && combined.includes("not found");
+}
+
 function sleep(ms) {
   if (ms <= 0) {
     return;
@@ -445,11 +457,21 @@ function runDeployCommandAcrossServiceTargets(command, options) {
       return;
     } catch (error) {
       lastError = error;
-      if (!isServiceNotFoundRailwayError(error) || serviceTarget === command.serviceTargets[command.serviceTargets.length - 1]) {
+      const canTryNextCandidate = serviceTarget !== command.serviceTargets[command.serviceTargets.length - 1];
+      if (isServiceNotFoundRailwayError(error) && canTryNextCandidate) {
+        console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
+        continue;
+      }
+      if (isServiceConfigMissingRailwayError(error) && canTryNextCandidate) {
+        console.warn(
+          `[railway-deploy] ${command.label} service target '${serviceTarget}' resolved to a service with an unexpected source-path config. Trying next candidate...`,
+        );
+        continue;
+      }
+      if (!canTryNextCandidate || (!isServiceNotFoundRailwayError(error) && !isServiceConfigMissingRailwayError(error))) {
         emitRecentRailwayDeployLogs(options.config, serviceTarget, options.env);
         throw error;
       }
-      console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
     }
   }
   throw lastError ?? new Error(`No Railway ${command.label} service targets were available.`);

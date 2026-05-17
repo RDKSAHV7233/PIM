@@ -31,8 +31,9 @@ function main() {
     "Web health route must return a no-store 200 OK payload for deploy healthchecks.",
   );
   assert(
-    prepareWebPackageScript.includes('healthcheckPath = "/health"'),
-    "Prepared Railway web package must target the dedicated /health endpoint for healthchecks.",
+    prepareWebPackageScript.includes('healthcheckPath = "/health"') &&
+      prepareWebPackageScript.includes('const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");'),
+    "Prepared Railway web package must target the dedicated /health endpoint and write railway.toml inside apps/web for Railway source-path deploys.",
   );
 
   console.log("railway web runtime contract OK");

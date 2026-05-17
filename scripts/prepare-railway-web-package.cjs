@@ -70,23 +70,24 @@ function main() {
     "utf8",
   );
 
+  const railwayTomlContents = [
+    "[build]",
+    'buildCommand = "npm install && npm run build"',
+    "",
+    "[deploy]",
+    'startCommand = "npm run start"',
+    'healthcheckPath = "/health"',
+    "healthcheckTimeout = 300",
+    'restartPolicyType = "ON_FAILURE"',
+    "restartPolicyMaxRetries = 10",
+    "",
+  ].join("\n");
+
   const railwayTomlPath = path.join(outputDir, "railway.toml");
-  fs.writeFileSync(
-    railwayTomlPath,
-    [
-      "[build]",
-      'buildCommand = "npm install && npm run build"',
-      "",
-      "[deploy]",
-      'startCommand = "npm run start"',
-      'healthcheckPath = "/health"',
-      "healthcheckTimeout = 300",
-      'restartPolicyType = "ON_FAILURE"',
-      "restartPolicyMaxRetries = 10",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+  fs.writeFileSync(railwayTomlPath, railwayTomlContents, "utf8");
+
+  const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");
+  fs.writeFileSync(appRailwayTomlPath, railwayTomlContents, "utf8");
 
   console.log(
     JSON.stringify(
@@ -97,6 +98,7 @@ function main() {
         appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
         tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
+        appRailwayToml: path.relative(repoRoot, appRailwayTomlPath),
       },
       null,
       2,
