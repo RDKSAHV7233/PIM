@@ -2,7 +2,7 @@
 buildCommand = "npm ci --workspace @pim1/api --workspace @pim1/db && npm run prisma:generate --workspace @pim1/db && npm run build --workspace @pim1/api"
 
 [deploy]
-startCommand = "node scripts/prisma-migrate-deploy.cjs && node apps/api/dist/main.js"
+startCommand = "node apps/api/dist/main.js"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

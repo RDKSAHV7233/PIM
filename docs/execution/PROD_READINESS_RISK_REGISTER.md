@@ -272,6 +272,23 @@ Last updated: 2026-05-17 (staging deploy lane recovered on live run 25988595126;
   - Product status transitions now emit audit rows (`STATUS_TRANSITION`) with from/to metadata.
   - Integration test `test:integration:product-workflow-transitions` verifies invalid transition rejection, workflow-entry rejection, valid path, and audit logging.
 
+### RISK-P1-005: Railway single-replica deploy downtime
+- Severity: P1
+- Status: Open
+- Owner: DevOps / CTO
+- Description: Staging runs on Railway Starter (single replica). Every deploy causes a brief API downtime gap — old container stops before the new one passes its healthcheck. This is a Railway platform constraint, not a code bug. Mitigation applied: removed `prisma-migrate-deploy.cjs` from `startCommand` (migrations now handled exclusively by CI workflow `Apply migrations` step before deploy) to minimize the startup-to-healthy window. The downtime gap is acceptable for staging and controlled pilot. It is **not acceptable for production** with paying SMB customers.
+- Exit criteria:
+  1. Production Railway service upgraded to Pro plan (enables rolling deploys — new replica healthy before old stops).
+  2. Staging validated with a `railway up` deploy showing no healthcheck failures in deploy logs.
+  3. OR equivalent zero-downtime hosting strategy confirmed (e.g. separate production host).
+- Validation commands:
+  - Railway deploy logs: confirm old instance alive until new instance passes `/api/v1/health`
+- Current mitigation (2026-05-17):
+  - Removed `node scripts/prisma-migrate-deploy.cjs &&` from `apps/api/railway.toml` `startCommand`. Migrations run in CI before deploy and are idempotent — the Railway-side re-run was redundant and added startup latency.
+  - Staging deploy downtime window reduced but not eliminated on single-replica plan.
+- Remaining:
+  - Upgrade to Railway Pro before production launch.
+
 ## P2 (Next increment window)
 
 ### RISK-P2-001: Public API and outbound webhooks program
