@@ -601,6 +601,7 @@ model AuditLog {
   @@index([actorId, createdAt], map: "idx_audit_logs_actor_created_at")
   @@index([resource, createdAt], map: "idx_audit_logs_resource_created_at")
   @@index([tenantKey], map: "idx_audit_logs_tenant_key")
+  @@index([tenantKey, resourceId, action, createdAt(sort: Desc)], map: "idx_audit_logs_tenant_resource_action_created")
   @@map("audit_logs")
 }
 
