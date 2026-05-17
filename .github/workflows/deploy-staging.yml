@@ -2,6 +2,11 @@ name: Deploy Staging
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy_targets:
+        description: "Optional deploy target override: api, web, or api,web"
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -66,6 +71,7 @@ jobs:
           RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
           RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
           RAILWAY_ENVIRONMENT_NAME: Staging
+          RAILWAY_DEPLOY_TARGETS: ${{ inputs.deploy_targets }}
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
           STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
