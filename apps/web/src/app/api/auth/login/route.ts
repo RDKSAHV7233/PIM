@@ -7,6 +7,11 @@ function useSecureCookies(): boolean {
   return appEnv === "production" || appEnv === "staging";
 }
 
+function includeUpstreamDiagnostics(): boolean {
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return appEnv !== "production";
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
   const parsedExpiry = Number(body?.expiresInMinutes);
@@ -19,10 +24,11 @@ export async function POST(request: NextRequest) {
     ...(Number.isFinite(parsedExpiry) ? { expiresInMinutes: Math.trunc(parsedExpiry) } : {}),
   };
   const forwardedFor = request.headers.get("x-forwarded-for");
+  const apiBaseUrl = getApiBaseUrl();
 
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+    response = await fetch(`${apiBaseUrl}/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -31,10 +37,16 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(loginPayload),
       cache: "no-store",
     });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
       {
         error: "AUTH_UPSTREAM_UNAVAILABLE",
+        ...(includeUpstreamDiagnostics()
+          ? {
+              apiBaseUrl,
+              detail: error instanceof Error ? error.message : String(error ?? "upstream fetch failed"),
+            }
+          : {}),
       },
       {
         status: 503,
