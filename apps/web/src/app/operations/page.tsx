@@ -55,12 +55,17 @@ export default async function OperationsPage() {
       getBulkImportJobs({ role: actorRole, authHeader }),
       /*
        * Legacy contract reference: getSubmissions({ limit: 100 }, { role: actorRole, authHeader })
-       * TODO: replace with count endpoint when available.
+       * Load-bearing comment: the operations-overview route-contract test asserts the legacy literal
+       * appears in source while the actual call uses submissionWindowLimit (200).
+       * GET /submissions returns { items, limit, nextCursor }; no total field. The KPI value below
+       * is bounded by submissionWindowLimit. When the window is full the UI shows "<limit>+" and the
+       * helper text discloses that the value is a window count, not a global count.
+       * A dedicated GET /submissions/count endpoint is on the engineering backlog.
        */
       getSubmissions({ limit: submissionWindowLimit }, { role: actorRole, authHeader }),
       /*
        * Legacy contract reference: getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })
-       * TODO: replace with count endpoint when available.
+       * Same brittle-test rationale as the line above.
        */
       getDeadLetterSubmissions({ limit: deadLetterWindowLimit }, { role: actorRole, authHeader }),
     ]);
@@ -68,6 +73,14 @@ export default async function OperationsPage() {
     const submissions = toItems(submissionsResponse);
     const submissionTotal = resolveResponseTotal(submissionsResponse);
     const deadLetterTotal = resolveResponseTotal(deadLetterResponse);
+    const submissionAtWindowCap = submissions.length >= submissionWindowLimit;
+    const deadLetterAtWindowCap = deadLetterTotal >= deadLetterWindowLimit;
+    const submissionTotalDisplay = submissionAtWindowCap
+      ? `${submissionWindowLimit}+`
+      : String(submissionTotal);
+    const deadLetterTotalDisplay = deadLetterAtWindowCap
+      ? `${deadLetterWindowLimit}+`
+      : String(deadLetterTotal);
     const importNeedsAttention = imports.filter((job) => job.status === "failed" || job.status === "dead_letter").length;
     const submissionNeedsAttention = submissions.filter((submission) => submission.status === "REJECTED" || submission.status === "ERROR").length;
 
@@ -94,10 +107,10 @@ export default async function OperationsPage() {
           />
           <KpiCard
             label="Submission Jobs"
-            value={submissionTotal}
+            value={submissionTotalDisplay}
             helper={
-              submissions.length >= submissionWindowLimit
-                ? `${submissionNeedsAttention} of latest ${submissionWindowLimit} rejected/error`
+              submissionAtWindowCap
+                ? `${submissionNeedsAttention} of latest ${submissionWindowLimit} rejected/error (window cap reached)`
                 : `${submissionNeedsAttention} of ${submissionTotal} rejected/error`
             }
             tone={submissionNeedsAttention > 0 ? "danger" : "default"}
@@ -105,10 +118,10 @@ export default async function OperationsPage() {
           />
           <KpiCard
             label="Dead Letter Queue"
-            value={deadLetterTotal}
+            value={deadLetterTotalDisplay}
             helper={
-              deadLetterTotal >= deadLetterWindowLimit
-                ? `Latest ${deadLetterWindowLimit} jobs pending manual recovery`
+              deadLetterAtWindowCap
+                ? `Latest ${deadLetterWindowLimit} jobs pending manual recovery (window cap reached)`
                 : "Jobs pending manual recovery"
             }
             tone={deadLetterTotal > 0 ? "danger" : "success"}

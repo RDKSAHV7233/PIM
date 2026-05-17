@@ -48,8 +48,13 @@ function run() {
   assert(
     source.includes("function connectorStatusNote(") &&
       source.includes("Credential validation and publish are not yet available for this connector.") &&
-      source.includes("Meesho uses Excel export only."),
-    "Connectors page must render implementation-status notes for stub and partial connectors.",
+      // Meesho copy was updated 2026-05-17: the prior wording "Meesho uses Excel export only"
+      // implied the export worked when generateExportFile() actually throws Not Implemented.
+      // The honest replacement clearly states the connector is in development and the export
+      // action will fail until the template is built. (CTO Execution Memo Pass 1, ENG-P0-2.)
+      source.includes("Meesho connector is in development.") &&
+      source.includes("Excel export is not yet available"),
+    "Connectors page must render implementation-status notes for stub and partial connectors with honest in-development disclosure for Meesho.",
   );
   assert(
     !source.includes("You can install it to prepare your mapping"),
