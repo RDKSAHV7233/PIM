@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-function getApiBaseUrl(): string {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
+import { getApiBaseUrl } from "@/lib/api-base-url";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();

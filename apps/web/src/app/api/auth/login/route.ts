@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-
-function getApiBaseUrl(): string {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
+import { getApiBaseUrl } from "@/lib/api-base-url";
 
 function useSecureCookies(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
@@ -23,10 +19,11 @@ export async function POST(request: NextRequest) {
     ...(Number.isFinite(parsedExpiry) ? { expiresInMinutes: Math.trunc(parsedExpiry) } : {}),
   };
   const forwardedFor = request.headers.get("x-forwarded-for");
+  const apiBaseUrl = getApiBaseUrl();
 
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+    response = await fetch(`${apiBaseUrl}/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,10 +32,12 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(loginPayload),
       cache: "no-store",
     });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
       {
         error: "AUTH_UPSTREAM_UNAVAILABLE",
+        apiBaseUrl,
+        detail: error instanceof Error ? error.message : String(error ?? "upstream fetch failed"),
       },
       {
         status: 503,

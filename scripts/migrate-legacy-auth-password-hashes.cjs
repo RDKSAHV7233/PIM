@@ -31,9 +31,16 @@ function readEnvFile(filePath) {
 
 function prepareEnv() {
   readEnvFile(path.join(REPO_ROOT, ".env"));
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
-    process.env.DATABASE_URL_POOLED = process.env.DATABASE_URL_POOLED || databaseUrl;
+  const directDatabaseUrl = String(process.env.DATABASE_URL_DIRECT ?? "").trim();
+  const pooledDatabaseUrl = String(process.env.DATABASE_URL_POOLED ?? "").trim();
+  const fallbackDatabaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  if (directDatabaseUrl) {
+    process.env.DATABASE_URL_POOLED = pooledDatabaseUrl || directDatabaseUrl;
+    process.env.DATABASE_URL = fallbackDatabaseUrl || directDatabaseUrl;
+    return;
+  }
+  if (fallbackDatabaseUrl) {
+    process.env.DATABASE_URL_POOLED = pooledDatabaseUrl || fallbackDatabaseUrl;
   }
 }
 
@@ -59,9 +66,11 @@ function parseTenantArg() {
 
 async function run() {
   prepareEnv();
-  const databaseUrl = String(process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "").trim();
+  const databaseUrl = String(
+    process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL_POOLED ?? process.env.DATABASE_URL ?? "",
+  ).trim();
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL_POOLED or DATABASE_URL is required.");
+    throw new Error("DATABASE_URL_DIRECT or DATABASE_URL_POOLED or DATABASE_URL is required.");
   }
   const tenantKey = parseTenantArg();
   const sharedPassword = resolveSharedPassword();

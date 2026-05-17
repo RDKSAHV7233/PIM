@@ -35,8 +35,13 @@ COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 # Copy full monorepo source so Next.js output file tracing (outputFileTracingRoot) works
 COPY . .
 
-# NEXT_PUBLIC_API_URL must be available at build time so Next.js can bake it
-# into the client bundle.  Railway sets this as a build-time variable.
+# PIM_API_BASE_URL is the canonical server-side upstream URL for SSR and proxy
+# routes. NEXT_PUBLIC_API_URL remains supported as a legacy fallback.
+#
+# When a client-side build path needs the public API origin, Railway can also
+# inject NEXT_PUBLIC_API_URL at build time.
+ARG PIM_API_BASE_URL
+ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 

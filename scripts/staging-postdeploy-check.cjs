@@ -480,6 +480,20 @@ async function run() {
     throw new Error("web governance render regressed to read-only governance visibility state");
   }
 
+  const webDashboard = await request(webBaseUrl, "/dashboard", {
+    headers: {
+      cookie: cookieHeader,
+    },
+    retries: 2,
+  });
+  assertStatus(webDashboard, 200, "web dashboard render");
+  if (!String(webDashboard.text).includes("Catalog Health")) {
+    throw new Error("web dashboard render missing live dashboard content heading");
+  }
+  if (String(webDashboard.text).includes("Dashboard data is temporarily unavailable")) {
+    throw new Error("web dashboard render fell back to API-unavailable recovery state");
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -499,6 +513,7 @@ async function run() {
           "web_login_sets_admin_session_cookie",
           "web_channels_renders_admin_governance_cta",
           "web_governance_renders_admin_policy_form",
+          "web_dashboard_renders_live_catalog_health_view",
           ...nonAdminValidated,
         ],
         checkedAt: new Date().toISOString(),

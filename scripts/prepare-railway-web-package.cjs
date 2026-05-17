@@ -18,6 +18,27 @@ function removeDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+function normalizeApiBaseUrl(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  try {
+    const parsed = new URL(normalized);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    parsed.pathname = !pathname || pathname === "/" ? "/api/v1" : pathname;
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return normalized.replace(/\/+$/, "");
+  }
+}
+
+function resolveApiBaseUrl(env = process.env) {
+  return normalizeApiBaseUrl(env.PIM_API_BASE_URL || env.NEXT_PUBLIC_API_URL || env.STAGING_BASE_URL || "");
+}
+
 function copyDir(source, target) {
   const entries = fs.readdirSync(source, { withFileTypes: true });
   ensureDir(target);
@@ -70,6 +91,38 @@ function main() {
     "utf8",
   );
 
+  const railwayTomlContents = [
+    "[build]",
+    'buildCommand = "npm install && npm run build"',
+    "",
+    "[deploy]",
+    'startCommand = "npm run start"',
+    'healthcheckPath = "/health"',
+    "healthcheckTimeout = 300",
+    'restartPolicyType = "ON_FAILURE"',
+    "restartPolicyMaxRetries = 10",
+    "",
+  ].join("\n");
+
+  const railwayTomlPath = path.join(outputDir, "railway.toml");
+  fs.writeFileSync(railwayTomlPath, railwayTomlContents, "utf8");
+
+  const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");
+  fs.writeFileSync(appRailwayTomlPath, railwayTomlContents, "utf8");
+
+  const apiBaseUrl = resolveApiBaseUrl(process.env);
+  let appEnvFile = null;
+  if (apiBaseUrl) {
+    const envContents = [
+      `PIM_API_BASE_URL=${apiBaseUrl}`,
+      `NEXT_PUBLIC_API_URL=${apiBaseUrl}`,
+      `PIM_API_BASE_URL_FALLBACK=${apiBaseUrl}`,
+      "",
+    ].join("\n");
+    appEnvFile = path.join(appOutputDir, ".env.production");
+    fs.writeFileSync(appEnvFile, envContents, "utf8");
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -78,6 +131,14 @@ function main() {
         rootPackageJson: path.relative(repoRoot, rootPackageJsonPath),
         appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
         tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
+        railwayToml: path.relative(repoRoot, railwayTomlPath),
+        appRailwayToml: path.relative(repoRoot, appRailwayTomlPath),
+        ...(appEnvFile
+          ? {
+              appEnvFile: path.relative(repoRoot, appEnvFile),
+              apiBaseUrl,
+            }
+          : {}),
       },
       null,
       2,

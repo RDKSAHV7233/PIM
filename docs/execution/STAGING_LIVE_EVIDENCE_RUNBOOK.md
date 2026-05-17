@@ -2,6 +2,16 @@
 
 Purpose: collect the external proof needed to close `RISK-P0-003` and advance `RISK-P0-001` without guessing at artifact contents after the fact.
 
+Current recovery baseline:
+
+- successful recovery run: `25988595126`
+- URL: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25988595126`
+- current staging posture: public signup disabled
+- current staging expectation secret: `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false`
+- authoritative Railway staging services:
+  - web: `App Vexa`
+  - api: `Vexa API`
+
 ## Scope
 
 - Workflow: `.github/workflows/deploy-staging.yml`
@@ -44,7 +54,7 @@ gh auth status
    - `RAILWAY_API_SERVICE_ID`
    - `RAILWAY_WEB_SERVICE_ID`
    - `STAGING_BASE_URL`
-   - `STAGING_WEB_URL` (recommended when public signup should be probed from the deployed web app)
+   - `STAGING_WEB_URL` (required for post-deploy web verification and recommended for public signup probing)
    - `STAGING_SMOKE_WORKSPACE`
    - `STAGING_SMOKE_USER`
    - `STAGING_SMOKE_PASSWORD`
@@ -53,7 +63,15 @@ gh auth status
 
    Security note: do not share staging usernames, passwords, tokens, or connection strings in chat, tickets, or docs. Treat all staging credentials as secrets and retrieve/rotate them only through the repository/environment secret-management path.
 
+   Current recovered expectation:
+   - keep `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false` unless a separate rollout decision explicitly schedules a signup-enabled staging window
+
 3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
+
+   Before running the workflow, confirm the Railway web service runtime env includes:
+   - `PIM_API_BASE_URL=https://<railway-api-service>.up.railway.app/api/v1`
+
+   `NEXT_PUBLIC_API_URL` remains tolerated as a legacy fallback in code, but `PIM_API_BASE_URL` is now the canonical server-side upstream contract for SSR and Next proxy routes.
 
 4. The target branch contains the current workflow guards:
 
@@ -71,6 +89,8 @@ gh run list --workflow deploy-staging.yml --limit 1
 ```
 
 This is the preferred path because `.github/workflows/deploy-staging.yml` now supports `workflow_dispatch` for evidence collection without requiring a no-op push to `main`.
+
+When triaging a new staging incident, capture the fresh failing run URL before making any new deploy-path or Railway-targeting changes. The 2026-05-17 recovery established `25988595126` as the comparison baseline for deploy-lane health.
 
 Copy the returned run ID, then watch the run:
 
@@ -115,6 +135,14 @@ node scripts/validate-live-staging-evidence.cjs --artifactDir $artifactDir --env
   - `health.ok = true`
   - `health.status` indicating a healthy response (`200` or `"ok"`)
   - `controlledRollout.pending = []`
+
+The deploy workflow's post-deploy verification now also proves the deployed web app can:
+
+- log in through `/api/auth/login`
+- render `/channels`
+- render `/admin/connectors`
+- render `/dashboard` without falling back to the `Dashboard data is temporarily unavailable` recovery state
+- keep the dashboard's SSR API dependency healthy after the web deploy completes
 
 ### Expected partial state after the first live run
 

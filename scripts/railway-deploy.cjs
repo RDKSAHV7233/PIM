@@ -31,6 +31,10 @@ function dedupe(values) {
   return Array.from(new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean)));
 }
 
+function normalizeServiceTarget(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function deriveRailwayHostSlug(urlValue) {
   const value = String(urlValue ?? "").trim();
   if (!value) {
@@ -54,15 +58,20 @@ function resolveServiceTargets(primaryNames, fallbackUrl, env = process.env) {
   ]);
 }
 
+function findOverlappingServiceTargets(apiServiceTargets, webServiceTargets) {
+  const webTargetSet = new Set(webServiceTargets.map((value) => normalizeServiceTarget(value)).filter(Boolean));
+  return apiServiceTargets.filter((value) => webTargetSet.has(normalizeServiceTarget(value)));
+}
+
 function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
   const apiServiceTargets = resolveServiceTargets(
-    ["RAILWAY_API_SERVICE_ID", "RAILWAY_API_SERVICE"],
+    ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"],
     optionalEnv("STAGING_BASE_URL", env),
     env,
   );
   const webServiceTargets = resolveServiceTargets(
-    ["RAILWAY_WEB_SERVICE_ID", "RAILWAY_WEB_SERVICE"],
+    ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"],
     optionalEnv("STAGING_WEB_URL", env),
     env,
   );
@@ -84,6 +93,12 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   if (webServiceTargets.length === 0) {
     throw new Error("Missing Railway web service target. Set RAILWAY_WEB_SERVICE_ID or RAILWAY_WEB_SERVICE.");
   }
+  const overlappingServiceTargets = findOverlappingServiceTargets(apiServiceTargets, webServiceTargets);
+  if (overlappingServiceTargets.length > 0) {
+    throw new Error(
+      `Railway API and web service targets overlap (${overlappingServiceTargets.join(", ")}). Verify RAILWAY_API_SERVICE/RAILWAY_API_SERVICE_ID point to the API service and RAILWAY_WEB_SERVICE/RAILWAY_WEB_SERVICE_ID point to the web service.`,
+    );
+  }
 
   return {
     repoRoot,
@@ -96,6 +111,17 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
     railwayBin,
     deployRetries: Number.isFinite(deployRetries) ? Math.max(1, deployRetries) : 3,
     deployRetryDelayMs: Number.isFinite(deployRetryDelayMs) ? Math.max(0, deployRetryDelayMs) : 5000,
+  };
+}
+
+function buildRailwayExecutionEnv(env = process.env) {
+  const preferredToken = optionalEnv("RAILWAY_API_TOKEN", env) || optionalEnv("RAILWAY_TOKEN", env);
+  if (!preferredToken) {
+    return { ...env };
+  }
+  return {
+    ...env,
+    RAILWAY_TOKEN: preferredToken,
   };
 }
 
@@ -119,6 +145,17 @@ function buildDeployCommands(config) {
 function classifyDeployTargets(changedFiles) {
   if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
     return { deployApi: true, deployWeb: true };
+  }
+
+  const normalizedTargets = changedFiles
+    .map((value) => String(value ?? "").replace(/\\/g, "/").trim().toLowerCase())
+    .filter(Boolean);
+  const explicitDeployTargets = normalizedTargets.filter((value) => value === "api" || value === "web");
+  if (explicitDeployTargets.length > 0) {
+    return {
+      deployApi: explicitDeployTargets.includes("api"),
+      deployWeb: explicitDeployTargets.includes("web"),
+    };
   }
 
   let deployApi = false;
@@ -252,6 +289,18 @@ function isServiceNotFoundRailwayError(error) {
   return combined.includes("service not found");
 }
 
+function isServiceConfigMissingRailwayError(error) {
+  const combined = [
+    error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.stdout ?? "") : "",
+    error && typeof error === "object" ? String(error.stderr ?? "") : "",
+    error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return combined.includes("service config at") && combined.includes("not found");
+}
+
 function sleep(ms) {
   if (ms <= 0) {
     return;
@@ -313,6 +362,63 @@ function emitRailwayServiceDiscoveryHint(config, env = process.env) {
   }
 }
 
+function emitRecentRailwayDeployLogs(config, serviceTarget, env = process.env) {
+  const linkResult = runCommandCapture(
+    config.railwayBin,
+    ["link", "--project", config.projectId, "--environment", config.environmentName, "--service", serviceTarget, "--json"],
+    { cwd: config.repoRoot, env },
+  );
+
+  if (linkResult.error || linkResult.status !== 0) {
+    console.error(`[railway-deploy] Could not link Railway project context to fetch logs for service '${serviceTarget}'.`);
+    if (linkResult.stdout) {
+      process.stdout.write(linkResult.stdout);
+    }
+    if (linkResult.stderr) {
+      process.stderr.write(linkResult.stderr);
+    }
+    return;
+  }
+
+  const deploymentListResult = runCommandCapture(
+    config.railwayBin,
+    ["deployment", "list", "--service", serviceTarget, "--environment", config.environmentName, "--limit", "5", "--json"],
+    { cwd: config.repoRoot, env },
+  );
+  if (deploymentListResult.stdout) {
+    console.error(`[railway-deploy] Recent deployments for service '${serviceTarget}':`);
+    process.stdout.write(deploymentListResult.stdout);
+  }
+  if (deploymentListResult.stderr) {
+    process.stderr.write(deploymentListResult.stderr);
+  }
+
+  const logCommands = [
+    {
+      label: "build",
+      args: ["logs", "--build", "--service", serviceTarget, "--environment", config.environmentName, "--latest", "--lines", "200"],
+    },
+    {
+      label: "deployment",
+      args: ["logs", "--deployment", "--service", serviceTarget, "--environment", config.environmentName, "--latest", "--lines", "200"],
+    },
+  ];
+
+  for (const command of logCommands) {
+    const result = runCommandCapture(config.railwayBin, command.args, {
+      cwd: config.repoRoot,
+      env,
+    });
+    if (result.stdout) {
+      console.error(`[railway-deploy] Latest Railway ${command.label} logs for service '${serviceTarget}':`);
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+  }
+}
+
 function emitActionableDeployHint(error, config) {
   const combined = [
     error instanceof Error ? error.message : String(error),
@@ -336,6 +442,10 @@ function emitActionableDeployHint(error, config) {
       `[railway-deploy] Railway could resolve project '${config.projectId}' but none of the configured service targets matched. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
     );
     emitRailwayServiceDiscoveryHint(config, process.env);
+  } else if (combined.includes("service targets overlap")) {
+    console.error(
+      `[railway-deploy] Railway deploy targets are miswired. API candidates: ${config.apiServiceTargets.join(", ")}. Web candidates: ${config.webServiceTargets.join(", ")}.`,
+    );
   }
 }
 
@@ -377,10 +487,21 @@ function runDeployCommandAcrossServiceTargets(command, options) {
       return;
     } catch (error) {
       lastError = error;
-      if (!isServiceNotFoundRailwayError(error) || serviceTarget === command.serviceTargets[command.serviceTargets.length - 1]) {
+      const canTryNextCandidate = serviceTarget !== command.serviceTargets[command.serviceTargets.length - 1];
+      if (isServiceNotFoundRailwayError(error) && canTryNextCandidate) {
+        console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
+        continue;
+      }
+      if (isServiceConfigMissingRailwayError(error) && canTryNextCandidate) {
+        console.warn(
+          `[railway-deploy] ${command.label} service target '${serviceTarget}' resolved to a service with an unexpected source-path config. Trying next candidate...`,
+        );
+        continue;
+      }
+      if (!canTryNextCandidate || (!isServiceNotFoundRailwayError(error) && !isServiceConfigMissingRailwayError(error))) {
+        emitRecentRailwayDeployLogs(options.config, serviceTarget, options.env);
         throw error;
       }
-      console.warn(`[railway-deploy] ${command.label} service target '${serviceTarget}' was not found. Trying next candidate...`);
     }
   }
   throw lastError ?? new Error(`No Railway ${command.label} service targets were available.`);
@@ -389,6 +510,7 @@ function runDeployCommandAcrossServiceTargets(command, options) {
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
+  const railwayEnv = buildRailwayExecutionEnv(env);
   const changedFiles = getChangedFiles(env, repoRoot);
   const deployPlan = Array.isArray(changedFiles) && changedFiles.length > 0
     ? classifyDeployTargets(changedFiles)
@@ -396,7 +518,7 @@ function main(env = process.env) {
 
   runCommand(config.railwayBin, ["--version"], {
     cwd: repoRoot,
-    env,
+    env: railwayEnv,
     label: "Railway CLI availability check",
   });
 
@@ -432,7 +554,7 @@ function main(env = process.env) {
       command,
       {
         cwd: repoRoot,
-        env,
+        env: railwayEnv,
         config,
         railwayBin: config.railwayBin,
         maxAttempts: config.deployRetries,
@@ -460,10 +582,13 @@ if (require.main === module) {
 module.exports = {
   buildDeployCommands,
   classifyDeployTargets,
+  buildRailwayExecutionEnv,
+  findOverlappingServiceTargets,
   getChangedFiles,
   isRetryableRailwayDeployError,
   isServiceNotFoundRailwayError,
   main,
+  normalizeServiceTarget,
   resolveConfig,
   resolveServiceTargets,
   runDeployCommandWithRetry,

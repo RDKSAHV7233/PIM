@@ -17,6 +17,7 @@ async function main() {
   let webCookieIssued = false;
   let webChannelsAuthorized = false;
   let webGovernanceAuthorized = false;
+  let webDashboardAuthorized = false;
   const users = new Map();
   const passwords = new Map();
   const tokens = new Map([["test-token", { userId: "admin@vexa-pim.local", role: "admin" }]]);
@@ -318,6 +319,13 @@ async function main() {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/dashboard") {
+      webDashboardAuthorized = hasValidCookie(req);
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<html><body><h1>Dashboard</h1><h2>Catalog Health</h2></body></html>");
+      return;
+    }
+
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "NOT_FOUND", path: url.pathname }));
   });
@@ -384,6 +392,7 @@ async function main() {
   assert.equal(webCookieIssued, true, "web smoke login must issue a session cookie");
   assert.equal(webChannelsAuthorized, true, "web channels render must reuse the session cookie");
   assert.equal(webGovernanceAuthorized, true, "web governance render must reuse the session cookie");
+  assert.equal(webDashboardAuthorized, true, "web dashboard render must reuse the session cookie");
   assert.deepEqual(
     [...auditLogDeniedRoles].sort(),
     ["editor", "reviewer", "viewer"],
@@ -403,6 +412,7 @@ async function main() {
           "staging_smoke_reuses_bearer_token_for_authenticated_checks",
           "staging_smoke_proves_logout_revokes_token",
           "staging_smoke_proves_web_role_render_for_admin_session",
+          "staging_smoke_proves_web_dashboard_live_render_after_login",
           "staging_smoke_proves_non_admin_audit_log_denials",
           "staging_smoke_proves_stale_token_rejection_after_lock_and_deactivation",
         ],
