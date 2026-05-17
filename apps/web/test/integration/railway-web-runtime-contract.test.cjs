@@ -35,6 +35,12 @@ function main() {
       prepareWebPackageScript.includes('const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");'),
     "Prepared Railway web package must target the dedicated /health endpoint and write railway.toml inside apps/web for Railway source-path deploys.",
   );
+  assert(
+    prepareWebPackageScript.includes("env.STAGING_BASE_URL") &&
+      prepareWebPackageScript.includes('const envContents = [`PIM_API_BASE_URL=${apiBaseUrl}`, `NEXT_PUBLIC_API_URL=${apiBaseUrl}`, ""].join("\\n");') &&
+      prepareWebPackageScript.includes('appEnvFile = path.join(appOutputDir, ".env.production");'),
+    "Prepared Railway web package must write apps/web/.env.production with the canonical API base URL when staging deploy inputs provide one.",
+  );
 
   console.log("railway web runtime contract OK");
 }
