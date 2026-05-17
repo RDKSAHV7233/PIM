@@ -2,7 +2,7 @@
 title: Vexa PIM Public Signup Production Rollout Runbook
 audience: internal-ops
 status: active
-last_updated: 2026-03-26
+last_updated: 2026-05-17
 owner: DevOps + Product
 ---
 
@@ -15,6 +15,12 @@ This runbook is for controlled production rollout only. It assumes signup has al
 - local integration validation
 - staging deploy validation
 - staging nightly E2E validation
+
+Current staging default after the 2026-05-17 deploy recovery:
+
+- public signup remains disabled in staging by default
+- `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false`
+- a signup-enabled staging rehearsal now requires an explicit enablement window and aligned Railway runtime flags before it should be treated as release evidence
 
 ## 2. Current production contract
 
@@ -46,6 +52,7 @@ Why both web flags matter:
    - `QUEUE_BACKEND=bullmq`
    - `QUEUE_WORKER_ENABLED=true`
    - `REDIS_URL` present
+7. If staging is normally operating in signup-disabled mode, schedule and document a dedicated signup-enabled staging window before using staging as production-rollout proof.
 
 ## 4. Enable production rollout
 

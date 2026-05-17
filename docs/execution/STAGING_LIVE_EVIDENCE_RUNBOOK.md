@@ -2,6 +2,16 @@
 
 Purpose: collect the external proof needed to close `RISK-P0-003` and advance `RISK-P0-001` without guessing at artifact contents after the fact.
 
+Current recovery baseline:
+
+- successful recovery run: `25988595126`
+- URL: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25988595126`
+- current staging posture: public signup disabled
+- current staging expectation secret: `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false`
+- authoritative Railway staging services:
+  - web: `App Vexa`
+  - api: `Vexa API`
+
 ## Scope
 
 - Workflow: `.github/workflows/deploy-staging.yml`
@@ -53,6 +63,9 @@ gh auth status
 
    Security note: do not share staging usernames, passwords, tokens, or connection strings in chat, tickets, or docs. Treat all staging credentials as secrets and retrieve/rotate them only through the repository/environment secret-management path.
 
+   Current recovered expectation:
+   - keep `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false` unless a separate rollout decision explicitly schedules a signup-enabled staging window
+
 3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
 
    Before running the workflow, confirm the Railway web service runtime env includes:
@@ -76,6 +89,8 @@ gh run list --workflow deploy-staging.yml --limit 1
 ```
 
 This is the preferred path because `.github/workflows/deploy-staging.yml` now supports `workflow_dispatch` for evidence collection without requiring a no-op push to `main`.
+
+When triaging a new staging incident, capture the fresh failing run URL before making any new deploy-path or Railway-targeting changes. The 2026-05-17 recovery established `25988595126` as the comparison baseline for deploy-lane health.
 
 Copy the returned run ID, then watch the run:
 

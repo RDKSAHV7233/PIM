@@ -2,9 +2,24 @@
 title: Vexa PIM On-Call and Monitoring Guide
 audience: internal-ops
 status: active
-last_updated: 2026-03-26
+last_updated: 2026-05-17
 owner: DevOps
 ---
+
+## 0. Current staging baseline
+
+As of 2026-05-17, the staging deployment recovery baseline is GitHub Actions run `25988595126`:
+
+- URL: `https://github.com/RDKSAHV7233/PIM1/actions/runs/25988595126`
+- authoritative Railway staging services:
+  - web: `App Vexa`
+  - api: `Vexa API`
+- current staging rollout posture:
+  - deploy validation lane is healthy
+  - public signup is intentionally disabled
+  - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false`
+
+Do not authorize additional deploy-path edits for this incident unless a newer failed run exists and the operator cites the failing run URL in the incident thread or handoff.
 
 ## 1. What to watch
 
@@ -46,22 +61,26 @@ The on-call engineer should verify these items each morning:
 4. Staging API: check `GET https://api-staging-4faf.up.railway.app/api/v1/health` for `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
 5. If self-serve signup rollout is in play, confirm the `Public signup smoke check` step is green in the latest staging deploy and nightly E2E runs.
 6. If the rollout expectation changed, verify `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` matches the intended staging state.
+   - Default state after the 2026-05-17 recovery is `false`.
 7. When signup is enabled, confirm Railway runtime flags match on both services:
    - API: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - Web: `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - Web: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
-8. Confirm the API and web services share the same JWT signing secret:
+8. If a new staging failure appears, capture the run URL before approving any workflow or Railway-targeting edits.
+   - Compare against the recovery baseline `25988595126` first.
+   - If the failure does not have a fresh run URL, treat the request as incomplete triage.
+9. Confirm the API and web services share the same JWT signing secret:
    - API: `JWT_SECRET` or `PIM_JWT_SECRET`
    - Web: `JWT_SECRET` or `PIM_JWT_SECRET`
    - If they drift, login can succeed while server-rendered pages degrade to viewer/read-only mode.
-9. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
-10. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
+10. Gate artifacts: confirm recent evidence files exist in `docs/execution/gates/` after successful deploys.
+11. Rollout snapshots: check `docs/execution/rollout/` for any new snapshot showing blockers or a broken observation window.
 
 ## 4. Alert setup (to be configured)
 
 Railway alert webhook: [FILL: Railway alert webhook URL]  
 PagerDuty service key: [FILL: PagerDuty service key]  
-Slack webhook: [FILL: Slack webhook for #Vexa PIM-alerts]
+Slack webhook: [FILL: Slack webhook for #vexa-pim-alerts]
 
 Recommended alerts to configure:
 - API service restart count greater than 2 in 10 minutes -> P0

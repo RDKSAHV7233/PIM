@@ -2,7 +2,7 @@
 title: Vexa PIM Incident Response Runbook
 audience: internal-ops
 status: active
-last_updated: 2026-03-26
+last_updated: 2026-05-17
 owner: DevOps + Engineering Lead
 ---
 
@@ -96,26 +96,32 @@ Escalation: [FILL: CTO contact]
    - Fix the connector-side cause first.
    - Lanes resume after the configured pause window when the circuit breaker closes.
 4. If queues are not paused but work is not moving, verify Redis health and BullMQ worker registration.
-   - Confirm Redis keys with the `Vexa PIM--` prefix are present.
+   - Confirm Redis-backed auth state and BullMQ queue keys are present.
    - Confirm the worker service actually booted with worker mode enabled.
 5. If the queue is unhealthy immediately after deploy, compare the deployed env vars with `env-validation.ts` and re-check Railway restart logs.
 
 ## 7. Runbook: staging deploy failed
 
 1. Open the failed `deploy-staging.yml` run in GitHub Actions.
+   - Record the run URL in the incident thread before requesting workflow or Railway-targeting edits.
+   - Compare the failure against the recovery baseline run `25988595126`.
 2. Identify the first failed step.
    - Common classes are `Apply migrations`, `Build API`, `Build Web`, `Staging smoke test`, `Public signup smoke check`, and `E2E smoke - post-deploy verification`.
-3. If `Apply migrations` failed:
+3. Confirm the staging target mapping is still correct before editing deploy code:
+   - web service: `App Vexa`
+   - api service: `Vexa API`
+   - `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=false` is the default recovered posture unless a separate rollout decision changed it
+4. If `Apply migrations` failed:
    - Read the SQL or Prisma error in the job log.
    - Fix the migration in git.
    - Re-run the workflow after the migration path is corrected.
-4. If `Build API` or `Build Web` failed:
+5. If `Build API` or `Build Web` failed:
    - Treat it as a compile or lint regression.
    - Fix locally, re-run the same build command, then push.
-5. If the smoke step failed:
+6. If the smoke step failed:
    - Download `.run-logs/e2e-smoke-*.log` from the workflow artifact.
    - Read the `FAIL` lines first and fix the first true regression before re-running.
-6. If `Public signup smoke check` failed:
+7. If `Public signup smoke check` failed:
    - Verify the intended rollout state for staging.
    - Check `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` in GitHub Actions environment secrets.
    - If signup should be disabled, confirm `/api/v1/signup/*` returns `404` and `/signup` is hidden.
@@ -125,7 +131,7 @@ Escalation: [FILL: CTO contact]
      - Web: `FEATURE_PUBLIC_SIGNUP_ENABLED=true`
    - If signup should be enabled, confirm `STAGING_WEB_URL` points at the deployed web app and the public signup routes are reachable.
    - Re-run `node scripts/staging-public-signup-check.cjs` locally with the staging URLs if needed.
-7. After a successful redeploy, verify:
+8. After a successful redeploy, verify:
    - `/api/v1/health`
    - `scripts/staging-postdeploy-check.cjs`
    - `scripts/staging-public-signup-check.cjs`
