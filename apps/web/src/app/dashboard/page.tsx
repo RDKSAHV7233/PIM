@@ -556,6 +556,88 @@ export default async function DashboardPage() {
           </div>
         </section>
 
+        {actorRole !== "viewer" && signupTrends && (signupTrends.mappingCompletionRate.length > 0 || signupTrends.firstPublishSuccessRate.length > 0) ? (
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Connector Performance</h2>
+              <p className="text-sm text-slate-500">
+                Mapping completion, first publish success, and setup efficiency across your active connectors.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <KpiCard
+                label="Mapping Completion Rate"
+                value={
+                  signupTrends.mappingCompletionRate.length > 0
+                    ? `${Math.round((signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) * 10) / 10}%`
+                    : "—"
+                }
+                helper={
+                  signupTrends.mappingCompletionRate.length > 0
+                    ? `${signupTrends.mappingCompletionRate.at(-1)?.channel ?? "across connectors"} · last 30 days`
+                    : "No mapping activity yet"
+                }
+                tone={
+                  signupTrends.mappingCompletionRate.length === 0
+                    ? "default"
+                    : (signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) >= 80
+                      ? "success"
+                      : (signupTrends.mappingCompletionRate.at(-1)?.value ?? 0) >= 50
+                        ? "warning"
+                        : "danger"
+                }
+                href="/channels/mappings"
+              />
+              <KpiCard
+                label="First Publish Success Rate"
+                value={
+                  signupTrends.firstPublishSuccessRate.length > 0
+                    ? `${Math.round((signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) * 10) / 10}%`
+                    : "—"
+                }
+                helper={
+                  signupTrends.firstPublishSuccessRate.length > 0
+                    ? `${signupTrends.firstPublishSuccessRate.at(-1)?.channel ?? "across connectors"} · last 30 days`
+                    : "No publish activity yet"
+                }
+                tone={
+                  signupTrends.firstPublishSuccessRate.length === 0
+                    ? "default"
+                    : (signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 80
+                      ? "success"
+                      : (signupTrends.firstPublishSuccessRate.at(-1)?.value ?? 0) >= 50
+                        ? "warning"
+                        : "danger"
+                }
+                href="/channels/health"
+              />
+              <KpiCard
+                label="Avg Setup to First Publish"
+                value={
+                  signupTrends.setupTimeToFirstPublishHours.length > 0
+                    ? `${Math.round(signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0)}h`
+                    : "—"
+                }
+                helper={
+                  signupTrends.setupTimeToFirstPublishHours.length > 0
+                    ? "Hours from connector install to first successful publish"
+                    : "No completed installs with publish yet"
+                }
+                tone={
+                  signupTrends.setupTimeToFirstPublishHours.length === 0
+                    ? "default"
+                    : (signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 24
+                      ? "success"
+                      : (signupTrends.setupTimeToFirstPublishHours.at(-1)?.value ?? 0) <= 72
+                        ? "warning"
+                        : "danger"
+                }
+                href="/channels/connectors"
+              />
+            </div>
+          </section>
+        ) : null}
+
         {actorRole === "admin" && signupTrends ? (
           <section className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">

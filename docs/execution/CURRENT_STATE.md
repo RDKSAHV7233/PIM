@@ -106,9 +106,10 @@ Source: `docs/execution/INCREMENT_STATE.json`
 
 Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
 
-1. The current authoritative rollout snapshot is `docs/execution/rollout/2026-05-12_CONTROLLED_ROLLOUT_SNAPSHOT.json` (`healthOk: true`, `controlledPending: []`, `broadPending: []`). The older 2026-05-09 snapshot (`controlledRollout.pending = ["Health endpoint env mismatch"]`) is superseded and should not be used for governance decisions.
-2. Historical April and early-May review documents remain useful context, but must not be treated as the current launch truth when they conflict with current code or the latest artifacts.
-3. The execution ledger still records `INC-08` as complete, but current external production claims should follow a fresh healthy rollout snapshot rather than older green snapshots.
+1. The current authoritative rollout snapshot is `docs/execution/rollout/2026-05-17T07-17-15.753Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` (`controlledPending: []`, `broadPending: []`). Daily automated captures keep this fresh; rerun `node scripts/capture-controlled-rollout-snapshot.cjs` before any external production claim.
+2. Historical April and early-May review documents remain useful context but must not be treated as current launch truth when they conflict with current code or the latest artifacts.
+3. INC-08 is complete. INC-36 (localization) and INC-39 (OIDC SSO) completed via PR #71 (2026-05-17). Remaining open stories: ST-CON-METRICS-001 (connector KPI trends), ST-FK-RUNTIME-003/004/005 (Flipkart publish loop) — gate step for Flipkart idempotency is explicitly `allowFailure=true` until these are delivered.
+4. Enterprise signoff blocked on RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search) — none scheduled. Do not claim enterprise-ready.
 
 ## 8. Future-Scope And Follow-Up Items
 

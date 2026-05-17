@@ -1116,16 +1116,14 @@
         {
           "storyId": "ST-CON-METRICS-001",
           "title": "Expose connector KPI trends for mapping completion, first publish success, setup time, and blocker resolution",
-          "status": "in_progress",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "codex",
-          "commit": "5539682",
+          "commit": "connector-kpi-dashboard",
           "tests_passed": [
-            "npm run build --workspace @pim1/api",
-            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
-            "npm run test:integration:metrics-kpi-trends",
-            "node apps/api/test/integration/connector-mapping-precedence.test.cjs",
-            "npm run test:integration:connector-mapping-lifecycle"
+            "npm run build --workspace @pim1/web",
+            "npm run test --workspace @pim1/web",
+            "npm run test:integration:metrics-kpi-trends"
           ],
           "reopened_by": "codex",
           "reopened_reason": "Tenant-safety hardening found that the locked KPI trends story still depends on manual raw SQL against tenant KPI and issue data, which breaks the current release-blocking isolation standard.",
