@@ -70,6 +70,24 @@ function main() {
     "utf8",
   );
 
+  const railwayTomlPath = path.join(outputDir, "railway.toml");
+  fs.writeFileSync(
+    railwayTomlPath,
+    [
+      "[build]",
+      'buildCommand = "npm install && npm run build"',
+      "",
+      "[deploy]",
+      'startCommand = "npm run start"',
+      'healthcheckPath = "/health"',
+      "healthcheckTimeout = 300",
+      'restartPolicyType = "ON_FAILURE"',
+      "restartPolicyMaxRetries = 10",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -78,6 +96,7 @@ function main() {
         rootPackageJson: path.relative(repoRoot, rootPackageJsonPath),
         appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
         tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
+        railwayToml: path.relative(repoRoot, railwayTomlPath),
       },
       null,
       2,
