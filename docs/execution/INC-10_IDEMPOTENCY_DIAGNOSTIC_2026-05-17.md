@@ -1,19 +1,26 @@
 # INC-10 — Connector Idempotency Test Diagnostic
 
 **Status:** Diagnostic notes for the connector lead picking up `INC-10 ST-FK-RUNTIME-003/004/005`.
-**Author:** CTO, 2026-05-17.
+**Author:** CTO, 2026-05-17. **Updated:** CTO structural audit, 2026-05-17 (post PR #76 merge).
 **Purpose:** Reduce ramp-up time when this ticket is staffed.
 
 ---
 
-## Current state
+## Current state (updated 2026-05-17)
 
 - `scripts/run-increment-gates.cjs` includes `Integration: connector idempotency` with `allowFailure: true`.
-- Comment in source: *"Flipkart publish loop is incomplete (INC-10: ST-FK-RUNTIME-003/004/005 in_progress). Known-failing until Flipkart credential runtime and real publish path are implemented."*
-- `INCREMENT_STATE.json` confirms ST-FK-RUNTIME-003 is `in_progress` and has reopened-reason: *"Tenant-safety hardening found remaining credential-path raw SQL in the live Flipkart connector runtime."*
-- Regression evidence cites three `RLS-BYPASS` raw SQL sites in `apps/api/src/connectors/flipkart/flipkart.connector.ts` lines 495, 530, 723.
+- `INCREMENT_STATE.json` confirms ST-FK-RUNTIME-003 is `in_progress` with reopened-reason citing three `RLS-BYPASS` raw SQL sites at `flipkart.connector.ts` lines 495, 530, 723.
 
-The known-failing posture is **documented and bounded** — it's not a hidden defect. But the sunset condition is INC-10 closure (ADR-006 in this branch).
+**Structural audit finding (2026-05-17):** Those line numbers no longer contain raw SQL. Current state:
+- `flipkart.connector.ts:495` — logging call, no SQL.
+- `flipkart.connector.ts:530` — logger call inside `syncSubmissionStatus`, no SQL.
+- `flipkart.connector.ts:723` — `row.status` check in `requireCredential`, no SQL.
+- `getCredentialRow()` (lines 729–749) — **uses Prisma ORM** (`db.connectorCredential.findFirst`). The credential read path is clean.
+- Only one `$executeRawUnsafe` remains in the connector: `noteCredentialWarning()` at line 702, which has a correct manual tenant filter (`WHERE tenant_key = $1 AND installation_id = $2 AND credential_type = ...`).
+
+**Assessment:** The raw SQL concerns cited in the reopened-reason appear to have been addressed in a prior commit. The `allowFailure=true` may be stale. The connector lead should run the test against live Postgres before removing it — if it passes, INC-10 closure is a half-day effort, not four days.
+
+The known-failing posture remains **documented and bounded** until the test run confirms. Sunset condition is INC-10 closure (ADR-006).
 
 ---
 

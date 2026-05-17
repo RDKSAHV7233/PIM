@@ -24,8 +24,8 @@
 > - **"100+ products published to Shopify"** — added to Forbidden pending recorded session.
 >
 > **Outstanding engineering before broader-production claim:**
-> - INC-10 Flipkart publish loop closure (removes `allowFailure=true` from idempotency gate). Target 2026-06-07.
-> - OIDC admin IdP configuration UI. Target 2026-05-26.
+> - INC-10 Flipkart publish loop closure (removes `allowFailure=true` from idempotency gate). Target 2026-06-07. Structural audit (2026-05-17): the two credential-path `$queryRawUnsafe` sites cited in the reopened-reason have been refactored to Prisma ORM; only `noteCredentialWarning` retains raw SQL (tenant-filtered, low risk). `allowFailure=true` may be stale — connector lead should run the test against live Postgres to confirm.
+> - ~~OIDC admin IdP configuration UI.~~ **Shipped in PR #76 (2026-05-17)** — `/admin/auth-policy/oidc` with `auth_config_high_risk` step-up scope. "OIDC enforced" remains Forbidden per PO V4 (Gate C required).
 > - Fresh staging rollout snapshot with full `observationWindowDaysCovered` schema field. Target 2026-05-21.
 > - `gate:run:sprint` executed on staging. Target 2026-05-23.
 >
