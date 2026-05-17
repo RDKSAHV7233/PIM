@@ -35,6 +35,12 @@ const adminLinks = [
     visibility: "admin" as AdminNavigationAudience,
   },
   {
+    title: "OIDC / SSO",
+    description: "Configure your external identity provider for single sign-on login.",
+    href: "/admin/oidc",
+    visibility: "admin" as AdminNavigationAudience,
+  },
+  {
     title: "Connector Access",
     description: "Grant/revoke install, reconnect, and uninstall actions.",
     href: "/admin/connectors",

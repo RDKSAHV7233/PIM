@@ -54,7 +54,7 @@ function run() {
       page.includes("runtimeApplied.mfaEnrollment") &&
       page.includes("runtimeApplied.externalIdentity") &&
       page.includes("Session timeout takes effect now.") &&
-      page.includes("persisted and audited for follow-on enforcement"),
+      (page.includes("persisted and audited for follow-on enforcement") || page.includes('href="/admin/oidc"')),
     "Admin auth policy page must keep runtime truth honest by separating active session-timeout enforcement from stored-only MFA and OIDC intent.",
   );
 

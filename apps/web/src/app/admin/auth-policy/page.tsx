@@ -90,7 +90,8 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
             </div>
             <p className="mt-3 text-sm text-slate-600">
               Session timeout and MFA enrollment enforcement are active in database mode. Allowed auth methods (password vs
-              OIDC gating) are enforced at login. External identity SSO is stored and audited for a follow-on delivery.
+              OIDC gating) are enforced at login. Configure your OIDC identity provider in{" "}
+              <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
             </p>
           </Card>
 
@@ -217,7 +218,10 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                 />
                 <span>
                   <span className="font-medium text-slate-900">OIDC sign-in</span>
-                  <span className="mt-1 block text-slate-600">Configuration intent only until OIDC delivery lands.</span>
+                  <span className="mt-1 block text-slate-600">
+                    Enables OIDC-based login. Configure your identity provider in{" "}
+                    <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+                  </span>
                 </span>
               </label>
             </fieldset>
@@ -230,7 +234,8 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                 Save Auth Policy
               </button>
               <span className="text-xs text-slate-500">
-                Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. External identity SSO settings are persisted and audited for follow-on enforcement.
+                Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. OIDC sign-in requires an active IdP configuration — see{" "}
+                <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
               </span>
             </div>
           </form>
