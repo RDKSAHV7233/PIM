@@ -121,6 +121,17 @@ function classifyDeployTargets(changedFiles) {
     return { deployApi: true, deployWeb: true };
   }
 
+  const normalizedTargets = changedFiles
+    .map((value) => String(value ?? "").replace(/\\/g, "/").trim().toLowerCase())
+    .filter(Boolean);
+  const explicitDeployTargets = normalizedTargets.filter((value) => value === "api" || value === "web");
+  if (explicitDeployTargets.length > 0) {
+    return {
+      deployApi: explicitDeployTargets.includes("api"),
+      deployWeb: explicitDeployTargets.includes("web"),
+    };
+  }
+
   let deployApi = false;
   let deployWeb = false;
 
