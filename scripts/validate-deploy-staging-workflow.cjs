@@ -124,6 +124,22 @@ function main() {
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
   assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
+  const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
+  assert(String(resolveWebUrlStep?.id ?? "").trim() === "resolve_staging_web_url", "Resolve staging web URL step must expose id=resolve_staging_web_url");
+  requireAnyEnvVar(resolveWebUrlStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Resolve staging web URL");
+  requireEnvVar(resolveWebUrlStep, "RAILWAY_PROJECT_ID", "Resolve staging web URL");
+  requireAnyEnvVar(resolveWebUrlStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Resolve staging web URL");
+  requireEnvVar(resolveWebUrlStep, "RAILWAY_ENVIRONMENT_NAME", "Resolve staging web URL");
+  requireEnvVar(resolveWebUrlStep, "FALLBACK_STAGING_WEB_URL", "Resolve staging web URL");
+  requireRunContains(resolveWebUrlStep, "node scripts/resolve-railway-service-url.cjs", "Resolve staging web URL");
+  requireRunContains(
+    resolveWebUrlStep,
+    "Could not resolve staging web URL from Railway and no STAGING_WEB_URL secret fallback is configured.",
+    "Resolve staging web URL",
+  );
+  requireRunContains(resolveWebUrlStep, 'echo "web_url=${resolved_web_url}" >> "$GITHUB_OUTPUT"', "Resolve staging web URL");
+  requireStepOrder(steps, "Deploy to staging", "Resolve staging web URL");
+  requireStepOrder(steps, "Resolve staging web URL", "Staging post-deploy verification (auth + trust boundary)");
 
   const smokeStep = requireStep(steps, "Staging smoke test");
   requireEnvVar(smokeStep, "STAGING_BASE_URL", "Staging smoke test");
@@ -209,6 +225,7 @@ function main() {
           "legacy_auth_hash_backfill_runs_before_builds",
           "railway_cli_install_step_present_before_deploy",
           "deploy_step_uses_checked_in_railway_script",
+          "postdeploy_uses_live_resolved_web_url",
           "staging_smoke_checks_health_and_env",
           "postdeploy_verification_runs_workspace_scoped_trust_boundary_check",
           "postdeploy_verification_enables_non_admin_access_policy_smoke",

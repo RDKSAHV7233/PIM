@@ -97,6 +97,28 @@ jobs:
         run: |
           node scripts/railway-deploy.cjs
 
+      - name: Resolve staging web URL
+        id: resolve_staging_web_url
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_WEB_SERVICE: ${{ secrets.RAILWAY_WEB_SERVICE || 'App Vexa' }}
+          RAILWAY_WEB_SERVICE_ID: ${{ secrets.RAILWAY_WEB_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_NAME: Staging
+          FALLBACK_STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+        run: |
+          resolved_web_url="$(node scripts/resolve-railway-service-url.cjs 2>/dev/null || true)"
+          if [ -z "${resolved_web_url}" ]; then
+            resolved_web_url="${FALLBACK_STAGING_WEB_URL}"
+          fi
+          if [ -z "${resolved_web_url}" ]; then
+            echo "Could not resolve staging web URL from Railway and no STAGING_WEB_URL secret fallback is configured."
+            exit 1
+          fi
+          echo "web_url=${resolved_web_url}" >> "$GITHUB_OUTPUT"
+
       - name: Staging smoke test
         shell: bash
         env:
@@ -115,7 +137,7 @@ jobs:
         shell: bash
         env:
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+          STAGING_WEB_URL: ${{ steps.resolve_staging_web_url.outputs.web_url }}
           STAGING_SMOKE_WORKSPACE: ${{ secrets.STAGING_SMOKE_WORKSPACE }}
           STAGING_SMOKE_USER: ${{ secrets.STAGING_SMOKE_USER }}
           STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
@@ -136,7 +158,7 @@ jobs:
         shell: bash
         env:
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+          STAGING_WEB_URL: ${{ steps.resolve_staging_web_url.outputs.web_url }}
           STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED: ${{ secrets.STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED }}
           STAGING_EXPECTED_ENV: staging
         run: |
