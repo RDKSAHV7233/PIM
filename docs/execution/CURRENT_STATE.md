@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
 - Date: 2026-05-17
-- Repo HEAD: main `31a3307` — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard
+- Repo HEAD: main — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard); PR #74 merged (OIDC self-serve admin UI)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard, OIDC self-serve IdP configuration
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -46,12 +46,12 @@
 - The current local validation bundle is green.
 - Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Enterprise Gate C work: INC-35 (8-role RBAC), INC-36 (localization schema), and INC-39 (OIDC SSO login) all merged. Enterprise signoff still requires RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
+- Enterprise Gate C work: INC-35 (8-role RBAC), INC-36 (localization schema), and INC-39 (OIDC SSO login + self-serve IdP config UI) all merged. Enterprise signoff still requires RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
+- OIDC is now self-serve: admins configure their IdP (issuer, clientId, clientSecret, callbackUrl, scopes, claims mapping) via `/admin/oidc`. Runtime enforcement is live once an IdP is configured.
 
 ### Not allowed to say
 
 - Enterprise-ready (Gate C requires RG-C4/C5/C6 — not yet scheduled)
-- OIDC fully enforced (code-complete but no admin UI for IdP config yet; not self-serve)
 - Self-serve billing
 - All launch docs current before review
 - All historical review docs are current
@@ -101,7 +101,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 | INC-10 | Flipkart Publish Connector v1 | completed | increment completed, but runtime claims must still follow story/evidence truth |
 | INC-11 through INC-25 | Auth, UX, audit, access-policy, dependency, and alignment increments | completed | see ledger for story-level details |
 | INC-36 | Localization schema — Market, Currency, PriceList, ProductPrice, ProductTranslation, CategoryTranslation | completed | PR #71 merged 2026-05-17 |
-| INC-39 | OIDC SSO login flow | completed | PR #71 merged 2026-05-17; no admin IdP config UI yet — OIDC is code-complete but not self-serve |
+| INC-39 | OIDC SSO login flow | completed | PR #71 merged (login flow); PR #74 merged (self-serve /admin/oidc IdP config UI) 2026-05-17 |
 
 ## 7. Active Production-Signoff Blockers
 
