@@ -1,5 +1,36 @@
 # Vexa PIM Current State
 
+> **V4 Addendum (2026-05-17, evening) — supersedes V3 release posture below.**
+>
+> **Authoritative PO sign-off:** [PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md](./PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md). V3 is superseded.
+>
+> **Engineering pass complete (CTO Execution Memo 2026-05-17):**
+> - PR #71 merged (worktree base `f6f9ce2`). Main HEAD includes `66bd13e` (ledger sync) and `5304ffe` (PR #72: CTO verification fixes).
+> - Web tests at **111/111 passing** (was 110 in V3 snapshot; one net test added).
+> - AuditLog composite index `idx_audit_logs_tenant_resource_action_created` added via migration `20260517000002_auditlog_resource_action_index` to support product revision and activity queries at scale.
+> - `approval-comments` and `product-activity-timeline` integration tests wired as named npm scripts and as gated steps in `scripts/run-increment-gates.cjs`.
+> - Meesho UI corrected to honestly disclose `In Development` status; export action guarded server-side.
+> - `.env.staging` converted to deprecation stub; `.env.staging.example` is the canonical template.
+> - Operations KPI counts now display `<limit>+` honestly when at the window cap.
+> - ADRs 005–010 filed: revisions-from-audit-log, allowFailure sunset policy, JSON attribute blob acceptance, billing operator-mediated, Smart Suggestions rule-based, OIDC opt-in.
+> - AuditLog retention policy drafted: `docs/runbooks/audit-log-retention.md`.
+>
+> **What this changes in approved claims:**
+> - **Approval comments** — moved to Approved (was Forbidden in V3). Model + API + UI + test all proven.
+> - **Product activity timeline** — moved to Approved. Endpoint + service + tab + test all proven.
+> - **OIDC SSO login (bounded)** — added to Approved with operator-mediated configuration disclosure.
+> - **Browser-only live Shopify proof** — added to Forbidden (script-assisted only; no recorded session committed).
+> - **OIDC fully enforced** — explicitly added to Forbidden pending admin UI.
+> - **"100+ products published to Shopify"** — added to Forbidden pending recorded session.
+>
+> **Outstanding engineering before broader-production claim:**
+> - INC-10 Flipkart publish loop closure (removes `allowFailure=true` from idempotency gate). Target 2026-06-07.
+> - OIDC admin IdP configuration UI. Target 2026-05-26.
+> - Fresh staging rollout snapshot with full `observationWindowDaysCovered` schema field. Target 2026-05-21.
+> - `gate:run:sprint` executed on staging. Target 2026-05-23.
+>
+> The V3-era posture below is preserved for historical reference. Where V3 conflicts with V4, **V4 wins.**
+
 - Date: 2026-05-17
 - Repo HEAD: main — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard); PR #74 merged (OIDC self-serve admin UI)
 - Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard, OIDC self-serve IdP configuration

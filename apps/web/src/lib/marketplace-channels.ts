@@ -54,3 +54,16 @@ export function mapConnectorSlugToMarketplaceChannel(slugInput: string): Marketp
 export function formatMarketplaceChannelLabel(channel: MarketplaceChannel): string {
   return MARKETPLACE_CHANNEL_LABELS[channel];
 }
+
+// Channels whose connectors are present in source but not yet ready for customer use.
+// Surfaces that show these channels must visibly mark them and disable destructive actions.
+// Meesho: generateExportFile() in apps/api/src/connectors/meesho/meesho.connector.ts throws
+// "Not implemented" pending ExcelJS template work (TODO P5-S4).
+const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>(["meesho"]);
+
+export function isChannelInDevelopment(channel: MarketplaceChannel): boolean {
+  return IN_DEVELOPMENT_CHANNELS.has(channel);
+}
+
+export const IN_DEVELOPMENT_CHANNEL_NOTICE =
+  "This channel is in development. Export and publish are not available in the current release.";

@@ -65,6 +65,32 @@ const STEPS = [
     args: ["run", "test:integration:delegated-access-scopes"],
     retries: 1,
   },
+  {
+    // ApprovalComment contract — model + API surfaced post-V3 PO sign-off (2026-05-06).
+    // Required to continuously verify the V4-approved claim that approval comments are proven.
+    label: "Integration: approval comments contract",
+    command: "npm",
+    args: ["run", "test:integration:approval-comments"],
+    retries: 1,
+  },
+  {
+    // Product activity timeline — AuditLog-sourced; sits behind the index added by migration
+    // 20260517000002_auditlog_resource_action_index. ADR-013 references this query path.
+    label: "Integration: product activity timeline",
+    command: "npm",
+    args: ["run", "test:integration:product-activity-timeline"],
+    retries: 1,
+  },
+  {
+    // OIDC IdP-config step-up auth — runtime proof that StepUpGuard with the
+    // auth_config_high_risk scope correctly gates POST/DELETE /auth/oidc-config,
+    // rejects scope-mismatched tokens with 403, and does not gate the GET endpoint.
+    // Complements the static admin-oidc-config-route-contract.test.cjs web test.
+    label: "Integration: OIDC config step-up",
+    command: "npm",
+    args: ["run", "test:integration:auth-oidc-config-step-up"],
+    retries: 1,
+  },
   { label: "Guard: unsafe raw", command: "npm", args: ["run", "guard:unsafe-raw"] },
   { label: "Guard: sensitive GET policy", command: "npm", args: ["run", "guard:sensitive-gets"] },
 ];

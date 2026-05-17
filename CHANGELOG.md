@@ -4,6 +4,30 @@ All notable changes to Vexa PIM. Legacy technical codename: `PIM1`. Format: [dat
 
 ---
 
+## [2026-05-17] - v0.9.0-pilot
+### Added
+- AuditLog composite index `idx_audit_logs_tenant_resource_action_created` via migration `20260517000002_auditlog_resource_action_index` to support product revision and activity queries at scale (ADR-005).
+- `approval-comments` and `product-activity-timeline` integration tests wired as named npm scripts and gated steps in `scripts/run-increment-gates.cjs`.
+- Server-action guard in `createExportJobAction` rejects export queueing for in-development channels at the action boundary.
+- Centralized `IN_DEVELOPMENT_CHANNELS` registry in `apps/web/src/lib/marketplace-channels.ts` with `isChannelInDevelopment()` helper for UI surfaces.
+- OIDC IdP configuration admin UI at `/admin/auth-policy/oidc` with self-serve issuer / clientId / clientSecret / callbackUrl / scopes / claims mapping configuration. Surfaces a disconnect card when configured.
+- New step-up scope `STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk"` in `apps/api/src/auth/jwt.ts` plus DTO acceptance in `step-up.dto.ts`. Applied via `@RequireStepUp` + `StepUpGuard` to OIDC controller `upsertConfig` and `deleteConfig` endpoints. Frontend forms collect a `stepUpPassword` field and issue a scoped step-up token before each mutation.
+- Web integration test `admin-oidc-config-route-contract.test.cjs` with 16 assertions covering page composition, server-action wiring, step-up enforcement (frontend + backend DTO + controller decorator), API client surface, navigation.
+- API integration test `auth-oidc-config-step-up.test.cjs` — boots the real API, verifies StepUpGuard runtime behavior: 401 STEP_UP_REQUIRED without token, 201 with correct-scope token, 403 STEP_UP_SCOPE_MISMATCH with mapping_high_risk scope, GET does not require step-up, DELETE follows the same gate as POST. Wired as named npm script and as a hard-gated step in `run-increment-gates.cjs` (no `allowFailure`).
+- ADRs 005–010: revisions-from-audit-log, allowFailure sunset policy, JSON attribute blob acceptance, billing operator-mediated, Smart Suggestions rule-based, OIDC self-serve with step-up.
+- AuditLog retention policy runbook: `docs/runbooks/audit-log-retention.md`.
+- PO sign-off V4: `docs/execution/PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md` (supersedes V3).
+- INC-10 diagnostic memo: `docs/execution/INC-10_IDEMPOTENCY_DIAGNOSTIC_2026-05-17.md`.
+- Commit plan: `docs/execution/COMMIT_PLAN_2026-05-17.md`.
+
+### Changed
+- Meesho connector tile in `/connectors` page now honestly states the connector is in development; Excel export is not yet available. Replaces misleading copy that implied the export already worked.
+- Operations dashboard KPI values now display `<windowLimit>+` when at the cap, with helper text disclosing the window cap. Replaces the prior cap-equals-total ambiguity. Stale TODO comments removed.
+- `CURRENT_STATE.md` updated with V4 addendum reflecting PR #71 merge, PR #72 follow-up, 111/111 web tests, and the V4 approved/forbidden claim deltas.
+
+### Deprecated
+- `.env.staging` is now a deprecation stub redirecting to `.env.staging.example` as the canonical template. Real staging credentials never live in the repo.
+
 ## [2026-03-19] - bf77c26
 ### Changed
 - Refreshed CURRENT_STATE.md, PRD.md, and the domain model reference to reflect the current increment ledger and release-readiness state.

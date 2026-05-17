@@ -4,6 +4,23 @@
 
 ## May 2026
 
+### Week of May 17 — v0.9.0-pilot
+
+**Approval comment threads on every product**
+Reviewers and editors can now leave inline comments on a product's approval thread. Each comment captures who posted it, their role, and when. Comments appear in the approval queue and in the product detail view. Use comments to record review feedback, capture revision notes, or hand a product back to an editor with context.
+
+**Product activity timeline**
+Every product detail page now includes an `Activity` tab that shows the history of edits, approvals, comments, and channel publish events for that product. Each entry shows the actor, role, action, and timestamp sourced from the audit trail. Use this to see what happened to a product without digging through the audit log.
+
+**OIDC SSO with self-serve admin configuration**
+You can now sign in to Vexa using your own identity provider via OIDC. Workspace admins can configure the identity provider connection themselves under Admin → OIDC SSO: enter your issuer URL, client ID, client secret, callback URL, and optional scopes/claims mapping. Every change requires you to confirm with your password (step-up authentication) so a hijacked admin session cannot silently rewire sign-in. OIDC enforcement (requiring all users to sign in via your IdP) remains a future-release item.
+
+**Honest Meesho status in connector setup**
+The Meesho connector tile in `Channels → Connectors` now clearly indicates the connector is in development. Export and direct publish are not yet available, and any attempt to queue a Meesho export is now blocked with a clear message. Sellers using Meesho should continue to use the existing manual Supplier Panel upload until Vexa's Meesho export ships.
+
+**Operations counts disclose the window cap**
+The `Operations` dashboard counts for Submission Jobs and the Dead Letter Queue now show `200+` when more than 200 records are in the window, with the helper text disclosing that you are seeing the most recent 200. Click through to the full list to scroll older entries.
+
 ### Week of May 7
 
 **Large Import Mode MVP**

@@ -23,6 +23,9 @@ import { Public } from "./public.decorator";
 import { UpsertOidcConfigDto } from "./dto/upsert-oidc-config.dto";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
+import { RequireStepUp } from "./step-up.decorator";
+import { StepUpGuard } from "./step-up.guard";
+import { STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK } from "./jwt";
 
 interface AuthenticatedRequest extends Request {
   pimTenant?: string;
@@ -43,6 +46,8 @@ export class OidcController {
 
   @Post("oidc-config")
   @Roles("admin")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK, "auth.oidc_config.upsert")
   async upsertConfig(@Req() req: AuthenticatedRequest, @Body() dto: UpsertOidcConfigDto) {
     const tenantKey = this.requireTenantKey(req);
     const actorId = req.pimUserId ?? req.pimJwtClaims?.sub;
@@ -59,6 +64,8 @@ export class OidcController {
 
   @Delete("oidc-config")
   @Roles("admin")
+  @UseGuards(StepUpGuard)
+  @RequireStepUp(STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK, "auth.oidc_config.delete")
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteConfig(@Req() req: AuthenticatedRequest) {
     const tenantKey = this.requireTenantKey(req);

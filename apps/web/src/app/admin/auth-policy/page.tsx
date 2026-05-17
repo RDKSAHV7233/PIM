@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import { updateTenantAuthPolicyAction } from "@/app/admin/auth-policy/actions";
 import { ApiHttpError, getTenantAuthPolicy } from "@/lib/api";
@@ -91,7 +91,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
             <p className="mt-3 text-sm text-slate-600">
               Session timeout and MFA enrollment enforcement are active in database mode. Allowed auth methods (password vs
               OIDC gating) are enforced at login. Configure your OIDC identity provider in{" "}
-              <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+              <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
             </p>
           </Card>
 
@@ -220,7 +220,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                   <span className="font-medium text-slate-900">OIDC sign-in</span>
                   <span className="mt-1 block text-slate-600">
                     Enables OIDC-based login. Configure your identity provider in{" "}
-                    <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+                    <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
                   </span>
                 </span>
               </label>
@@ -234,8 +234,8 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                 Save Auth Policy
               </button>
               <span className="text-xs text-slate-500">
-                Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. OIDC sign-in requires an active IdP configuration — see{" "}
-                <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+                Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. OIDC sign-in requires an active IdP configuration â€” see{" "}
+                <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
               </span>
             </div>
           </form>

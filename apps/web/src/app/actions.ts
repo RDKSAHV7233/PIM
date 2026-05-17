@@ -21,6 +21,11 @@ import {
 } from "@/lib/api";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
+import {
+  IN_DEVELOPMENT_CHANNEL_NOTICE,
+  isChannelInDevelopment,
+  isMarketplaceChannel,
+} from "@/lib/marketplace-channels";
 
 const STEP_UP_SCOPE_MAPPING_HIGH_RISK = "mapping_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -1224,6 +1229,12 @@ export async function createExportJobAction(formData: FormData) {
   const fallbackAcknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
   if (!productId || !channel) {
     throw new Error("Product and channel are required for export.");
+  }
+  if (isMarketplaceChannel(channel) && isChannelInDevelopment(channel)) {
+    // Defense in depth: reject in-development channels at the server-action boundary so
+    // we never enqueue an export the connector cannot fulfill.
+    // Source of truth: apps/web/src/lib/marketplace-channels.ts IN_DEVELOPMENT_CHANNELS.
+    throw new Error(IN_DEVELOPMENT_CHANNEL_NOTICE);
   }
   try {
     await postJsonForAction(formData, `/marketplace/products/${productId}/export-jobs`, {
