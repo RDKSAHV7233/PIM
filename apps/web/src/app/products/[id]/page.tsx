@@ -67,10 +67,10 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     return encoded ? `/products/${encodeURIComponent(id)}?${encoded}` : `/products/${encodeURIComponent(id)}`;
   })();
 
-  const variantsPromise = getProductVariants(id, { role: actorRole, authHeader });
-  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader });
-  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader });
-  const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader });
+  const variantsPromise = getProductVariants(id, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getProductVariants>>);
+  const channelsPromise = getMarketplaceChannels({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMarketplaceChannels>>);
+  const installedConnectorsPromise = getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getInstalledConnectors>>);
+  const exportJobsPromise = getMarketplaceExportJobs(id, { templateSummary: true }, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMarketplaceExportJobs>>);
 
   let product;
   try { product = await getProduct(id, { role: actorRole, authHeader }); } catch (error: unknown) {
@@ -82,8 +82,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     mapMarketplaceChannelToConnectorSlug(selectedChannel),
     { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
     { role: actorRole, authHeader },
-  );
-  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader });
+  ).catch(() => null);
+  const mediaAssetsPromise = getMediaAssets(id, undefined, { role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getMediaAssets>>);
 
   const [variants, channels, installedConnectors, exportJobs, readiness, mediaAssets] = await Promise.all([
     variantsPromise,
@@ -114,13 +114,13 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
           mapMarketplaceChannelToConnectorSlug(effectiveSelectedChannel),
           { categoryScope: product.categoryId, productId: id, fallbackAcknowledged: false },
           { role: actorRole, authHeader },
-        )
+        ).catch(() => null)
       : readiness;
 
   const tabHref = (tab: DetailTab): string => {
     const params = new URLSearchParams();
     params.set("tab", tab);
-    if (effectiveSelectedChannel) params.set("channel", effectiveSelectedChannel);
+    if (selectedChannel) params.set("channel", selectedChannel);
     if (selectedTemplateId) params.set("templateId", selectedTemplateId);
     if (returnTo) params.set("returnTo", returnTo);
     return `/products/${encodeURIComponent(id)}?${params.toString()}`;
@@ -198,18 +198,20 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     };
   })();
   const mappingReadiness = (() => {
-    if ((effectiveReadiness.blockers ?? []).length > 0) {
+    const blockers = effectiveReadiness?.blockers ?? [];
+    const warnings = effectiveReadiness?.warnings ?? [];
+    if (blockers.length > 0) {
       return {
         label: "Blocked",
         tone: "danger" as const,
-        detail: `${effectiveReadiness.blockers.length} publish blocker${effectiveReadiness.blockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
+        detail: `${blockers.length} publish blocker${blockers.length === 1 ? "" : "s"} for ${selectedChannelConfig?.displayName ?? effectiveSelectedChannel}.`,
       };
     }
-    if ((effectiveReadiness.warnings ?? []).length > 0) {
+    if (warnings.length > 0) {
       return {
         label: "Warnings",
         tone: "warning" as const,
-        detail: `${effectiveReadiness.warnings.length} readiness warning${effectiveReadiness.warnings.length === 1 ? "" : "s"} remain.`,
+        detail: `${warnings.length} readiness warning${warnings.length === 1 ? "" : "s"} remain.`,
       };
     }
     return {
@@ -277,8 +279,8 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
     ...(blockingIssueCount > 0
       ? [{ label: `Fix ${blockingIssueCount} quality blocker${blockingIssueCount === 1 ? "" : "s"}`, href: tabHref("quality") }]
       : []),
-    ...((effectiveReadiness.blockers ?? []).length > 0
-      ? [{ label: `Clear ${effectiveReadiness.blockers.length} publish blocker${effectiveReadiness.blockers.length === 1 ? "" : "s"}`, href: tabHref("channels") }]
+    ...((effectiveReadiness?.blockers ?? []).length > 0
+      ? [{ label: `Clear ${(effectiveReadiness?.blockers ?? []).length} publish blocker${(effectiveReadiness?.blockers ?? []).length === 1 ? "" : "s"}`, href: tabHref("channels") }]
       : []),
     ...(imageAssetCount === 0 || mediaIssueCount > 0
       ? [{ label: imageAssetCount === 0 ? "Add product media" : "Review media issues", href: tabHref("media") }]
@@ -374,7 +376,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
       };
     }
     if (product.status === "approved") {
-      if ((effectiveReadiness.blockers ?? []).length > 0 || (effectiveReadiness.warnings ?? []).length > 0) {
+      if ((effectiveReadiness?.blockers ?? []).length > 0 || (effectiveReadiness?.warnings ?? []).length > 0) {
         return {
           title: "Map remaining attributes to go live",
           detail: "Channel mapping still needs attention before this approved product is ready for publish and export.",
@@ -462,7 +464,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
         </Card>
       ) : null}
       {activeTab === "overview" ? <WorkflowStepper steps={workflowSteps} /> : null}
-      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? effectiveSelectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
+      {activeTab === "overview" || activeTab === "channels" || activeTab === "quality" ? <ProductReadinessSummaryBar productId={id} role={actorRole} summary={{ currentChannelLabel: selectedChannelConfig?.displayName ?? selectedChannel, cards: [{ title: "Product readiness", href: tabHref("quality"), ...productReadiness }, { title: "Mapping readiness", href: tabHref("channels"), ...mappingReadiness }, { title: "Media readiness", href: tabHref("media"), ...mediaReadiness }, { title: "Connector readiness", href: "/channels/connectors", ...connectorReadiness }, { title: "Approval status", href: tabHref("quality"), ...approvalStatus }, { title: "Last export attempt", href: tabHref("channels"), ...lastExportAttempt }], blockers: topBlockers }} /> : null}
       <Suspense fallback={<ProductDetailDeferredLoading />}>
         <ProductDetailDeferredSection
           productId={id}

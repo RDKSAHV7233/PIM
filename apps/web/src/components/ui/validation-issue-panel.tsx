@@ -103,12 +103,41 @@ export function ValidationIssuePanel({ issues }: ValidationIssuePanelProps) {
   ];
 
   return (
-    <DataGrid
-      columns={columns}
-      rows={issues}
-      getRowKey={(issue) => issue.id}
-      caption="Validation issues"
-      rowClassName="align-top"
-    />
+    <div className="w-full max-w-full">
+      <div className="hidden sm:block overflow-x-auto">
+        <DataGrid
+          columns={columns}
+          rows={issues}
+          getRowKey={(issue) => issue.id}
+          caption="Validation issues"
+          rowClassName="align-top"
+        />
+      </div>
+      <div className="flex flex-col space-y-2 sm:hidden">
+        {issues.map((issue) => {
+          const translated = translateError(issue.ruleCode);
+          const remediation = translated.action ?? "Update the field and save again.";
+          return (
+            <div key={`mobile-${issue.id}`} className="rounded-lg border border-border p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium capitalize">{issue.severity}</span>
+                <span className="text-xs text-slate-600">{translated.title}</span>
+              </div>
+              {issue.fieldPath ? (
+                <button
+                  type="button"
+                  className="mt-1 text-left text-xs text-accent hover:underline"
+                  onClick={() => focusField(issue.fieldPath ?? "", remediation)}
+                >
+                  {issue.fieldPath}: {issue.message}
+                </button>
+              ) : (
+                <p className="mt-1 text-xs text-slate-600">{issue.message}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

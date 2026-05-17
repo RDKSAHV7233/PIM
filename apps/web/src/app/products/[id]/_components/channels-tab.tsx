@@ -270,6 +270,9 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 <li>Channel target: {selectedChannelOption?.displayName ?? data.selectedChannel}</li>
                 <li>Installed publish lanes: {data.publishableChannels.length}</li>
                 <li>Fallback acknowledgement required: {data.fallbackAckRequired ? "Yes" : "No"}</li>
+                {data.publishableChannels.map((channel) => (
+                  <li key={channel.channel} className="text-xs text-slate-500">{channel.displayName}</li>
+                ))}
               </ul>
             </div>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
@@ -300,17 +303,34 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
             </div>
           </div>
           {data.canWrite && data.publishableChannels.length > 0 ? (
-            <ExportWithPreviewForm
-              productId={data.productId}
-              actorRole={data.actorRole}
-              publishableChannels={data.publishableChannels}
-              templates={data.templates}
-              defaultExportChannel={data.defaultExportChannel}
-              selectedTemplateId={data.selectedTemplateId}
-              fallbackAckRequired={data.fallbackAckRequired}
-              canQueueExportWithAck={data.canQueueExportWithAck}
-              shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
-            />
+            <>
+              <form action={createExportJobAction} className="space-y-3">
+                <RoleHiddenInput role={data.actorRole} />
+                <input type="hidden" name="productId" value={data.productId} />
+                <input type="hidden" name="channel" value={data.defaultExportChannel} />
+                <select name="fallbackAcknowledged" defaultValue={data.fallbackAckRequired ? "false" : "true"} className="sr-only" aria-hidden="true">
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+                <PendingSubmitButton
+                  type="submit"
+                  idleLabel="Queue channel export"
+                  pendingLabel="Queueing export..."
+                  disabled={!data.canQueueExportWithAck}
+                />
+              </form>
+              <ExportWithPreviewForm
+                productId={data.productId}
+                actorRole={data.actorRole}
+                publishableChannels={data.publishableChannels}
+                templates={data.templates}
+                defaultExportChannel={data.defaultExportChannel}
+                selectedTemplateId={data.selectedTemplateId}
+                fallbackAckRequired={data.fallbackAckRequired}
+                canQueueExportWithAck={data.canQueueExportWithAck}
+                shopifyInstallationId={data.mappingManagerInstallation?.id ?? null}
+              />
+            </>
           ) : data.canWrite ? (
             <p className="text-sm text-slate-600">
               No installed connector with publish capability is available for this tenant.

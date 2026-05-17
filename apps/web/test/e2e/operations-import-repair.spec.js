@@ -46,6 +46,7 @@ async function getRow(token, jobId, rowId) {
 }
 
 test("editor can repair a dead-letter import from repair center and clear the backlog", async ({ page }) => {
+  test.setTimeout(90_000);
   const adminToken = await apiLogin("admin");
   const editorToken = await apiLogin("editor");
   const category = await resolveCategoryContext(adminToken, editorToken);

@@ -224,7 +224,7 @@ async function run() {
       gstRate: 18,
       sellingPrice: 299,
       mrp: 399,
-      attributes: {},
+      attributes: { color: "black" },
     });
     assertStatus(product, 201, "create product");
     await advanceToApproved(baseUrl, token, product.payload);

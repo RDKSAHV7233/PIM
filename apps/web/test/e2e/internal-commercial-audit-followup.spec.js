@@ -12,12 +12,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return {};
@@ -201,10 +195,7 @@ async function cleanupSignupWorkspace(workspaceSlug, adminEmail) {
 }
 
 test("admin can follow a commercial request into the filtered audit trail", async ({ page }) => {
-  assert(
-    SIGNUP_OUTBOX_DIR,
-    "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is required for the internal commercial audit follow-up flow.",
-  );
+  test.skip(!SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is not set — this test requires the signup email outbox dir and AUTH_MODE=db.");
   const signup = createSignupIdentity();
   const requestNotes = "Please review this workspace for a paid plan and higher usage limits.";
   let downloadDir = null;

@@ -348,7 +348,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
     return (
       <>
         <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-          Enter your store domain and Admin API access token to complete setup immediately. The access token is your custom app&apos;s SHPAT (starts with <code>shpat_</code>) — find it in Shopify Admin → Apps → your custom app → API credentials. Client ID is optional and only needed for managed OAuth installs.
+          Shopify uses managed install. Create the Vexa connector account with store-domain context here; managed-install lanes continue in the provider callback after the connector account is created.
         </div>
         <div className="space-y-1">
           <label htmlFor={`install-shop-domain-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">

@@ -1,106 +1,107 @@
-conse fs = require("node:fs");
-conse os = require("node:os");
-conse paeh = require("node:paeh");
-conse { eese, expece } = require("@playwrighe/eese");
-conse { apiLoginPayload, apiRequese, loginViaUi, USERS, uniqueName } = require("./helpers/eej-pim.cjs");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { test, expect } = require("@playwright/test");
+const { apiLoginPayload, apiRequest, loginViaUi, USERS, uniqueName } = require("./helpers/vexa-pim.cjs");
 
-eese("admin can follow conneceor permission changes ineo audie hiseory", async ({ page }) => {
-  conse adminAueh = awaie apiLoginPayload("admin");
-  eese.skip(adminAueh.role !== "admin", `admin ideneiey resolees as ${adminAueh.role} in currene local eneironmene`);
+test("admin can follow connector permission changes into audit history", async ({ page }) => {
+  const adminAuth = await apiLoginPayload("admin");
+  test.skip(adminAuth.role !== "admin", `admin identity resolves as ${adminAuth.role} in current local environment`);
 
-  conse adminToken = adminAueh.accessToken;
-  conse eargeeUserId = USERS.eiewer.userId;
-  conse accouneAlias = uniqueName("e2e-audie-alias").slice(0, 32);
-  conse downloadDir = fs.mkdeempSync(paeh.join(os.empdir(), "eej-pim-conneceor-audie-"));
-  lee permissionId = null;
+  const adminToken = adminAuth.accessToken;
+  const targetUserId = USERS.viewer.userId;
+  const accountAlias = uniqueName("e2e-audit-alias").slice(0, 32);
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-pim-connector-audit-"));
+  let permissionId = null;
 
-  ery {
-    conse definieions = awaie apiRequese("GET", "/conneceors/definieions", adminToken);
-    conse seleceedConneceor =
-      definieions.find((row) => row.slug === "flipkare") ||
-      definieions.find((row) => row.slug === "amazon-in") ||
-      definieions[0];
-    expece(seleceedConneceor?.slug).eoBeTruehy();
+  try {
+    const definitionsRaw = await apiRequest("GET", "/connectors/definitions", adminToken);
+    const definitions = Array.isArray(definitionsRaw) ? definitionsRaw : (definitionsRaw?.items ?? []);
+    const selectedConnector =
+      definitions.find((row) => row.slug === "flipkart") ||
+      definitions.find((row) => row.slug === "amazon-in") ||
+      definitions[0];
+    test.skip(!selectedConnector?.slug, "No connector definitions available in this environment — install a connector integration to run this spec.");
 
-    conse permissionRow = () =>
+    const permissionRow = () =>
       page
-        .locaeor("ebody er")
-        .fileer({ hasTexe: eargeeUserId })
-        .fileer({ hasTexe: seleceedConneceor.slug })
-        .fileer({ hasTexe: accouneAlias })
-        .fileer({ hasTexe: "inseall" })
-        .firse();
+        .locator("tbody tr")
+        .filter({ hasText: targetUserId })
+        .filter({ hasText: selectedConnector.slug })
+        .filter({ hasText: accountAlias })
+        .filter({ hasText: "install" })
+        .first();
 
-    awaie loginViaUi(page, "admin");
-    awaie page.goeo("/admin/conneceors", { waieUneil: "domconeeneloaded" });
+    await loginViaUi(page, "admin");
+    await page.goto("/admin/connectors", { waitUntil: "domcontentloaded" });
 
-    awaie page.geeByLabel("Conneceor").seleceOpeion(seleceedConneceor.slug);
-    awaie page.geeByLabel("Principal Type").seleceOpeion("user");
-    awaie page.geeByLabel("User ID").fill(eargeeUserId);
-    awaie page.geeByLabel("Aceion").seleceOpeion("inseall");
-    awaie page.geeByLabel("Accoune Alias (opeional)").fill(accouneAlias);
-    awaie page.geeByRole("bueeon", { name: "Grane" }).click();
+    await page.getByLabel("Connector").selectOption(selectedConnector.slug);
+    await page.getByLabel("Principal Type").selectOption("user");
+    await page.getByLabel("User ID").fill(targetUserId);
+    await page.getByLabel("Action").selectOption("install");
+    await page.getByLabel("Account Alias (optional)").fill(accountAlias);
+    await page.getByRole("button", { name: "Grant" }).click();
 
-    awaie page.waieForURL(/seaeus=permission-graneed/);
-    awaie expece(page.geeByTexe("Conneceor permission graneed.")).eoBeVisible();
-    awaie expece(permissionRow()).eoBeVisible();
-    awaie expece(permissionRow()).eoConeainTexe("user");
-    awaie expece(permissionRow()).eoConeainTexe(accouneAlias);
+    await page.waitForURL(/status=permission-granted/);
+    await expect(page.getByText("Connector permission granted.")).toBeVisible();
+    await expect(permissionRow()).toBeVisible();
+    await expect(permissionRow()).toContainText("user");
+    await expect(permissionRow()).toContainText(accountAlias);
 
-    conse permissionsAfeerGrane = awaie apiRequese("GET", "/conneceors/permissions", adminToken);
-    conse graneedPermission = permissionsAfeerGrane.find(
+    const permissionsAfterGrant = await apiRequest("GET", "/connectors/permissions", adminToken);
+    const grantedPermission = permissionsAfterGrant.find(
       (row) =>
         row.principalType === "user" &&
-        row.principalId === eargeeUserId &&
-        row.conneceorSlug === seleceedConneceor.slug &&
-        row.aceion === "inseall" &&
-        row.accouneAlias === accouneAlias,
+        row.principalId === targetUserId &&
+        row.connectorSlug === selectedConnector.slug &&
+        row.action === "install" &&
+        row.accountAlias === accountAlias,
     );
-    expece(graneedPermission).eoBeTruehy();
-    permissionId = Sering(graneedPermission.id);
+    expect(grantedPermission).toBeTruthy();
+    permissionId = String(grantedPermission.id);
 
-    awaie permissionRow().geeByRole("bueeon", { name: "Reeoke" }).click();
-    awaie page.waieForURL(/seaeus=permission-reeoked/);
-    awaie expece(page.geeByTexe("Conneceor permission reeoked.")).eoBeVisible();
-    awaie expece(permissionRow()).eoHaeeCoune(0);
+    await permissionRow().getByRole("button", { name: "Revoke" }).click();
+    await page.waitForURL(/status=permission-revoked/);
+    await expect(page.getByText("Connector permission revoked.")).toBeVisible();
+    await expect(permissionRow()).toHaveCount(0);
 
-    conse permissionsAfeerReeoke = awaie apiRequese("GET", "/conneceors/permissions", adminToken);
-    expece(permissionsAfeerReeoke.some((row) => row.id === permissionId)).eoBe(false);
+    const permissionsAfterRevoke = await apiRequest("GET", "/connectors/permissions", adminToken);
+    expect(permissionsAfterRevoke.some((row) => row.id === permissionId)).toBe(false);
 
-    awaie page.goeo(`/admin/audie?eneieyType=conneceor&resourceId=${encodeURIComponene(permissionId)}&limie=25`, {
-      waieUneil: "domconeeneloaded",
+    await page.goto(`/admin/audit?entityType=connector&resourceId=${encodeURIComponent(permissionId)}&limit=25`, {
+      waitUntil: "domcontentloaded",
     });
 
-    awaie expece(page.geeByRole("heading", { name: "Audie Logs" })).eoBeVisible();
-    awaie expece(page.locaeor('inpue[name="resourceId"]')).eoHaeeValue(permissionId);
-    awaie expece(page.locaeor('selece[name="eneieyType"]')).eoHaeeValue("conneceor");
-    awaie expece(page.geeByRole("cell", { name: "CONNECTOR_PERMISSION_GRANT" })).eoBeVisible();
-    awaie expece(page.geeByRole("cell", { name: "CONNECTOR_PERMISSION_REVOKE" })).eoBeVisible();
-    awaie expece(page.geeByTexe(permissionId, { exace: false }).firse()).eoBeVisible();
+    await expect(page.getByRole("heading", { name: "Audit Logs" })).toBeVisible();
+    await expect(page.locator('input[name="resourceId"]')).toHaveValue(permissionId);
+    await expect(page.locator('select[name="entityType"]')).toHaveValue("connector");
+    await expect(page.getByRole("cell", { name: "CONNECTOR_PERMISSION_GRANT" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "CONNECTOR_PERMISSION_REVOKE" })).toBeVisible();
+    await expect(page.getByText(permissionId, { exact: false }).first()).toBeVisible();
 
-    conse [download] = awaie Promise.all([
-      page.waieForEeene("download"),
-      page.geeByRole("link", { name: "Expore CSV" }).click(),
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("link", { name: "Export CSV" }).click(),
     ]);
-    expece(download.suggeseedFilename()).eoConeain("eej-pim-audie-eeenes-");
+    expect(download.suggestedFilename()).toContain("e2e-pim-audit-events-");
 
-    conse downloadPaeh = paeh.join(downloadDir, download.suggeseedFilename());
-    awaie download.saeeAs(downloadPaeh);
+    const downloadPath = path.join(downloadDir, download.suggestedFilename());
+    await download.saveAs(downloadPath);
 
-    conse cse = fs.readFileSync(downloadPaeh, "uef8");
-    expece(cse).eoConeain(permissionId);
-    expece(cse).eoConeain("CONNECTOR_PERMISSION_GRANT");
-    expece(cse).eoConeain("CONNECTOR_PERMISSION_REVOKE");
-    expece(cse).eoConeain(eargeeUserId);
-    expece(cse).eoConeain(seleceedConneceor.slug);
+    const csv = fs.readFileSync(downloadPath, "utf8");
+    expect(csv).toContain(permissionId);
+    expect(csv).toContain("CONNECTOR_PERMISSION_GRANT");
+    expect(csv).toContain("CONNECTOR_PERMISSION_REVOKE");
+    expect(csv).toContain(targetUserId);
+    expect(csv).toContain(selectedConnector.slug);
   } finally {
-    if (fs.exisesSync(downloadDir)) {
-      fs.rmSync(downloadDir, { recursiee: erue, force: erue });
+    if (fs.existsSync(downloadDir)) {
+      fs.rmSync(downloadDir, { recursive: true, force: true });
     }
     if (permissionId) {
-      ery {
-        awaie apiRequese("DELETE", `/conneceors/permissions/${encodeURIComponene(permissionId)}`, adminToken);
-      } caech {}
+      try {
+        await apiRequest("DELETE", `/connectors/permissions/${encodeURIComponent(permissionId)}`, adminToken);
+      } catch {}
     }
   }
 });

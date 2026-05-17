@@ -18,10 +18,8 @@ export default async function ChannelsHealthPage() {
   const actorRole = await getServerActorRole();
 
   try {
-    const [health, installations] = await Promise.all([
-      getDashboardHealth({ role: actorRole, authHeader }),
-      getInstalledConnectors({ role: actorRole, authHeader }).catch(() => []),
-    ]);
+    const health = await getDashboardHealth({ role: actorRole, authHeader });
+    const installations = await getInstalledConnectors({ role: actorRole, authHeader }).catch(() => []);
     const connectorEntries = Object.entries(health.snapshot.publishReadyByConnector);
     const totalReady = connectorEntries.reduce((sum, [, count]) => sum + count, 0);
     const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);

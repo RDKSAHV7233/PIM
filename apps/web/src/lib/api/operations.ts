@@ -90,7 +90,16 @@ export async function retrySubmission(
 }
 
 export async function getBulkImportJobs(options?: ApiRequestOptions) {
-  return fetchJson<BulkImportJob[]>("/bulk-import/jobs", undefined, options);
+  const response = await fetchJson<BulkImportJob[] | { items: BulkImportJob[] }>(
+    "/bulk-import/jobs",
+    undefined,
+    options,
+  );
+  // API returns a paginated envelope { items: [...] } — extract to array
+  if (response && !Array.isArray(response) && "items" in response) {
+    return response.items ?? [];
+  }
+  return (response as BulkImportJob[]) ?? [];
 }
 
 export async function getBulkImportTemplates(
@@ -103,11 +112,12 @@ export async function getBulkImportTemplates(
   if (categoryId) {
     params.set("categoryId", categoryId);
   }
-  return fetchJson<BulkImportTemplate[]>(
+  const response = await fetchJson<PaginatedResponse<BulkImportTemplate> | BulkImportTemplate[]>(
     `/bulk-import/templates?${params.toString()}`,
     undefined,
     options,
   );
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getBulkImportJobRows(
@@ -121,11 +131,12 @@ export async function getBulkImportJobRows(
     params.set("status", status);
   }
   params.set("limit", String(limit));
-  return fetchJson<BulkImportRow[]>(
+  const response = await fetchJson<PaginatedResponse<BulkImportRow> | BulkImportRow[]>(
     `/bulk-import/jobs/${encodeURIComponent(jobId)}/rows?${params.toString()}`,
     undefined,
     options,
   );
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getBulkImportMappingSuggestion(
@@ -160,11 +171,12 @@ export async function applyBulkEdit(
 }
 
 export async function getBulkEditOperations(limit = 20, options?: ApiRequestOptions) {
-  return fetchJson<BulkEditOperation[]>(
+  const response = await fetchJson<PaginatedResponse<BulkEditOperation> | BulkEditOperation[]>(
     `/bulk-edit/operations?limit=${encodeURIComponent(String(limit))}`,
     undefined,
     options,
   );
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getBulkEditOperation(operationId: string, options?: ApiRequestOptions) {
@@ -188,7 +200,12 @@ export async function getMediaAssets(
     params.set("variantId", variantId);
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
-  return fetchJson<MediaAsset[]>(`/media/assets${query}`, undefined, options);
+  const response = await fetchJson<PaginatedResponse<MediaAsset> | MediaAsset[]>(
+    `/media/assets${query}`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getMediaAssetValidation(

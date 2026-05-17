@@ -111,7 +111,7 @@ test("admin can manage a workspace user lifecycle from the browser", async ({ pa
     await page.waitForURL(/showInvite=true/);
 
     await page.getByLabel("User ID").fill(tempUserId);
-    await page.getByLabel("Role").selectOption("viewer");
+    await page.locator("#admin-user-role").selectOption("viewer");
     await page.getByRole("button", { name: "Create User" }).click();
 
     await page.waitForURL(/status=user-created/);

@@ -150,8 +150,8 @@ const SCHEDULED_SYNC_QUEUE_ID = "connector-sync-schedule";
 export class QueueService implements OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
   private readonly backend = resolveQueueBackend();
-  private readonly workerEnabled =
-    this.backend === "bullmq" ? resolveBooleanEnv("QUEUE_WORKER_ENABLED", DEFAULT_QUEUE_WORKER_ENABLED) : true;
+  private readonly workerEnabled = resolveBooleanEnv("QUEUE_WORKER_ENABLED",
+    this.backend === "bullmq" ? DEFAULT_QUEUE_WORKER_ENABLED : true);
   private readonly registrations = new Map<string, QueueRegistration>();
   private readonly pending = new Map<string, unknown[]>();
   private readonly bullConnection =
@@ -386,7 +386,9 @@ export class QueueService implements OnModuleDestroy {
     const scheduleInsert = () => {
       const lane = this.getOrCreateMemoryLane(registration, laneKey);
       lane.pending.push(payload);
-      this.scheduleMemoryLaneDrain(registration, laneKey, 0);
+      if (this.workerEnabled) {
+        this.scheduleMemoryLaneDrain(registration, laneKey, 0);
+      }
     };
     if (delayMs > 0) {
       setTimeout(scheduleInsert, delayMs);

@@ -8,14 +8,34 @@ const { DEFAULT_WORKSPACE } = require("./helpers/vexa-pim.cjs");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const SIGNUP_OUTBOX_DIR = String(process.env.PLAYWRIGHT_SIGNUP_OUTBOX_DIR || "").trim();
 
+// ── Phase 9 pre-condition guard ────────────────────────────────────────────────
+// Two conditions that both require skipping:
+// 1. PLAYWRIGHT_SIGNUP_OUTBOX_DIR not set — the test reads email files from disk;
+//    without the outbox dir it cannot verify email delivery and will always fail.
+// 2. global-setup.cjs sets PLAYWRIGHT_SIGNUP_DISABLED=true when the signup feature
+//    gate is off (FEATURE_PUBLIC_SIGNUP_ENABLED != true or AUTH_MODE != db).
+//    Skip gracefully here rather than failing mid-test with a cryptic 404/disabled error.
+test.beforeEach(({ }, testInfo) => {
+  if (!SIGNUP_OUTBOX_DIR) {
+    testInfo.skip(
+      true,
+      "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is not set — Phase 9 specs require the email outbox dir. " +
+        "Set FEATURE_PUBLIC_SIGNUP_ENABLED=true and AUTH_MODE=db, restart both servers, " +
+        "then re-run with PLAYWRIGHT_SIGNUP_OUTBOX_DIR pointing to the API email outbox.",
+    );
+  }
+  if (process.env.PLAYWRIGHT_SIGNUP_DISABLED === "true") {
+    testInfo.skip(
+      true,
+      "Public signup is disabled on this environment. " +
+        "Set FEATURE_PUBLIC_SIGNUP_ENABLED=true and AUTH_MODE=db, restart both servers, " +
+        "then re-run with PLAYWRIGHT_SIGNUP_OUTBOX_DIR set.",
+    );
+  }
+});
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
 }
 
 function createSignupIdentity() {
@@ -162,7 +182,7 @@ async function cleanupSignupWorkspace(workspaceSlug, adminEmail) {
 }
 
 test("public signup can verify a workspace and reach trial plan state through the browser", async ({ page }) => {
-  assert(SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is required for the public signup browser flow.");
+  // Note: SIGNUP_OUTBOX_DIR guard is handled in beforeEach — no assert needed here.
   const signup = createSignupIdentity();
 
   try {

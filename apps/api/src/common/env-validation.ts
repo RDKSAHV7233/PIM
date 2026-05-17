@@ -192,6 +192,13 @@ export function validateEnv(): ValidatedEnv {
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");
     }
+    if (data.FEATURE_PUBLIC_SIGNUP_ENABLED === "true" && data.AUTH_MODE !== "db") {
+      issues.push(
+        "AUTH_MODE: FEATURE_PUBLIC_SIGNUP_ENABLED=true requires AUTH_MODE=db — " +
+          "signup-created users are stored as database tenant records and cannot be resolved " +
+          "by the local PIM_AUTH_IDENTITIES_JSON identity store; login will fail for all new workspace members",
+      );
+    }
     if (data.AUTH_EMAIL_PROVIDER === "resend") {
       if (!String(data.AUTH_EMAIL_RESEND_API_KEY ?? "").trim()) {
         issues.push("AUTH_EMAIL_RESEND_API_KEY: required when AUTH_EMAIL_PROVIDER=resend");

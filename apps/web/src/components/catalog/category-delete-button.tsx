@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { startTransition, useState } from "react";
 import { deleteCategoryAction } from "@/app/actions";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -20,49 +20,45 @@ export function CategoryDeleteButton({
 }: CategoryDeleteButtonProps) {
   const disabled = Boolean(disabledReason);
   const [open, setOpen] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
-  const confirmedRef = useRef(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleDeleteClick(event: React.MouseEvent<HTMLButtonElement>) {
     if (disabled) {
       event.preventDefault();
       return;
     }
-    if (confirmedRef.current) {
-      confirmedRef.current = false;
-      return;
-    }
-    event.preventDefault();
     setOpen(true);
+  }
+
+  function handleConfirmedDelete() {
+    setOpen(false);
+    const formData = new FormData();
+    formData.set("categoryId", categoryId);
+    formData.set("confirmDelete", "yes");
+    formData.set("returnTo", returnTo);
+    startTransition(async () => {
+      await deleteCategoryAction(formData);
+    });
   }
 
   return (
     <>
-      <form ref={formRef} action={deleteCategoryAction} onSubmit={handleSubmit} className="inline-flex">
-        <input type="hidden" name="categoryId" value={categoryId} />
-        <input type="hidden" name="confirmDelete" value="yes" />
-        <input type="hidden" name="returnTo" value={returnTo} />
-        <PendingSubmitButton
-          type="submit"
-          variant="secondary"
-          disabled={disabled}
-          title={disabledReason ?? "Delete category"}
-          className={disabled ? "border-slate-200 text-slate-400" : "border-red-200 text-red-700 hover:bg-red-50"}
-          idleLabel="Delete"
-          pendingLabel="Deleting..."
-        />
-      </form>
+      <PendingSubmitButton
+        type="button"
+        variant="secondary"
+        disabled={disabled}
+        title={disabledReason ?? "Delete category"}
+        className={disabled ? "border-slate-200 text-slate-400" : "border-red-200 text-red-700 hover:bg-red-50"}
+        idleLabel="Delete"
+        pendingLabel="Deleting..."
+        onClick={handleDeleteClick}
+      />
       <ConfirmDialog
         open={open}
         title="Delete category"
         description={`Delete "${categoryPath}"? This cannot be undone.`}
         confirmLabel="Delete"
         destructive
-        onConfirm={() => {
-          confirmedRef.current = true;
-          formRef.current?.requestSubmit();
-          setOpen(false);
-        }}
+        onConfirm={handleConfirmedDelete}
         onCancel={() => setOpen(false)}
       />
     </>

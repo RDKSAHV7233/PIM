@@ -1,3 +1,7 @@
+const { createHmac } = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+
 const DEFAULT_WORKSPACE = process.env.PLAYWRIGHT_WORKSPACE || "default";
 const DEFAULT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const DEFAULT_API_URL = process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1";
@@ -11,6 +15,27 @@ const USERS = {
 };
 
 const LOGIN_CACHE = new Map();
+
+// ── Disk-backed login cache ───────────────────────────────────────────────────
+// global-setup.cjs pre-authenticates all roles and writes api-tokens.json.
+// Loading it here at module init means every spec file starts with a warm
+// cache and never hits the auth rate limiter (10 logins / 15-min window).
+const API_TOKEN_CACHE_FILE = path.join(
+  __dirname,
+  "../../../../../.runlogs/storage-state/api-tokens.json",
+);
+(function loadTokenCacheFromDisk() {
+  try {
+    if (fs.existsSync(API_TOKEN_CACHE_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(API_TOKEN_CACHE_FILE, "utf8"));
+      for (const [key, payload] of Object.entries(saved)) {
+        LOGIN_CACHE.set(key, payload);
+      }
+    }
+  } catch {
+    // Cache miss — tests fall back to live login
+  }
+})();
 
 function uniqueName(prefix) {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
@@ -123,6 +148,31 @@ async function listNotifications(token, apiUrl = DEFAULT_API_URL) {
   return apiRequest("GET", "/notifications?limit=20", token, undefined, apiUrl);
 }
 
+/**
+ * Verifies a Vexa PIM outbound webhook signature.
+ *
+ * The API signs each delivery as:
+ *   HMAC-SHA256(key=signingSecret, data=`${timestamp}.${rawBody}`)
+ * and sets the header: `X-PIM1-Webhook-Signature: sha256=${hexDigest}`
+ *
+ * @param {string} rawBody - The raw UTF-8 request body string (not parsed JSON).
+ * @param {string} timestamp - Value of the `X-PIM1-Webhook-Timestamp` header.
+ * @param {string} signingSecret - The plaintext secret provided at webhook creation.
+ * @param {string} signatureHeader - Full value of `X-PIM1-Webhook-Signature` header.
+ * @returns {boolean} true if the signature is valid.
+ */
+function verifyWebhookSignature(rawBody, timestamp, signingSecret, signatureHeader) {
+  if (typeof signatureHeader !== "string" || !signatureHeader.startsWith("sha256=")) {
+    return false;
+  }
+  const expected =
+    "sha256=" +
+    createHmac("sha256", signingSecret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex");
+  return signatureHeader === expected;
+}
+
 module.exports = {
   DEFAULT_API_URL,
   DEFAULT_BASE_URL,
@@ -142,4 +192,5 @@ module.exports = {
   reviewProduct,
   uniqueName,
   updateProduct,
+  verifyWebhookSignature,
 };

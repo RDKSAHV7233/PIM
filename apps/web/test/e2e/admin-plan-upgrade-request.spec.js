@@ -12,12 +12,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
 function createSignupIdentity() {
   const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const suffix = stamp.slice(-12);
@@ -200,7 +194,7 @@ async function loginForWorkspace(workspaceSlug, userId, password) {
 }
 
 test("workspace admin can submit an upgrade request from the plan page", async ({ page }) => {
-  assert(SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is required for the admin plan upgrade-request browser flow.");
+  test.skip(!SIGNUP_OUTBOX_DIR, "PLAYWRIGHT_SIGNUP_OUTBOX_DIR is not set — this test requires the signup email outbox dir and AUTH_MODE=db.");
   const signup = createSignupIdentity();
   const requestNotes = "We need a paid plan review before the trial ends and need room for more users.";
 

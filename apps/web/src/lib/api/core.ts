@@ -1432,12 +1432,16 @@ async function parseErrorBody(response: Response): Promise<unknown> {
   }
 }
 
+const FETCH_TIMEOUT_MS = 20_000;
+
 export async function fetchJson<T>(path: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T> {
   const explicitAuthHeader = String(options?.authHeader ?? "").trim();
   const authHeader = explicitAuthHeader;
   const hasBody = init?.body !== undefined && init?.body !== null;
+  const signal = init?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS);
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    signal,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(authHeader ? { Authorization: authHeader } : {}),
@@ -1483,6 +1487,7 @@ export async function postFormData<T>(path: string, formData: FormData, options?
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     body: formData,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     headers: {
       ...(explicitAuthHeader ? { Authorization: explicitAuthHeader } : {}),
       ...(options?.headers ?? {}),

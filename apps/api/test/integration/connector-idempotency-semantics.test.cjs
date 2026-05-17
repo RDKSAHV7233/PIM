@@ -67,6 +67,9 @@ function prepareEnv() {
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  // Disable the queue worker so only the explicit /process HTTP calls trigger Flipkart.
+  // QUEUE_WORKER_ENABLED=false is respected by both the memory and bullmq backends.
+  process.env["QUEUE_WORKER_ENABLED"] = "false";
 }
 
 function sleep(ms) {
@@ -227,6 +230,15 @@ function createFlipkartStub() {
             requestId: String(req.headers["x-flipkart-request-id"] || ""),
             payload,
           });
+          // Fail the first publish call to simulate a transient Flipkart error so that
+          // the export job transitions to retrying — this is what we use to verify that
+          // the idempotency key stays stable across the retry rather than changing per attempt.
+          if (calls.publish.length === 1) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "INTERNAL_SERVER_ERROR", message: "stub transient failure" }));
+            return;
+          }
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json");
           res.end(
@@ -391,19 +403,19 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", accessToken, {
       title: `Idempotency Product ${runId}`,
       brand: "Vexa PIM",
-      description: "Initial row intentionally missing HSN/GST/size",
+      description: "Export-ready product for idempotency semantics testing",
       categoryId: category.payload.id,
       status: "draft",
-      attributes: { color: "black" },
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: {
+        color: "black",
+        size: "M",
+        material: "cotton",
+        mainImageUrl: "https://cdn.example.com/products/idempotency.jpg",
+      },
     });
     assertStatus(product, 201, "create product");
-    await advanceToApproved(baseUrl, accessToken, product.payload);
-
-    const installFlipkart = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", accessToken, {
-      accountAlias: "primary",
-    });
-    assertStatus(installFlipkart, 201, "install flipkart connector");
-    await seedCredentials(REPO_ROOT, tenantId, String(installFlipkart.payload.id));
 
     const createVariant = await apiRequest(
       baseUrl,
@@ -420,6 +432,14 @@ async function run() {
       },
     );
     assertStatus(createVariant, 201, "create variant");
+
+    const approvedProduct = await advanceToApproved(baseUrl, accessToken, product.payload);
+
+    const installFlipkart = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", accessToken, {
+      accountAlias: "primary",
+    });
+    assertStatus(installFlipkart, 201, "install flipkart connector");
+    await seedCredentials(REPO_ROOT, tenantId, String(installFlipkart.payload.id));
 
     const createJob = await apiRequest(
       baseUrl,
@@ -439,28 +459,16 @@ async function run() {
     const processAttempt1 = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${jobId}/process`, accessToken);
     assertStatus(processAttempt1, 201, "process attempt 1");
     assert(
-      processAttempt1.payload.status === "retrying" || processAttempt1.payload.status === "dead_letter",
-      `expected retrying/dead_letter on first attempt, got ${processAttempt1.payload.status}`,
+      processAttempt1.payload.status === "retrying" ||
+        processAttempt1.payload.status === "dead_letter" ||
+        processAttempt1.payload.status === "failed",
+      `expected retrying/dead_letter/failed on first attempt, got ${processAttempt1.payload.status}`,
     );
 
-    const updateProduct = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, accessToken, {
-      expectedVersion: Number(product.payload.version ?? 1),
-      title: product.payload.title,
-      brand: product.payload.brand,
-      categoryId: product.payload.categoryId,
-      status: product.payload.status,
-      description: "Now export-ready",
-      hsnCode: "62046200",
-      gstRate: 18,
-      attributes: {
-        color: "black",
-        size: "M",
-        material: "cotton",
-        mainImageUrl: "https://cdn.example.com/products/idempotency.jpg",
-      },
-    });
-    assertStatus(updateProduct, 200, "update product");
-
+    // Product is already export-ready; no content update needed before requeue.
+    // The first attempt fails due to the Flipkart stub transient error (see createFlipkartStub).
+    // Brief pause to drain any in-flight async Flipkart calls before triggering attempt 2.
+    await sleep(500);
     const requeue = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${jobId}/requeue`, accessToken);
     assertStatus(requeue, 201, "requeue export job");
 

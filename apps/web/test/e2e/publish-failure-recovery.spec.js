@@ -8,7 +8,9 @@ const {
   deleteProduct,
   loginViaUi,
   purgeProduct,
+  reviewProduct,
   uniqueName,
+  updateProduct,
 } = require("./helpers/vexa-pim.cjs");
 
 test("admin can follow a failed publish from jobs into recovery guidance", async ({ page }) => {
@@ -28,6 +30,20 @@ test("admin can follow a failed publish from jobs into recovery guidance", async
   let exportJobId = null;
 
   try {
+    // Export requires approved/active status — advance through the review workflow first.
+    await updateProduct(adminToken, product.id, {
+      expectedVersion: product.version,
+      title: product.title,
+      description: product.description,
+      brand: product.brand,
+      categoryId: product.categoryId,
+      hsnCode: product.hsnCode,
+      gstRate: product.gstRate,
+      attributes: product.attributes,
+      status: "in_review",
+    });
+    await reviewProduct(adminToken, product.id, "approved", "auto-approved for export failure test");
+
     const exportJob = await apiRequest("POST", `/marketplace/products/${encodeURIComponent(product.id)}/export-jobs`, adminToken, {
       channel: "flipkart",
       maxRetries: 1,

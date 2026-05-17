@@ -445,15 +445,55 @@ export function VersionManagerCard({
           </p>
         </div>
       )}
-      <DataGrid
-        className="mt-3"
-        columns={columns}
-        rows={versions}
-        getRowKey={(version) => version.id}
-        rowClassName="align-top"
-        caption="Mapping version history"
-        emptyState={<p className="rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>}
-      />
+      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 hidden sm:block">
+        <DataGrid
+          className=""
+          columns={columns}
+          rows={versions}
+          getRowKey={(version) => version.id}
+          rowClassName="align-top"
+          caption="Mapping version history"
+          emptyState={<p className="rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>}
+        />
+      </div>
+
+      {/* Mobile stacked version list — shown below sm breakpoint */}
+      <div className="mt-3 flex flex-col space-y-3 sm:hidden">
+        {versions.length > 0 ? (
+          versions.map((version) => (
+            <div key={`mobile-${version.id}`} className="rounded-lg border border-slate-200 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-slate-900">{version.connectorDefinitionVersion}</span>
+                <StatusChip
+                  label={presentLifecycleState(version.lifecycleState)}
+                  tone={
+                    version.lifecycleState === "published"
+                      ? "success"
+                      : version.lifecycleState === "archived" || version.lifecycleState === "superseded"
+                        ? "neutral"
+                        : "info"
+                  }
+                />
+                <StatusChip
+                  label={presentCompatibilityState(version.compatibilityState)}
+                  tone={
+                    version.compatibilityState === "blocked"
+                      ? "danger"
+                      : version.compatibilityState === "deprecated" || version.compatibilityState === "remap_required"
+                        ? "warning"
+                        : "success"
+                  }
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Scope: {version.categoryScope}</p>
+              <p className="text-xs text-slate-500">Updated: {new Date(version.updatedAt).toLocaleString()}</p>
+              <VersionHistoryMetadata version={version} />
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-slate-500">No mapping versions found for this connector/category scope.</p>
+        )}
+      </div>
     </Card>
   );
 }

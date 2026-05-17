@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
-- Date: 2026-05-16
-- Repo HEAD: main (INC-35, INC-36, INC-39 all merged via PRs #55–#58) + fix/oidc-guard-policy (guard fix, PR in review)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, and Gate C enterprise increments (INC-35 RBAC, INC-36 localization schema, INC-39 OIDC SSO — all merged)
+- Date: 2026-05-17
+- Repo HEAD: main + feat/oidc-sso-login (PR #71 in review — carries INC-36 localization schema + INC-39 OIDC SSO + 16 web-test fixes + guard policy hardening)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), and Gate C enterprise increments (INC-35 RBAC merged, INC-36 localization + INC-39 OIDC in review PR #71)
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -42,12 +42,12 @@
 - The current local validation bundle is green.
 - Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
 - Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Enterprise Gate C work: INC-35 (8-role RBAC), INC-36 (localization schema), INC-39 (OIDC SSO login) all merged to main. Enterprise signoff requires RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
+- Enterprise Gate C work is in progress: INC-35 (8-role RBAC) merged; INC-36 (localization schema) and INC-39 (OIDC SSO login) in review under PR #71. Enterprise signoff requires PR #71 to merge plus RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
 
 ### Not allowed to say
 
 - Enterprise-ready (Gate C requires RG-C4/C5/C6 after current PRs merge)
-- OIDC fully enforced (PR #58 merged; OIDC login and per-tenant config API are live; no admin UI for IdP config yet)
+- OIDC fully enforced (PR #71 in review; no admin UI for IdP config yet)
 - Self-serve billing
 - All launch docs current before review
 - All historical review docs are current
@@ -68,14 +68,14 @@ Most recent local validation rerun in this repo state:
 - `npm run build --workspace @pim1/api` - pass
 - `npm run lint --workspace @pim1/web` - pass
 - `npm run build --workspace @pim1/web` - pass
-- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=99 failed=0`)
+- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=110 failed=0`)
 - `npx playwright test apps/web/test/e2e/demo-tenant-end-to-end.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/publish-failure-recovery.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/pending-feedback.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/large-import-mode.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/viewport-core-workflows.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/keyboard-core-journey.spec.js --config playwright.config.cjs` - pass
-- `npm run gate:run:increment` - pass
+- `npm run gate:run:increment` - pass (16/16 steps green, 2026-05-17; fixes: access-policy-remediation workflow state sequencing, connector-idempotency queue-worker race, queue service QUEUE_WORKER_ENABLED memory-backend support)
 
 Additional release-readiness checks to rerun during governance review:
 
@@ -101,7 +101,7 @@ Source: `docs/execution/INCREMENT_STATE.json`
 
 Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
 
-1. The latest checked-in rollout snapshot `docs/execution/rollout/2026-05-09T06-30-00.032Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` is still blocked for launch-governance use: it shows `controlledRollout.pending = ["Health endpoint env mismatch: expected 'staging', got 'unset'."]` even though `broadRollout.criteria.observationWindowDaysCovered = 15 / 14`.
+1. The current authoritative rollout snapshot is `docs/execution/rollout/2026-05-12_CONTROLLED_ROLLOUT_SNAPSHOT.json` (`healthOk: true`, `controlledPending: []`, `broadPending: []`). The older 2026-05-09 snapshot (`controlledRollout.pending = ["Health endpoint env mismatch"]`) is superseded and should not be used for governance decisions.
 2. Historical April and early-May review documents remain useful context, but must not be treated as the current launch truth when they conflict with current code or the latest artifacts.
 3. The execution ledger still records `INC-08` as complete, but current external production claims should follow a fresh healthy rollout snapshot rather than older green snapshots.
 

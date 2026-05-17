@@ -15,6 +15,11 @@ test("admin connector grant unlocks reconnect for editor in the browser", async 
   let installationId = null;
   let permissionId = null;
 
+  // Skip if amazon-in connector is not configured in this environment
+  const definitionsRaw = await apiRequest("GET", "/connectors/definitions", adminToken);
+  const definitions = Array.isArray(definitionsRaw) ? definitionsRaw : (definitionsRaw?.items ?? []);
+  test.skip(!definitions.find((d) => d.slug === "amazon-in"), "amazon-in connector not configured in this environment");
+
   const installationSection = () =>
     page
       .locator("section")

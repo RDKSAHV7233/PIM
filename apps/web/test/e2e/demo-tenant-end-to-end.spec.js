@@ -101,7 +101,7 @@ test("admin can walk the core demo-tenant operator journey end to end", async ({
     await expect(page.getByRole("heading", { name: "Mapping Workbench" })).toBeVisible();
 
     await page.goto("/connectors", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connectors" }).first()).toBeVisible();
     await expect(page.getByText("Connector capability matrix").first()).toBeVisible();
 
     await page.goto(`/products/${encodeURIComponent(product.id)}?tab=channels`, { waitUntil: "domcontentloaded" });

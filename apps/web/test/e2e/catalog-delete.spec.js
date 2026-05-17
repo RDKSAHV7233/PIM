@@ -30,10 +30,12 @@ test("editor can archive a product from the workbench", async ({ page }) => {
   try {
     await loginViaUi(page, "editor");
     await page.goto(`/catalog/products?hideTestData=false&search=${encodeURIComponent(product.title)}`, { waitUntil: "domcontentloaded" });
-    page.once("dialog", (dialog) => dialog.accept());
     const row = page.locator("tbody tr", { hasText: product.title }).first();
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Delete" }).click();
+    // The delete button opens a custom React ConfirmDialog (not a native browser dialog).
+    // Click the "Archive" confirm button inside it.
+    await page.getByRole("button", { name: "Archive" }).click();
     await expect(page).toHaveURL(/deleteStatus=deleted/);
     const response = await page.request.get(
       `${DEFAULT_API_URL}/catalog/products/${product.id}`,
@@ -114,10 +116,11 @@ test("admin sees blocked and allowed category delete states", async ({ page }) =
     const blockedDelete = blockedRow.getByRole("button", { name: "Delete" });
     await expect(blockedDelete).toBeDisabled();
 
-    page.once("dialog", (dialog) => dialog.accept());
     const allowedRow = page.locator("tbody tr", { hasText: allowed.name }).first();
     await expect(allowedRow).toBeVisible();
     await allowedRow.getByRole("button", { name: "Delete" }).click();
+    // Confirm inside the custom React ConfirmDialog (not a native browser dialog).
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
     await expect(page).toHaveURL(/deleteStatus=deleted/);
     await expect(page.getByText("Category deleted successfully.")).toBeVisible();
   } finally {

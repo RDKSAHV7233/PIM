@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
-import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getProductRevisions, getStats } from "@/lib/api";
+import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getStats } from "@/lib/api";
+import type { ProductRevision } from "@/lib/api";
+import { getProductRevisions } from "@/lib/api/revisions";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -72,12 +74,12 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
     const inReviewProducts = products
       .filter((product) => product.status === "in_review")
       .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-    const revisionsByProduct = new Map<string, import("@/lib/api").ProductRevision[]>();
+    const revisionsByProduct = new Map([] as Array<[string, ProductRevision[]]>);
     await Promise.all(
       inReviewProducts.map(async (product) => {
         try {
           const revisions = await getProductRevisions(product.id, { role: actorRole, authHeader });
-          revisionsByProduct.set(product.id, revisions);
+          revisionsByProduct.set(product.id, revisions.items as unknown as ProductRevision[]);
         } catch {
           // Graceful degradation — revision fetch failure does not block approval flow
         }

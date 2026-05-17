@@ -30,7 +30,9 @@ export function AccountLockedPageClient({
     if (Number.isNaN(unlockAt.getTime())) {
       return "";
     }
-    return unlockAt.toLocaleTimeString();
+    const minutesLeft = Math.max(0, Math.ceil((unlockAt.getTime() - Date.now()) / 60_000));
+    const timeStr = unlockAt.toLocaleTimeString();
+    return minutesLeft > 0 ? `${timeStr} (${minutesLeft} min remaining)` : timeStr;
   }, [unlockAtIso]);
 
   async function resendUnlock() {

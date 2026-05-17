@@ -1,6 +1,13 @@
 const http = require("node:http");
 const { test, expect } = require("@playwright/test");
-const { apiLoginPayload, apiRequest, loginViaUi, uniqueName, DEFAULT_API_URL } = require("./helpers/vexa-pim.cjs");
+const {
+  apiLoginPayload,
+  apiRequest,
+  loginViaUi,
+  uniqueName,
+  verifyWebhookSignature,
+  DEFAULT_API_URL,
+} = require("./helpers/vexa-pim.cjs");
 
 function startCaptureServer() {
   const deliveries = [];
@@ -8,17 +15,18 @@ function startCaptureServer() {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
-      const bodyText = Buffer.concat(chunks).toString("utf8");
+      const rawBody = Buffer.concat(chunks).toString("utf8");
       let body = null;
       try {
-        body = bodyText ? JSON.parse(bodyText) : null;
+        body = rawBody ? JSON.parse(rawBody) : null;
       } catch {
-        body = bodyText;
+        body = rawBody;
       }
       deliveries.push({
         method: req.method,
         url: req.url,
         headers: req.headers,
+        rawBody, // preserved for HMAC verification
         body,
       });
       res.statusCode = 204;
@@ -87,7 +95,15 @@ test("admin can manage outbound webhooks from the browser", async ({ page }) => 
     await expect.poll(() => capture.deliveries.length, { timeout: 20_000 }).toBe(1);
     const received = capture.deliveries[0];
     expect(received.method).toBe("POST");
-    expect(received.headers["x-pim1-webhook-signature"]).toMatch(/^sha256=/);
+    // Cryptographic signature verification — not just format check.
+    // The API signs: HMAC-SHA256(key=signingSecret, data=`${timestamp}.${rawBody}`)
+    const sigHeader = received.headers["x-pim1-webhook-signature"];
+    const tsHeader = received.headers["x-pim1-webhook-timestamp"];
+    expect(sigHeader).toMatch(/^sha256=/);
+    expect(tsHeader).toBeTruthy();
+    expect(
+      verifyWebhookSignature(received.rawBody, tsHeader, signingSecret, sigHeader),
+    ).toBe(true);
     expect(received.headers["x-pim1-webhook-event"]).toBe("approval_decision");
     expect(received.body?.source).toBe("test");
     expect(received.body?.type).toBe("approval_decision");

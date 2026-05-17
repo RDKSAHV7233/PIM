@@ -233,10 +233,12 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Issue Contract Product ${runId}`,
       brand: "Vexa PIM",
-      description: "Intentionally incomplete for channel simulation",
+      description: "Product with standard fields but missing channel-specific attributes for simulation",
       categoryId: category.payload.id,
       status: "draft",
-      attributes: {},
+      hsnCode: "62046200",
+      gstRate: 18,
+      attributes: { color: "black" },
     });
     assertStatus(product, 201, "create product");
     await advanceToApproved(baseUrl, token, product.payload);

@@ -233,10 +233,15 @@ async function run() {
     const product = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
       title: `Rejection Notification Product ${runId}`,
       brand: "Vexa PIM",
-      description: "Intentionally incomplete for rejection simulation",
+      description: "Product with standard fields but missing channel-specific attributes for rejection simulation",
       categoryId: category.payload.id,
       status: "draft",
-      attributes: {},
+      hsnCode: "62046200",
+      gstRate: 18,
+      // Deliberately omit channel-specific attributes (mainImageUrl, size, material) so
+      // the Flipkart channel simulation records channel-level errors without triggering
+      // product-level blocking issues that would prevent export job creation.
+      attributes: { color: "black" },
     });
     assertStatus(product, 201, "create product");
     await advanceToApproved(baseUrl, token, product.payload);

@@ -1084,7 +1084,21 @@ async function run() {
       },
     });
     assertStatus(product, 201, "create product");
-    await advanceToApproved(baseUrl, adminToken, product.payload);
+    const toReviewForEditor = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.payload.id}`, adminToken, {
+      expectedVersion: product.payload.version,
+      title: product.payload.title,
+      description: product.payload.description ?? "",
+      brand: product.payload.brand,
+      categoryId: product.payload.categoryId,
+      hsnCode: product.payload.hsnCode,
+      gstRate: product.payload.gstRate,
+      attributes: product.payload.attributes ?? {},
+      status: "in_review",
+    });
+    if (toReviewForEditor.status !== 200) {
+      throw new Error(`advance to in_review failed: ${toReviewForEditor.status} ${JSON.stringify(toReviewForEditor.payload)}`);
+    }
+    const inReviewProduct = toReviewForEditor.payload;
 
     const purgeBoundaryProduct = await apiRequest(baseUrl, "POST", "/catalog/products", adminToken, {
       title: `Purge Boundary Product ${runId}`,
@@ -1137,18 +1151,18 @@ async function run() {
       `/catalog/products/${product.payload.id}`,
       editorToken,
       {
-        expectedVersion: product.payload.version,
-        title: product.payload.title,
-        description: product.payload.description,
-        brand: product.payload.brand,
-        categoryId: product.payload.categoryId,
-        hsnCode: product.payload.hsnCode,
-        gstRate: product.payload.gstRate,
-        status: product.payload.status,
+        expectedVersion: inReviewProduct.version,
+        title: inReviewProduct.title,
+        description: inReviewProduct.description ?? "",
+        brand: inReviewProduct.brand,
+        categoryId: inReviewProduct.categoryId,
+        hsnCode: inReviewProduct.hsnCode,
+        gstRate: inReviewProduct.gstRate,
+        status: inReviewProduct.status,
         attributes: {
-          ...(product.payload.attributes ?? {}),
+          ...(inReviewProduct.attributes ?? {}),
           pricing: {
-            ...((product.payload.attributes ?? {}).pricing ?? {}),
+            ...((inReviewProduct.attributes ?? {}).pricing ?? {}),
             sellingPrice: 1399,
           },
         },
@@ -2449,6 +2463,11 @@ async function run() {
       String(adminPreviewAllowed.payload?.installationId ?? "") === installationId,
       `expected preview response to include installation id, got ${JSON.stringify(adminPreviewAllowed.payload)}`,
     );
+
+    // Export job creation requires approved status — fetch current version then advance
+    const currentProductForExport = await apiRequest(baseUrl, "GET", `/catalog/products/${product.payload.id}`, adminToken);
+    assertStatus(currentProductForExport, 200, "fetch product before export job tests");
+    await advanceToApproved(baseUrl, adminToken, currentProductForExport.payload);
 
     const editorExportDenied = await apiRequest(
       baseUrl,

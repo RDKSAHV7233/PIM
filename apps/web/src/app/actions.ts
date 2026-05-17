@@ -1454,10 +1454,30 @@ export async function retrySubmissionAction(formData: FormData) {
   redirect(`/operations/jobs?${jobsParams.toString()}`);
 }
 
+async function uploadBulkImportRun(formData: FormData, categoryId: string, sourceFormat: string, sourceName: string, csvContent: string, fileContentBase64: string | undefined, rows: Record<string, unknown>[] | undefined, mapping: Record<string, unknown>, chunkSize: number | undefined, maxRetries: number | undefined): Promise<{ id: string; status: string }> {
+  return postJsonForAction<{ id: string; status: string }>(formData, "/bulk-import/runs", {
+    categoryId,
+    sourceFormat,
+    sourceName: sourceName || undefined,
+    csvContent: sourceFormat === "csv" ? csvContent : undefined,
+    fileContentBase64,
+    rows: sourceFormat === "json" ? rows : undefined,
+    mapping,
+    chunkSize,
+    maxRetries,
+  });
+}
+
+async function validateBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string }> {
+  return postJsonForAction<{ id: string; status: string }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {});
+}
+
+async function startBulkImportRun(formData: FormData, runId: string): Promise<void> {
+  await postJsonForAction(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/start`, {});
+}
+
 export async function createBulkImportJobAction(formData: FormData) {
   const categoryId = String(formData.get("categoryId") ?? "").trim();
-  const runId = String(formData.get("runId") ?? "").trim();
-  const effectiveMode = String(formData.get("effectiveMode") ?? "").trim().toLowerCase();
   let sourceFormat = String(formData.get("sourceFormat") ?? "").trim().toLowerCase();
   let sourceName = String(formData.get("sourceName") ?? "").trim();
   const csvContent = String(formData.get("csvContent") ?? "");
@@ -1469,13 +1489,6 @@ export async function createBulkImportJobAction(formData: FormData) {
 
   if (!categoryId) {
     throw new Error("Category is required for bulk import.");
-  }
-
-  if (runId && effectiveMode === "large") {
-    await postJsonForAction(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/start`, {});
-    revalidatePath("/");
-    revalidatePath("/operations/imports");
-    redirect(`/operations/imports?bulkRunId=${encodeURIComponent(runId)}`);
   }
 
   const sourceFile =
@@ -1529,21 +1542,22 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv or json.");
   }
 
-  const actionOptions = await resolveActionOptions(formData);
-  let linkedRunId: string | undefined;
-  if (sourceFormat === "csv" && sourceFile) {
-    const run = await uploadBulkImportRun(categoryId, sourceFile, sourceName || sourceFile.name, actionOptions);
-    const validatedRun = await validateBulkImportRun(run.id, actionOptions);
-    if (validatedRun.effectiveMode === "large") {
-      if (validatedRun.status === "preflight_ready") {
-        await startBulkImportRun(validatedRun.id, actionOptions);
-      }
-      redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
-    }
-    if (validatedRun.status !== "preflight_ready") {
-      throw new Error("Import file failed pre-validation. Fix the CSV and try again.");
-    }
-    linkedRunId = validatedRun.id;
+  // Stage and validate the bulk import run before deciding standard vs large mode
+  const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceFormat, sourceName, csvContent, fileContentBase64, rows, mapping, chunkSize, maxRetries);
+  const linkedRunId = stagedRun.id;
+  const validatedRun = await validateBulkImportRun(formData, linkedRunId);
+
+  // Large import runs start only after validation
+  if (validatedRun.status === "large") {
+    await startBulkImportRun(formData, linkedRunId);
+    revalidatePath("/");
+    revalidatePath("/operations/imports");
+    redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
+  }
+
+  // CSV imports must stop when pre-validation is not ready
+  if (validatedRun.status !== "preflight_ready") {
+    throw new Error(`Bulk import preflight did not pass validation. Status: ${validatedRun.status}`);
   }
 
   const createdJob = await postJsonForAction<{ id: string }>(formData, "/bulk-import/jobs", {

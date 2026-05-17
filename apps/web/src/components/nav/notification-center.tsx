@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -221,6 +222,7 @@ export function NotificationCenter() {
         </div>
       ) : null}
       {!loading && hasItems ? (
+        <>
         <ul className="space-y-3">
           {items.map((item) => {
             const severity = eventSeverity(item.eventType);
@@ -275,6 +277,16 @@ export function NotificationCenter() {
             );
           })}
         </ul>
+        <div className="mt-4 border-t border-slate-100 pt-3 text-center">
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline"
+          >
+            View all notifications
+          </Link>
+        </div>
+        </>
       ) : null}
     </AppDrawer>
   ) : null;

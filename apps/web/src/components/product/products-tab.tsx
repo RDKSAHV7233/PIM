@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { deleteProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -187,8 +187,7 @@ export function ProductsTab({
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
-  const [pendingArchive, setPendingArchive] = useState<{ form: HTMLFormElement; title: string } | null>(null);
-  const archiveConfirmedRef = useRef(false);
+  const [pendingArchive, setPendingArchive] = useState<{ productId: string; title: string } | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -407,23 +406,25 @@ export function ProductsTab({
     router.push(query ? `${pathname}?${query}` : pathname);
   }
 
-  function handleDeleteSubmit(event: React.FormEvent<HTMLFormElement>, productTitle: string) {
+  function handleDeleteClick(event: React.MouseEvent<HTMLButtonElement>, productId: string, productTitle: string) {
     if (!canWrite) {
       event.preventDefault();
       return;
     }
-    if (archiveConfirmedRef.current) {
-      archiveConfirmedRef.current = false;
-      return;
-    }
     event.preventDefault();
-    setPendingArchive({ form: event.currentTarget, title: productTitle });
+    setPendingArchive({ productId, title: productTitle });
   }
 
   function handleConfirmedArchive() {
-    if (pendingArchive?.form) {
-      archiveConfirmedRef.current = true;
-      pendingArchive.form.requestSubmit();
+    if (pendingArchive) {
+      const { productId } = pendingArchive;
+      const formData = new FormData();
+      formData.set("productId", productId);
+      formData.set("confirmDelete", "yes");
+      formData.set("returnTo", returnTo);
+      startTransition(async () => {
+        await deleteProductAction(formData);
+      });
     }
     setPendingArchive(null);
   }
@@ -533,17 +534,13 @@ export function ProductsTab({
                   >
                     Open
                   </Link>
-                  <form action={deleteProductAction} onSubmit={(event) => handleDeleteSubmit(event, product.title)}>
-                    <input type="hidden" name="productId" value={product.id} />
-                    <input type="hidden" name="confirmDelete" value="yes" />
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    onClick={(event) => handleDeleteClick(event, product.id, product.title)}
+                  >
+                    Delete
+                  </button>
                 </div>
               ),
             } satisfies Column<ProductWithCompliance>,

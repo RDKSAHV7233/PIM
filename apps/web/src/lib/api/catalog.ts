@@ -39,7 +39,7 @@ export async function getCategoryTree(
     undefined,
     options,
   );
-  return Array.isArray(response) ? response : response.items;
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getProductList(
@@ -88,11 +88,16 @@ export async function getProduct(productId: string, options?: ApiRequestOptions)
 }
 
 export async function getProductRevisions(productId: string, options?: ApiRequestOptions) {
-  return fetchJson<ProductRevision[]>(
+  const response = await fetchJson<ProductRevision[] | { items: ProductRevision[] }>(
     `/catalog/products/${encodeURIComponent(productId)}/revisions`,
     undefined,
     options,
   );
+  // API returns a paginated envelope { items: [...] } — extract to array
+  if (response && !Array.isArray(response) && "items" in response) {
+    return response.items;
+  }
+  return response as ProductRevision[];
 }
 
 export async function searchCatalogProducts(
@@ -111,7 +116,12 @@ export async function searchCatalogProducts(
 }
 
 export async function getProductVariants(productId: string, options?: ApiRequestOptions) {
-  return fetchJson<Variant[]>(`/catalog/products/${productId}/variants`, undefined, options);
+  const response = await fetchJson<PaginatedResponse<Variant> | Variant[]>(
+    `/catalog/products/${productId}/variants`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : (response.items ?? []);
 }
 
 export async function getStats(options?: ApiRequestOptions) {
