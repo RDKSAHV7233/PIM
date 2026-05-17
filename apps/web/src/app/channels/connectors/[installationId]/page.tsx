@@ -4,6 +4,7 @@ import {
   configureAmazonAction,
   deleteConnectorSyncScheduleAction,
   queueConnectorDeltaSyncAction,
+  triggerBulkPublishAction,
   updateConnectorPublicationTargetsAction,
   upsertConnectorSyncScheduleAction,
 } from "@/app/actions";
@@ -408,6 +409,18 @@ function connectorDetailStatusMessage(status: string | undefined): {
     return {
       tone: "danger",
       message: "Unable to update the sync schedule. Check that the cron expression is valid and try again.",
+    };
+  }
+  if (normalized === "bulk-publish-queued") {
+    return {
+      tone: "success",
+      message: "Bulk publish submitted via Amazon Feeds API. Submissions are PENDING — poll status in the Jobs workspace.",
+    };
+  }
+  if (normalized === "bulk-publish-error") {
+    return {
+      tone: "danger",
+      message: "Bulk publish failed. Verify the BULK_PUBLISH capability is enabled and the connector is healthy.",
     };
   }
   return null;
@@ -2239,6 +2252,31 @@ export default async function ChannelConnectorDetailPage({
                   View sync jobs →
                 </Link>
               </form>
+              {installation.capabilities.includes("BULK_PUBLISH") ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-medium text-amber-900">Amazon Feeds API — Bulk publish</p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Submit all approved products as a single{" "}
+                    <code className="font-mono bg-white border border-amber-200 px-1 rounded">JSON_LISTINGS_FEED</code>{" "}
+                    document. Each product gets an individual submission record you can track in the Jobs workspace.
+                  </p>
+                  <form
+                    action={triggerBulkPublishAction}
+                    className="mt-3 flex flex-wrap items-center gap-3"
+                  >
+                    <input type="hidden" name="installationId" value={installation.id} />
+                    <input
+                      type="hidden"
+                      name="returnTo"
+                      value={`/channels/connectors/${encodeURIComponent(installation.id)}?tab=sync`}
+                    />
+                    <PendingSubmitButton
+                      idleLabel="Submit bulk feed"
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                    />
+                  </form>
+                </div>
+              ) : null}
               <p className="text-xs text-slate-500">
                 Sync jobs run through the standard export queue. Monitor progress in the{" "}
                 <Link href="/operations/jobs" className="underline">Jobs workspace</Link>.

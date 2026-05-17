@@ -1647,6 +1647,7 @@ export class ShopifyConnector implements ConnectorInterface {
       weightUnit?: string;
       taxable?: boolean;
       inventoryPolicy?: string;
+      optionValues?: Array<{ optionName: string; name: string }>;
     },
   ): Record<string, unknown> {
     const price = this.formatMoney(sellingPrice);
@@ -1654,6 +1655,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const compareAtPrice = effectiveCompareAt && Number.isFinite(effectiveCompareAt) && effectiveCompareAt > 0
       ? this.formatMoney(effectiveCompareAt)
       : null;
+    const optionValues = opts?.optionValues ?? [{ optionName: "Title", name: "Default Title" }];
     return {
       price,
       ...(compareAtPrice ? { compareAtPrice } : {}),
@@ -1667,6 +1669,7 @@ export class ShopifyConnector implements ConnectorInterface {
           : {}),
       },
       ...(opts?.barcode ? { barcode: opts.barcode } : {}),
+      optionValues,
     };
   }
 
@@ -1690,14 +1693,16 @@ export class ShopifyConnector implements ConnectorInterface {
       },
     ];
 
-    const variants: Record<string, unknown>[] = product.variants && product.variants.length > 0
-      ? product.variants.map((v) => this.buildVariantInput(v.sku, v.sellingPrice, v.mrp, {
+    const isMultiVariant = product.variants && product.variants.length > 0;
+    const variants: Record<string, unknown>[] = isMultiVariant
+      ? product.variants!.map((v) => this.buildVariantInput(v.sku, v.sellingPrice, v.mrp, {
           compareAtPrice: v.compareAtPrice,
           barcode: v.barcode,
           weight: v.weight,
           weightUnit: v.weightUnit,
           taxable: v.taxable,
           inventoryPolicy: v.inventoryPolicy,
+          optionValues: [{ optionName: "Title", name: "Default Title" }],
         }))
       : [this.buildVariantInput(
           String(product.sku ?? "").trim(),
@@ -1705,6 +1710,9 @@ export class ShopifyConnector implements ConnectorInterface {
           product.mrp,
           { compareAtPrice: product.compareAtPrice },
         )];
+    const productOptions = !isMultiVariant
+      ? [{ name: "Title", values: [{ name: "Default Title" }] }]
+      : undefined;
 
     const seoTitle = this.normalizeOptionalString(product.seoTitle);
     const seoDescription = this.normalizeOptionalString(product.seoDescription);
@@ -1722,6 +1730,7 @@ export class ShopifyConnector implements ConnectorInterface {
       ...(productType ? { productType } : {}),
       ...(seoTitle || seoDescription ? { seo: { ...(seoTitle ? { title: seoTitle } : {}), ...(seoDescription ? { description: seoDescription } : {}) } } : {}),
       ...(tags ? { tags } : {}),
+      ...(productOptions ? { productOptions } : {}),
       metafields,
       files: [
         {

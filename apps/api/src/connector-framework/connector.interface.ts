@@ -7,7 +7,8 @@ export type ConnectorCap =
   | 'VALIDATE'
   | 'STATUS_SYNC'
   | 'WEBHOOK_RECEIVE'
-  | 'EXCEL_EXPORT';
+  | 'EXCEL_EXPORT'
+  | 'BULK_PUBLISH'; // Amazon Feeds API batch path — opt-in via PIM_AMAZON_FEEDS_API_ENABLED
 
 export type ConnectorImplementationStatus = 'full' | 'partial' | 'stub';
 
@@ -130,6 +131,18 @@ export type ExportFile = {
   mimeType: string;
 };
 
+// Returned by publishBulkProducts — one ref per bulk feed submission.
+// Each product gets its own ConnectorSubmission row with externalRef:
+// "feed::{feedId}::{1-based messageId}::{sku}"
+// syncSubmissionStatus decodes this format to look up per-product feed result.
+export type BulkSubmissionRef = {
+  feedId: string;
+  feedDocumentId: string;
+  productCount: number;
+  // Ordered list of SKUs — index+1 maps to the messageId in the feed document.
+  skus: string[];
+};
+
 // ─────────────────────────────────────────────
 // MAIN INTERFACE — every connector implements this
 // ─────────────────────────────────────────────
@@ -248,20 +261,33 @@ export interface ConnectorInterface {
     ctx: ConnectorContext,
     products: ProductPayload[]
   ): Promise<ExportFile>;
+
+  /**
+   * Submit multiple products as a single Amazon JSON_LISTINGS_FEED document.
+   * CAPABILITY GUARD: only call if capabilities.includes('BULK_PUBLISH').
+   * Returns a BulkSubmissionRef — the caller creates one ConnectorSubmission per
+   * product with externalRef "feed::{feedId}::{messageId}::{sku}".
+   * syncSubmissionStatus handles polling and per-product result extraction.
+   */
+  publishBulkProducts?(
+    ctx: ConnectorContext,
+    products: ProductPayload[]
+  ): Promise<BulkSubmissionRef>;
 }
 
 // ─────────────────────────────────────────────
 // CAPABILITY MATRIX (reference — enforce in ConnectorFrameworkService)
 // ─────────────────────────────────────────────
 //
-//  Method                  Amazon   Flipkart   Meesho   ONDC
-//  validateCredentials      ✓        ✓          ✓        TBD
-//  validateProduct          LIVE_API LOCAL      LOCAL    TBD
-//  normaliseError           ✓        ✓          ✓        TBD
-//  handleOAuthCallback      ✓ LWA    ✓ AuthCode  -        -
-//  fetchProductTypeSchema   ✓        partial     -        -
-//  publishProduct           ✓        ✓          ✗ NONE   TBD
-//  updateProduct            ✓        ✓           -        TBD
-//  syncSubmissionStatus     webhook  ✓ poll      -        TBD
-//  parseWebhookEvent        ✓        -           -        TBD
-//  generateExportFile       -        -          ✓ Excel   -
+//  Method                  Amazon           Flipkart   Meesho   ONDC
+//  validateCredentials      ✓                ✓          ✓        TBD
+//  validateProduct          LIVE_API         LOCAL      LOCAL    TBD
+//  normaliseError           ✓                ✓          ✓        TBD
+//  handleOAuthCallback      ✓ LWA            ✓ AuthCode  -        -
+//  fetchProductTypeSchema   ✓                partial     -        -
+//  publishProduct           ✓                ✓          ✗ NONE   TBD
+//  updateProduct            ✓                ✓           -        TBD
+//  syncSubmissionStatus     webhook+feeds    ✓ poll      -        TBD
+//  parseWebhookEvent        ✓                -           -        TBD
+//  generateExportFile       -                -          ✓ Excel   -
+//  publishBulkProducts      ✓ flag-gated     -           -        -

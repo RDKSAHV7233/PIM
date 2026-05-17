@@ -64,19 +64,61 @@ export async function ProductDetailDeferredSection({
   tabHref,
 }: ProductDetailDeferredSectionProps) {
   const [templates, mapping, simulation, categoryAttributes, readiness, submissionsRaw] = await Promise.all([
-    getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }),
+    getMarketplaceTemplates(product.categoryId, selectedChannel, { role: actorRole, authHeader }).catch(
+      () => [] as Awaited<ReturnType<typeof getMarketplaceTemplates>>,
+    ),
     getMarketplaceChannelMapping(selectedChannel, product.categoryId, selectedTemplateId, {
       role: actorRole,
       authHeader,
-    }),
-    getMarketplaceSimulation(productId, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }),
-    getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }),
+    }).catch(
+      () =>
+        ({
+          channel: selectedChannel,
+          displayName: selectedChannel,
+          requiredFields: [] as string[],
+          fieldMap: {} as Record<string, string>,
+          source: "system_pack" as const,
+          templateId: null,
+          templateName: null,
+        }) satisfies Awaited<ReturnType<typeof getMarketplaceChannelMapping>>,
+    ),
+    getMarketplaceSimulation(productId, selectedChannel, selectedTemplateId, { role: actorRole, authHeader }).catch(
+      () =>
+        ({
+          productId,
+          channel: selectedChannel,
+          displayName: selectedChannel,
+          exportReady: false,
+          riskScore: 0,
+          riskBand: "low" as const,
+          requiredFields: [] as string[],
+          missingFields: [] as string[],
+          channelIssues: [],
+          complianceSummary: { errorCount: 0, warningCount: 0 },
+          mappingSource: "system_pack" as const,
+          templateId: null,
+          templateName: null,
+          mappedPayload: {},
+          suggestions: [],
+        }) satisfies Awaited<ReturnType<typeof getMarketplaceSimulation>>,
+    ),
+    getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }).catch(
+      () => [] as Awaited<ReturnType<typeof getCategoryAttributes>>,
+    ),
     evaluateConnectorPublishReadiness(
       mapMarketplaceChannelToConnectorSlug(selectedChannel),
       { categoryScope: product.categoryId, productId, fallbackAcknowledged: false },
       { role: actorRole, authHeader },
+    ).catch(
+      () =>
+        ({
+          ok: false,
+          blockers: [] as string[],
+          warnings: [] as string[],
+          checks: {},
+        }) satisfies Awaited<ReturnType<typeof evaluateConnectorPublishReadiness>>,
     ),
-    getSubmissions({ productId, limit: 20 }, { role: actorRole, authHeader }),
+    getSubmissions({ productId, limit: 20 }, { role: actorRole, authHeader }).catch(() => null),
   ]);
   const connectorSubmissions = (() => {
     if (!submissionsRaw) return [];

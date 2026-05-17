@@ -12,6 +12,7 @@ import {
   InstallationNotFoundError,
 } from "./connector.errors";
 import {
+  BulkSubmissionRef,
   ConnectorCap,
   ConnectorContext,
   ConnectorImplementationStatus,
@@ -209,6 +210,20 @@ export class ConnectorFrameworkService {
       throw new CapabilityNotSupportedError(installation.slug, "STATUS_SYNC");
     }
     return connector.syncSubmissionStatus(this.buildContext(installation), externalRef);
+  }
+
+  async publishBulk(
+    installation: ConnectorInstallationRecord,
+    products: ProductPayload[],
+  ): Promise<BulkSubmissionRef> {
+    const connector = this.registry.getConnector(installation.slug);
+    if (!installation.capabilities.includes("BULK_PUBLISH")) {
+      throw new CapabilityNotSupportedError(installation.slug, "BULK_PUBLISH");
+    }
+    if (!connector.publishBulkProducts) {
+      throw new CapabilityNotSupportedError(installation.slug, "BULK_PUBLISH");
+    }
+    return connector.publishBulkProducts(this.buildContext(installation), products);
   }
 
   async submitOrExport(

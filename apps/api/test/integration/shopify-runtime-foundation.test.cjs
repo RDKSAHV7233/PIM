@@ -194,6 +194,7 @@ async function run() {
   process.env.PIM_SHOPIFY_CLIENT_SECRET = "shopify-client-secret";
   process.env.PIM_SHOPIFY_TOKEN_BASE_URL = stub.baseUrl;
   process.env.PIM_SHOPIFY_ADMIN_API_BASE_URL = stub.baseUrl;
+  process.env.PIM_SHOPIFY_ADMIN_API_VERSION = "2026-04";
 
   let prismaDirect;
   try {

@@ -189,6 +189,20 @@ export async function deleteConnectorSchedule(installationId: string, options?: 
   );
 }
 
+// ─── Sprint F: Amazon Feeds API bulk publish ─────────────────────────────────
+
+export async function triggerBulkPublish(
+  installationId: string,
+  productIds: string[],
+  options?: ApiRequestOptions,
+) {
+  return postJson<{ feedId: string; feedDocumentId: string; productCount: number; submissionIds: string[] }>(
+    `/marketplace/connectors/${encodeURIComponent(installationId)}/bulk-publish`,
+    { productIds },
+    options,
+  );
+}
+
 // ─── Sprint D: Amazon marketplace configuration ───────────────────────────────
 
 export async function configureConnector(

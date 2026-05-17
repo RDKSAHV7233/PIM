@@ -549,6 +549,19 @@ export class MarketplaceController {
     return this.marketplaceService.deleteSchedule(installationId);
   }
 
+  // ─── Sprint F: Amazon Feeds API bulk publish ─────────────────────────────
+
+  @Post("connectors/:installationId/bulk-publish")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  @HttpCode(200)
+  triggerBulkPublish(
+    @Param("installationId") installationId: string,
+    @Body() body: { productIds: string[] },
+  ) {
+    return this.marketplaceService.triggerBulkPublish(installationId, body.productIds ?? []);
+  }
+
   // ─── Sprint 10: Catalog linking ──────────────────────────────────────────
 
   // ─── Sprint 2: Shopify config import ─────────────────────────────────────────

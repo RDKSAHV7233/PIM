@@ -62,6 +62,7 @@ interface MediaPageProps {
     assetId?: string;
     bulkAssociationStatus?: string;
     channel?: MarketplaceChannel;
+    uploadError?: string;
     planLimit?: string;
     planResource?: string;
     planLimitValue?: string;
@@ -80,6 +81,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
   const channel = normalizeChannel(query.channel);
   const assetId = String(query.assetId ?? "").trim();
   const bulkAssociationStatus = String(query.bulkAssociationStatus ?? "").trim();
+  const uploadError = String(query.uploadError ?? "").trim();
   const showPlanLimitModal =
     String(query.planLimit ?? "").trim() === "1" &&
     String(query.planResource ?? "").trim().length > 0 &&
@@ -254,6 +256,12 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           </>
         }
       />
+
+      {uploadError === "invalid-file-type" ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          Invalid file type — only image files are allowed. Please select a JPG, PNG, or WebP file.
+        </div>
+      ) : null}
 
       <Card>
         <CardTitle>Filter</CardTitle>

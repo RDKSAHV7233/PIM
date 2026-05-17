@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-05-06",
+    "lastUpdated": "2026-05-17",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -2997,7 +2997,7 @@
     {
       "incrementId": "INC-36",
       "name": "Localization schema — Market, Currency, PriceList, ProductPrice, ProductTranslation, CategoryTranslation",
-      "status": "in_review",
+      "status": "completed",
       "gate": "C",
       "gateRequirement": "RG-C3",
       "pr": "https://github.com/RDKSAHV7233/PIM1/pull/57",
@@ -3005,20 +3005,23 @@
         {
           "storyId": "ST-L10N-001",
           "title": "Add localization Prisma models and migration (INC-36 RG-C3)",
-          "status": "in_review",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "claude",
           "commit": "6ce153f",
           "tests_passed": [
             "npm run build --workspace @pim1/api"
           ]
         }
+      ],
+      "evidence": [
+        "PR #71 merged 2026-05-17"
       ]
     },
     {
       "incrementId": "INC-39",
       "name": "OIDC SSO login flow — per-tenant config CRUD, discovery, PKCE, callback, JWT issuance",
-      "status": "in_review",
+      "status": "completed",
       "gate": "C",
       "gateRequirement": "RG-C1",
       "pr": "https://github.com/RDKSAHV7233/PIM1/pull/58",
@@ -3026,14 +3029,17 @@
         {
           "storyId": "ST-OIDC-001",
           "title": "OidcConfig schema + OidcConfigService + OidcService + OidcAuthService + OidcController",
-          "status": "in_review",
-          "locked": false,
+          "status": "completed",
+          "locked": true,
           "owner": "claude",
           "commit": "56b7aba",
           "tests_passed": [
             "npm run build --workspace @pim1/api"
           ]
         }
+      ],
+      "evidence": [
+        "PR #71 merged 2026-05-17"
       ]
     }
   ]

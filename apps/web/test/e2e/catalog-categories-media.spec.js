@@ -27,7 +27,7 @@ test("admin can create a nested child category and see it in the hierarchy", asy
     childId = child.id;
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByText(childName, { exact: false })).toBeVisible();
+    await expect(page.getByText(childName, { exact: true }).first()).toBeVisible();
   } finally {
     if (childId) {
       try {
@@ -83,6 +83,10 @@ test("uploading an invalid file type is rejected on the media library page", asy
     mimeType: "application/octet-stream",
     buffer: Buffer.from("MZ fake exe content"),
   });
+
+  // Submit the upload form — the server action rejects non-image MIME types
+  // and redirects back with an uploadError param that the page renders inline.
+  await page.getByRole("button", { name: /upload media/i }).click();
 
   await expect(
     page.getByText(/invalid|not allowed|unsupported|rejected|file type/i).first(),

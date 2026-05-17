@@ -312,12 +312,20 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                   <option value="true">Yes</option>
                   <option value="false">No</option>
                 </select>
-                <PendingSubmitButton
-                  type="submit"
-                  idleLabel="Queue channel export"
-                  pendingLabel="Queueing export..."
-                  disabled={!data.canQueueExportWithAck}
-                />
+                <div className="flex items-center gap-3">
+                  <PendingSubmitButton
+                    type="submit"
+                    idleLabel="Queue channel export"
+                    pendingLabel="Queueing export..."
+                    disabled={!data.canQueueExportWithAck}
+                  />
+                  <span className="text-xs text-slate-500">
+                    Channel:{" "}
+                    <span className="font-medium text-slate-700">
+                      {data.publishableChannels.find((c) => c.channel === data.defaultExportChannel)?.displayName ?? data.defaultExportChannel}
+                    </span>
+                  </span>
+                </div>
               </form>
               <ExportWithPreviewForm
                 productId={data.productId}

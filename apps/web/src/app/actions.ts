@@ -19,7 +19,6 @@ import {
   postJson,
   rollbackConnectorMappingVersion,
 } from "@/lib/api";
-import { startBulkImportRun, uploadBulkImportRun, validateBulkImportRun } from "@/lib/api/operations";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -1727,6 +1726,11 @@ export async function uploadMediaAssetAction(formData: FormData) {
 
   const fileName = fileEntry.name || "media.bin";
   const mimeType = fileEntry.type || "application/octet-stream";
+  if (!mimeType.startsWith("image/")) {
+    redirect(
+      `/media?productId=${encodeURIComponent(productId)}&variantId=${encodeURIComponent(variantId)}&uploadError=invalid-file-type`,
+    );
+  }
   const contentBase64 = Buffer.from(await fileEntry.arrayBuffer()).toString("base64");
 
   try {
@@ -1995,6 +1999,33 @@ export async function deleteConnectorSyncScheduleAction(formData: FormData) {
   }
   revalidatePath(`/channels/connectors/${installationId}`);
   redirect(appendQueryParams(returnTo, { status: "schedule-deleted" }));
+}
+
+export async function triggerBulkPublishAction(formData: FormData) {
+  "use server";
+  const installationId = String(formData.get("installationId") ?? "").trim();
+  const productIdsRaw = String(formData.get("productIds") ?? "").trim();
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/channels/connectors/${encodeURIComponent(installationId)}?tab=sync`;
+  if (!installationId) {
+    throw new Error("Installation ID is required.");
+  }
+  const productIds = productIdsRaw
+    ? productIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  try {
+    await postJsonForAction(
+      formData,
+      `/marketplace/connectors/${encodeURIComponent(installationId)}/bulk-publish`,
+      { productIds },
+    );
+  } catch (error: unknown) {
+    rethrowRedirectError(error);
+    redirect(appendQueryParams(returnTo, { status: "bulk-publish-error" }));
+  }
+  revalidatePath(`/channels/connectors/${installationId}`);
+  redirect(appendQueryParams(returnTo, { status: "bulk-publish-queued" }));
 }
 
 export async function confirmCatalogLinksAction(

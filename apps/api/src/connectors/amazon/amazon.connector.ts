@@ -16,6 +16,7 @@ import {
   resolveCurrentCredentialKeyVersion,
 } from "../../connector-installer/credential-encryption.util";
 import {
+  BulkSubmissionRef,
   ConnectorCap,
   ConnectorContext,
   ConnectorInterface,
@@ -122,6 +123,8 @@ const DEFAULT_USER_AGENT = "VexaPIMAmazonConnector/0.1 (Language=TypeScript/Node
 const AMAZON_RELAY_SIGNATURE_HEADER = "x-pim1-webhook-signature";
 const AMAZON_RELAY_TIMESTAMP_HEADER = "x-pim1-webhook-timestamp";
 const AMAZON_RELAY_SECRET_ENV = "PIM_AMAZON_WEBHOOK_SECRET";
+// externalRef prefix for Feeds API submissions: "feed::{feedId}::{messageId}::{sku}"
+const FEED_REF_PREFIX = "feed::";
 const SUPPRESSION_ACTIONS = new Set([
   "SEARCH_SUPPRESSED",
   "LISTING_SUPPRESSED",
@@ -129,17 +132,57 @@ const SUPPRESSION_ACTIONS = new Set([
   "CATALOG_ITEM_REMOVED",
 ]);
 
+// ─── Feeds API types ──────────────────────────────────────────────────────────
+
+type AmazonFeedDocumentCreateResponse = {
+  feedDocumentId: string;
+  url: string;
+};
+
+type AmazonFeedCreateResponse = {
+  feedId: string;
+};
+
+type AmazonFeedStatusResponse = {
+  feedId: string;
+  feedType?: string;
+  processingStatus: "CANCELLED" | "DONE" | "FATAL" | "IN_PROGRESS" | "IN_QUEUE";
+  resultFeedDocumentId?: string;
+  processingStartTime?: string;
+  processingEndTime?: string;
+};
+
+type AmazonFeedResultIssue = {
+  code?: string;
+  message?: string;
+  severity?: string;
+  attributeNames?: string[];
+};
+
+type AmazonFeedResultMessage = {
+  messageId: number;
+  processingStatus: "ACCEPTED" | "INVALID";
+  issues?: AmazonFeedResultIssue[];
+};
+
+type AmazonFeedResultDocument = {
+  header?: { feedDocumentId?: string };
+  issues?: AmazonFeedResultMessage[];
+};
+
 @Injectable()
 export class AmazonConnector implements ConnectorInterface {
   readonly slug = "amazon-in";
   readonly displayName = "Amazon India";
   readonly implementationStatus = "full" as const;
-  readonly capabilities: ConnectorCap[] = [
-    "PUBLISH",
-    "VALIDATE",
-    "STATUS_SYNC",
-    "WEBHOOK_RECEIVE",
-  ];
+
+  get capabilities(): ConnectorCap[] {
+    const caps: ConnectorCap[] = ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"];
+    if (String(process.env.PIM_AMAZON_FEEDS_API_ENABLED ?? "").trim().toLowerCase() === "true") {
+      caps.push("BULK_PUBLISH");
+    }
+    return caps;
+  }
 
   private readonly keys = loadCredentialEncryptionKeys(process.env);
   private readonly currentKeyVersion = resolveCurrentCredentialKeyVersion(process.env);
@@ -385,6 +428,12 @@ export class AmazonConnector implements ConnectorInterface {
     ctx: ConnectorContext,
     externalRef: string,
   ): Promise<SubmissionStatusUpdate> {
+    // ── Sprint F: Feeds API path ───────────────────────────────────────────
+    if (externalRef.startsWith(FEED_REF_PREFIX)) {
+      return this.syncFeedSubmissionStatus(ctx, externalRef);
+    }
+
+    // ── Listings Items API path (default) ─────────────────────────────────
     const lookup = this.parseStatusLookupRef(externalRef);
     const sellerId = this.requireSellerId(ctx);
     const endpoint = `${this.resolveSpApiBaseUrl()}/listings/2021-08-01/items/${encodeURIComponent(sellerId)}/${encodeURIComponent(lookup.sku)}?marketplaceIds=${encodeURIComponent(this.resolveMarketplaceId(ctx))}&issueLocale=${encodeURIComponent(this.resolveIssueLocale())}`;
@@ -410,6 +459,270 @@ export class AmazonConnector implements ConnectorInterface {
     });
     return this.buildStatusUpdate(lookup.externalRef, response, responseBody);
   }
+
+  // ─── Sprint F: Amazon Feeds API bulk publish ──────────────────────────────
+
+  async publishBulkProducts(
+    ctx: ConnectorContext,
+    products: ProductPayload[],
+  ): Promise<BulkSubmissionRef> {
+    if (!products.length) {
+      throw new Error("publishBulkProducts requires at least one product.");
+    }
+
+    // Validate all products before uploading — fail fast to avoid wasted feed documents.
+    for (const product of products) {
+      const validation = await this.validateProduct(ctx, product);
+      if (!validation.isValid) {
+        const messages = validation.errors.map((issue) => issue.sellerMessage).join(" | ");
+        throw new Error(`Bulk publish validation failed for SKU ${product.sku}: ${messages}`);
+      }
+    }
+
+    const feedContent = this.buildFeedDocument(ctx, products);
+
+    // 1. Create a feed document — Amazon returns a pre-signed S3 upload URL.
+    const feedDoc = await this.createFeedDocument(ctx);
+
+    // 2. PUT the JSON content to the S3 URL (no auth headers — pre-signed URL handles auth).
+    await this.uploadFeedContent(feedDoc.url, feedContent);
+
+    // 3. Create the feed — triggers Amazon processing.
+    const feedId = await this.createFeed(ctx, feedDoc.feedDocumentId);
+
+    this.logger.info("Amazon Feeds API bulk submit completed", {
+      installationId: ctx.installationId,
+      feedId,
+      feedDocumentId: feedDoc.feedDocumentId,
+      productCount: products.length,
+    });
+
+    return {
+      feedId,
+      feedDocumentId: feedDoc.feedDocumentId,
+      productCount: products.length,
+      skus: products.map((product) => product.sku),
+    };
+  }
+
+  private buildFeedDocument(ctx: ConnectorContext, products: ProductPayload[]): string {
+    const sellerId = this.requireSellerId(ctx);
+    const messages = products.map((product, index) => ({
+      messageId: index + 1,
+      sku: product.sku,
+      operationType: "PATCH" as const,
+      productType: product.productType,
+      requirements: "LISTING",
+      attributes: this.buildListingPayload(ctx, product).attributes,
+    }));
+
+    return JSON.stringify({
+      header: {
+        sellerId,
+        version: "2.0",
+        issueLocale: this.resolveIssueLocale(),
+      },
+      messages,
+    });
+  }
+
+  private async createFeedDocument(ctx: ConnectorContext): Promise<AmazonFeedDocumentCreateResponse> {
+    const endpoint = `${this.resolveSpApiBaseUrl()}/feeds/2021-06-30/documents`;
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ contentType: "application/json; charset=utf-8" }),
+    });
+    if (!response.ok) {
+      throw new Error(`Amazon feed document creation failed with status ${response.status}.`);
+    }
+    return this.parseJsonResponse<AmazonFeedDocumentCreateResponse>(response);
+  }
+
+  private async uploadFeedContent(uploadUrl: string, content: string): Promise<void> {
+    // Pre-signed S3 URL — no additional auth headers; Content-Type must match createFeedDocument.
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: content,
+    });
+    if (!response.ok) {
+      throw new Error(`Amazon feed content upload failed with status ${response.status}.`);
+    }
+  }
+
+  private async createFeed(ctx: ConnectorContext, feedDocumentId: string): Promise<string> {
+    const endpoint = `${this.resolveSpApiBaseUrl()}/feeds/2021-06-30/feeds`;
+    const marketplaceId = this.resolveMarketplaceId(ctx);
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        feedType: "JSON_LISTINGS_FEED",
+        marketplaceIds: [marketplaceId],
+        inputFeedDocumentId: feedDocumentId,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Amazon feed creation failed with status ${response.status}.`);
+    }
+    const result = await this.parseJsonResponse<AmazonFeedCreateResponse>(response);
+    if (!result.feedId) {
+      throw new Error("Amazon feed creation response did not include feedId.");
+    }
+    return result.feedId;
+  }
+
+  private async syncFeedSubmissionStatus(
+    ctx: ConnectorContext,
+    externalRef: string,
+  ): Promise<SubmissionStatusUpdate> {
+    // Format: "feed::{feedId}::{messageId}::{sku}"
+    const parts = externalRef.slice(FEED_REF_PREFIX.length).split("::");
+    if (parts.length < 3) {
+      return {
+        externalRef,
+        status: "ERROR",
+        channelErrors: [this.normaliseError("FEED_REF_INVALID", "Feed submission reference is malformed.")],
+        resolvedAt: new Date(),
+      };
+    }
+    const [feedId, rawMessageId, ...skuParts] = parts;
+    const messageId = parseInt(rawMessageId, 10);
+    const sku = skuParts.join("::");
+
+    const feedStatus = await this.getFeedStatus(ctx, feedId);
+
+    this.logger.info("Amazon feed status polled", {
+      installationId: ctx.installationId,
+      feedId,
+      sku,
+      processingStatus: feedStatus.processingStatus,
+    });
+
+    if (feedStatus.processingStatus === "IN_QUEUE" || feedStatus.processingStatus === "IN_PROGRESS") {
+      return { externalRef, status: "PENDING", channelErrors: [] };
+    }
+
+    if (feedStatus.processingStatus === "FATAL" || feedStatus.processingStatus === "CANCELLED") {
+      return {
+        externalRef,
+        status: "ERROR",
+        channelErrors: [
+          this.normaliseError(
+            `FEED_${feedStatus.processingStatus}`,
+            `Amazon feed processing ended with status ${feedStatus.processingStatus}.`,
+          ),
+        ],
+        resolvedAt: new Date(),
+      };
+    }
+
+    // processingStatus === "DONE" — download and parse the result document.
+    if (!feedStatus.resultFeedDocumentId) {
+      return { externalRef, status: "PENDING", channelErrors: [] };
+    }
+
+    const resultDoc = await this.downloadFeedResultDocument(ctx, feedStatus.resultFeedDocumentId);
+    return this.parseFeedResultForMessage(externalRef, sku, messageId, resultDoc);
+  }
+
+  private async getFeedStatus(ctx: ConnectorContext, feedId: string): Promise<AmazonFeedStatusResponse> {
+    const endpoint = `${this.resolveSpApiBaseUrl()}/feeds/2021-06-30/feeds/${encodeURIComponent(feedId)}`;
+    const response = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error(`Amazon feed status poll failed with status ${response.status}.`);
+    }
+    return this.parseJsonResponse<AmazonFeedStatusResponse>(response);
+  }
+
+  private async downloadFeedResultDocument(
+    ctx: ConnectorContext,
+    resultFeedDocumentId: string,
+  ): Promise<AmazonFeedResultDocument> {
+    // 1. Get the pre-signed download URL for the result document.
+    const endpoint = `${this.resolveSpApiBaseUrl()}/feeds/2021-06-30/documents/${encodeURIComponent(resultFeedDocumentId)}`;
+    const docResponse = await this.fetchWithTokenRetry(ctx, endpoint, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!docResponse.ok) {
+      throw new Error(`Amazon feed result document URL fetch failed with status ${docResponse.status}.`);
+    }
+    const docMeta = await this.parseJsonResponse<{ url?: string }>(docResponse);
+    if (!docMeta.url) {
+      throw new Error("Amazon feed result document response did not include download URL.");
+    }
+
+    // 2. Download the actual document (plain fetch — pre-signed URL, no auth headers).
+    const contentResponse = await fetch(docMeta.url, {
+      method: "GET",
+      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
+    });
+    if (!contentResponse.ok) {
+      throw new Error(`Amazon feed result document download failed with status ${contentResponse.status}.`);
+    }
+    return this.parseJsonResponse<AmazonFeedResultDocument>(contentResponse);
+  }
+
+  private parseFeedResultForMessage(
+    externalRef: string,
+    sku: string,
+    messageId: number,
+    resultDoc: AmazonFeedResultDocument,
+  ): SubmissionStatusUpdate {
+    const issues = Array.isArray(resultDoc.issues) ? resultDoc.issues : [];
+    const messageResult = issues.find((item) => item.messageId === messageId);
+
+    // No entry in the result issues array means the message was accepted with no issues.
+    if (!messageResult || messageResult.processingStatus === "ACCEPTED") {
+      return {
+        externalRef,
+        status: "SUCCESS",
+        channelErrors: [],
+        resolvedAt: new Date(),
+      };
+    }
+
+    const channelErrors: ConnectorIssue[] = (messageResult.issues ?? []).map((issue) => {
+      const base = this.normaliseError(
+        String(issue.code ?? "FEED_INVALID").trim() || "FEED_INVALID",
+        String(issue.message ?? "").trim(),
+      );
+      const isWarning = String(issue.severity ?? "").trim().toUpperCase() === "WARNING";
+      return {
+        ...base,
+        fieldPath: Array.isArray(issue.attributeNames) ? issue.attributeNames.join(", ") : "",
+        severity: isWarning ? "warning" : "error",
+      };
+    });
+
+    if (channelErrors.length === 0) {
+      channelErrors.push(this.normaliseError("FEED_INVALID", `Amazon rejected SKU ${sku} in feed without a specific error code.`));
+    }
+
+    const hasBlockingErrors = channelErrors.some((issue) => issue.severity === "error");
+    return {
+      externalRef,
+      status: hasBlockingErrors ? "REJECTED" : "SUCCESS",
+      channelErrors,
+      resolvedAt: new Date(),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
     try {

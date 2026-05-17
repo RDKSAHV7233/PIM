@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import {
   ExportJobStatus,
@@ -3321,5 +3322,94 @@ export class MarketplaceService implements OnModuleInit {
       matchedBy: r.matched_by,
       confirmedAt: r.confirmed_at,
     }));
+  }
+
+  // ─── Sprint F: Amazon Feeds API bulk publish ──────────────────────────────
+
+  async triggerBulkPublish(
+    installationId: string,
+    productIds: string[],
+  ): Promise<{ feedId: string; feedDocumentId: string; productCount: number; submissionIds: string[] }> {
+    if (!productIds.length) {
+      throw new BadRequestException("productIds must contain at least one product.");
+    }
+
+    const db = this.prisma.tenant();
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    const installationRow = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true },
+    });
+    if (!installationRow) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installationRow.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "";
+
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      connectorSlug,
+      installationId,
+    );
+
+    const products = await Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id)));
+
+    const bulkRef = await this.connectorFramework.publishBulk(installation, products);
+
+    const submissionIds: string[] = [];
+    for (let i = 0; i < bulkRef.skus.length; i++) {
+      const sku = bulkRef.skus[i];
+      const productId = productIds[i] ?? productIds[0];
+      const externalRef = `feed::${bulkRef.feedId}::${i + 1}::${sku}`;
+      const idempotencyKey = `bulk:${bulkRef.feedId}:${i + 1}`;
+
+      const row = await db.connectorSubmission.upsert({
+        where: {
+          tenantKey_installationId_idempotencyKey: {
+            tenantKey,
+            installationId,
+            idempotencyKey,
+          },
+        },
+        create: {
+          id: randomUUID(),
+          installationId,
+          productId,
+          idempotencyKey,
+          submissionType: "PUBLISH",
+          source: "NOT_VALIDATED",
+          attemptNumber: 1,
+          status: "PENDING",
+          externalRef,
+          payloadSnapshot: {},
+          channelErrors: [],
+        },
+        update: {
+          attemptNumber: { increment: 1 },
+          status: "PENDING",
+          externalRef,
+        },
+        select: { id: true },
+      });
+      submissionIds.push(row.id);
+    }
+
+    this.logger.warn("Amazon bulk feed submitted", {
+      installationId,
+      feedId: bulkRef.feedId,
+      productCount: bulkRef.productCount,
+    });
+
+    return {
+      feedId: bulkRef.feedId,
+      feedDocumentId: bulkRef.feedDocumentId,
+      productCount: bulkRef.productCount,
+      submissionIds,
+    };
   }
 }

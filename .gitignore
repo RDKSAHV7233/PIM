@@ -24,3 +24,25 @@ storage/
 .run-logs/
 unused/temp/
 unused/pim1-files-*/
+unused/archive/
+
+# Tooling and AI agent working dirs
+.claude/
+.claire/
+.codex-evidence/
+PIM1-rebase-push/
+
+# One-off debug and server-check artifacts
+apps/api/check-identity.js
+apps/api/fix-admin-role.js
+check-server-requirements.cmd
+final-server-check.txt
+server-clean-report.txt
+server-requirements-report.txt
+run-local.bat
+test-import.json
+scripts/infra-up-local.cjs
+VEXA_PIM_DEEP_REVIEW_2026-05-09.md
+
+# Test output
+apps/web/test-results/

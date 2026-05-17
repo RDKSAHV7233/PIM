@@ -30,6 +30,12 @@ const API_TOKEN_CACHE_FILE = path.join(
       const saved = JSON.parse(fs.readFileSync(API_TOKEN_CACHE_FILE, "utf8"));
       for (const [key, payload] of Object.entries(saved)) {
         LOGIN_CACHE.set(key, payload);
+        // Also register the localhost ↔ 127.0.0.1 alias so the cache hits
+        // regardless of which hostname global-setup used vs what the spec uses.
+        const alt = key.includes("localhost")
+          ? key.replace("localhost", "127.0.0.1")
+          : key.replace("127.0.0.1", "localhost");
+        if (alt !== key) LOGIN_CACHE.set(alt, payload);
       }
     }
   } catch {
@@ -84,7 +90,7 @@ async function apiLoginPayload(role, apiUrl = DEFAULT_API_URL, workspaceSlug = D
     workspaceSlug,
     userId: identity.userId,
     password: DEFAULT_PASSWORD,
-    expiresInMinutes: 360,
+    expiresInMinutes: 240,
   }, apiUrl);
   LOGIN_CACHE.set(cacheKey, payload);
   return payload;

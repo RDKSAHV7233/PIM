@@ -28,9 +28,9 @@ function run() {
   );
   assert(
     setupSource.includes('if (slug === "amazon-in")') &&
-      setupSource.includes("Amazon India live install needs seller ID plus validated LWA credentials.") &&
+      setupSource.includes("Amazon India live install needs seller ID plus validated LWA") &&
       setupSource.includes("Enter Amazon seller ID") &&
-      setupSource.includes("Enter Amazon refresh token"),
+      setupSource.includes("Enter Amazon SP-API refresh token"),
     "Connector setup page must render Amazon-specific seller ID and credential guidance inside the dedicated setup workspace.",
   );
   assert(

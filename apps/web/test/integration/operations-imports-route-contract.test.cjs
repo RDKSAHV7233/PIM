@@ -38,7 +38,8 @@ function run() {
     "Operations imports must rely on the shared editor-capable workspace write rule.",
   );
   assert(
-    source.includes("const [jobs, categories] = await Promise.all([") &&
+    (source.includes("const [jobs, categories] = await Promise.all([") ||
+      source.includes("const [jobsResult, categoriesResult] = await Promise.allSettled([")) &&
       source.includes("getBulkImportJobs({ role: actorRole, authHeader })") &&
       source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })"),
     "Operations imports must load import jobs and categories together from the shared auth context.",
