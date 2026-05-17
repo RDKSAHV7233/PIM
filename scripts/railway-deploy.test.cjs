@@ -75,6 +75,31 @@ function main() {
     "Railway CLI should keep using the project token when no workspace token is available.",
   );
 
+  assert.deepEqual(
+    buildRailwayExecutionEnv({
+      RAILWAY_TOKEN: "project_token",
+      RAILWAY_API_TOKEN: "workspace_token",
+      OTHER_ENV: "preserved",
+    }),
+    {
+      RAILWAY_TOKEN: "workspace_token",
+      RAILWAY_API_TOKEN: "workspace_token",
+      OTHER_ENV: "preserved",
+    },
+    "Railway CLI should prefer the workspace token when both token types are present.",
+  );
+  assert.deepEqual(
+    buildRailwayExecutionEnv({
+      RAILWAY_TOKEN: "project_token",
+      OTHER_ENV: "preserved",
+    }),
+    {
+      RAILWAY_TOKEN: "project_token",
+      OTHER_ENV: "preserved",
+    },
+    "Railway CLI should keep using the project token when no workspace token is available.",
+  );
+
   const commands = buildDeployCommands(config);
   assert.equal(commands.length, 2, "Expected API and Web deploy commands");
   assert.deepEqual(commands[0], {

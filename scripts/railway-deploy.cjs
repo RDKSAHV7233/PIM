@@ -99,6 +99,17 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   };
 }
 
+function buildRailwayExecutionEnv(env = process.env) {
+  const preferredToken = optionalEnv("RAILWAY_API_TOKEN", env) || optionalEnv("RAILWAY_TOKEN", env);
+  if (!preferredToken) {
+    return { ...env };
+  }
+  return {
+    ...env,
+    RAILWAY_TOKEN: preferredToken,
+  };
+}
+
 function buildDeployCommands(config) {
   const apiRelative = path.relative(config.repoRoot, config.apiSourcePath) || ".";
   const webRelative = path.relative(config.repoRoot, config.webSourcePath) || ".";
@@ -480,6 +491,7 @@ function runDeployCommandAcrossServiceTargets(command, options) {
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
+  const railwayEnv = buildRailwayExecutionEnv(env);
   const changedFiles = getChangedFiles(env, repoRoot);
   const deployPlan = Array.isArray(changedFiles) && changedFiles.length > 0
     ? classifyDeployTargets(changedFiles)
@@ -487,7 +499,7 @@ function main(env = process.env) {
 
   runCommand(config.railwayBin, ["--version"], {
     cwd: repoRoot,
-    env,
+    env: railwayEnv,
     label: "Railway CLI availability check",
   });
 
@@ -523,7 +535,7 @@ function main(env = process.env) {
       command,
       {
         cwd: repoRoot,
-        env,
+        env: railwayEnv,
         config,
         railwayBin: config.railwayBin,
         maxAttempts: config.deployRetries,
@@ -551,6 +563,7 @@ if (require.main === module) {
 module.exports = {
   buildDeployCommands,
   classifyDeployTargets,
+  buildRailwayExecutionEnv,
   getChangedFiles,
   isRetryableRailwayDeployError,
   isServiceNotFoundRailwayError,
