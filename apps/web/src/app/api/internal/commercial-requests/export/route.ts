@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base-url";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
-
-function getApiBaseUrl() {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
 
 export async function GET(request: Request) {
   const role = await getServerActorRole();

@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base-url";
 import { isPublicSignupEnabled } from "@/lib/public-signup";
-
-export function getApiBaseUrl(): string {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
 
 export function signupFeatureDisabledResponse() {
   return NextResponse.json({ error: "FEATURE_DISABLED" }, { status: 404 });

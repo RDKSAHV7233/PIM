@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base-url";
 import { resolveBearerToken } from "../../../_auth";
-
-function getApiBaseUrl() {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
 
 export async function GET(request: NextRequest) {
   const authHeader = resolveBearerToken(request);

@@ -34,6 +34,16 @@ async function bootstrap() {
 
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
+  app.getHttpAdapter().getInstance().get("/", (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
+    response.status(200).json({
+      service: "Vexa PIM API",
+      status: "ok",
+      message: "Vexa PIM API is running.",
+      env: env.APP_ENV,
+      health: "/api/v1/health",
+      docs: env.APP_ENV !== "production" ? "/api/v1/docs" : null,
+    });
+  });
   app.setGlobalPrefix("api/v1");
   const corsOrigin =
     env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : env.APP_ENV === "development" ? true : false;

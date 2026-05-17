@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "$comment": "API service config. Add a second Railway service for web using Dockerfile.web with NEXT_PUBLIC_API_URL set to the API's Railway public URL.",
+  "$comment": "API service config. Add a second Railway service for web using Dockerfile.web with PIM_API_BASE_URL set to the API's Railway public URL or full /api/v1 base.",
   "build": {
     "dockerfilePath": "Dockerfile.api"
   },

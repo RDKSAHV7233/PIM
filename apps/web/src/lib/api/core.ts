@@ -1,4 +1,5 @@
 import type { MarketplaceChannel } from "../marketplace-channels";
+import { getApiBaseUrl } from "../api-base-url";
 
 export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
@@ -1349,7 +1350,7 @@ export interface AiRepairResult {
   updated?: Product;
 }
 
-const API_BASE_URL = process.env.PIM_API_BASE_URL ?? "http://localhost:4000/api/v1";
+const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiRequestOptions {
   role?: AppRole;

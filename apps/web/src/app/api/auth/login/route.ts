@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-
-function getApiBaseUrl(): string {
-  const value = String(process.env.PIM_API_BASE_URL ?? "").trim();
-  return value || "http://localhost:4000/api/v1";
-}
+import { getApiBaseUrl } from "@/lib/api-base-url";
 
 function useSecureCookies(): boolean {
   const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();

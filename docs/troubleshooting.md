@@ -22,6 +22,13 @@ Confirm:
 - `PIM_API_BASE_URL` points to `http://localhost:4000/api/v1`
 - `CORS_ORIGIN` includes the web origin
 
+For Railway staging specifically:
+
+- the web service runtime must set `PIM_API_BASE_URL=https://<railway-api-service>.up.railway.app/api/v1`
+- `NEXT_PUBLIC_API_URL` may still work as a legacy fallback, but it is no longer the canonical contract
+- if `/dashboard` shows `Dashboard data is temporarily unavailable`, the web service is usually reachable but SSR cannot reach the API upstream
+- if opening the API root URL shows `Cannot GET /`, check `GET /api/v1/health` before assuming the API is down
+
 ## Database Or Prisma Errors
 
 Run:

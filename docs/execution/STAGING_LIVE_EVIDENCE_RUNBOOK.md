@@ -44,7 +44,7 @@ gh auth status
    - `RAILWAY_API_SERVICE_ID`
    - `RAILWAY_WEB_SERVICE_ID`
    - `STAGING_BASE_URL`
-   - `STAGING_WEB_URL` (recommended when public signup should be probed from the deployed web app)
+   - `STAGING_WEB_URL` (required for post-deploy web verification and recommended for public signup probing)
    - `STAGING_SMOKE_WORKSPACE`
    - `STAGING_SMOKE_USER`
    - `STAGING_SMOKE_PASSWORD`
@@ -54,6 +54,11 @@ gh auth status
    Security note: do not share staging usernames, passwords, tokens, or connection strings in chat, tickets, or docs. Treat all staging credentials as secrets and retrieve/rotate them only through the repository/environment secret-management path.
 
 3. The workflow now uses the checked-in Railway deploy script (`scripts/railway-deploy.cjs`) after installing `@railway/cli` on the runner. It deploys the prepared API package and the web service using explicit Railway service/project identifiers rather than a free-form shell command.
+
+   Before running the workflow, confirm the Railway web service runtime env includes:
+   - `PIM_API_BASE_URL=https://<railway-api-service>.up.railway.app/api/v1`
+
+   `NEXT_PUBLIC_API_URL` remains tolerated as a legacy fallback in code, but `PIM_API_BASE_URL` is now the canonical server-side upstream contract for SSR and Next proxy routes.
 
 4. The target branch contains the current workflow guards:
 
@@ -115,6 +120,14 @@ node scripts/validate-live-staging-evidence.cjs --artifactDir $artifactDir --env
   - `health.ok = true`
   - `health.status` indicating a healthy response (`200` or `"ok"`)
   - `controlledRollout.pending = []`
+
+The deploy workflow's post-deploy verification now also proves the deployed web app can:
+
+- log in through `/api/auth/login`
+- render `/channels`
+- render `/admin/connectors`
+- render `/dashboard` without falling back to the `Dashboard data is temporarily unavailable` recovery state
+- keep the dashboard's SSR API dependency healthy after the web deploy completes
 
 ### Expected partial state after the first live run
 
