@@ -1,8 +1,8 @@
 # Vexa PIM Current State
 
 - Date: 2026-05-17
-- Repo HEAD: feat/oidc-sso-login — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 open (CTO verification fixes — Large Import migration, test contracts, gate integrity, ledger sync)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged)
+- Repo HEAD: main `31a3307` — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
@@ -16,7 +16,8 @@
 - Media upload now guards against non-image MIME types. Product detail page is resilient to connector/compliance fetch failures via `.catch()` fallbacks.
 - Fresh release-governance evidence is now checked in: the latest staging rollout snapshot `docs/execution/rollout/2026-05-17T07-17-15.753Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `controlledPending: []`, `broadPending: []`. All gates are green.
 - `INC-08` is complete. INC-36 (localization schema) and INC-39 (OIDC SSO) are now marked completed in the ledger after PR #71 merge.
-- `billing-metrics-overhaul` branch created from April stash — tenant-boundary tests, March migration, and tenant-scoped uniqueness constraints are now committed and verified passing. Branch is superseded by current `feat/oidc-sso-login` content and should be deleted after PR #72 merges.
+- ST-CON-METRICS-001 (connector KPI trends) is now complete: mapping completion rate, first publish success rate, and setup-time-to-first-publish are rendered as KpiCards in the dashboard Connector Performance section, sourced from the existing `/metrics/kpi-trends` API (PR #73 merged 2026-05-17).
+- `billing-metrics-overhaul` branch was created from April stash — tenant-boundary tests, March migration, and tenant-scoped uniqueness constraints committed and verified passing. Branch is superseded by main; may be deleted.
 
 ## 2. Canonical Source-of-Truth Files
 
@@ -108,7 +109,7 @@ Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
 
 1. The current authoritative rollout snapshot is `docs/execution/rollout/2026-05-17T07-17-15.753Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` (`controlledPending: []`, `broadPending: []`). Daily automated captures keep this fresh; rerun `node scripts/capture-controlled-rollout-snapshot.cjs` before any external production claim.
 2. Historical April and early-May review documents remain useful context but must not be treated as current launch truth when they conflict with current code or the latest artifacts.
-3. INC-08 is complete. INC-36 (localization) and INC-39 (OIDC SSO) completed via PR #71 (2026-05-17). Remaining open stories: ST-CON-METRICS-001 (connector KPI trends), ST-FK-RUNTIME-003/004/005 (Flipkart publish loop) — gate step for Flipkart idempotency is explicitly `allowFailure=true` until these are delivered.
+3. INC-08 is complete. INC-36 (localization) and INC-39 (OIDC SSO) completed via PR #71 (2026-05-17). ST-CON-METRICS-001 (connector KPI trends) completed via PR #73 (2026-05-17). Remaining open stories: ST-FK-RUNTIME-003/004/005 (Flipkart publish loop) — gate step for Flipkart idempotency is explicitly `allowFailure=true` until these are delivered.
 4. Enterprise signoff blocked on RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search) — none scheduled. Do not claim enterprise-ready.
 
 ## 8. Future-Scope And Follow-Up Items
