@@ -142,6 +142,18 @@ function main() {
   const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");
   fs.writeFileSync(appRailwayTomlPath, railwayTomlContents, "utf8");
 
+  // Override npm's production mode so devDependencies are installed during the Railpack
+  // install step. Railpack's Metal builder sets NODE_ENV=production in the build container.
+  // Even with devDependencies listed in the root package.json `dependencies` (above), npm
+  // still reports "added 106 packages" (the production-only set) under NODE_ENV=production.
+  // Writing `.npmrc` with `production=false` overrides this at the project level so ALL
+  // workspace deps (tailwindcss, postcss, autoprefixer, typescript) are installed.
+  //
+  // This is the primary fix for the silent `next build` SIGKILL caused by missing
+  // PostCSS/Tailwind packages. The root package.json `dependencies` hoist (above) remains
+  // as a belt-and-suspenders cache-invalidation mechanism for future devDep version bumps.
+  fs.writeFileSync(path.join(outputDir, ".npmrc"), "production=false\n", "utf8");
+
   // Pin Node.js to v20 (LTS). Railway's Railpack caches the previously-installed Node version;
   // the cached version (24.x as of May 2026) has a SWC native-binary incompatibility with
   // Next.js 15 that causes `next build` to crash silently (SIGKILL/SIGSEGV, no output).
@@ -223,6 +235,7 @@ function main() {
         outputDir: path.relative(repoRoot, outputDir),
         rootPackageJson: path.relative(repoRoot, rootPackageJsonPath),
         rootDepsHoisted: Object.keys(sourcePkgJson.devDependencies ?? {}),
+        npmrc: path.relative(repoRoot, path.join(outputDir, ".npmrc")),
         appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
         tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
