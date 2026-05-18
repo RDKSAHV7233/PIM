@@ -91,9 +91,10 @@ function main() {
     "utf8",
   );
 
+  // NODE_OPTIONS is required — Next.js build OOMs on Railway without 4 GB heap.
   const railwayTomlContents = [
     "[build]",
-    'buildCommand = "npm install && npm run build"',
+    'buildCommand = "npm install && NODE_OPTIONS=\\"--max-old-space-size=4096\\" npm run build"',
     "",
     "[deploy]",
     'startCommand = "npm run start"',
