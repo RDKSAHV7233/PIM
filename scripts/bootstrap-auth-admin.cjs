@@ -24,10 +24,11 @@ function parseArgs(argv) {
 
 function normalizeRole(input) {
   const value = String(input ?? '').trim().toLowerCase();
-  if (value === 'admin' || value === 'editor' || value === 'viewer') {
+  const APP_ROLES = ['admin', 'editor', 'publisher', 'approver', 'channel_manager', 'connector_admin', 'reviewer', 'viewer'];
+  if (APP_ROLES.includes(value)) {
     return value;
   }
-  throw new Error('Invalid role. Use one of: admin, editor, viewer');
+  throw new Error(`Invalid role. Use one of: ${APP_ROLES.join(', ')}`);
 }
 
 function resolveBootstrapPassword(args) {

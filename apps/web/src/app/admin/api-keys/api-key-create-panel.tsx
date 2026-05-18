@@ -24,10 +24,14 @@ const SCOPES: ReadonlyArray<{ value: ApiClientScope; label: string; description:
 ];
 
 const DEFAULT_SCOPES_BY_ROLE: Record<AppRole, ApiClientScope[]> = {
-  admin: ["catalog.read", "catalog.write"],
-  editor: ["catalog.read", "catalog.write"],
-  reviewer: ["catalog.read"],
-  viewer: ["catalog.read"],
+  admin:           ["catalog.read", "catalog.write"],
+  editor:          ["catalog.read", "catalog.write"],
+  publisher:       ["catalog.read"],
+  approver:        ["catalog.read"],
+  channel_manager: ["catalog.read"],
+  connector_admin: ["catalog.read"],
+  reviewer:        ["catalog.read"],
+  viewer:          ["catalog.read"],
 };
 
 function resolveApiKeyFieldErrors(message: string | null) {

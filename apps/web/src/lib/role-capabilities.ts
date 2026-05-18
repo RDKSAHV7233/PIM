@@ -9,7 +9,7 @@ export function canResolveIssueInboxWarnings(role: AppRole): boolean {
 }
 
 export function canDecideApproval(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "reviewer";
+  return role === "admin" || role === "editor" || role === "approver" || role === "reviewer";
 }
 
 export function isReadOnlyRole(role: AppRole): boolean {

@@ -4,7 +4,15 @@ import { getApiBaseUrl } from "../api-base-url";
 export type CatalogStatus = "draft" | "in_review" | "approved" | "rejected" | "active" | "archived";
 export type RuleSeverity = "error" | "warning";
 export type { MarketplaceChannel };
-export type AppRole = "admin" | "editor" | "reviewer" | "viewer";
+export type AppRole =
+  | "admin"
+  | "editor"
+  | "publisher"
+  | "approver"
+  | "channel_manager"
+  | "connector_admin"
+  | "reviewer"
+  | "viewer";
 export type ApiClientScope =
   | "catalog.read"
   | "catalog.write"
@@ -16,7 +24,7 @@ export type ApiClientScope =
   | "auto_suggestions.read"
   | "taxonomy.read";
 
-const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
+const APP_ROLES: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
 
 export function normalizeAppRole(value: FormDataEntryValue | string | null | undefined): AppRole {
   const normalized = String(value ?? "").trim().toLowerCase();
