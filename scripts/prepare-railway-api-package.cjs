@@ -87,14 +87,21 @@ function main() {
   // Generate railway.toml for the packaged output.
   // Paths differ from apps/api/railway.toml because the package root is the
   // api directory itself (dist/ and scripts/ are at root, not apps/api/).
-  // preDeployCommand runs migrations in a separate Railway container while the
-  // old app container keeps serving traffic — zero-downtime on single replica.
+  //
+  // preDeployCommand is intentionally omitted here. The CI workflow runs
+  // migrations against the staging database in the "Apply migrations" step
+  // before this deploy runs, so Railway-side migration is redundant.
+  // preDeployCommand requires DATABASE_URL to be injected into a separate
+  // Railway container — if that env var is missing the whole deploy fails.
+  //
+  // Zero-downtime is still achieved: startCommand boots directly to
+  // "node dist/main.js" (no migration blocking startup), so the healthcheck
+  // passes in ~5s and Railway switches traffic before stopping the old container.
   const railwayTomlContents = [
     "[build]",
     'buildCommand = "npm install && npm run build"',
     "",
     "[deploy]",
-    'preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]',
     'startCommand = "node dist/main.js"',
     'healthcheckPath = "/api/v1/health"',
     "healthcheckTimeout = 300",
