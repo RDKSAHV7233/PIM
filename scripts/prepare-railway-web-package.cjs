@@ -143,6 +143,46 @@ function main() {
     fs.rmSync(nextConfigTsPath);
   }
 
+  // Patch apps/web/package.json for Railway's build environment.
+  //
+  // Problem 1 – devDependencies are skipped in production mode:
+  //   Railway's Railpack builder runs `npm install` with NODE_ENV=production, which causes
+  //   npm to omit devDependencies. The web app's build tools (tailwindcss, postcss,
+  //   autoprefixer, typescript) are all in devDependencies and would not be installed,
+  //   breaking `next build` silently (SIGKILL before any error is printed).
+  //   Fix: merge devDependencies into dependencies in the Railway package output so that
+  //   all build tools are installed regardless of NODE_ENV.
+  //
+  // Problem 2 – OOM kill during next build:
+  //   Railway's Metal builder containers enforce a cgroup memory limit. Node.js 20's
+  //   default V8 old-generation heap ceiling (≈2 GB) can cause the process to be
+  //   SIGKILL-ed before it prints anything. Setting --max-old-space-size=1024 caps the
+  //   old heap at 1 GB, giving the rest of the address space to webpack, SWC, and OS
+  //   overhead while still being well above what next build actually needs (~300–700 MB).
+  const webPackageJsonPath = path.join(appOutputDir, "package.json");
+  const webPackageJson = JSON.parse(fs.readFileSync(webPackageJsonPath, "utf8"));
+
+  // Merge devDependencies into dependencies so Railway's production npm install includes
+  // all build tools. Source devDependencies come first so production deps take precedence
+  // if any name collision exists (none expected here).
+  webPackageJson.dependencies = {
+    ...(webPackageJson.devDependencies ?? {}),
+    ...(webPackageJson.dependencies ?? {}),
+  };
+  delete webPackageJson.devDependencies;
+
+  // Prepend the memory cap to the `next build` invocation inside the build script.
+  // Only patch scripts that call `next build` and don't already have NODE_OPTIONS set.
+  const origBuildScript = webPackageJson.scripts?.build ?? "";
+  if (origBuildScript.includes("next build") && !origBuildScript.includes("NODE_OPTIONS")) {
+    webPackageJson.scripts = {
+      ...(webPackageJson.scripts ?? {}),
+      build: origBuildScript.replace("next build", "NODE_OPTIONS='--max-old-space-size=1024' next build"),
+    };
+  }
+
+  fs.writeFileSync(webPackageJsonPath, `${JSON.stringify(webPackageJson, null, 2)}\n`, "utf8");
+
   const apiBaseUrl = resolveApiBaseUrl(process.env);
   let appEnvFile = null;
   if (apiBaseUrl) {
