@@ -91,17 +91,21 @@ function main() {
     "utf8",
   );
 
-  // Do NOT set NODE_OPTIONS=--max-old-space-size in buildCommand.
-  // Railway's Metal builder containers enforce a cgroup memory limit that is lower than 4 GB.
-  // Setting --max-old-space-size=4096 causes Node.js to exceed that limit and get OOM-killed
-  // (SIGKILL, no output) during `next build`. The default V8 heap limit is sufficient for
-  // this app's build; prior successful deploys confirmed that. If a genuine OOM is ever
-  // observed in build logs ("JavaScript heap out of memory"), set a modest value such as
-  // NODE_OPTIONS="--max-old-space-size=1536" in the web app's package.json build script
-  // (not here) so it does not alter the Railpack cache key when the buildCommand is unchanged.
+  // Use --include=dev in the npm install so devDependencies are installed even when
+  // Railway's Railpack builder sets NODE_ENV=production (which causes plain `npm install`
+  // to omit devDependencies). The web app's build tools – tailwindcss, postcss,
+  // autoprefixer, typescript – live in devDependencies and are required by `next build`.
+  // Without them, next build crashes silently (SIGKILL before any output is produced)
+  // because the PostCSS/Tailwind CSS pipeline fails to initialise.
+  //
+  // NOTE: changing this string invalidates the Railpack build cache (the cache key includes
+  // the buildCommand). That is intentional here – the cached node_modules from earlier runs
+  // was missing the devDependency build tools, so we *want* a fresh install that now
+  // includes them. After the first successful build the cache will be warm for all future
+  // deploys (as long as this string stays the same).
   const railwayTomlContents = [
     "[build]",
-    'buildCommand = "npm install && npm run build"',
+    'buildCommand = "npm install --include=dev && npm run build"',
     "",
     "[deploy]",
     'startCommand = "npm run start"',
