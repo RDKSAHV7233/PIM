@@ -118,6 +118,31 @@ function main() {
   const appRailwayTomlPath = path.join(appOutputDir, "railway.toml");
   fs.writeFileSync(appRailwayTomlPath, railwayTomlContents, "utf8");
 
+  // Pin Node.js to v20 (LTS). Railway's Railpack caches the previously-installed Node version;
+  // the cached version (24.x as of May 2026) has a SWC native-binary incompatibility with
+  // Next.js 15 that causes `next build` to crash silently (SIGKILL/SIGSEGV, no output).
+  // Node.js 20 is the LTS release tested against Next.js 15.5.x and works reliably.
+  fs.writeFileSync(path.join(outputDir, ".nvmrc"), "20\n", "utf8");
+
+  // Convert next.config.ts → next.config.js so Next.js loads the config as a plain CommonJS
+  // module rather than using its internal SWC transpiler. This avoids a second potential
+  // SWC crash surface on Node.js 24 builders and is equivalent at runtime.
+  const nextConfigTsPath = path.join(appOutputDir, "next.config.ts");
+  if (fs.existsSync(nextConfigTsPath)) {
+    const tsSource = fs.readFileSync(nextConfigTsPath, "utf8");
+    const jsSource = tsSource
+      // Remove TypeScript-only type import ("import type ..." line)
+      .replace(/^import type \{[^}]+\} from ['"][^'"]+['"];\n?/m, "")
+      // Convert ESM value imports to CJS require()
+      .replace(/^import (\w+) from ['"](.+?)['"];/gm, "const $1 = require(\"$2\");")
+      // Strip TypeScript type annotation from variable declarations (": TypeName")
+      .replace(/^(const \w+): \w+ = \{/m, "$1 = {")
+      // Convert default export to module.exports
+      .replace(/^export default (\w+);/m, "module.exports = $1;");
+    fs.writeFileSync(path.join(appOutputDir, "next.config.js"), jsSource, "utf8");
+    fs.rmSync(nextConfigTsPath);
+  }
+
   const apiBaseUrl = resolveApiBaseUrl(process.env);
   let appEnvFile = null;
   if (apiBaseUrl) {
