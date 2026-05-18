@@ -451,7 +451,7 @@ export function ProductsTab({
   }, [pathname, searchQuery]);
 
   const emptyCatalogDescription =
-    role === "viewer"
+    !canEditWorkspace(role)
       ? "No products are available yet. Ask an editor or admin to import or create catalog data."
       : "Import your existing catalog from Excel, or create your first product manually.";
 

@@ -13,9 +13,14 @@ const INITIAL_STATE: ApiKeyCreateActionState = {
 };
 
 const ROLE_OPTIONS: ReadonlyArray<{ value: AppRole; label: string }> = [
-  { value: "editor", label: "Editor" },
-  { value: "reviewer", label: "Reviewer" },
-  { value: "viewer", label: "Viewer" },
+  { value: "admin",           label: "Admin" },
+  { value: "editor",          label: "Editor" },
+  { value: "publisher",       label: "Publisher" },
+  { value: "approver",        label: "Approver" },
+  { value: "channel_manager", label: "Channel Manager" },
+  { value: "connector_admin", label: "Connector Admin" },
+  { value: "reviewer",        label: "Reviewer" },
+  { value: "viewer",          label: "Viewer" },
 ];
 
 const SCOPES: ReadonlyArray<{ value: ApiClientScope; label: string; description: string }> = [

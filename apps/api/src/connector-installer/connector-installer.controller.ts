@@ -36,7 +36,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("definitions")
-  @Roles("admin", "editor", "connector_admin")
+  @Roles("admin", "editor", "connector_admin", "channel_manager")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }
@@ -56,7 +56,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("installed")
-  @Roles("admin", "editor", "connector_admin")
+  @Roles("admin", "editor", "connector_admin", "channel_manager")
   @ApiOperation({ summary: "List installed connectors" })
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {

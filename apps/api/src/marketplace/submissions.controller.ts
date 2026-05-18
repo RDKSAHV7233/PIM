@@ -9,7 +9,7 @@ import { MarketplaceService } from "./marketplace.service";
 @DisallowApiClient()
 @AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @Controller("submissions")
-@Roles("admin", "editor")
+@Roles("admin", "editor", "publisher", "channel_manager")
 @ApiTags("Marketplace")
 export class SubmissionsController {
   constructor(private readonly marketplaceService: MarketplaceService) {}
@@ -59,6 +59,7 @@ export class SubmissionsController {
   }
 
   @Post(":id/sync")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Sync a submission status from the provider" })
   @ApiResponse({ status: 201, description: "Submission status synced" })
   syncSubmission(@Param("id") submissionId: string) {
@@ -66,6 +67,7 @@ export class SubmissionsController {
   }
 
   @Post(":id/retry")
+  @Roles("admin", "editor")
   @ApiOperation({ summary: "Retry submission by requeuing underlying export job" })
   @ApiResponse({ status: 201, description: "Submission retry queued" })
   retrySubmission(@Param("id") submissionId: string) {
