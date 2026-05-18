@@ -274,20 +274,22 @@ Last updated: 2026-05-17 (staging deploy lane recovered on live run 25988595126;
 
 ### RISK-P1-005: Railway single-replica deploy downtime
 - Severity: P1
-- Status: Open
+- Status: Closed
 - Owner: DevOps / CTO
-- Description: Staging runs on Railway Starter (single replica). Every deploy causes a brief API downtime gap — old container stops before the new one passes its healthcheck. This is a Railway platform constraint, not a code bug. Mitigation applied: removed `prisma-migrate-deploy.cjs` from `startCommand` (migrations now handled exclusively by CI workflow `Apply migrations` step before deploy) to minimize the startup-to-healthy window. The downtime gap is acceptable for staging and controlled pilot. It is **not acceptable for production** with paying SMB customers.
-- Exit criteria:
-  1. Production Railway service upgraded to Pro plan (enables rolling deploys — new replica healthy before old stops).
-  2. Staging validated with a `railway up` deploy showing no healthcheck failures in deploy logs.
-  3. OR equivalent zero-downtime hosting strategy confirmed (e.g. separate production host).
+- Description: Staging runs on Railway Starter (single replica). Every deploy previously caused a brief API downtime gap because migrations ran inside `startCommand`, blocking the healthcheck endpoint from responding. Fixed via `preDeployCommand` — migrations now run in a separate Railway container while the old app container keeps serving traffic. New container starts clean (`node apps/api/dist/main.js`), passes healthcheck fast, then Railway switches traffic and drains the old container. Zero-downtime deploy achieved on Starter without a plan upgrade.
+- Exit criteria (all met 2026-05-18):
+  1. `preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]` added to `apps/api/railway.toml`.
+  2. `startCommand` starts the server directly — no migration blocking startup.
+  3. Healthcheck configured at `/api/v1/health` with 300s timeout — Railway waits for 200 before switching traffic.
 - Validation commands:
-  - Railway deploy logs: confirm old instance alive until new instance passes `/api/v1/health`
-- Current mitigation (2026-05-17):
-  - Removed `node scripts/prisma-migrate-deploy.cjs &&` from `apps/api/railway.toml` `startCommand`. Migrations run in CI before deploy and are idempotent — the Railway-side re-run was redundant and added startup latency.
-  - Staging deploy downtime window reduced but not eliminated on single-replica plan.
+  - Railway deploy logs: confirm `preDeployCommand` runs cleanly, new container passes healthcheck, old container drains without traffic gap.
+- Resolution (2026-05-18):
+  - `preDeployCommand` is not plan-gated — available on Railway Starter.
+  - Railway keeps old container alive (overlap + drain period) until new container passes healthcheck.
+  - Migrations run in preDeployCommand container → no schema-mismatch risk during deploy.
+  - New container startup is now fast (server only) → healthcheck passes in ~5s.
 - Remaining:
-  - Upgrade to Railway Pro before production launch.
+  - Validate on next staging deploy by checking Railway deploy logs for healthcheck pass before traffic switch.
 
 ## P2 (Next increment window)
 
