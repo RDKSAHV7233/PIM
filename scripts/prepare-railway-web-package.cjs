@@ -67,11 +67,38 @@ function main() {
     throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
   }
 
+  // Read the web app's package.json from source before copying so we can extract
+  // devDependencies to hoist into the root package.json.
+  const sourcePkgJson = JSON.parse(fs.readFileSync(path.join(sourceDir, "package.json"), "utf8"));
+
   removeDir(outputDir);
   copyDir(sourceDir, appOutputDir);
 
   fs.copyFileSync(tsconfigBaseSource, path.join(outputDir, "tsconfig.base.json"));
 
+  // Hoist web app devDependencies into the root package.json as regular `dependencies`.
+  //
+  // Why this matters:
+  //   Railway's Railpack builder runs its own `npm install` step (separate from the
+  //   user-defined buildCommand) with NODE_ENV=production. Under NODE_ENV=production npm
+  //   omits devDependencies, so the web app's build tools — tailwindcss, postcss,
+  //   autoprefixer, typescript — were never installed. This caused `next build` to crash
+  //   silently (SIGKILL with no output) because the PostCSS/Tailwind pipeline cannot
+  //   initialise.
+  //
+  //   Railpack's install-step cache key is derived from the ROOT package.json, not from
+  //   workspace sub-package manifests. So changes to apps/web/package.json alone do not
+  //   invalidate the cached node_modules. Listing the devDependencies here (root-level
+  //   `dependencies`) guarantees:
+  //     1. Cache invalidation – the root package.json is now different, forcing a fresh install.
+  //     2. Correct installation – root-level `dependencies` are always installed regardless
+  //        of NODE_ENV, so build tools are present when `next build` runs.
+  //     3. Correct @next/swc binary – a fresh install fetches the SWC native binary for the
+  //        active Node.js version (20, per .nvmrc) rather than reusing a stale cached binary
+  //        compiled for the old Node.js 24 builder, which caused SIGKILL on load.
+  //
+  //   The apps/web/package.json devDep→dep merge (further below) is kept as a belt-and-
+  //   suspenders complement; the root-level hoist is the primary mechanism.
   const rootPackageJsonPath = path.join(outputDir, "package.json");
   fs.writeFileSync(
     rootPackageJsonPath,
@@ -80,6 +107,9 @@ function main() {
         name: "pim1-railway-web-service",
         private: true,
         workspaces: ["apps/*"],
+        // Hoisted from apps/web devDependencies – installed by Railpack's npm install step
+        // even under NODE_ENV=production because they appear in root `dependencies`.
+        dependencies: { ...(sourcePkgJson.devDependencies ?? {}) },
         scripts: {
           build: "npm run build --workspace @pim1/web",
           start: "npm run start --workspace @pim1/web",
@@ -91,21 +121,11 @@ function main() {
     "utf8",
   );
 
-  // Use --include=dev in the npm install so devDependencies are installed even when
-  // Railway's Railpack builder sets NODE_ENV=production (which causes plain `npm install`
-  // to omit devDependencies). The web app's build tools – tailwindcss, postcss,
-  // autoprefixer, typescript – live in devDependencies and are required by `next build`.
-  // Without them, next build crashes silently (SIGKILL before any output is produced)
-  // because the PostCSS/Tailwind CSS pipeline fails to initialise.
-  //
-  // NOTE: changing this string invalidates the Railpack build cache (the cache key includes
-  // the buildCommand). That is intentional here – the cached node_modules from earlier runs
-  // was missing the devDependency build tools, so we *want* a fresh install that now
-  // includes them. After the first successful build the cache will be warm for all future
-  // deploys (as long as this string stays the same).
+  // buildCommand runs after Railpack's own install step, so all deps (including the
+  // hoisted devDeps above) are already in node_modules. No extra `npm install` needed.
   const railwayTomlContents = [
     "[build]",
-    'buildCommand = "npm install --include=dev && npm run build"',
+    'buildCommand = "npm run build"',
     "",
     "[deploy]",
     'startCommand = "npm run start"',
@@ -149,15 +169,12 @@ function main() {
 
   // Patch apps/web/package.json for Railway's build environment.
   //
-  // Problem 1 – devDependencies are skipped in production mode:
-  //   Railway's Railpack builder runs `npm install` with NODE_ENV=production, which causes
-  //   npm to omit devDependencies. The web app's build tools (tailwindcss, postcss,
-  //   autoprefixer, typescript) are all in devDependencies and would not be installed,
-  //   breaking `next build` silently (SIGKILL before any error is printed).
-  //   Fix: merge devDependencies into dependencies in the Railway package output so that
-  //   all build tools are installed regardless of NODE_ENV.
+  // Change 1 – devDeps→deps merge (belt-and-suspenders alongside root-level hoist above):
+  //   Merging devDependencies into dependencies ensures the workspace sub-package manifest
+  //   itself lists all build tools as production deps. The primary mechanism is the root
+  //   package.json hoist; this is a redundant safety net.
   //
-  // Problem 2 – OOM kill during next build:
+  // Change 2 – OOM kill during next build:
   //   Railway's Metal builder containers enforce a cgroup memory limit. Node.js 20's
   //   default V8 old-generation heap ceiling (≈2 GB) can cause the process to be
   //   SIGKILL-ed before it prints anything. Setting --max-old-space-size=1024 caps the
@@ -166,9 +183,8 @@ function main() {
   const webPackageJsonPath = path.join(appOutputDir, "package.json");
   const webPackageJson = JSON.parse(fs.readFileSync(webPackageJsonPath, "utf8"));
 
-  // Merge devDependencies into dependencies so Railway's production npm install includes
-  // all build tools. Source devDependencies come first so production deps take precedence
-  // if any name collision exists (none expected here).
+  // Merge devDependencies into dependencies (belt-and-suspenders; root hoist is primary).
+  // devDependencies come first so production deps take precedence on any name collision.
   webPackageJson.dependencies = {
     ...(webPackageJson.devDependencies ?? {}),
     ...(webPackageJson.dependencies ?? {}),
@@ -206,6 +222,7 @@ function main() {
         status: "ok",
         outputDir: path.relative(repoRoot, outputDir),
         rootPackageJson: path.relative(repoRoot, rootPackageJsonPath),
+        rootDepsHoisted: Object.keys(sourcePkgJson.devDependencies ?? {}),
         appPackageJson: path.relative(repoRoot, path.join(appOutputDir, "package.json")),
         tsconfigBase: path.relative(repoRoot, path.join(outputDir, "tsconfig.base.json")),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
