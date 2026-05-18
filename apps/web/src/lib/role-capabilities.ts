@@ -17,9 +17,9 @@ export function canResolveIssueInboxWarnings(role: AppRole): boolean {
 }
 
 export function canDecideApproval(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "approver" || role === "reviewer";
+  return role === "admin" || role === "editor" || role === "approver";
 }
 
-export function isReadOnlyRole(role: AppRole): boolean {
-  return !canEditWorkspace(role);
+export function canViewConnectors(role: AppRole): boolean {
+  return role === "admin" || role === "editor" || role === "connector_admin" || role === "channel_manager";
 }

@@ -134,7 +134,7 @@ export class CatalogController {
 
   @Post("products/:id/review-decision")
   @ApiClientScopes("catalog.write")
-  @Roles("admin", "editor", "reviewer", "approver")
+  @Roles("admin", "editor", "approver")
   @ApiOperation({ summary: "Approve or reject an in-review product" })
   @ApiResponse({ status: 201, description: "Review decision applied" })
   decideProductReview(
@@ -162,7 +162,7 @@ export class CatalogController {
   @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_product_detail_redacted")
-  @Roles("admin", "editor", "reviewer", "viewer")
+  @Roles("admin", "editor", "approver", "reviewer", "viewer")
   @ApiOperation({ summary: "List approval comments for a product" })
   @ApiResponse({ status: 200, description: "Comments fetched" })
   listApprovalComments(
@@ -176,7 +176,7 @@ export class CatalogController {
   @FoundationRoleAccess("category_manager", "vendor")
   @ApiClientScopes("catalog.read")
   @ReadAccessPolicy("catalog_product_detail_redacted")
-  @Roles("admin", "editor", "reviewer", "viewer")
+  @Roles("admin", "editor", "approver", "reviewer", "viewer")
   @ApiOperation({ summary: "Get activity timeline for a product" })
   @ApiResponse({ status: 200, description: "Activity events fetched" })
   getProductActivity(
