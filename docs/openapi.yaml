@@ -1727,6 +1727,19 @@ paths:
         "204":
           description: ""
       tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/bulk-publish:
+    post:
+      operationId: MarketplaceController_triggerBulkPublish
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
   /api/v1/marketplace/connectors/shopify/{installationId}/shopify-config:
     get:
       operationId: MarketplaceController_getShopifyConfig
