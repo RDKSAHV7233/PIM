@@ -91,10 +91,17 @@ function main() {
     "utf8",
   );
 
-  // NODE_OPTIONS is required — Next.js build OOMs on Railway without 4 GB heap.
+  // Do NOT set NODE_OPTIONS=--max-old-space-size in buildCommand.
+  // Railway's Metal builder containers enforce a cgroup memory limit that is lower than 4 GB.
+  // Setting --max-old-space-size=4096 causes Node.js to exceed that limit and get OOM-killed
+  // (SIGKILL, no output) during `next build`. The default V8 heap limit is sufficient for
+  // this app's build; prior successful deploys confirmed that. If a genuine OOM is ever
+  // observed in build logs ("JavaScript heap out of memory"), set a modest value such as
+  // NODE_OPTIONS="--max-old-space-size=1536" in the web app's package.json build script
+  // (not here) so it does not alter the Railpack cache key when the buildCommand is unchanged.
   const railwayTomlContents = [
     "[build]",
-    'buildCommand = "npm install && NODE_OPTIONS=\\"--max-old-space-size=4096\\" npm run build"',
+    'buildCommand = "npm install && npm run build"',
     "",
     "[deploy]",
     'startCommand = "npm run start"',
