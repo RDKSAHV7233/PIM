@@ -35,7 +35,6 @@ interface AdminUsersPageProps {
 const rolePermissions = [
   { role: "Admin", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "full" },
   { role: "Editor", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "limited" },
-  { role: "Reviewer", catalog: "read", channels: "read", ops: "read", quality: "approve", admin: "none" },
   { role: "Viewer", catalog: "read", channels: "read", ops: "read", quality: "read", admin: "none" },
 ];
 
@@ -269,7 +268,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           <Card>
             <CardTitle>Invite User</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              Add a workspace user with editor, reviewer, or viewer access. Admin promotion stays explicit after the user exists.
+              Add a workspace user with editor or viewer access. Admin promotion stays explicit after the user exists.
             </p>
             <form action={createWorkspaceUserAction} className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px_auto] md:items-end">
               <input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />
@@ -301,13 +300,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   aria-invalid={status === "user-error" && inviteFieldErrors.role ? "true" : undefined}
                   aria-describedby={status === "user-error" && inviteFieldErrors.role ? "workspace-user-role-error" : undefined}
                 >
-                  <option value="editor">Editor</option>
-                  <option value="publisher">Publisher</option>
-                  <option value="approver">Approver</option>
-                  <option value="channel_manager">Channel Manager</option>
-                  <option value="connector_admin">Connector Admin</option>
-                  <option value="reviewer">Reviewer</option>
-                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor — manage catalog, imports, and product data</option>
+                  <option value="viewer">Viewer — read-only access to catalog and reporting</option>
                 </select>
                 {status === "user-error" && inviteFieldErrors.role ? (
                   <p id="workspace-user-role-error" className="text-xs text-red-700">{errorMessage}</p>
@@ -357,11 +351,6 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                         >
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
-                          <option value="publisher">Publisher</option>
-                          <option value="approver">Approver</option>
-                          <option value="channel_manager">Channel Manager</option>
-                          <option value="connector_admin">Connector Admin</option>
-                          <option value="reviewer">Reviewer</option>
                           <option value="viewer">Viewer</option>
                         </select>
                         <button

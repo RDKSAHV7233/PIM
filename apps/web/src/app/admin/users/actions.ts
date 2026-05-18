@@ -16,7 +16,10 @@ import {
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
-const INVITE_ROLES: readonly AppRole[] = ["editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
+// Pilot UI exposes only 3 roles. Advanced roles (publisher, approver, channel_manager,
+// connector_admin, reviewer) remain in the system but are not offered in the invite flow.
+const PILOT_VISIBLE_ROLES: readonly AppRole[] = ["editor", "viewer"];
+const INVITE_ROLES = PILOT_VISIBLE_ROLES;
 
 async function requireAdminRequestOptions() {
   const authHeader = await getServerAuthHeader();
@@ -61,7 +64,7 @@ export async function createWorkspaceUserAction(formData: FormData) {
       throw new Error("User ID is required.");
     }
     if (!INVITE_ROLES.includes(role)) {
-      throw new Error("Role must be one of: editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer.");
+      throw new Error("Role must be one of: editor, viewer.");
     }
     await createWorkspaceUser({ userId, role }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
