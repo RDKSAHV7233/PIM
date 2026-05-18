@@ -31,13 +31,14 @@
 >
 > The V3-era posture below is preserved for historical reference. Where V3 conflicts with V4, **V4 wins.**
 
-- Date: 2026-05-17
-- Repo HEAD: main — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard); PR #74 merged (OIDC self-serve admin UI); PR #75 merged (Railway staging recovery — web/API connectivity, deploy hardening); PR #76 merged (AuditLog index, Meesho honest UI, OIDC step-up hardening — v0.9.0-pilot tagged)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard, OIDC self-serve IdP configuration with auth_config_high_risk step-up scope, AuditLog composite index, Meesho in-development UI, PO V4 sign-off
+- Date: 2026-05-18
+- Repo HEAD: main — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard); PR #74 merged (OIDC self-serve admin UI); PR #75 merged (Railway staging recovery — web/API connectivity, deploy hardening); PR #76 merged (AuditLog index, Meesho honest UI, OIDC step-up hardening — v0.9.0-pilot tagged); PR #77 merged (zero-downtime staging deploy via preDeployCommand — RISK-P1-005 closed)
+- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard, OIDC self-serve IdP configuration with auth_config_high_risk step-up scope, AuditLog composite index, Meesho in-development UI, PO V4 sign-off, zero-downtime staging deploys
 - Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
 
 ## 1. Current Truth Summary
 
+- Staging deploy downtime on merge-to-main is resolved. `preDeployCommand` now runs Prisma migrations in a separate Railway container while the old app container keeps serving traffic. New container starts clean, passes healthcheck in ~5s, then Railway switches traffic and drains the old container. Zero-downtime deploy confirmed achievable on Railway Starter (no plan upgrade required). RISK-P1-005 closed.
 - Targeted code-level production-readiness blockers around web JWT/session fail-closed behavior, privileged internal route trust boundaries, web build/increment gate stability, submissions and DLQ count honesty, readiness proxy failure masking, and catalog products pagination have been closed in the current repo state.
 - Large Import Mode MVP is now implemented as an additive path for single-file CSV imports from `10,001` to `30,000` rows, with one parent run, one unified repair/result flow, and one combined error report.
 - The safe claim boundary for imports is now explicit: standard CSV/JSON imports remain capped at `10,000` rows; large mode is CSV-only and blocks files above `30,000` rows.

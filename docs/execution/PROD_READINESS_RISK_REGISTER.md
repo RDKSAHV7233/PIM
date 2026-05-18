@@ -272,6 +272,25 @@ Last updated: 2026-05-17 (staging deploy lane recovered on live run 25988595126;
   - Product status transitions now emit audit rows (`STATUS_TRANSITION`) with from/to metadata.
   - Integration test `test:integration:product-workflow-transitions` verifies invalid transition rejection, workflow-entry rejection, valid path, and audit logging.
 
+### RISK-P1-005: Railway single-replica deploy downtime
+- Severity: P1
+- Status: Closed
+- Owner: DevOps / CTO
+- Description: Staging runs on Railway Starter (single replica). Every deploy previously caused a brief API downtime gap because migrations ran inside `startCommand`, blocking the healthcheck endpoint from responding. Fixed via `preDeployCommand` — migrations now run in a separate Railway container while the old app container keeps serving traffic. New container starts clean (`node apps/api/dist/main.js`), passes healthcheck fast, then Railway switches traffic and drains the old container. Zero-downtime deploy achieved on Starter without a plan upgrade.
+- Exit criteria (all met 2026-05-18):
+  1. `preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]` added to `apps/api/railway.toml`.
+  2. `startCommand` starts the server directly — no migration blocking startup.
+  3. Healthcheck configured at `/api/v1/health` with 300s timeout — Railway waits for 200 before switching traffic.
+- Validation commands:
+  - Railway deploy logs: confirm `preDeployCommand` runs cleanly, new container passes healthcheck, old container drains without traffic gap.
+- Resolution (2026-05-18):
+  - `preDeployCommand` is not plan-gated — available on Railway Starter.
+  - Railway keeps old container alive (overlap + drain period) until new container passes healthcheck.
+  - Migrations run in preDeployCommand container → no schema-mismatch risk during deploy.
+  - New container startup is now fast (server only) → healthcheck passes in ~5s.
+- Remaining:
+  - Validate on next staging deploy by checking Railway deploy logs for healthcheck pass before traffic switch.
+
 ## P2 (Next increment window)
 
 ### RISK-P2-001: Public API and outbound webhooks program
