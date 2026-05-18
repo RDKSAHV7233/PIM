@@ -84,20 +84,35 @@ function main() {
   };
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 
+  // Generate railway.toml for the packaged output.
+  // Paths differ from apps/api/railway.toml because the package root is the
+  // api directory itself (dist/ and scripts/ are at root, not apps/api/).
+  // preDeployCommand runs migrations in a separate Railway container while the
+  // old app container keeps serving traffic — zero-downtime on single replica.
   const railwayTomlContents = [
     "[build]",
     'buildCommand = "npm install && npm run build"',
     "",
     "[deploy]",
-    'startCommand = "node scripts/prisma-migrate-deploy.cjs && node dist/main.js"',
+    'preDeployCommand = ["node scripts/prisma-migrate-deploy.cjs"]',
+    'startCommand = "node dist/main.js"',
     'healthcheckPath = "/api/v1/health"',
     "healthcheckTimeout = 300",
     'restartPolicyType = "ON_FAILURE"',
     "restartPolicyMaxRetries = 10",
     "",
   ].join("\n");
+
+  // Write to package root (used when Railway reads config with --path-as-root).
   const railwayTomlPath = path.join(outputDir, "railway.toml");
   fs.writeFileSync(railwayTomlPath, railwayTomlContents, "utf8");
+
+  // Also write to apps/api/railway.toml within the package so Railway can find
+  // it if the service dashboard has the config file path set to that location.
+  const railwayTomlMirrorDir = path.join(outputDir, "apps", "api");
+  ensureDir(railwayTomlMirrorDir);
+  const railwayTomlMirrorPath = path.join(railwayTomlMirrorDir, "railway.toml");
+  fs.writeFileSync(railwayTomlMirrorPath, railwayTomlContents, "utf8");
 
   console.log(
     JSON.stringify(
@@ -108,6 +123,7 @@ function main() {
         schema: path.relative(repoRoot, path.join(prismaDir, "schema.prisma")),
         packageJson: path.relative(repoRoot, packageJsonPath),
         railwayToml: path.relative(repoRoot, railwayTomlPath),
+        railwayTomlMirror: path.relative(repoRoot, railwayTomlMirrorPath),
         migrateScript: path.relative(repoRoot, migrateScriptPath),
       },
       null,
