@@ -16,7 +16,7 @@ import {
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
-const INVITE_ROLES: readonly AppRole[] = ["editor", "reviewer", "viewer"];
+const INVITE_ROLES: readonly AppRole[] = ["editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
 
 async function requireAdminRequestOptions() {
   const authHeader = await getServerAuthHeader();
@@ -61,7 +61,7 @@ export async function createWorkspaceUserAction(formData: FormData) {
       throw new Error("User ID is required.");
     }
     if (!INVITE_ROLES.includes(role)) {
-      throw new Error("Role must be editor, reviewer, or viewer.");
+      throw new Error("Role must be one of: editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer.");
     }
     await createWorkspaceUser({ userId, role }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");

@@ -302,6 +302,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   aria-describedby={status === "user-error" && inviteFieldErrors.role ? "workspace-user-role-error" : undefined}
                 >
                   <option value="editor">Editor</option>
+                  <option value="publisher">Publisher</option>
+                  <option value="approver">Approver</option>
+                  <option value="channel_manager">Channel Manager</option>
+                  <option value="connector_admin">Connector Admin</option>
                   <option value="reviewer">Reviewer</option>
                   <option value="viewer">Viewer</option>
                 </select>
@@ -353,6 +357,10 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                         >
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
+                          <option value="publisher">Publisher</option>
+                          <option value="approver">Approver</option>
+                          <option value="channel_manager">Channel Manager</option>
+                          <option value="connector_admin">Connector Admin</option>
                           <option value="reviewer">Reviewer</option>
                           <option value="viewer">Viewer</option>
                         </select>

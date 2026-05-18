@@ -44,7 +44,7 @@ const adminLinks = [
     title: "Connector Access",
     description: "Grant/revoke install, reconnect, and uninstall actions.",
     href: "/admin/connectors",
-    visibility: "editor_plus" as AdminNavigationAudience,
+    visibility: "connector_admin_plus" as AdminNavigationAudience,
   },
   {
     title: "Outbound Webhooks",
