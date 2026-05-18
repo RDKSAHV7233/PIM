@@ -4,6 +4,14 @@ export function canEditWorkspace(role: AppRole): boolean {
   return role === "admin" || role === "editor";
 }
 
+export function canManageChannels(role: AppRole): boolean {
+  return role === "admin" || role === "editor" || role === "channel_manager";
+}
+
+export function canManageConnectors(role: AppRole): boolean {
+  return role === "admin" || role === "editor" || role === "connector_admin";
+}
+
 export function canResolveIssueInboxWarnings(role: AppRole): boolean {
   return role === "admin" || role === "editor";
 }

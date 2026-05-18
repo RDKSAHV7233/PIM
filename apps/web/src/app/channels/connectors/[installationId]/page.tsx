@@ -34,6 +34,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
+import { canManageConnectors } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
@@ -1366,7 +1367,7 @@ export default async function ChannelConnectorDetailPage({
                               name="publicationId"
                               value={target.id}
                               defaultChecked={Boolean(target.selected)}
-                              disabled={actorRole === "viewer"}
+                              disabled={!canManageConnectors(actorRole)}
                               className="mt-1 h-4 w-4 rounded border-slate-300"
                             />
                             <span className="min-w-0">
@@ -1380,7 +1381,7 @@ export default async function ChannelConnectorDetailPage({
                       </div>
                       <button
                         type="submit"
-                        disabled={actorRole === "viewer"}
+                        disabled={!canManageConnectors(actorRole)}
                         className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
                         Save publication targets
@@ -1718,7 +1719,7 @@ export default async function ChannelConnectorDetailPage({
                               name="publicationId"
                               value={target.id}
                               defaultChecked={Boolean(target.selected)}
-                              disabled={actorRole === "viewer"}
+                              disabled={!canManageConnectors(actorRole)}
                               className="mt-1 h-4 w-4 rounded border-slate-300"
                             />
                             <span className="min-w-0">
@@ -1733,13 +1734,13 @@ export default async function ChannelConnectorDetailPage({
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="submit"
-                          disabled={actorRole === "viewer"}
+                          disabled={!canManageConnectors(actorRole)}
                           className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                         >
                           Save publication targets
                         </button>
-                        {actorRole === "viewer" ? (
-                          <span className="text-xs text-slate-500">Viewer access can review targets but cannot change them.</span>
+                        {!canManageConnectors(actorRole) ? (
+                          <span className="text-xs text-slate-500">Your role can review targets but cannot change them.</span>
                         ) : null}
                       </div>
                     </form>

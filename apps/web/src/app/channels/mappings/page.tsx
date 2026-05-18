@@ -32,7 +32,7 @@ import type { ShopifyStoreConfig } from "@/lib/api/core";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSlug, normalizeChannel, resolveStepUpErrorMessage, type ProtectedMappingActionKind } from "@/lib/channel-mappings";
-import { canEditWorkspace } from "@/lib/role-capabilities";
+import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
@@ -204,7 +204,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canWrite = canEditWorkspace(actorRole);
+  const canWrite = canManageChannels(actorRole);
   const stepUpAction = (String(query.stepUpAction ?? "").trim() as ProtectedMappingActionKind | "") || "";
   const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
   const stepUpMessage = resolveStepUpErrorMessage(String(query.stepUpError ?? "").trim(), stepUpAction);
