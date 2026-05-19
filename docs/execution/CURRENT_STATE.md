@@ -1,5 +1,22 @@
 # Vexa PIM Current State
 
+> **V6 Addendum (2026-05-19) — Gate C implementation complete; CI-green; awaiting merge.**
+>
+> **All three Gate C enterprise feature PRs have CI-passing implementations in `bhoivishal216-ai/PIM1`:**
+> - PR #110 (`feat/product-relationships-rg-c4`) — RG-C4: product relationships (bundles, kits, accessories, cross-sell). Schema + migrations + API + tenant isolation test. CI: ✅ success.
+> - PR #111 (`feat/workflow-collab-rg-c5`) — RG-C5: workflow collaboration + SLA model (change requests, SLA config, overdue count). CI: ✅ success.
+> - PR #108 (`feat/rg-c6-enterprise-search`) — RG-C6: enterprise-scale search — faceted filters (status, brand, category, channel, free-text OR), cursor pagination, 7-assertion integration proof. CI: ✅ success.
+> - PR #109 (`fix/web-lint-oidc-and-kpi-channel`) — prerequisite web lint fixes. CI: ✅ success.
+>
+> **Repo migrated:** `RDKSAHV7233/PIM1` → `bhoivishal216-ai/PIM1` to restore GitHub Actions billing.
+> All 10 open PRs live with fresh CI runs. PRs #95, #96, #97, #102, #103, #104 CI runs in-progress.
+>
+> **Updated posture:**
+> - Enterprise signoff is **merge-blocked** (not "not scheduled") — RG-C4/C5/C6 are implemented, CI-green, pending PR merge.
+> - "Enterprise-ready" claim remains **Forbidden** until all three PRs land on `main`.
+> - Approved merge order: `#109 → #95 → #96 → #97 → #102 → #103 → #104 → #111 → #110 → #108`
+> - When PRs merge, enterprise signoff unblocks with no further engineering required.
+
 > **V4 Addendum (2026-05-17, evening) — supersedes V3 release posture below.**
 >
 > **Authoritative PO sign-off:** [PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md](./PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md). V3 is superseded.
