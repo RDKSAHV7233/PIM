@@ -13,9 +13,6 @@ const STEPS = [
     command: "npm",
     args: ["run", "test:integration:connector-idempotency-semantics"],
     retries: 1,
-    // Flipkart publish loop is incomplete (INC-10: ST-FK-RUNTIME-003/004/005 in_progress).
-    // Known-failing until Flipkart credential runtime and real publish path are implemented.
-    allowFailure: true,
   },
   {
     label: "Integration: webhook dedupe scope",

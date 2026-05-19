@@ -698,21 +698,17 @@ export class FlipkartConnector implements ConnectorInterface {
 
   private async noteCredentialWarning(ctx: ConnectorContext, warningReason: string): Promise<void> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
-      UPDATE connector_credentials
-      SET
-        failure_reason = $3,
-        updated_at = NOW()
-      WHERE tenant_key = $1
-        AND installation_id = $2
-        AND credential_type = 'refresh_token'
-      `,
-      ctx.tenantId,
-      ctx.installationId,
-      warningReason,
-    );
+    await db.connectorCredential.updateMany({
+      where: {
+        tenantKey: ctx.tenantId,
+        installationId: ctx.installationId,
+        credentialType: "refresh_token",
+      },
+      data: {
+        failureReason: warningReason,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async requireCredential(ctx: ConnectorContext, credentialType: string): Promise<string> {
