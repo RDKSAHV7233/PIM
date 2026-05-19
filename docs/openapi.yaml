@@ -2771,6 +2771,53 @@ paths:
         "200":
           description: ""
       tags: *a20
+  /api/v1/catalog/products/{id}/relationships:
+    post:
+      operationId: CatalogController_createRelationship
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRelationshipDto"
+      responses:
+        "201":
+          description: Relationship created
+      summary: Create a product relationship (bundle, kit, accessory, etc.)
+      tags: *a20
+    get:
+      operationId: CatalogController_listRelationships
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Relationships fetched
+      summary: List outgoing and incoming product relationships
+      tags: *a20
+  /api/v1/catalog/relationships/{relationshipId}:
+    delete:
+      operationId: CatalogController_deleteRelationship
+      parameters:
+        - name: relationshipId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Relationship deleted
+      summary: Delete a product relationship
+      tags: *a20
   /api/v1/products:
     get:
       operationId: ProductsController_listProducts
@@ -3668,6 +3715,9 @@ components:
       type: object
       properties: {}
     UpdateVariantDto:
+      type: object
+      properties: {}
+    CreateProductRelationshipDto:
       type: object
       properties: {}
     CreateMediaAssetDto:

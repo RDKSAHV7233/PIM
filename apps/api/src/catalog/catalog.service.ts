@@ -1,5 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AppliesTo, Prisma, RecordStatus, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
@@ -1555,4 +1555,76 @@ export class CatalogService {
     };
   }
 
+  // ─── RG-C4: Product Relationships ─────────────────────────────────────────
+
+  async createRelationship(
+    sourceProductId: string,
+    dto: { targetProductId: string; type: ProductRelationshipType; quantityInParent?: number; sortOrder?: number },
+    actor: ActorContext,
+  ) {
+    const tenantKey = actor.tenantId ?? "default";
+
+    const [source, target] = await Promise.all([
+      this.prisma.tenant().product.findFirst({ where: { id: sourceProductId, tenantKey, deletedAt: null } }),
+      this.prisma.tenant().product.findFirst({ where: { id: dto.targetProductId, tenantKey, deletedAt: null } }),
+    ]);
+    if (!source) throw new NotFoundException("Source product not found");
+    if (!target) throw new NotFoundException("Target product not found");
+    if (sourceProductId === dto.targetProductId) throw new BadRequestException("Source and target must differ");
+
+    try {
+      const rel = await this.prisma.tenant().productRelationship.create({
+        data: {
+          id: `${sourceProductId}_${dto.targetProductId}_${dto.type}_${Date.now()}`,
+          tenantKey,
+          sourceProductId,
+          targetProductId: dto.targetProductId,
+          type: dto.type,
+          quantityInParent: dto.quantityInParent ?? null,
+          sortOrder: dto.sortOrder ?? 0,
+        },
+      });
+      return rel;
+    } catch (err: unknown) {
+      const msg = String((err as { message?: string }).message ?? "");
+      if (msg.includes("uq_product_relationship_source_target_type")) {
+        throw new ConflictException("Relationship of this type already exists between these products");
+      }
+      throw err;
+    }
+  }
+
+  async listRelationships(productId: string, actor: ActorContext) {
+    const tenantKey = actor.tenantId ?? "default";
+    const product = await this.prisma.tenant().product.findFirst({ where: { id: productId, tenantKey, deletedAt: null } });
+    if (!product) throw new NotFoundException("Product not found");
+
+    const [from, to] = await Promise.all([
+      this.prisma.tenant().productRelationship.findMany({
+        where: { sourceProductId: productId, tenantKey },
+        include: { targetProduct: { select: { id: true, title: true, status: true } } },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.tenant().productRelationship.findMany({
+        where: { targetProductId: productId, tenantKey },
+        include: { sourceProduct: { select: { id: true, title: true, status: true } } },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+    ]);
+
+    return { outgoing: from, incoming: to };
+  }
+
+  async deleteRelationship(relationshipId: string, actor: ActorContext) {
+    const tenantKey = actor.tenantId ?? "default";
+    const rel = await this.prisma.tenant().productRelationship.findFirst({ where: { id: relationshipId, tenantKey } });
+    if (!rel) throw new NotFoundException("Relationship not found");
+
+    if (actor.role !== "admin" && actor.role !== "editor") {
+      throw new ForbiddenException("Only admins and editors may delete product relationships");
+    }
+
+    await this.prisma.tenant().productRelationship.delete({ where: { id: relationshipId } });
+    return { deleted: true };
+  }
 }

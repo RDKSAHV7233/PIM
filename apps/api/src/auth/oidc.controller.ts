@@ -15,14 +15,14 @@ import {
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Roles } from "../common/rbac/roles";
+import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
+import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { OidcConfigService } from "./oidc-config.service";
 import { OidcService } from "./oidc.service";
 import { OidcAuthService } from "./oidc-auth.service";
 import { Public } from "./public.decorator";
 import { UpsertOidcConfigDto } from "./dto/upsert-oidc-config.dto";
-import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
-import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { RequireStepUp } from "./step-up.decorator";
 import { StepUpGuard } from "./step-up.guard";
 import { STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK } from "./jwt";

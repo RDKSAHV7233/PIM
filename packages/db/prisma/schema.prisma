@@ -198,12 +198,14 @@ model Product {
   variants         Variant[]
   translations     ProductTranslation[]
   mediaAssets      MediaAsset[]
-  validationIssues ValidationIssue[] @relation("ProductValidationIssues")
-  exportJobs       MarketplaceExportJob[]
-  importedRows     BulkImportRow[]
-  bulkEditItems    BulkEditOperationItem[]
-  changeRequests   ChangeRequest[]
-  deletedAt        DateTime?
+  validationIssues  ValidationIssue[] @relation("ProductValidationIssues")
+  exportJobs        MarketplaceExportJob[]
+  importedRows      BulkImportRow[]
+  bulkEditItems     BulkEditOperationItem[]
+  changeRequests    ChangeRequest[]
+  relationshipsFrom ProductRelationship[] @relation("RelationshipSource")
+  relationshipsTo   ProductRelationship[] @relation("RelationshipTarget")
+  deletedAt         DateTime?
   purgedById       String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -1289,4 +1291,37 @@ model OidcConfig {
 
   @@index([tenantKey, status])
   @@map("oidc_configs")
+}
+
+// ── RG-C4: Product relationships / bundles / kits ─────────────────────────
+
+enum ProductRelationshipType {
+  bundle_component  // this product is a component of a bundle
+  bundle_parent     // this product is the bundle containing components
+  kit_component     // this product is a component of a kit
+  kit_parent        // this product is the kit containing components
+  accessory         // this product is an accessory for the related product
+  replacement       // this product is a replacement/substitute
+  similar           // this product is similar/related
+}
+
+model ProductRelationship {
+  id              String                  @id @default(cuid())
+  tenantKey       String                  @default("default") @map("tenant_key")
+  sourceProductId String                  @map("source_product_id")
+  sourceProduct   Product                 @relation("RelationshipSource", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  targetProductId String                  @map("target_product_id")
+  targetProduct   Product                 @relation("RelationshipTarget", fields: [targetProductId], references: [id], onDelete: Cascade)
+  type            ProductRelationshipType
+  quantityInParent Int?                   @map("quantity_in_parent")
+  sortOrder       Int                     @default(0) @map("sort_order")
+  metadata        Json                    @default("{}")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  @@unique([tenantKey, sourceProductId, targetProductId, type], map: "uq_product_relationship_source_target_type")
+  @@index([tenantKey, sourceProductId], map: "idx_product_relationships_source")
+  @@index([tenantKey, targetProductId], map: "idx_product_relationships_target")
+  @@index([tenantKey, type], map: "idx_product_relationships_type")
+  @@map("product_relationships")
 }

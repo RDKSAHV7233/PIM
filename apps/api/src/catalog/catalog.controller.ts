@@ -11,6 +11,7 @@ import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-ac
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
 import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
+import { CreateProductRelationshipDto } from "./dto/create-product-relationship.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { DecideProductReviewDto } from "./dto/decide-product-review.dto";
@@ -350,5 +351,49 @@ export class CatalogController {
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
   ) {
     return this.catalogService.deleteVariant(variantId, this.resolveActor(request));
+  }
+
+  // ─── RG-C4: Product Relationships ──────────────────────────────────────────
+
+  @Post("products/:id/relationships")
+  @FoundationRoleAccess("category_manager")
+  @ApiClientScopes("catalog.write")
+  @Roles("admin", "editor")
+  @ApiOperation({ summary: "Create a product relationship (bundle, kit, accessory, etc.)" })
+  @ApiResponse({ status: 201, description: "Relationship created" })
+  createRelationship(
+    @Param("id") sourceProductId: string,
+    @Body() dto: CreateProductRelationshipDto,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.createRelationship(sourceProductId, dto, this.resolveActor(request));
+  }
+
+  @Get("products/:id/relationships")
+  @FoundationRoleAccess("category_manager", "vendor")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_product_detail_redacted")
+  @Roles("admin", "editor", "reviewer", "viewer")
+  @ApiOperation({ summary: "List outgoing and incoming product relationships" })
+  @ApiResponse({ status: 200, description: "Relationships fetched" })
+  listRelationships(
+    @Param("id") productId: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.listRelationships(productId, this.resolveActor(request));
+  }
+
+  @Delete("relationships/:relationshipId")
+  @FoundationRoleAccess("category_manager")
+  @ApiClientScopes("catalog.write")
+  @Roles("admin", "editor")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Delete a product relationship" })
+  @ApiResponse({ status: 200, description: "Relationship deleted" })
+  deleteRelationship(
+    @Param("relationshipId") relationshipId: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.deleteRelationship(relationshipId, this.resolveActor(request));
   }
 }
