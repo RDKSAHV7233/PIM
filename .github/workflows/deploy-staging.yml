@@ -59,6 +59,7 @@ jobs:
           DATABASE_URL_DIRECT: ${{ secrets.STAGING_DATABASE_URL_DIRECT }}
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           PIM_AUTH_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          STAGING_SMOKE_TENANT_ID: ${{ secrets.STAGING_SMOKE_TENANT_ID }}
         run: |
           if [ -z "${DATABASE_URL_DIRECT}" ] && [ -z "${DATABASE_URL}" ]; then
             echo "Missing STAGING_DATABASE_URL_DIRECT or STAGING_DATABASE_URL secret for auth hash backfill."
@@ -68,7 +69,11 @@ jobs:
             echo "Missing STAGING_SMOKE_PASSWORD secret for auth hash backfill."
             exit 1
           fi
-          node scripts/migrate-legacy-auth-password-hashes.cjs
+          if [ -z "${STAGING_SMOKE_TENANT_ID}" ]; then
+            echo "Missing STAGING_SMOKE_TENANT_ID secret — cannot scope auth hash backfill to staging tenant."
+            exit 1
+          fi
+          node scripts/migrate-legacy-auth-password-hashes.cjs --tenant "${STAGING_SMOKE_TENANT_ID}"
 
       - name: Build API
         run: npm run build --workspace @pim1/api
