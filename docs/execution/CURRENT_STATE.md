@@ -1,5 +1,49 @@
 # Vexa PIM Current State
 
+> **V7 Addendum (2026-05-20) — All 11 PRs merged; main CI green; Deploy Staging unblocked.**
+>
+> **Sprint closure complete.** All Gate C enterprise features are live on `main`. Enterprise
+> signoff is **unblocked** — no further engineering required per V6 addendum.
+>
+> **Merge sequence (in order, all squash-merged):**
+> | PR | Title | SHA |
+> |----|-------|-----|
+> | #109 | fix(web): remove duplicate OIDC exports | `dd789c8` |
+> | #95 | fix(ondc): explicit tenant_key in raw SQL | `04c0552` |
+> | #96 | feat(deploy): Railway production deploy pipeline | `53cd926` |
+> | #97 | fix(flipkart): INC-10 ORM conversion | `4963167` |
+> | #102 | test(gates): full 96/96 integration coverage | `18ea7e1` |
+> | #103 | feat(meesho): validation and Excel export | `fd92b06` |
+> | #104 | fix(shopify): BUG-1 multi-variant + image | `f334a76` |
+> | #111 | feat(workflow): RG-C5 collaboration + SLA model | `544cefb` |
+> | #110 | feat(catalog): RG-C4 product relationships | `e887e3b` |
+> | #108 | feat(catalog): RG-C6 enterprise search | `c97c399` |
+> | #112 | fix(deploy): scope backfill to STAGING_SMOKE_TENANT_ID | `b9b796d` |
+>
+> **Post-merge CI state (HEAD `b9b796d`):**
+> - CI workflow: ✅ success
+> - Deploy Staging: was ❌ failure on `c97c399` (backfill step lacked `--tenant` after
+>   `assertTenantScope` guard landed in PR #96); fixed by PR #112 and now unblocked.
+>
+> **Open PRs:** 0
+>
+> **What is now live on main:**
+> - RG-C4: Product relationships, bundles, kits — full CRUD + tenant isolation + migration `000007`
+> - RG-C5: Workflow collaboration + SLA — change requests, SLA config, overdue count + migration `000006`
+> - RG-C6: Enterprise search — faceted filters (status/brand/category/channel/full-text), cursor pagination, 7-assertion proof
+> - Meesho: local validation rules + Excel export (xlsx magic bytes)
+> - Shopify: BUG-1 multi-variant `optionValues` + image filename fix
+> - 96/96 integration gates consolidated and passing in CI
+> - Railway production deploy pipeline (promote-stage3) with `assertTenantScope` guard
+> - ONDC raw SQL tenant isolation
+> - Flipkart INC-10 ORM conversion
+>
+> **Immediate next priorities (engineering backlog):**
+> 1. Fresh staging rollout snapshot with `observationWindowDaysCovered` _(target 2026-05-21)_
+> 2. `gate:run:sprint` executed on staging _(target 2026-05-23)_
+> 3. Enterprise customer demo prep — RG-C4/C5/C6 feature tour against staging
+> 4. Promote-stage3 workflow first live run to production (gated on staging gate signoff)
+
 > **V6 Addendum (2026-05-19) — Gate C implementation complete; CI-green; awaiting merge.**
 >
 > **All three Gate C enterprise feature PRs have CI-passing implementations in `bhoivishal216-ai/PIM1`:**
