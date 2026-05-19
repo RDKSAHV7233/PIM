@@ -1693,26 +1693,42 @@ export class ShopifyConnector implements ConnectorInterface {
       },
     ];
 
-    const isMultiVariant = product.variants && product.variants.length > 0;
+    const isMultiVariant = Array.isArray(product.variants) && product.variants.length > 0;
+
     const variants: Record<string, unknown>[] = isMultiVariant
-      ? product.variants!.map((v) => this.buildVariantInput(v.sku, v.sellingPrice, v.mrp, {
-          compareAtPrice: v.compareAtPrice,
-          barcode: v.barcode,
-          weight: v.weight,
-          weightUnit: v.weightUnit,
-          taxable: v.taxable,
-          inventoryPolicy: v.inventoryPolicy,
-          optionValues: [{ optionName: "Title", name: "Default Title" }],
+      ? product.variants!.map((v) => ({
+          ...this.buildVariantInput(v.sku, v.sellingPrice, v.mrp, {
+            compareAtPrice: v.compareAtPrice,
+            barcode: v.barcode,
+            weight: v.weight,
+            weightUnit: v.weightUnit,
+            taxable: v.taxable,
+            inventoryPolicy: v.inventoryPolicy,
+          }),
+          optionValues: Array.isArray(v.options) && v.options.length > 0
+            ? v.options
+            : [{ optionName: "Title", name: "Default Title" }],
         }))
-      : [this.buildVariantInput(
-          String(product.sku ?? "").trim(),
-          product.sellingPrice,
-          product.mrp,
-          { compareAtPrice: product.compareAtPrice },
-        )];
-    const productOptions = !isMultiVariant
-      ? [{ name: "Title", values: [{ name: "Default Title" }] }]
-      : undefined;
+      : [{
+          ...this.buildVariantInput(
+            String(product.sku ?? "").trim(),
+            product.sellingPrice,
+            product.mrp,
+            { compareAtPrice: product.compareAtPrice },
+          ),
+          optionValues: [{ optionName: "Title", name: "Default Title" }],
+        }];
+
+    // Derive productOptions from the first variant's option names for multi-variant products.
+    const productOptions: Record<string, unknown>[] = isMultiVariant && product.variants![0]?.options?.length
+      ? product.variants![0].options.map((opt, i) => ({
+          name: opt.optionName,
+          position: i + 1,
+          values: [...new Set(
+            product.variants!.map((v) => v.options?.find((o) => o.optionName === opt.optionName)?.name ?? "Default")
+          )].filter(Boolean).map((name) => ({ name })),
+        }))
+      : [{ name: "Title", position: 1, values: [{ name: "Default Title" }] }];
 
     const seoTitle = this.normalizeOptionalString(product.seoTitle);
     const seoDescription = this.normalizeOptionalString(product.seoDescription);
@@ -1720,6 +1736,15 @@ export class ShopifyConnector implements ConnectorInterface {
       ? product.tags.map((t) => String(t ?? "").trim()).filter(Boolean)
       : undefined;
     const status = product.status === "DRAFT" ? "DRAFT" : "ACTIVE";
+
+    // Derive image filename extension from the URL to satisfy Shopify's validation.
+    // If the URL path has no recognizable extension, omit filename entirely.
+    const imageUrl = String(product.mainImageUrl ?? "").trim();
+    const urlPath = (() => { try { return new URL(imageUrl).pathname; } catch { return imageUrl; } })();
+    const extMatch = urlPath.split("/").pop()?.split(".").slice(1).pop()?.toLowerCase();
+    const imageFilename = extMatch && /^[a-z0-9]{2,5}$/.test(extMatch)
+      ? `product-image.${extMatch}`
+      : undefined;
 
     return {
       title,
@@ -1730,14 +1755,14 @@ export class ShopifyConnector implements ConnectorInterface {
       ...(productType ? { productType } : {}),
       ...(seoTitle || seoDescription ? { seo: { ...(seoTitle ? { title: seoTitle } : {}), ...(seoDescription ? { description: seoDescription } : {}) } } : {}),
       ...(tags ? { tags } : {}),
-      ...(productOptions ? { productOptions } : {}),
       metafields,
+      productOptions,
       files: [
         {
-          originalSource: String(product.mainImageUrl ?? "").trim(),
+          originalSource: imageUrl,
           alt: title,
           contentType: "IMAGE",
-          filename: `${handle || "vexa-product"}.jpg`,
+          ...(imageFilename ? { filename: imageFilename } : {}),
         },
       ],
       variants,

@@ -42,6 +42,8 @@ export type ProductVariantPayload = {
   inventoryPolicy?: "CONTINUE" | "DENY";
   imageUrl?: string;
   attributes?: Record<string, unknown>;
+  // Shopify option dimensions derived from differing variant attributes, e.g. [{optionName:"color",name:"Red"}]
+  options?: { optionName: string; name: string }[];
 };
 
 export type ProductPayload = {

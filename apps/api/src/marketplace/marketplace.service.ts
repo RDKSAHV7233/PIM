@@ -2525,7 +2525,7 @@ export class MarketplaceService implements OnModuleInit {
       "general",
     );
 
-    const variants: import("../connector-framework/connector.interface").ProductVariantPayload[] = product.variants.map((v) => {
+    const rawVariants = product.variants.map((v) => {
       const va = this.asRecord(v.attributes);
       const vMrp = this.firstNumber(v.mrp, pricing.mrp, attributes.mrp, attributes.price);
       const vPrice = this.firstNumber(v.sellingPrice, pricing.sellingPrice, attributes.sellingPrice, vMrp);
@@ -2541,6 +2541,21 @@ export class MarketplaceService implements OnModuleInit {
         attributes: va,
       };
     });
+
+    // Detect which attribute keys differ across variants — those become Shopify option dimensions.
+    // Convention: attribute key = option name, attribute value = option value (e.g. color → Red).
+    const allAttrKeys = new Set(rawVariants.flatMap((v) => Object.keys(v.attributes)));
+    const optionKeys = [...allAttrKeys].filter((key) => {
+      const values = new Set(rawVariants.map((v) => String(v.attributes[key] ?? "")));
+      return values.size > 1;
+    });
+
+    const variants: import("../connector-framework/connector.interface").ProductVariantPayload[] = rawVariants.map((v) => ({
+      ...v,
+      options: optionKeys.length > 0
+        ? optionKeys.map((key) => ({ optionName: key, name: String(v.attributes[key] ?? "").trim() || "Default" }))
+        : undefined,
+    }));
 
     const seoTitle = this.firstNonEmptyString(attributes.seoTitle, attributes.seo_title) || undefined;
     const seoDescription = this.firstNonEmptyString(attributes.seoDescription, attributes.seo_description) || undefined;
