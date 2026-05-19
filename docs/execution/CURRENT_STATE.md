@@ -1,5 +1,53 @@
 # Vexa PIM Current State
 
+> **V8 Addendum (2026-05-20) — Staging pipeline fully green; both rollout windows satisfied; promote-stage3 ready.**
+>
+> **Staging deploy pipeline — first full end-to-end success on HEAD `038ee8c`:**
+> - CI: ✅ · Deploy Staging: ✅ (all 19 steps including post-deploy verification, E2E smoke, rollout snapshot)
+> - Two final deploy fixes merged after the sprint: #112 (backfill `--tenant`), #113 (web service `PIM_API_BASE_URL` sync via `railway variables set`)
+>
+> **E2E smoke result (run 26119883290, sha `038ee8c`):** 28/30 pass · 0 fail · 2 skip
+> - All functional checks pass: auth, catalog create/validate/submit/approve, mappings, dashboard, billing, users, audit
+> - `delete_category` cleanup skipped — soft-deleted product still referenced; functional test data correct, cleanup ordering only
+> - `delete_variant` skipped — no variant created in smoke path (expected)
+>
+> **Rollout snapshot (2026-05-19T19:28:58Z):** ✅ ALL criteria met
+> | Gate | Required | Actual | Status |
+> |------|----------|--------|--------|
+> | Observation window covered | 14 days | 14 days | ✅ |
+> | SLO trend window covered | 14 days | 14 days | ✅ |
+> | Two consecutive E10 signoff runs | 2 | 2 | ✅ |
+> | Pilot workflow evidence | present | present | ✅ |
+> | Governance evidence | present | present | ✅ |
+> | Health endpoint | healthy | healthy | ✅ |
+> | Controlled rollout pending | 0 | 0 | ✅ |
+> | Broad rollout pending | 0 | 0 | ✅ |
+>
+> **Promote-stage3 status: READY TO RUN** (pending ops secrets below)
+>
+> **Required secrets before triggering promote-stage3:**
+> | Secret | Purpose |
+> |--------|---------|
+> | `STAGE3_DATABASE_URL_DIRECT` | Production DB — migrations + RLS verify |
+> | `STAGE3_DATABASE_URL` | Production DB — pooled connection |
+> | `STAGE3_WEB_URL` | Production web URL — post-deploy verification |
+> | `STAGE3_SMOKE_WORKSPACE` | Production smoke test workspace slug |
+> | `STAGE3_SMOKE_USER` | Production smoke test email |
+> | `STAGE3_SMOKE_PASSWORD` | Production smoke test password |
+>
+> Dispatch input: `staging_url` = production API base URL (e.g. `https://api.vexapim.com`)
+>
+> **Known staging gaps (non-blocking for promote):**
+> - `account-export` queue: 1 stale failed job — caused by missing `R2_*` secrets on Railway staging (Cloudflare R2 not configured). Ops task: add `R2_BUCKET_NAME`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` to Railway staging service vars, then use Bull board or `redis-cli` to clear the failed job.
+> - `delete_category` E2E cleanup: category deletion fails after soft-delete of product (category still sees soft-deleted product as a reference). Engineering task: fix cleanup ordering in `scripts/e2e-user-journey.cjs` to hard-purge or skip category cleanup when product was soft-deleted.
+>
+> **Updated engineering priority stack:**
+> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
+> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
+> 3. **Fix `delete_category` cleanup skip** in E2E journey _(engineering task, low urgency)_
+> 4. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
+> 5. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+
 > **V7 Addendum (2026-05-20) — All 11 PRs merged; main CI green; Deploy Staging unblocked.**
 >
 > **Sprint closure complete.** All Gate C enterprise features are live on `main`. Enterprise
