@@ -475,6 +475,218 @@ export class CatalogService {
     return { items };
   }
 
+  /**
+   * RG-C6: Advanced catalog search with faceted filtering and cursor pagination.
+   * Supports multi-dimensional filtering: status[], categoryId, brand, channelSlug,
+   * plus full-text q across title/SKU/brand/description. Cursor-paginated for
+   * large-catalog performance. Applies access-policy scope and response redaction.
+   */
+  async advancedSearchProducts(
+    params: {
+      q?: string;
+      status?: string[];
+      categoryId?: string;
+      brand?: string;
+      channelSlug?: string;
+      cursor?: string;
+      limit?: number;
+      sort?: "updatedAt" | "createdAt" | "title";
+      sortDir?: "asc" | "desc";
+    },
+    actor?: ActorContext,
+  ) {
+    const policyActor = this.toPolicyActor(actor);
+    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(policyActor, "view");
+    const pageLimit = Math.max(1, Math.min(100, Number.isFinite(params.limit) ? Number(params.limit) : 20));
+    const sort = params.sort ?? "updatedAt";
+    const sortDir: "asc" | "desc" = params.sortDir ?? "desc";
+    const token = params.cursor ? decodeCursorToken(params.cursor) : null;
+    if (params.cursor && !token) {
+      throw new BadRequestException("Invalid cursor token.");
+    }
+
+    const filterClauses: Prisma.ProductWhereInput[] = [];
+
+    // Full-text query across title, description, brand, and variant SKU codes
+    const q = String(params.q ?? "").trim();
+    if (q) {
+      filterClauses.push({
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+          { brand: { contains: q, mode: "insensitive" } },
+          { variants: { some: { skuCode: { contains: q, mode: "insensitive" } } } },
+        ],
+      });
+    }
+
+    // Status multi-filter — validate each value against RecordStatus enum
+    if (Array.isArray(params.status) && params.status.length > 0) {
+      const validStatuses = params.status
+        .map((s) => String(s).trim())
+        .filter((s) => Object.values(RecordStatus).includes(s as RecordStatus))
+        .map((s) => s as RecordStatus);
+      if (validStatuses.length > 0) {
+        filterClauses.push({ status: { in: validStatuses } });
+      }
+    }
+
+    // Category exact-match (tenant-scoped implicitly via scopeWhere)
+    if (params.categoryId) {
+      filterClauses.push({ categoryId: params.categoryId });
+    }
+
+    // Brand partial match (case-insensitive ILIKE)
+    if (params.brand) {
+      const brandTrimmed = String(params.brand).trim();
+      if (brandTrimmed) {
+        filterClauses.push({ brand: { contains: brandTrimmed, mode: "insensitive" } });
+      }
+    }
+
+    // Channel/connector submission filter — resolves slug → definition → installations → product IDs
+    if (params.channelSlug) {
+      const channelDef = await this.prisma.tenant().connectorDefinition.findFirst({
+        where: { slug: params.channelSlug },
+        select: { id: true },
+      });
+      if (!channelDef) {
+        return {
+          items: [],
+          limit: pageLimit,
+          total: null as null,
+          nextCursor: null as null,
+          filters: { channelSlug: params.channelSlug },
+        };
+      }
+      const channelInstallations = await this.prisma.tenant().connectorInstallation.findMany({
+        where: { connectorId: channelDef.id },
+        select: { id: true },
+      });
+      if (channelInstallations.length === 0) {
+        return {
+          items: [],
+          limit: pageLimit,
+          total: null as null,
+          nextCursor: null as null,
+          filters: { channelSlug: params.channelSlug },
+        };
+      }
+      const channelSubmissions = await this.prisma.tenant().connectorSubmission.findMany({
+        where: { installationId: { in: channelInstallations.map((i) => i.id) } },
+        select: { productId: true },
+        distinct: ["productId"],
+      });
+      const channelProductIds = channelSubmissions.map((s) => s.productId);
+      if (channelProductIds.length === 0) {
+        return {
+          items: [],
+          limit: pageLimit,
+          total: null as null,
+          nextCursor: null as null,
+          filters: { channelSlug: params.channelSlug },
+        };
+      }
+      filterClauses.push({ id: { in: channelProductIds } });
+    }
+
+    // Cursor clause — date-based for updatedAt/createdAt; lexicographic for title/status
+    let cursorWhere: Prisma.ProductWhereInput | undefined;
+    if (token) {
+      if (sort === "updatedAt" || sort === "createdAt") {
+        const cursorDate = new Date(token.sort);
+        if (Number.isNaN(cursorDate.getTime())) {
+          throw new BadRequestException("Invalid cursor token.");
+        }
+        const dateCompare = sortDir === "desc" ? { lt: cursorDate } : { gt: cursorDate };
+        const tiebreakId = sortDir === "desc" ? { lt: token.id } : { gt: token.id };
+        cursorWhere =
+          sort === "updatedAt"
+            ? { OR: [{ updatedAt: dateCompare }, { updatedAt: { equals: cursorDate }, id: tiebreakId }] }
+            : { OR: [{ createdAt: dateCompare }, { createdAt: { equals: cursorDate }, id: tiebreakId }] };
+      } else if (sort === "title") {
+        const strCompare = sortDir === "desc" ? { lt: token.sort } : { gt: token.sort };
+        const tiebreakId = sortDir === "desc" ? { lt: token.id } : { gt: token.id };
+        cursorWhere = { OR: [{ title: strCompare }, { title: { equals: token.sort }, id: tiebreakId }] };
+      } else {
+        // sort === "title" already handled above; exhaustive guard for type safety
+        cursorWhere = undefined;
+      }
+    }
+
+    // Compose final WHERE: [cursor] AND [user filters] AND [access-policy scope]
+    const allClauses: Prisma.ProductWhereInput[] = [];
+    if (cursorWhere) allClauses.push(cursorWhere);
+    if (filterClauses.length > 0) allClauses.push({ AND: filterClauses });
+    if (scopeWhere) allClauses.push(scopeWhere as Prisma.ProductWhereInput);
+    const fullWhere: Prisma.ProductWhereInput = allClauses.length > 0 ? { AND: allClauses } : {};
+
+    const orderBy: Prisma.ProductOrderByWithRelationInput[] =
+      sort === "createdAt" ? [{ createdAt: sortDir }, { id: sortDir }] :
+      sort === "title"     ? [{ title: sortDir }, { id: sortDir }] :
+                             [{ updatedAt: sortDir }, { id: sortDir }];
+
+    const products = await this.prisma.tenant().product.findMany({
+      where: fullWhere,
+      select: {
+        id: true,
+        title: true,
+        brand: true,
+        description: true,
+        categoryId: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        category: { select: { name: true, path: true } },
+        variants: { select: { skuCode: true } },
+        _count: { select: { variants: true } },
+      },
+      orderBy,
+      take: pageLimit + 1,
+    });
+
+    const hasNext = products.length > pageLimit;
+    const page = hasNext ? products.slice(0, pageLimit) : products;
+    const scored = await this.attachCompletenessScores(page);
+
+    const items = this.accessPolicy.applyReadResponsePolicy(
+      policyActor,
+      "catalog_products_redacted",
+      scored.map((p) => ({
+        ...p,
+        variantCount: p._count.variants,
+        skuCodes: p.variants.map((v) => v.skuCode),
+      })),
+    );
+
+    const last = page[page.length - 1];
+    let nextCursor: string | null = null;
+    if (hasNext && last) {
+      const sortValue =
+        sort === "createdAt" ? last.createdAt.toISOString() :
+        sort === "title"     ? String(last.title ?? "") :
+                               last.updatedAt.toISOString();
+      nextCursor = encodeCursorToken({ sort: sortValue, id: last.id });
+    }
+
+    return {
+      items,
+      limit: pageLimit,
+      total: null as null,
+      nextCursor,
+      filters: {
+        q: q || undefined,
+        status: Array.isArray(params.status) && params.status.length > 0 ? params.status : undefined,
+        categoryId: params.categoryId || undefined,
+        brand: params.brand || undefined,
+        channelSlug: params.channelSlug || undefined,
+      },
+    };
+  }
+
   async createProduct(dto: CreateProductDto, actor?: ActorContext) {
     await this.requireCategory(dto.categoryId);
     await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "create", {

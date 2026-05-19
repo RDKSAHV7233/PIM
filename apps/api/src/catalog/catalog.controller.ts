@@ -15,6 +15,7 @@ import { CreateProductRelationshipDto } from "./dto/create-product-relationship.
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { DecideProductReviewDto } from "./dto/decide-product-review.dto";
+import { AdvancedSearchProductsDto } from "./dto/advanced-search-products.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
 
@@ -75,6 +76,32 @@ export class CatalogController {
   ) {
     const parsedLimit = limit ? Number(limit) : undefined;
     return this.catalogService.searchProducts(query, parsedLimit, this.resolveActor(request));
+  }
+
+  @Get("products/advanced-search")
+  @FoundationRoleAccess("category_manager", "vendor")
+  @ApiClientScopes("catalog.read")
+  @ReadAccessPolicy("catalog_products_redacted")
+  @ApiOperation({ summary: "Advanced product search with faceted filtering (RG-C6)" })
+  @ApiResponse({ status: 200, description: "Filtered product page fetched" })
+  advancedSearchProducts(
+    @Query() dto: AdvancedSearchProductsDto,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.catalogService.advancedSearchProducts(
+      {
+        q: dto.q,
+        status: dto.status,
+        categoryId: dto.categoryId,
+        brand: dto.brand,
+        channelSlug: dto.channelSlug,
+        cursor: dto.cursor,
+        limit: dto.limit,
+        sort: dto.sort,
+        sortDir: dto.sortDir,
+      },
+      this.resolveActor(request),
+    );
   }
 
   @Get("products/:id")

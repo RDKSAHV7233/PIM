@@ -4236,6 +4236,21 @@
         ]
       }
     },
+    "/api/v1/catalog/products/advanced-search": {
+      "get": {
+        "operationId": "CatalogController_advancedSearchProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Filtered product page fetched"
+          }
+        },
+        "summary": "Advanced product search with faceted filtering (RG-C6)",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/products/{id}": {
       "get": {
         "operationId": "CatalogController_getProduct",
