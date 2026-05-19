@@ -57,9 +57,7 @@ export function formatMarketplaceChannelLabel(channel: MarketplaceChannel): stri
 
 // Channels whose connectors are present in source but not yet ready for customer use.
 // Surfaces that show these channels must visibly mark them and disable destructive actions.
-// Meesho: generateExportFile() in apps/api/src/connectors/meesho/meesho.connector.ts throws
-// "Not implemented" pending ExcelJS template work (TODO P5-S4).
-const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>(["meesho"]);
+const IN_DEVELOPMENT_CHANNELS = new Set<MarketplaceChannel>([]);
 
 export function isChannelInDevelopment(channel: MarketplaceChannel): boolean {
   return IN_DEVELOPMENT_CHANNELS.has(channel);

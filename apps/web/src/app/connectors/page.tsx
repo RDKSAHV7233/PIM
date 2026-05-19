@@ -136,9 +136,7 @@ function connectorStatusNote(
   }
   if (implementationStatus === "partial") {
     if (slug === "meesho") {
-      // Meesho generateExportFile() currently throws "Not implemented" (TODO P5-S4 in apps/api/src/connectors/meesho/meesho.connector.ts).
-      // The Excel template build is pending. Surface this honestly so pilot users do not attempt an export that will fail.
-      return "Meesho connector is in development. Excel export is not yet available; the export action will fail until the template is built. Direct publish is not supported by Meesho.";
+      return "Meesho connector supports Excel export. Download the .xlsx file and upload it manually via Supplier Panel. Direct publish is not supported by Meesho.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
