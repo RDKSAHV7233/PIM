@@ -574,7 +574,7 @@ export default async function DashboardPage() {
                 }
                 helper={
                   signupTrends.mappingCompletionRate.length > 0
-                    ? `${signupTrends.mappingCompletionRate.at(-1)?.channel ?? "across connectors"} · last 30 days`
+                    ? `${signupTrends.mappingCompletionRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
                     : "No mapping activity yet"
                 }
                 tone={
@@ -597,7 +597,7 @@ export default async function DashboardPage() {
                 }
                 helper={
                   signupTrends.firstPublishSuccessRate.length > 0
-                    ? `${signupTrends.firstPublishSuccessRate.at(-1)?.channel ?? "across connectors"} · last 30 days`
+                    ? `${signupTrends.firstPublishSuccessRate.at(-1)?.connectorSlug ?? "across connectors"} · last 30 days`
                     : "No publish activity yet"
                 }
                 tone={
