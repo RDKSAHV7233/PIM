@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
 
@@ -16,6 +17,7 @@ export class OndcService {
   }
 
   async createMapping(dto: CreateOndcMappingDto) {
+    const tenantKey = getTenantKeyFromContext();
     await this.requireCategory(dto.categoryId);
 
     const id = randomUUID();
@@ -48,11 +50,12 @@ export class OndcService {
         `
         UPDATE ondc_mappings
         SET is_default = FALSE, updated_at = NOW()
-        WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
-          AND node_type = $1
-          AND version = $2
-          AND category_id = $3
+        WHERE tenant_key = $1
+          AND node_type = $2
+          AND version = $3
+          AND category_id = $4
         `,
+        tenantKey,
         dto.nodeType,
         dto.version,
         dto.categoryId,
@@ -63,10 +66,11 @@ export class OndcService {
     await this.prisma.tenant().$executeRawUnsafe(
       `
       INSERT INTO ondc_mappings (
-        id, name, category_id, node_type, version, required_fields, field_map, discovery_metadata, is_default
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)
+        id, tenant_key, name, category_id, node_type, version, required_fields, field_map, discovery_metadata, is_default
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10)
       `,
       id,
+      tenantKey,
       dto.name.trim(),
       dto.categoryId,
       dto.nodeType,
@@ -81,6 +85,7 @@ export class OndcService {
   }
 
   async listMappings(nodeType?: string, version?: string, categoryId?: string) {
+    const tenantKey = getTenantKeyFromContext();
     // RLS-BYPASS: manual tenant filter
     return this.prisma.tenant().$queryRawUnsafe(
       `
@@ -97,13 +102,14 @@ export class OndcService {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM ondc_mappings
-      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
-        AND ($1::text IS NULL OR node_type = $1)
-        AND ($2::text IS NULL OR version = $2)
-        AND ($3::text IS NULL OR category_id = $3)
+      WHERE tenant_key = $1
+        AND ($2::text IS NULL OR node_type = $2)
+        AND ($3::text IS NULL OR version = $3)
+        AND ($4::text IS NULL OR category_id = $4)
       ORDER BY is_default DESC, updated_at DESC
       LIMIT 200
       `,
+      tenantKey,
       nodeType ?? null,
       version ?? null,
       categoryId ?? null,
@@ -111,6 +117,7 @@ export class OndcService {
   }
 
   async getMapping(mappingId: string) {
+    const tenantKey = getTenantKeyFromContext();
     // RLS-BYPASS: manual tenant filter
     const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
@@ -127,10 +134,11 @@ export class OndcService {
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM ondc_mappings
-      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
-        AND id = $1
+      WHERE tenant_key = $1
+        AND id = $2
       LIMIT 1
       `,
+      tenantKey,
       mappingId,
     )) as Array<Record<string, unknown>>;
     if (rows.length === 0) {
@@ -185,6 +193,7 @@ export class OndcService {
   }
 
   private async getDefaultMapping(categoryId: string, nodeType: string, version: string) {
+    const tenantKey = getTenantKeyFromContext();
     // RLS-BYPASS: manual tenant filter
     const rows = (await this.prisma.tenant().$queryRawUnsafe(
       `
@@ -199,13 +208,14 @@ export class OndcService {
         discovery_metadata AS "discoveryMetadata",
         is_default AS "isDefault"
       FROM ondc_mappings
-      WHERE tenant_key = COALESCE(NULLIF(current_setting('app.tenant_key', true), ''), 'default')
-        AND category_id = $1
-        AND node_type = $2
-        AND version = $3
+      WHERE tenant_key = $1
+        AND category_id = $2
+        AND node_type = $3
+        AND version = $4
       ORDER BY is_default DESC, updated_at DESC
       LIMIT 1
       `,
+      tenantKey,
       categoryId,
       nodeType,
       version,
