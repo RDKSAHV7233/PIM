@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
-import { ApiClientPolicy, ApiClientScopes } from "../common/rbac/api-client-policy.decorator";
+import { ApiClientPolicy, ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
 import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -186,6 +186,101 @@ export class CatalogController {
   ) {
     const parsedLimit = limit ? Math.min(Number(limit), 100) : 50;
     return this.catalogService.getProductActivity(id, this.resolveActor(request), parsedLimit);
+  }
+
+  // ── Workflow collaboration: assignee ─────────────────────────────────────
+
+  @Patch("products/:id/assignee")
+  @DisallowApiClient()
+  @Roles("admin", "editor", "approver")
+  @ApiOperation({ summary: "Assign a product to a reviewer" })
+  @ApiResponse({ status: 200, description: "Assignee updated" })
+  assignProduct(
+    @Param("id") id: string,
+    @Body() dto: { assigneeId: string | null },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.assignProduct(id, dto.assigneeId ?? null, this.resolveActor(request));
+  }
+
+  // ── Workflow collaboration: change requests ───────────────────────────────
+
+  @Post("products/:id/change-requests")
+  @DisallowApiClient()
+  @Roles("admin", "reviewer", "approver")
+  @ApiOperation({ summary: "Request changes on a product before approving" })
+  @ApiResponse({ status: 201, description: "Change request created" })
+  requestChanges(
+    @Param("id") id: string,
+    @Body() dto: { reason: string },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.requestChanges(id, dto.reason, this.resolveActor(request));
+  }
+
+  @Get("products/:id/change-requests")
+  @DisallowApiClient()
+  @ReadAccessPolicy("catalog_product_detail_redacted")
+  @Roles("admin", "editor", "reviewer", "approver", "viewer")
+  @ApiOperation({ summary: "List change requests for a product" })
+  @ApiResponse({ status: 200, description: "Change requests fetched" })
+  listChangeRequests(
+    @Param("id") id: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.listChangeRequests(id, this.resolveActor(request));
+  }
+
+  @Post("products/:id/change-requests/:requestId/resolve")
+  @DisallowApiClient()
+  @Roles("admin", "editor", "reviewer", "approver")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Resolve an open change request" })
+  @ApiResponse({ status: 200, description: "Change request resolved" })
+  resolveChangeRequest(
+    @Param("id") _productId: string,
+    @Param("requestId") requestId: string,
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.resolveChangeRequest(requestId, this.resolveActor(request));
+  }
+
+  // ── Workflow SLA config ───────────────────────────────────────────────────
+
+  @Put("workflow/sla")
+  @DisallowApiClient()
+  @Roles("admin")
+  @ApiOperation({ summary: "Upsert the workflow SLA configuration for this tenant" })
+  @ApiResponse({ status: 200, description: "SLA config saved" })
+  upsertWorkflowSla(
+    @Body() dto: { reviewTargetDays: number },
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.upsertWorkflowSla(dto.reviewTargetDays, this.resolveActor(request));
+  }
+
+  @Get("workflow/sla")
+  @DisallowApiClient()
+  @ReadAccessPolicy("catalog_product_detail_redacted")
+  @Roles("admin", "editor", "reviewer", "approver", "viewer")
+  @ApiOperation({ summary: "Get workflow SLA configuration for this tenant" })
+  @ApiResponse({ status: 200, description: "SLA config fetched" })
+  getWorkflowSla(
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.getWorkflowSla(this.resolveActor(request));
+  }
+
+  @Get("workflow/sla/overdue")
+  @DisallowApiClient()
+  @ReadAccessPolicy("catalog_product_detail_redacted")
+  @Roles("admin", "reviewer", "approver")
+  @ApiOperation({ summary: "Count products past their SLA review deadline" })
+  @ApiResponse({ status: 200, description: "Overdue count" })
+  getOverdueCount(
+    @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
+  ) {
+    return this.catalogService.getOverdueProductCount(this.resolveActor(request));
   }
 
   @Delete("products/:id")

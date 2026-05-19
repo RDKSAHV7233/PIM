@@ -2610,6 +2610,92 @@ paths:
           description: Activity events fetched
       summary: Get activity timeline for a product
       tags: *a20
+  /api/v1/catalog/products/{id}/assignee:
+    patch:
+      operationId: CatalogController_assignProduct
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assignee updated
+      summary: Assign a product to a reviewer
+      tags: *a20
+  /api/v1/catalog/products/{id}/change-requests:
+    post:
+      operationId: CatalogController_requestChanges
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Change request created
+      summary: Request changes on a product before approving
+      tags: *a20
+    get:
+      operationId: CatalogController_listChangeRequests
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Change requests fetched
+      summary: List change requests for a product
+      tags: *a20
+  /api/v1/catalog/products/{id}/change-requests/{requestId}/resolve:
+    post:
+      operationId: CatalogController_resolveChangeRequest
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: requestId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Change request resolved
+      summary: Resolve an open change request
+      tags: *a20
+  /api/v1/catalog/workflow/sla:
+    put:
+      operationId: CatalogController_upsertWorkflowSla
+      parameters: []
+      responses:
+        "200":
+          description: SLA config saved
+      summary: Upsert the workflow SLA configuration for this tenant
+      tags: *a20
+    get:
+      operationId: CatalogController_getWorkflowSla
+      parameters: []
+      responses:
+        "200":
+          description: SLA config fetched
+      summary: Get workflow SLA configuration for this tenant
+      tags: *a20
+  /api/v1/catalog/workflow/sla/overdue:
+    get:
+      operationId: CatalogController_getOverdueCount
+      parameters: []
+      responses:
+        "200":
+          description: Overdue count
+      summary: Count products past their SLA review deadline
+      tags: *a20
   /api/v1/catalog/products/{id}/purge:
     delete:
       operationId: CatalogController_purgeProduct

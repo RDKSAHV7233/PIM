@@ -193,6 +193,8 @@ model Product {
   hsnCode          String?
   gstRate          Float?
   attributes       Json              @default("{}")
+  assigneeId       String?           @map("assignee_id")
+  slaDeadlineAt    DateTime?         @map("sla_deadline_at")
   variants         Variant[]
   translations     ProductTranslation[]
   mediaAssets      MediaAsset[]
@@ -200,6 +202,7 @@ model Product {
   exportJobs       MarketplaceExportJob[]
   importedRows     BulkImportRow[]
   bulkEditItems    BulkEditOperationItem[]
+  changeRequests   ChangeRequest[]
   deletedAt        DateTime?
   purgedById       String?
   createdAt        DateTime          @default(now())
@@ -213,6 +216,8 @@ model Product {
   @@index([tenantKey, vendorScopeKey])
   @@index([tenantKey, status])
   @@index([tenantKey, deletedAt])
+  @@index([tenantKey, assigneeId])
+  @@index([tenantKey, slaDeadlineAt])
   @@index([tenantKey, deletedAt, updatedAt(sort: Desc), id(sort: Desc)], map: "idx_product_tenant_deleted_updated_id")
 }
 
@@ -1116,6 +1121,41 @@ model ApprovalComment {
 
   @@index([tenantKey, productId, createdAt(sort: Desc)], map: "idx_approval_comments_tenant_product_created")
   @@map("approval_comments")
+}
+
+// ── RG-C5: Workflow collaboration and SLA model ────────────────────────────
+
+enum ChangeRequestStatus {
+  open
+  resolved
+}
+
+model ChangeRequest {
+  id          String              @id @default(cuid())
+  tenantKey   String              @default("default") @map("tenant_key")
+  productId   String              @map("product_id")
+  product     Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  requesterId String              @map("requester_id")
+  requesterRole String            @map("requester_role")
+  reason      String
+  status      ChangeRequestStatus @default(open)
+  resolvedAt  DateTime?           @map("resolved_at")
+  resolvedById String?            @map("resolved_by_id")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@index([tenantKey, productId, status], map: "idx_change_requests_tenant_product_status")
+  @@map("change_requests")
+}
+
+model WorkflowSla {
+  id              String   @id @default(cuid())
+  tenantKey       String   @unique @default("default") @map("tenant_key")
+  reviewTargetDays Int     @default(3) @map("review_target_days")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("workflow_sla")
 }
 
 // ── INC-36: Localization schema ────────────────────────────────────────────

@@ -538,6 +538,17 @@ export class CatalogService {
         changedAttributePaths: this.collectChangedRestrictedProductAttributeFields(current.attributes, dto.attributes ?? {}),
       });
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
+
+    // Resolve SLA deadline when transitioning to in_review.
+    let slaDeadlineAt: Date | null = null;
+    if (nextStatus === RecordStatus.in_review && current.status !== RecordStatus.in_review) {
+      const slaConfig = await this.prisma.tenant().workflowSla.findUnique({
+        where: { tenantKey: actor?.tenantId ?? "default" },
+      });
+      const targetDays = slaConfig?.reviewTargetDays ?? 3;
+      slaDeadlineAt = new Date(Date.now() + targetDays * 24 * 60 * 60 * 1000);
+    }
+
     const updateResult = await this.prisma.tenant().product.updateMany({
       where: {
         id: productId,
@@ -554,6 +565,7 @@ export class CatalogService {
         attributes: attributes as Prisma.JsonObject,
         status: nextStatus,
         version: { increment: 1 },
+        ...(slaDeadlineAt !== null ? { slaDeadlineAt } : {}),
       },
     });
     if (updateResult.count === 0) {
@@ -729,6 +741,111 @@ export class CatalogService {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100,
     });
+  }
+
+  // ── RG-C5: Workflow collaboration ──────────────────────────────────────────
+
+  async assignProduct(productId: string, assigneeId: string | null, actor: ActorContext) {
+    await this.requireProduct(productId);
+    const updated = await this.prisma.tenant().product.update({
+      where: { id: productId },
+      data: { assigneeId },
+      select: { id: true, assigneeId: true, updatedAt: true },
+    });
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: assigneeId ? "PRODUCT_ASSIGNED" : "PRODUCT_UNASSIGNED",
+      resource: "/api/v1/catalog/products/:id/assignee",
+      resourceId: productId,
+      metadata: { assigneeId },
+    });
+    return updated;
+  }
+
+  async requestChanges(productId: string, reason: string, actor: ActorContext) {
+    const trimmedReason = String(reason ?? "").trim();
+    if (!trimmedReason) {
+      throw new BadRequestException("reason is required");
+    }
+    await this.requireProduct(productId);
+    const cr = await this.prisma.tenant().changeRequest.create({
+      data: {
+        productId,
+        requesterId: actor.id,
+        requesterRole: actor.role,
+        reason: trimmedReason,
+      },
+    });
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "CHANGE_REQUEST_CREATED",
+      resource: "/api/v1/catalog/products/:id/change-requests",
+      resourceId: productId,
+      metadata: { changeRequestId: cr.id },
+    });
+    return cr;
+  }
+
+  async listChangeRequests(productId: string, _actor: ActorContext) {
+    await this.requireProduct(productId);
+    return this.prisma.tenant().changeRequest.findMany({
+      where: { productId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+    });
+  }
+
+  async resolveChangeRequest(changeRequestId: string, actor: ActorContext) {
+    const cr = await this.prisma.tenant().changeRequest.findFirstOrThrow({
+      where: { id: changeRequestId },
+    });
+    if (cr.status === "resolved") {
+      throw new BadRequestException("Change request is already resolved");
+    }
+    const updated = await this.prisma.tenant().changeRequest.update({
+      where: { id: changeRequestId },
+      data: { status: "resolved", resolvedAt: new Date(), resolvedById: actor.id },
+    });
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "CHANGE_REQUEST_RESOLVED",
+      resource: "/api/v1/catalog/products/:id/change-requests/:requestId/resolve",
+      resourceId: cr.productId,
+      metadata: { changeRequestId: cr.id },
+    });
+    return updated;
+  }
+
+  async upsertWorkflowSla(reviewTargetDays: number, actor: ActorContext) {
+    const days = Math.max(1, Math.min(365, Math.trunc(Number(reviewTargetDays) || 3)));
+    const sla = await this.prisma.tenant().workflowSla.upsert({
+      where: { tenantKey: actor.tenantId ?? "default" },
+      create: { tenantKey: actor.tenantId ?? "default", reviewTargetDays: days },
+      update: { reviewTargetDays: days },
+    });
+    return sla;
+  }
+
+  async getWorkflowSla(actor: ActorContext) {
+    const sla = await this.prisma.tenant().workflowSla.findUnique({
+      where: { tenantKey: actor.tenantId ?? "default" },
+    });
+    return sla ?? { reviewTargetDays: 3, tenantKey: actor.tenantId ?? "default" };
+  }
+
+  async getOverdueProductCount(actor: ActorContext) {
+    const now = new Date();
+    const count = await this.prisma.tenant().product.count({
+      where: {
+        status: RecordStatus.in_review,
+        slaDeadlineAt: { lt: now },
+        deletedAt: null,
+      },
+    });
+    return { overdueCount: count, asOf: now.toISOString() };
   }
 
   async getProductActivity(productId: string, actor: ActorContext, limit = 50) {
