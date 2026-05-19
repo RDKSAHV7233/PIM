@@ -53,6 +53,12 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ARG PIM_API_BASE_URL
+ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG PIM_API_BASE_URL_FALLBACK
+ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}
 
 # Copy root package.json + workspace manifests (needed by `npm run start`)
 COPY package.json ./

@@ -64,6 +64,22 @@ function parseTenantArg() {
   return String(process.argv[idx + 1] ?? "").trim() || null;
 }
 
+function resolveRuntimeEnvironment() {
+  return String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development").trim().toLowerCase();
+}
+
+function assertTenantScope(runtimeEnv, tenantKey) {
+  if (tenantKey) {
+    return;
+  }
+  if (runtimeEnv === "development" || runtimeEnv === "local" || runtimeEnv === "test") {
+    return;
+  }
+  throw new Error(
+    "Refusing to backfill legacy auth hashes without --tenant outside local/test environments. Run the script with --tenant <tenantKey> so staging/production maintenance stays tenant-scoped.",
+  );
+}
+
 async function run() {
   prepareEnv();
   const databaseUrl = String(
@@ -72,7 +88,9 @@ async function run() {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL_DIRECT or DATABASE_URL_POOLED or DATABASE_URL is required.");
   }
+  const runtimeEnv = resolveRuntimeEnvironment();
   const tenantKey = parseTenantArg();
+  assertTenantScope(runtimeEnv, tenantKey);
   const sharedPassword = resolveSharedPassword();
   const passwordHash = await bcrypt.hash(sharedPassword, 12);
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
@@ -95,7 +113,8 @@ async function run() {
       JSON.stringify(
         {
           status: "ok",
-          tenantKey: tenantKey ?? "all",
+          tenantKey: tenantKey ?? "all-local",
+          environment: runtimeEnv,
           beforeCount,
           updatedCount: updated.count,
           remainingCount: afterCount,

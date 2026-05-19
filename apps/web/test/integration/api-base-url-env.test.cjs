@@ -35,6 +35,7 @@ try {
   const helper = read("apps/web/src/lib/api-base-url.ts");
   const core = read("apps/web/src/lib/api/core.ts");
   const dockerfileWeb = fs.readFileSync(DOCKERFILE_WEB, "utf8");
+  const runtimeStage = dockerfileWeb.split("FROM node:20-alpine AS runner")[1] ?? "";
   const apiRouteFiles = walkFiles(API_ROUTE_DIR).filter((file) => file.endsWith(".ts") || file.endsWith(".tsx"));
   const inlineEnvUsers = apiRouteFiles.filter((file) =>
     fs.readFileSync(file, "utf8").includes("process.env.PIM_API_BASE_URL"),
@@ -42,7 +43,9 @@ try {
 
   assert(
     helper.includes("process.env.PIM_API_BASE_URL_FALLBACK") &&
-      helper.includes("[\n    process.env.PIM_API_BASE_URL,\n    process.env.NEXT_PUBLIC_API_URL,\n    process.env.PIM_API_BASE_URL_FALLBACK,"),
+      helper.includes("process.env.PIM_API_BASE_URL") &&
+      helper.includes("process.env.NEXT_PUBLIC_API_URL") &&
+      helper.includes("const configuredValues = ["),
     "Shared API base URL helper must support a packaged fallback API base URL after the canonical and legacy env vars for Railway web deployments.",
   );
   assert(
@@ -66,10 +69,14 @@ try {
       .join(", ")}`,
   );
   assert(
-    dockerfileWeb.includes("ARG PIM_API_BASE_URL") &&
-      dockerfileWeb.includes("ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}") &&
-      dockerfileWeb.includes("ARG NEXT_PUBLIC_API_URL"),
-    "Dockerfile.web must advertise the canonical PIM_API_BASE_URL contract while keeping legacy NEXT_PUBLIC_API_URL support available.",
+    runtimeStage.includes("ENV NODE_ENV=production") &&
+      runtimeStage.includes("ARG PIM_API_BASE_URL") &&
+      runtimeStage.includes("ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}") &&
+      runtimeStage.includes("ARG NEXT_PUBLIC_API_URL") &&
+      runtimeStage.includes("ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}") &&
+      runtimeStage.includes("ARG PIM_API_BASE_URL_FALLBACK") &&
+      runtimeStage.includes("ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}"),
+    "Dockerfile.web must preserve the canonical and fallback API upstream env vars in the final runtime stage, not only during build.",
   );
 
   console.log(

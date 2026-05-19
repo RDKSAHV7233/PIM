@@ -4,9 +4,9 @@
 /**
  * Prepares a flat, self-contained Railway web service package.
  *
- * Copies apps/web into .tmp/railway-web-service as a FLAT project (no npm workspaces).
- * A single package.json lists every dependency as a regular `dependency` so
- * Railpack's `npm install` step installs them all regardless of NODE_ENV.
+ * Copies apps/web into .tmp/railway-web-service as a flat project with no npm
+ * workspaces so Railpack installs a single package and Next resolves
+ * `.env.production` from the project root.
  */
 
 const fs = require("node:fs");
@@ -15,6 +15,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..");
 const sourceDir = path.join(repoRoot, "apps", "web");
 const tsconfigBaseSource = path.join(repoRoot, "tsconfig.base.json");
+const rootPackageLockSource = path.join(repoRoot, "package-lock.json");
 const outputDir = path.join(repoRoot, ".tmp", "railway-web-service");
 
 function ensureDir(dir) {
@@ -73,50 +74,45 @@ function main() {
   if (!fs.existsSync(tsconfigBaseSource)) {
     throw new Error(`Root tsconfig.base.json not found: ${tsconfigBaseSource}`);
   }
+  if (!fs.existsSync(rootPackageLockSource)) {
+    throw new Error(`Root package-lock.json not found: ${rootPackageLockSource}`);
+  }
 
   const sourcePkgJson = JSON.parse(fs.readFileSync(path.join(sourceDir, "package.json"), "utf8"));
 
   removeDir(outputDir);
-
-  // Copy web app files directly into outputDir (flat — no apps/web subdirectory).
   copyDir(sourceDir, outputDir);
-
-  // tsconfig.base.json at root so tsconfig.json can extend it.
   fs.copyFileSync(tsconfigBaseSource, path.join(outputDir, "tsconfig.base.json"));
+  fs.copyFileSync(rootPackageLockSource, path.join(outputDir, "package-lock.json"));
 
-  // Patch tsconfig.json: the monorepo uses ../../tsconfig.base.json, but the flat
-  // layout puts it right next to tsconfig.json.
   const tsconfigPath = path.join(outputDir, "tsconfig.json");
   const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
   tsconfig.extends = "./tsconfig.base.json";
   fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
 
-  // ── package.json ──────────────────────────────────────────────────────
-  // Single flat package.json with ALL deps (production + dev) listed as
-  // regular `dependencies`. No workspaces, no devDependencies section.
-  // This guarantees `npm install` installs everything regardless of NODE_ENV.
+  const runtimeDependencies = sourcePkgJson.dependencies ?? {};
+  const devDependencies = sourcePkgJson.devDependencies ?? {};
   const allDeps = {
-    ...(sourcePkgJson.devDependencies ?? {}),
-    ...(sourcePkgJson.dependencies ?? {}), // production deps win on collision
+    ...devDependencies,
+    ...runtimeDependencies,
   };
-
-  const origBuildScript = sourcePkgJson.scripts?.build ?? "";
-  const buildScript =
-    origBuildScript.includes("next build") && !origBuildScript.includes("NODE_OPTIONS")
-      ? origBuildScript.replace("next build", "NODE_OPTIONS='--max-old-space-size=1024' next build")
-      : origBuildScript;
+  const normalizedBuildScript = String(sourcePkgJson.scripts?.build ?? "")
+    .replace(/NODE_OPTIONS='--max-old-space-size=1024'\s*/g, "")
+    .trim();
 
   const packageJsonPath = path.join(outputDir, "package.json");
   fs.writeFileSync(
     packageJsonPath,
     `${JSON.stringify(
       {
-        name: "pim1-railway-web-service",
+        name: sourcePkgJson.name,
         private: true,
-        dependencies: allDeps,
+        version: sourcePkgJson.version,
+        dependencies: runtimeDependencies,
+        devDependencies,
         scripts: {
-          ...sourcePkgJson.scripts,
-          build: buildScript,
+          ...(sourcePkgJson.scripts ?? {}),
+          ...(normalizedBuildScript ? { build: normalizedBuildScript } : {}),
         },
       },
       null,
@@ -125,18 +121,12 @@ function main() {
     "utf8",
   );
 
-  // ── .npmrc ────────────────────────────────────────────────────────────
-  // Force production=false so npm never skips any dependency.
   fs.writeFileSync(path.join(outputDir, ".npmrc"), "production=false\n", "utf8");
-
-  // ── .nvmrc ────────────────────────────────────────────────────────────
-  // Pin Node.js 20 LTS. Railway's cached Node 24 has SWC binary issues.
   fs.writeFileSync(path.join(outputDir, ".nvmrc"), "20\n", "utf8");
 
-  // ── railway.toml ──────────────────────────────────────────────────────
   const railwayTomlContents = [
     "[build]",
-    'installCommand = "npm install --production=false"',
+    'installCommand = "npm ci --include=dev"',
     'buildCommand = "npm run build"',
     "",
     "[deploy]",
@@ -148,23 +138,78 @@ function main() {
     "",
   ].join("\n");
   fs.writeFileSync(path.join(outputDir, "railway.toml"), railwayTomlContents, "utf8");
+  const appRailwayTomlDir = path.join(outputDir, "apps", "web");
+  ensureDir(appRailwayTomlDir);
+  fs.writeFileSync(path.join(appRailwayTomlDir, "railway.toml"), railwayTomlContents, "utf8");
+  const dockerfileContents = [
+    "FROM node:20-alpine AS build",
+    "WORKDIR /app",
+    "",
+    "COPY package.json package-lock.json .npmrc ./",
+    "RUN npm ci --include=dev",
+    "",
+    "COPY . .",
+    "ARG PIM_API_BASE_URL",
+    "ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}",
+    "ARG NEXT_PUBLIC_API_URL",
+    "ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}",
+    "ARG PIM_API_BASE_URL_FALLBACK",
+    "ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}",
+    "RUN npm run build",
+    "",
+    "FROM node:20-alpine AS runner",
+    "WORKDIR /app",
+    "",
+    "ENV NODE_ENV=production",
+    "ARG PIM_API_BASE_URL",
+    "ENV PIM_API_BASE_URL=${PIM_API_BASE_URL}",
+    "ARG NEXT_PUBLIC_API_URL",
+    "ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}",
+    "ARG PIM_API_BASE_URL_FALLBACK",
+    "ENV PIM_API_BASE_URL_FALLBACK=${PIM_API_BASE_URL_FALLBACK}",
+    "ENV PORT=3000",
+    "",
+    "COPY --from=build /app ./",
+    "",
+    "EXPOSE 3000",
+    "",
+    'CMD ["npm", "run", "start"]',
+    "",
+  ].join("\n");
+  const dockerfilePath = path.join(outputDir, "Dockerfile");
+  fs.writeFileSync(dockerfilePath, dockerfileContents, "utf8");
+  const railwayJsonContents = `${JSON.stringify(
+    {
+      $schema: "https://railway.app/railway.schema.json",
+      build: {
+        dockerfilePath: "Dockerfile",
+      },
+      deploy: {
+        healthcheckPath: "/health",
+        healthcheckTimeout: 300,
+        restartPolicyType: "ON_FAILURE",
+        restartPolicyMaxRetries: 10,
+      },
+    },
+    null,
+    2,
+  )}\n`;
+  const railwayJsonPath = path.join(outputDir, "railway.json");
+  fs.writeFileSync(railwayJsonPath, railwayJsonContents, "utf8");
 
-  // ── next.config.ts → next.config.js ───────────────────────────────────
   const nextConfigTsPath = path.join(outputDir, "next.config.ts");
   if (fs.existsSync(nextConfigTsPath)) {
     const tsSource = fs.readFileSync(nextConfigTsPath, "utf8");
     const jsSource = tsSource
       .replace(/^import type \{[^}]+\} from ['"][^'"]+['"];\n?/m, "")
-      .replace(/^import (\w+) from ['"](.+?)['"];/gm, "const $1 = require(\"$2\");")
+      .replace(/^import (\w+) from ['"](.+?)['"];/gm, 'const $1 = require("$2");')
       .replace(/^(const \w+): \w+ = \{/m, "$1 = {")
-      // In the flat layout __dirname IS the project root, so ../../ → .
       .replace(/path\.join\(__dirname,\s*["']\.\.\/\.\.\/["']\)/, "__dirname")
       .replace(/^export default (\w+);/m, "module.exports = $1;");
     fs.writeFileSync(path.join(outputDir, "next.config.js"), jsSource, "utf8");
     fs.rmSync(nextConfigTsPath);
   }
 
-  // ── .env.production ───────────────────────────────────────────────────
   const apiBaseUrl = resolveApiBaseUrl(process.env);
   let envFile = null;
   if (apiBaseUrl) {
@@ -176,6 +221,7 @@ function main() {
     ].join("\n");
     envFile = path.join(outputDir, ".env.production");
     fs.writeFileSync(envFile, envContents, "utf8");
+    fs.writeFileSync(path.join(appRailwayTomlDir, ".env.production"), envContents, "utf8");
   }
 
   console.log(
@@ -184,6 +230,9 @@ function main() {
         status: "ok",
         outputDir: path.relative(repoRoot, outputDir),
         packageJson: path.relative(repoRoot, packageJsonPath),
+        packageLock: path.relative(repoRoot, path.join(outputDir, "package-lock.json")),
+        dockerfile: path.relative(repoRoot, dockerfilePath),
+        railwayJson: path.relative(repoRoot, railwayJsonPath),
         deps: Object.keys(allDeps),
         ...(envFile
           ? {

@@ -23,9 +23,11 @@ function main() {
 
   assert.match(railwayToml, /buildCommand = "npm install && npm run build"/, "API package must use standalone build command");
   assert.doesNotMatch(railwayToml, /--workspace/, "API package railway.toml must not use monorepo workspace flags");
+  // Migrations are applied during CI (promote-stage3 workflow Apply-migrations step)
+  // not via startCommand. PR #80 removed preDeployCommand; startCommand boots directly.
   assert.match(
     railwayToml,
-    /startCommand = "node scripts\/prisma-migrate-deploy\.cjs && node dist\/main\.js"/,
+    /startCommand = "node dist\/main\.js"/,
     "API package must start from the packaged dist output",
   );
   assert.match(railwayToml, /healthcheckPath = "\/api\/v1\/health"/, "API package must expose the staging health path");
