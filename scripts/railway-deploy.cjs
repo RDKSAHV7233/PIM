@@ -507,6 +507,88 @@ function runDeployCommandAcrossServiceTargets(command, options) {
   throw lastError ?? new Error(`No Railway ${command.label} service targets were available.`);
 }
 
+/**
+ * Parse a minimal subset of env-file syntax: KEY=VALUE (no export, no multi-line).
+ * Used to read PIM_API_BASE_URL and friends out of the prepared .env.production.
+ */
+function parseEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+  const result = {};
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    if (!line || /^\s*#/.test(line)) {
+      continue;
+    }
+    const idx = line.indexOf("=");
+    if (idx === -1) {
+      continue;
+    }
+    const key = line.slice(0, idx).trim();
+    const raw = line.slice(idx + 1).trim();
+    if (key) {
+      result[key] = raw.replace(/^"|"$/g, "");
+    }
+  }
+  return result;
+}
+
+/**
+ * Set Railway service-level env vars for the web service so they are available
+ * as Docker build-args (Railway passes service vars as build args automatically).
+ * Without this, the Dockerfile ARG PIM_API_BASE_URL resolves to an empty string
+ * and the runtime web container calls localhost:4000 instead of the staging API.
+ */
+function setWebServiceVariables(config, railwayEnv, webPackagePath) {
+  const envFile = path.join(webPackagePath, ".env.production");
+  const vars = parseEnvFile(envFile);
+  const relevantKeys = ["PIM_API_BASE_URL", "NEXT_PUBLIC_API_URL", "PIM_API_BASE_URL_FALLBACK"];
+  const pairs = relevantKeys
+    .filter((k) => vars[k])
+    .map((k) => `${k}=${vars[k]}`);
+
+  if (pairs.length === 0) {
+    console.warn("[railway-deploy] No API URL vars found in .env.production — skipping web service variable sync.");
+    return;
+  }
+
+  // Use the primary web service target; if it fails, warn but don't block the deploy.
+  const primaryTarget = config.webServiceTargets[0];
+  const args = [
+    "variables",
+    "set",
+    ...pairs,
+    "--service",
+    primaryTarget,
+    "--environment",
+    config.environmentName,
+    "--project",
+    config.projectId,
+  ];
+
+  console.log(`[railway-deploy] Setting web service env vars on '${primaryTarget}': ${pairs.join(" ")}`);
+  const result = childProcess.spawnSync(config.railwayBin, args, {
+    cwd: config.repoRoot,
+    env: railwayEnv,
+    encoding: "utf8",
+  });
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  if (result.error || result.status !== 0) {
+    console.warn(
+      `[railway-deploy] Warning: could not set web service env vars (exit ${result.status}). ` +
+        "The deploy will proceed, but PIM_API_BASE_URL may be unset on the running container. " +
+        "Set it manually in the Railway dashboard if the service starts with AUTH_UPSTREAM_UNAVAILABLE.",
+    );
+  } else {
+    console.log("[railway-deploy] Web service env vars synced successfully.");
+  }
+}
+
 function main(env = process.env) {
   const repoRoot = path.resolve(__dirname, "..");
   const config = resolveConfig(env, repoRoot);
@@ -538,6 +620,14 @@ function main(env = process.env) {
   }
   if (!fs.existsSync(config.webSourcePath)) {
     throw new Error(`Railway web source path not found: ${config.webSourcePath}`);
+  }
+
+  // Sync API URL env vars to the Railway web service BEFORE deploying.
+  // Railway passes service-level env vars as Docker build args — without this,
+  // the Dockerfile ARG PIM_API_BASE_URL is empty and the container falls back to
+  // localhost:4000, causing AUTH_UPSTREAM_UNAVAILABLE in the post-deploy check.
+  if (deployPlan.deployWeb) {
+    setWebServiceVariables(config, railwayEnv, config.webSourcePath);
   }
 
   for (const command of buildDeployCommands(config)) {
