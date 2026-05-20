@@ -229,7 +229,7 @@ export class MarketplaceController {
   }
 
   @Get("channels/:channel/mapping")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   getChannelMapping(
     @Param("channel") channel: string,
     @Query("categoryId") categoryId?: string,
