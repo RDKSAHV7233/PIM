@@ -1,5 +1,22 @@
 # Vexa PIM Current State
 
+> **V10 Addendum (2026-05-20) — taxonomy soft-delete fix merged; E2E `delete_category` cleanup unblocked.**
+>
+> **PR merged:**
+> | PR | Title | SHA |
+> |----|-------|-----|
+> | #116 | fix(taxonomy): exclude soft-deleted products from category delete constraint | `65c6562` |
+>
+> **Bug fixed (PR #116):**
+> - `taxonomy.service.ts` `deleteCategory()` counted soft-deleted products (`deletedAt IS NOT NULL`) in the attached-products check — `DELETE /taxonomy/categories/:id` returned 400 even after all products were soft-deleted. Added `deletedAt: null` filter so only live products block category deletion. E2E `delete_category` cleanup step no longer skips.
+>
+> **Updated engineering priority stack (V10):**
+> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
+> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
+> 3. **Browser UX test** — Chrome MCP journey for all 8 roles _(blocked on Chrome extension connection)_
+> 4. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
+> 5. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+
 > **V9 Addendum (2026-05-20) — 8-role RBAC audit complete; 9 bugs fixed and merged; all 13 product claims verified.**
 >
 > **PRs merged today:**
