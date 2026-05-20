@@ -195,7 +195,7 @@ export class TaxonomyService {
       throw new BadRequestException("Cannot delete category with child categories");
     }
 
-    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id } });
+    const productCount = await this.prisma.tenant().product.count({ where: { categoryId: id, deletedAt: null } });
     if (productCount > 0) {
       throw new BadRequestException("Cannot delete category with attached products");
     }
