@@ -1,5 +1,48 @@
 # Vexa PIM Current State
 
+> **V9 Addendum (2026-05-20) — 8-role RBAC audit complete; 9 bugs fixed and merged; all 13 product claims verified.**
+>
+> **PRs merged today:**
+> | PR | Title | SHA |
+> |----|-------|-----|
+> | #114 | fix(rbac): 7 silent auth/access bugs + .env.staging cleanup | `67a5606` |
+> | #115 | fix(admin): expand invite form roles to include admin and reviewer | `8f2b026` |
+>
+> **Bugs fixed (PR #114):**
+> - 5 `fetchJson` wrong-arg-position bugs in `connectors.ts` — `getDeltaSyncCandidates`, `getSyncStates`, `getConnectorSchedule`, `getShopifyConfig`, `getProductLinks` sent no auth header; Sync/Schedule/catalog-link tabs silently empty for every role
+> - `resolveTab()` missing `"sync"`, `"schedule"`, `"catalog-link"` — data fetch conditions were never true; tabs always showed overview data
+> - Unhandled 403s crashing `[installationId]/page.tsx` for `connector_admin` on `getConnectorPermissions` + `getSubmissions`
+> - Unhandled 403 crashing `catalog/products/page.tsx` for viewer/publisher/approver/reviewer on `getInstalledConnectors`
+> - Unhandled 403 crashing `admin/connectors/page.tsx` for `connector_admin` on `getConnectorPermissions`
+> - Backend `@Roles("admin", "editor")` on `GET /marketplace/channels` excluded `channel_manager` — mappings page silently empty
+>
+> **Bug fixed (PR #115):**
+> - Admin invite form only offered editor/viewer — admin and reviewer excluded from `PILOT_VISIBLE_ROLES` and dropdown UI
+>
+> **8-Role API verification (2026-05-20) — all PASS:**
+> | Role | Login | Catalog | Admin gates | Own endpoints |
+> |------|-------|---------|-------------|---------------|
+> | admin | ✅ | ✅ 200 | ✅ 200 | ✅ all 200 |
+> | editor | ✅ | ✅ 200 | ✅ 403 | ✅ import/bulk-edit 200 |
+> | publisher | ✅ | ✅ 200 | ✅ 403 | ✅ submissions 200 |
+> | approver | ✅ | ✅ 200 | ✅ 403 | ✅ issues/inbox 200 |
+> | channel_manager | ✅ | ✅ 200 | ✅ 403 | ✅ /marketplace/channels 200 |
+> | connector_admin | ✅ | ✅ 200 | ✅ 403 | ✅ connectors/installed 200 |
+> | reviewer | ✅ | ✅ 200 | ✅ 403 | ✅ issues/inbox 200 |
+> | viewer | ✅ | ✅ 200 | ✅ 403 | ✅ read-only 200 |
+>
+> **13 product claims — all verified:** C-1 (216 products), C-2 (25 import jobs), C-3 (20 bulk-edit ops), C-4 (approval workflow), C-5 (5 connectors installed), C-6 (submissions), C-8 (dashboard + 14-snapshot trend), C-9 (audit), C-10 (auth policy), C-11 (tenant isolation), C-12 (cursor pagination), C-13 (full RBAC matrix)
+>
+> **Auth credential correction:** Admin email is `admin@pim1.local` (not `admin@pim1.test`); API uses `PIM_AUTH_IDENTITIES_JSON` env-based auth, not `AUTH_MODE=db`. All 8 role users pre-configured in `.env` with password `vexa-pim-demo-password`.
+>
+> **Updated engineering priority stack (V9):**
+> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
+> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
+> 3. **Browser UX test** — Chrome MCP journey for all 8 roles _(blocked on Chrome extension connection)_
+> 4. **Fix `delete_category` cleanup skip** in E2E journey _(engineering task, low urgency)_
+> 5. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
+> 6. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+
 > **V8 Addendum (2026-05-20) — Staging pipeline fully green; both rollout windows satisfied; promote-stage3 ready.**
 >
 > **Staging deploy pipeline — first full end-to-end success on HEAD `038ee8c`:**
