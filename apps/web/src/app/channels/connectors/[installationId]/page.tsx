@@ -327,7 +327,10 @@ function resolveTab(value: string): DetailTab {
     normalized === "mappings" ||
     normalized === "issues" ||
     normalized === "logs" ||
-    normalized === "access"
+    normalized === "access" ||
+    normalized === "sync" ||
+    normalized === "schedule" ||
+    normalized === "catalog-link"
   ) {
     return normalized;
   }
@@ -679,8 +682,18 @@ export default async function ChannelConnectorDetailPage({
         : Promise.resolve({ targets: [] as ConnectorPublicationTarget[], error: null as string | null });
 
     const [permissions, submissionsRaw, products, shopifyPublicationState] = await Promise.all([
-      getConnectorPermissions(installation.slug, { role: actorRole, authHeader }),
-      getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }),
+      getConnectorPermissions(installation.slug, { role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
+          return [] as Awaited<ReturnType<typeof getConnectorPermissions>>;
+        }
+        throw err;
+      }),
+      getSubmissions({ installationId: installation.id, limit: 100 }, { role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
+          return [] as Awaited<ReturnType<typeof getSubmissions>>;
+        }
+        throw err;
+      }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
       shopifyPublicationStatePromise,
     ]);

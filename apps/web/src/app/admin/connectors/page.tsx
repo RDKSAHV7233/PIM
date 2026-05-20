@@ -46,7 +46,12 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
   try {
     const [definitions, permissions] = await Promise.all([
       getConnectorDefinitions({ role, authHeader }),
-      getConnectorPermissions(undefined, { role, authHeader }),
+      getConnectorPermissions(undefined, { role, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
+          return [] as Awaited<ReturnType<typeof getConnectorPermissions>>;
+        }
+        throw err;
+      }),
     ]);
     const rolePolicies = permissions.filter((permission) => permission.principalType === "role").length;
     const userPolicies = permissions.length - rolePolicies;

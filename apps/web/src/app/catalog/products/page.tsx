@@ -149,7 +149,12 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
       getStats({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
       loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
-      getInstalledConnectors({ role: actorRole, authHeader }),
+      getInstalledConnectors({ role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
+          return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
+        }
+        throw err;
+      }),
     ]);
 
     const filteredCategories = filterTestData(categories, hideTestData);

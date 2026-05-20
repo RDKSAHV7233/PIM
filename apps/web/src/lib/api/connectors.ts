@@ -142,6 +142,7 @@ export async function previewShopifyProductChanges(
 export async function getDeltaSyncCandidates(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<Array<{ productId: string; version: number }>>(
     `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/delta-candidates`,
+    undefined,
     options,
   );
 }
@@ -157,6 +158,7 @@ export async function queueDeltaSync(installationId: string, options?: ApiReques
 export async function getSyncStates(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ConnectorSyncState[]>(
     `/marketplace/connectors/${encodeURIComponent(installationId)}/sync/states`,
+    undefined,
     options,
   );
 }
@@ -166,6 +168,7 @@ export async function getSyncStates(installationId: string, options?: ApiRequest
 export async function getConnectorSchedule(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ConnectorSyncSchedule | null>(
     `/marketplace/connectors/${encodeURIComponent(installationId)}/schedule`,
+    undefined,
     options,
   );
 }
@@ -222,6 +225,7 @@ export async function configureConnector(
 export async function getShopifyConfig(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ShopifyStoreConfig | null>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/shopify-config`,
+    undefined,
     options,
   );
 }
@@ -247,6 +251,7 @@ export async function scanCatalogLinks(installationId: string, options?: ApiRequ
 export async function getProductLinks(installationId: string, options?: ApiRequestOptions) {
   return fetchJson<ConnectorProductLink[]>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link`,
+    undefined,
     options,
   );
 }

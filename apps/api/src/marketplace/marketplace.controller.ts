@@ -51,7 +51,7 @@ export class MarketplaceController {
   }
 
   @Get("channels")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   listChannels() {
     return this.marketplaceService.listChannels();
   }
