@@ -36,7 +36,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("definitions")
-  @Roles("admin", "editor", "connector_admin", "channel_manager")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher", "viewer")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }

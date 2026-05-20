@@ -505,9 +505,15 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
   try {
     const [definitions, installations, productsRaw] = await Promise.all([
-      getConnectorDefinitions({ role: actorRole, authHeader }),
+      getConnectorDefinitions({ role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) return [] as Awaited<ReturnType<typeof getConnectorDefinitions>>;
+        throw err;
+      }),
       getInstalledConnectors({ role: actorRole, authHeader }),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+      getProductList({ slim: true }, { role: actorRole, authHeader }).catch((err) => {
+        if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) return [] as Awaited<ReturnType<typeof getProductList>>;
+        throw err;
+      }),
     ]);
 
     const visibleProducts = filterTestData(productsRaw, true);
