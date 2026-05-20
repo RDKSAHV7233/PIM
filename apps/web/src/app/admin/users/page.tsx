@@ -300,7 +300,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   aria-invalid={status === "user-error" && inviteFieldErrors.role ? "true" : undefined}
                   aria-describedby={status === "user-error" && inviteFieldErrors.role ? "workspace-user-role-error" : undefined}
                 >
+                  <option value="admin">Admin — full governance, users, API keys, and connector management</option>
                   <option value="editor">Editor — manage catalog, imports, and product data</option>
+                  <option value="reviewer">Reviewer — read-only catalog with approval authority</option>
                   <option value="viewer">Viewer — read-only access to catalog and reporting</option>
                 </select>
                 {status === "user-error" && inviteFieldErrors.role ? (
@@ -351,6 +353,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                         >
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
+                          <option value="reviewer">Reviewer</option>
                           <option value="viewer">Viewer</option>
                         </select>
                         <button
