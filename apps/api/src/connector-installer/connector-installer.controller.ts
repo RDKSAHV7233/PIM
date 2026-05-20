@@ -56,7 +56,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("installed")
-  @Roles("admin", "editor", "connector_admin", "channel_manager")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher", "viewer")
   @ApiOperation({ summary: "List installed connectors" })
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {
