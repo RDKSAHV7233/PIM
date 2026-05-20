@@ -119,6 +119,11 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
   const query = await searchParams;
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
+
+  if (actorRole === "viewer") {
+    redirect(buildLoginRedirect("/quality/issues", { status: 403 }));
+  }
+
   const canResolveWarnings = canResolveIssueInboxWarnings(actorRole);
   const hideTestData = resolveHideTestData(query.hideTestData);
   const limit = parseLimit(query.limit, 50);
