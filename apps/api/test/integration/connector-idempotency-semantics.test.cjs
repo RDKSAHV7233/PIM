@@ -413,6 +413,12 @@ async function run() {
         size: "M",
         material: "cotton",
         mainImageUrl: "https://cdn.example.com/products/idempotency.jpg",
+        packageWeight: 500,
+        packageLength: 30,
+        packageBreadth: 20,
+        packageHeight: 10,
+        procurementSla: 3,
+        procurementType: "REGULAR",
       },
     });
     assertStatus(product, 201, "create product");
