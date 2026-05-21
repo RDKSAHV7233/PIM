@@ -193,16 +193,15 @@ async function run() {
     });
     assertStatus(product, 201, "create product");
 
-    const install = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", token, {
+    const install = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", token, {
       accountAlias: `qa-${runId}`,
-      externalAccountRef: `merchant-${runId}`,
     });
-    assertStatus(install, 201, "install meesho connector");
+    assertStatus(install, 201, "install flipkart connector");
     const installationId = install.payload.id;
 
     const createTemplate = await apiRequest(baseUrl, "POST", `/marketplace/categories/${categoryId}/templates`, token, {
       name: `Template ${runId}`,
-      channel: "meesho",
+      channel: "flipkart",
       requiredFields: ["title", "brand", "hsnCode"],
       fieldMap: {
         title: "product_name",
@@ -236,8 +235,8 @@ async function run() {
       templateId,
     });
     assertStatus(preview, 201, "connector payload preview");
-    assert(preview.payload.connectorSlug === "meesho", "payload preview connector slug mismatch");
-    assert(preview.payload.channel === "meesho", "payload preview channel mismatch");
+    assert(preview.payload.connectorSlug === "flipkart", "payload preview connector slug mismatch");
+    assert(preview.payload.channel === "flipkart", "payload preview channel mismatch");
     assert(preview.payload.mappedPayload && typeof preview.payload.mappedPayload === "object", "payload preview must include mappedPayload");
 
     const deleteTemplate = await apiRequest(baseUrl, "DELETE", `/marketplace/templates/${cloneTemplate.payload.id}`, token);
