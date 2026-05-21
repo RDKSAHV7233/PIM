@@ -222,6 +222,20 @@ function Bootstrap-Admin {
 
 # Start development servers
 function Start-DevServers {
+    # ── Bug 3 fix: clear ports before binding to prevent EADDRINUSE ──────────
+    # Stale node processes from a previous run (killed mid-request or crashed)
+    # may still hold ports 3000/4000. This call terminates them unconditionally
+    # so the new servers always bind to clean ports.
+    Write-Info "🧹 Clearing ports 3000 and 4000..."
+    $stopScript = Join-Path $PSScriptRoot "stop-servers.ps1"
+    if (Test-Path $stopScript) {
+        & $stopScript -Ports @(3000, 4000)
+    } else {
+        Write-Warning "  stop-servers.ps1 not found at $stopScript — skipping port cleanup."
+    }
+    Write-Info ""
+    # ─────────────────────────────────────────────────────────────────────────
+
     Write-Info "🚀 Starting development servers..."
     Write-Success "✓ Configuration complete!"
     Write-Info ""

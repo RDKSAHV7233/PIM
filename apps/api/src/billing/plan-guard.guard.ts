@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
@@ -18,12 +19,31 @@ type GuardRequest = Request & {
 
 @Injectable()
 export class PlanGuard implements CanActivate {
+  private readonly logger = new Logger(PlanGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly planUsageService: PlanUsageService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // ── Dev-mode quota bypass ────────────────────────────────────────────────
+    // When PIM_PLAN_TIER_OVERRIDE is set AND APP_ENV=development, skip all
+    // quota checks entirely. This prevents load/stress tests from consuming
+    // monthly submission counters and hitting PLAN_LIMIT_EXCEEDED mid-run.
+    // The guard is locked to APP_ENV=development — staging and production
+    // are immune regardless of the env var value.
+    const appEnv = String(process.env.APP_ENV ?? "").trim().toLowerCase();
+    const tierOverride = String(process.env.PIM_PLAN_TIER_OVERRIDE ?? "").trim().toUpperCase();
+    if (tierOverride && appEnv === "development") {
+      this.logger.warn(
+        `Quota check bypassed: PIM_PLAN_TIER_OVERRIDE=${tierOverride} (APP_ENV=development). ` +
+          `Remove PIM_PLAN_TIER_OVERRIDE before deploying to staging or production.`,
+      );
+      return true;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const resourceOrList = this.reflector.getAllAndOverride<PlanResource | PlanResource[]>(PLAN_RESOURCE_KEY, [
       context.getHandler(),
       context.getClass(),

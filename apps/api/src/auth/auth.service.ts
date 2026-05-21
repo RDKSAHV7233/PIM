@@ -1470,7 +1470,33 @@ export class AuthService implements OnModuleDestroy {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
-      this.logger.warn(`PIM_AUTH_IDENTITIES_JSON parse failed. Falling back to default identity resolution: ${message}`);
+      // Upgraded from warn → error: a broken identity JSON is never a silent event.
+      this.logger.error(
+        `[AUTH] PIM_AUTH_IDENTITIES_JSON parse failed — identity directory is EMPTY. ` +
+        `All logins will fall through to resolveDefaultRole() = "${resolveDefaultRole()}". ` +
+        `Cause: bash 'source .env' silently strips JSON object values containing '{'. ` +
+        `Fix: use 'npm run dev:api' or 'npm run start --workspace @pim1/api' (both invoke dotenv-cli). ` +
+        `Parse error: ${message}`,
+      );
+    }
+
+    // Fail-fast: if local-auth mode, a non-empty JSON string was provided, but the
+    // directory is still empty after parsing, something is critically wrong.
+    // Throw at boot time rather than silently serving a broken auth layer.
+    // Guard: only active outside production so staging/prod cannot be accidentally bricked.
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development")
+      .trim()
+      .toLowerCase();
+    if (this.isLocalAuthMode() && raw && directory.size === 0 && appEnv !== "production") {
+      throw new Error(
+        "[AUTH BOOT FAILURE] AUTH_MODE=local and PIM_AUTH_IDENTITIES_JSON is set " +
+          "but the parsed identity directory is empty. " +
+          "This means JSON values were stripped before startup (e.g. via 'source .env' in bash — " +
+          "bash silently discards values containing '{' characters). " +
+          "Fix: use 'npm run dev:api' or 'npm run start --workspace @pim1/api' " +
+          "which both invoke dotenv-cli and handle JSON values correctly. " +
+          "See docs/getting-started.md for the supported startup commands.",
+      );
     }
 
     return directory;

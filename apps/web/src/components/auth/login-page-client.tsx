@@ -86,6 +86,25 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Explicit empty-field guards — React controlled inputs do not participate
+    // in the browser's built-in :required constraint validation on programmatic
+    // submission (e.g. via automation tools or button.click() in JS). These
+    // guards make failure visible with a clear error message rather than
+    // silently firing a POST with empty credentials and getting a generic 401.
+    if (userId.trim() === "") {
+      setErrorMessage("User ID is required.");
+      setAttemptsRemaining(null);
+      setRateLimitedUntilMs(null);
+      return;
+    }
+    if (password === "") {
+      setErrorMessage("Password is required.");
+      setAttemptsRemaining(null);
+      setRateLimitedUntilMs(null);
+      return;
+    }
+
     const normalizedWorkspaceSlug = workspaceSlug.trim().toLowerCase();
     if (!isValidWorkspaceSlug(normalizedWorkspaceSlug)) {
       setErrorMessage(authCopy.workspaceInvalid);
@@ -261,6 +280,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             </label>
             <input
               id="workspace"
+              data-testid="workspace"
               type="text"
               value={workspaceSlug}
               onChange={(event) => setWorkspaceSlug(event.target.value)}
@@ -278,6 +298,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             </label>
             <input
               id="user-id"
+              data-testid="user-id"
               type="email"
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
@@ -294,6 +315,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
             </label>
             <input
               id="password"
+              data-testid="password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -305,6 +327,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
 
           <button
             type="submit"
+            data-testid="login-submit"
             disabled={submitting}
             suppressHydrationWarning
             className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
