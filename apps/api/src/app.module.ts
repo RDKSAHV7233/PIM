@@ -1,7 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { AutoSuggestionsModule } from "./auto-suggestions/auto-suggestions.module";
 import { AuthModule } from "./auth/auth.module";
@@ -19,6 +19,7 @@ import { ComplianceModule } from "./compliance/compliance.module";
 import { AppController } from "./common/app.controller";
 import { RbacGuard } from "./common/rbac/rbac.guard";
 import { ReadAccessPolicyInterceptor } from "./common/rbac/read-access-policy.interceptor";
+import { TenantThrottlerGuard } from "./common/throttler/tenant-throttler.guard";
 import { TenantDirectoryModule } from "./common/tenant/tenant-directory.module";
 import { TenantContextMiddleware } from "./common/tenant/tenant-context.middleware";
 import { DashboardModule } from "./dashboard/dashboard.module";
@@ -45,7 +46,11 @@ const FEATURE_ONDC_ENABLED =
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
+    ThrottlerModule.forRoot([
+      { name: "global", ttl: 60_000, limit: 300 },
+      { name: "tenant", ttl: 60_000, limit: 1000 },
+      { name: "user", ttl: 60_000, limit: 200 },
+    ]),
     LoggingModule,
     ObservabilityModule,
     QueueModule,
@@ -80,7 +85,7 @@ const FEATURE_ONDC_ENABLED =
     TenantContextMiddleware,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: TenantThrottlerGuard,
     },
     {
       provide: APP_GUARD,
