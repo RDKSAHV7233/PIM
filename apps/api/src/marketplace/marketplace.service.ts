@@ -30,6 +30,7 @@ import { LoggerService } from "../common/logging/logger.service";
 import { MetricsService } from "../metrics/metrics.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { runWithTenantContext } from "../common/tenant/tenant-context";
+import { tenantExecRaw, tenantRaw } from "../common/tenant/tenant-raw";
 import { QueueService } from "../queue/queue.service";
 import { CloneMappingTemplateDto } from "./dto/clone-mapping-template.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
@@ -807,8 +808,8 @@ export class MarketplaceService implements OnModuleInit {
       const pagedWhereSql = `WHERE ${clauses.join(" AND ")}`;
       params.push(limit + 1);
       const limitParam = params.length;
-      // RLS-BYPASS: manual tenant filter
-      const rows = (await this.prisma.tenant().$queryRawUnsafe(
+      const rows = await tenantRaw<Array<Record<string, unknown>>>(
+        this.prisma.tenant(tenantKey),
         `
         SELECT
           cs.id,
@@ -834,8 +835,8 @@ export class MarketplaceService implements OnModuleInit {
         ORDER BY cs.submitted_at DESC, cs.id DESC
         LIMIT $${limitParam}
         `,
-        ...params,
-      )) as Array<Record<string, unknown>>;
+        params,
+      );
 
       const hasNext = rows.length > limit;
       const items = hasNext ? rows.slice(0, limit) : rows;
@@ -865,8 +866,8 @@ export class MarketplaceService implements OnModuleInit {
     const limit = resolveCollectionLimit(pagination?.limit);
     params.push(limit);
     const limitParam = params.length;
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(
+      this.prisma.tenant(tenantKey),
       `
       SELECT
         cs.id,
@@ -892,8 +893,8 @@ export class MarketplaceService implements OnModuleInit {
       ORDER BY cs.submitted_at DESC, cs.id DESC
       LIMIT $${limitParam}
       `,
-      ...params,
-    )) as Array<Record<string, unknown>>;
+      params,
+    );
     return rows.map((row) => this.normalizeSubmissionRow(row));
   }
 
@@ -958,8 +959,8 @@ export class MarketplaceService implements OnModuleInit {
 
   async getSubmission(submissionId: string) {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(
+      this.prisma.tenant(tenantKey),
       `
       SELECT
         cs.id,
@@ -986,9 +987,8 @@ export class MarketplaceService implements OnModuleInit {
         AND cs.id = $2
       LIMIT 1
       `,
-      tenantKey,
-      submissionId,
-    )) as Array<Record<string, unknown>>;
+      [tenantKey, submissionId],
+    );
     if (rows.length === 0) {
       throw new NotFoundException("Submission not found");
     }
@@ -1002,8 +1002,14 @@ export class MarketplaceService implements OnModuleInit {
 
   async syncSubmissionStatus(submissionId: string) {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+    const rows = await tenantRaw<Array<{
+      id: string;
+      productId: string;
+      installationId: string;
+      externalRef: string | null;
+      connectorSlug: string;
+    }>>(
+      this.prisma.tenant(tenantKey),
       `
       SELECT
         cs.id,
@@ -1018,15 +1024,8 @@ export class MarketplaceService implements OnModuleInit {
         AND cs.id = $2
       LIMIT 1
       `,
-      tenantKey,
-      submissionId,
-    )) as Array<{
-      id: string;
-      productId: string;
-      installationId: string;
-      externalRef: string | null;
-      connectorSlug: string;
-    }>;
+      [tenantKey, submissionId],
+    );
 
     const submission = rows[0];
     if (!submission) {
@@ -1049,8 +1048,8 @@ export class MarketplaceService implements OnModuleInit {
       sellerMessage: issue.sellerMessage,
     }));
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
+    await tenantExecRaw(
+      this.prisma.tenant(tenantKey),
       `
       UPDATE connector_submissions
       SET
@@ -1060,11 +1059,7 @@ export class MarketplaceService implements OnModuleInit {
       WHERE tenant_key = $1
         AND id = $2
       `,
-      tenantKey,
-      submissionId,
-      update.status,
-      JSON.stringify(normalizedErrors),
-      update.resolvedAt ?? null,
+      [tenantKey, submissionId, update.status, JSON.stringify(normalizedErrors), update.resolvedAt ?? null],
     );
 
     return this.getSubmission(submissionId);
@@ -2120,8 +2115,12 @@ export class MarketplaceService implements OnModuleInit {
     connectorDisplayName: string;
   }> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
+    const rows = await tenantRaw<Array<{
+      id: string;
+      connectorSlug: string;
+      connectorDisplayName: string;
+    }>>(
+      this.prisma.tenant(tenantKey),
       `
       SELECT
         ci.id,
@@ -2133,13 +2132,8 @@ export class MarketplaceService implements OnModuleInit {
         AND ci.tenant_key = $2
       LIMIT 1
       `,
-      installationId,
-      tenantKey,
-    )) as Array<{
-      id: string;
-      connectorSlug: string;
-      connectorDisplayName: string;
-    }>;
+      [installationId, tenantKey],
+    );
 
     const installation = rows[0];
     if (!installation) {
@@ -3030,15 +3024,14 @@ export class MarketplaceService implements OnModuleInit {
     if (products.length === 0) return [];
 
     // Fetch sync states for this installation (raw to avoid Prisma type error on new model)
-    // RLS-BYPASS: manual tenant filter
-    const syncStates = await this.prisma.tenant().$queryRawUnsafe<Array<{
+    const syncStates = await tenantRaw<Array<{
       product_id: string;
       last_synced_version: number | null;
     }>>(
+      this.prisma.tenant(tenantKey),
       `SELECT product_id, last_synced_version FROM connector_product_sync_states
        WHERE tenant_key = $1 AND installation_id = $2`,
-      tenantKey,
-      installationId,
+      [tenantKey, installationId],
     );
 
     const syncMap = new Map(syncStates.map((s) => [s.product_id, s.last_synced_version ?? -1]));
@@ -3104,13 +3097,13 @@ export class MarketplaceService implements OnModuleInit {
   async upsertSyncState(installationId: string, productId: string, version: number, status: string): Promise<void> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const id = `${tenantKey}_${installationId}_${productId}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 24) + "_" + Date.now().toString(36);
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
+    await tenantExecRaw(
+      this.prisma.tenant(tenantKey),
       `INSERT INTO connector_product_sync_states (id, tenant_key, installation_id, product_id, last_synced_at, last_synced_version, last_synced_status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), NOW())
        ON CONFLICT (tenant_key, installation_id, product_id)
        DO UPDATE SET last_synced_at = NOW(), last_synced_version = $5, last_synced_status = $6, updated_at = NOW()`,
-      id, tenantKey, installationId, productId, version, status,
+      [id, tenantKey, installationId, productId, version, status],
     );
   }
 
@@ -3121,19 +3114,19 @@ export class MarketplaceService implements OnModuleInit {
     lastSyncedStatus: string | null;
   }>> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+    const rows = await tenantRaw<Array<{
       product_id: string;
       last_synced_at: Date | null;
       last_synced_version: number | null;
       last_synced_status: string | null;
     }>>(
+      this.prisma.tenant(tenantKey),
       `SELECT product_id, last_synced_at, last_synced_version, last_synced_status
        FROM connector_product_sync_states
        WHERE tenant_key = $1 AND installation_id = $2
        ORDER BY last_synced_at DESC NULLS LAST
        LIMIT 200`,
-      tenantKey, installationId,
+      [tenantKey, installationId],
     );
     return rows.map((r) => ({
       productId: r.product_id,
@@ -3155,8 +3148,7 @@ export class MarketplaceService implements OnModuleInit {
     lastRunOutcome: string | null;
   } | null> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+    const rows = await tenantRaw<Array<{
       id: string;
       cron_expression: string;
       scope: string;
@@ -3165,11 +3157,12 @@ export class MarketplaceService implements OnModuleInit {
       next_run_at: Date | null;
       last_run_outcome: string | null;
     }>>(
+      this.prisma.tenant(tenantKey),
       `SELECT id, cron_expression, scope, status, last_run_at, next_run_at, last_run_outcome
        FROM connector_sync_schedules
        WHERE tenant_key = $1 AND installation_id = $2
        LIMIT 1`,
-      tenantKey, installationId,
+      [tenantKey, installationId],
     );
     const row = rows[0];
     if (!row) return null;
@@ -3198,19 +3191,19 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("cronExpression must be a valid 5 or 6-field cron expression.");
     }
 
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{ id: string }>>(
+    const rows = await tenantRaw<Array<{ id: string }>>(
+      this.prisma.tenant(tenantKey),
       `SELECT id FROM connector_sync_schedules WHERE tenant_key = $1 AND installation_id = $2 LIMIT 1`,
-      tenantKey, installationId,
+      [tenantKey, installationId],
     );
 
     if (rows[0]) {
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
+      await tenantExecRaw(
+        this.prisma.tenant(tenantKey),
         `UPDATE connector_sync_schedules
          SET cron_expression = $1, scope = $2, status = $3, updated_at = NOW()
          WHERE tenant_key = $4 AND installation_id = $5`,
-        cronExpression, scope, status, tenantKey, installationId,
+        [cronExpression, scope, status, tenantKey, installationId],
       );
       await this.queueService
         .registerRepeatableSync(`sync:${installationId}`, { tenantKey, installationId, scope }, cronExpression, status === "active")
@@ -3219,11 +3212,11 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     const id = `sched_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
+    await tenantExecRaw(
+      this.prisma.tenant(tenantKey),
       `INSERT INTO connector_sync_schedules (id, tenant_key, installation_id, cron_expression, scope, status, created_by, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-      id, tenantKey, installationId, cronExpression, scope, status, actor?.actorId ?? null,
+      [id, tenantKey, installationId, cronExpression, scope, status, actor?.actorId ?? null],
     );
     await this.queueService
       .registerRepeatableSync(`sync:${installationId}`, { tenantKey, installationId, scope }, cronExpression, status === "active")
@@ -3233,10 +3226,10 @@ export class MarketplaceService implements OnModuleInit {
 
   async deleteSchedule(installationId: string): Promise<void> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
+    await tenantExecRaw(
+      this.prisma.tenant(tenantKey),
       `DELETE FROM connector_sync_schedules WHERE tenant_key = $1 AND installation_id = $2`,
-      tenantKey, installationId,
+      [tenantKey, installationId],
     );
     await this.queueService
       .registerRepeatableSync(`sync:${installationId}`, {}, "", false)
@@ -3298,13 +3291,13 @@ export class MarketplaceService implements OnModuleInit {
     let confirmed = 0;
     for (const link of links) {
       const id = `link_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
+      await tenantExecRaw(
+        this.prisma.tenant(tenantKey),
         `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW(), NOW())
          ON CONFLICT (tenant_key, installation_id, product_id)
          DO UPDATE SET shopify_gid = $5, matched_by = $6, confirmed_at = NOW(), confirmed_by = $7, updated_at = NOW()`,
-        id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, actor?.actorId ?? null,
+        [id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, actor?.actorId ?? null],
       );
       confirmed++;
     }
@@ -3318,18 +3311,18 @@ export class MarketplaceService implements OnModuleInit {
     confirmedAt: Date | null;
   }>> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<{
+    const rows = await tenantRaw<Array<{
       product_id: string;
       shopify_gid: string;
       matched_by: string;
       confirmed_at: Date | null;
     }>>(
+      this.prisma.tenant(tenantKey),
       `SELECT product_id, shopify_gid, matched_by, confirmed_at
        FROM connector_product_links
        WHERE tenant_key = $1 AND installation_id = $2
        ORDER BY confirmed_at DESC NULLS LAST`,
-      tenantKey, installationId,
+      [tenantKey, installationId],
     );
     return rows.map((r) => ({
       productId: r.product_id,
