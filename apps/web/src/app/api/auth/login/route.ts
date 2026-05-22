@@ -7,6 +7,13 @@ function useSecureCookies(): boolean {
   return appEnv === "production" || appEnv === "staging";
 }
 
+function extractCookieValue(setCookieHeader: string | null, name: string): string | null {
+  if (!setCookieHeader) return null;
+  const pattern = new RegExp(`(?:^|,\\s*)${name}=([^;]+)`);
+  const match = setCookieHeader.match(pattern);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
   const parsedExpiry = Number(body?.expiresInMinutes);
@@ -79,6 +86,16 @@ export async function POST(request: NextRequest) {
           path: "/",
           maxAge,
         });
+        const refreshToken = extractCookieValue(response.headers.get("set-cookie"), "pim_refresh_token");
+        if (refreshToken) {
+          outgoing.cookies.set("pim_refresh_token", refreshToken, {
+            httpOnly: true,
+            secure: secureCookies,
+            sameSite: "strict",
+            path: "/",
+            maxAge: 7 * 24 * 60 * 60,
+          });
+        }
         outgoing.cookies.set("pim_csrf_token", csrfToken, {
           httpOnly: false,
           secure: secureCookies,

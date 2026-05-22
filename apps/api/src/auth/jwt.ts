@@ -12,7 +12,7 @@ export const STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk";
 export type StepUpScope =
   | typeof STEP_UP_SCOPE_MAPPING_HIGH_RISK
   | typeof STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK;
-export type PimJwtTokenType = "access" | "step_up" | "mfa_pending" | "mfa_enrollment";
+export type PimJwtTokenType = "access" | "step_up" | "mfa_pending" | "mfa_enrollment" | "refresh";
 
 interface JwtHeader {
   alg: "HS256";
@@ -84,7 +84,7 @@ function isFoundationRole(value: unknown): value is FoundationRole {
 }
 
 function isTokenType(value: unknown): value is PimJwtTokenType {
-  return value === "access" || value === "step_up" || value === "mfa_pending" || value === "mfa_enrollment";
+  return value === "access" || value === "step_up" || value === "mfa_pending" || value === "mfa_enrollment" || value === "refresh";
 }
 
 function isStepUpScope(value: unknown): value is StepUpScope {

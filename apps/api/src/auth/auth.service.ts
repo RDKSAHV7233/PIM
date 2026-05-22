@@ -32,6 +32,7 @@ import { PimJwtClaims, StepUpScope, signPimJwt, verifyPimJwt } from "./jwt";
 
 const DEFAULT_LOGIN_EXPIRY_MINUTES = 4 * 60;
 const MAX_LOGIN_EXPIRY_MINUTES = 4 * 60;
+const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_IP_ATTEMPT_LIMIT = 10;
 const DEFAULT_IP_WINDOW_MS = 15 * 60 * 1000;
 const USER_ATTEMPT_LIMIT = 5;
@@ -129,6 +130,7 @@ export type LoginResult =
   | {
       type: "success";
       payload: LoginResponse;
+      refreshToken: string;
     }
   | {
       type: "invalid_credentials";
@@ -166,6 +168,17 @@ export type LoginResult =
   | {
       type: "auth_method_not_allowed";
       allowedMethods: string[];
+    };
+
+export type RefreshResult =
+  | {
+      type: "success";
+      accessToken: string;
+      refreshToken: string;
+      expiresInSeconds: number;
+    }
+  | {
+      type: "invalid_token";
     };
 
 export interface ResendUnlockResult {
@@ -555,6 +568,7 @@ export class AuthService implements OnModuleDestroy {
 
     return {
       type: "success",
+      refreshToken: this.issueRefreshToken(identity),
       payload: {
         accessToken,
         tokenType: "Bearer",
@@ -566,10 +580,82 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
-  async logout(claims: PimJwtClaims): Promise<void> {
+  issueRefreshToken(identity: { userId: string; tenantId: string; role?: AppRole; assignedRoles?: FoundationRole[] }): string {
+    return signPimJwt({
+      sub: identity.userId,
+      tenantId: identity.tenantId,
+      role: identity.role,
+      assignedRoles: identity.assignedRoles,
+      tokenType: "refresh",
+      expiresInSeconds: REFRESH_TOKEN_TTL_SECONDS,
+    });
+  }
+
+  async refresh(refreshToken: string): Promise<RefreshResult> {
+    const claims = verifyPimJwt(refreshToken);
+    if (!claims || claims.tokenType !== "refresh") {
+      return { type: "invalid_token" };
+    }
+    const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+    if (revoked) {
+      return { type: "invalid_token" };
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const revokeCurrentRefresh = async () => {
+      await this.jwtBlocklistService.revoke(claims.jti, Math.max(1, claims.exp - nowSeconds));
+    };
+
+    const identity = await this.resolveLoginIdentity(claims.sub, claims.tenantId);
+    if (!identity || (identity.lockedUntil && identity.lockedUntil.getTime() > Date.now())) {
+      await revokeCurrentRefresh();
+      return { type: "invalid_token" };
+    }
+
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(identity.tenantId);
+    if (commercialProfile.accessStatus === "suspended") {
+      await revokeCurrentRefresh();
+      return { type: "invalid_token" };
+    }
+
+    await revokeCurrentRefresh();
+
+    const sessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(identity.tenantId);
+    const expiresInSeconds = Math.min(MAX_LOGIN_EXPIRY_MINUTES, sessionTimeoutMinutes) * 60;
+    const accessToken = signPimJwt({
+      sub: identity.userId,
+      tenantId: identity.tenantId,
+      role: identity.role,
+      assignedRoles: identity.assignedRoles,
+      tokenType: "access",
+      mfaVerified: claims.mfaVerified,
+      expiresInSeconds,
+    });
+    const nextRefreshToken = this.issueRefreshToken(identity);
+
+    await this.auditService.record({
+      actorId: identity.userId,
+      actorRole: identity.role,
+      action: "auth.token_refreshed",
+      resource: "auth.session",
+      tenantKey: identity.tenantId,
+      metadata: { expiresInSeconds },
+    });
+
+    return { type: "success", accessToken, refreshToken: nextRefreshToken, expiresInSeconds };
+  }
+
+  async logout(claims: PimJwtClaims, refreshToken?: string): Promise<void> {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const ttlSeconds = Math.max(1, claims.exp - nowSeconds);
     await this.jwtBlocklistService.revoke(claims.jti, ttlSeconds);
+    if (refreshToken) {
+      const refreshClaims = verifyPimJwt(refreshToken);
+      if (refreshClaims?.tokenType === "refresh") {
+        const refreshTtlSeconds = Math.max(1, refreshClaims.exp - nowSeconds);
+        await this.jwtBlocklistService.revoke(refreshClaims.jti, refreshTtlSeconds);
+      }
+    }
     await this.auditService.record({
       actorId: claims.sub,
       actorRole: claims.role ?? "viewer",

@@ -38,6 +38,39 @@ interface AuthenticatedRequest extends Request {
   pimUserId?: string;
 }
 
+const REFRESH_COOKIE_NAME = "pim_refresh_token";
+const REFRESH_COOKIE_PATH = "/api/v1/auth";
+const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function useSecureCookies(): boolean {
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return appEnv === "production" || appEnv === "staging";
+}
+
+function parseCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return undefined;
+}
+
+function setRefreshCookie(reply: Response, refreshToken: string): void {
+  reply.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: useSecureCookies(),
+    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    path: REFRESH_COOKIE_PATH,
+  });
+}
+
+function clearRefreshCookie(reply: Response): void {
+  reply.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+}
+
 @Controller("auth")
 @DisallowApiClient()
 export class AuthController {
@@ -134,7 +167,29 @@ export class AuthController {
       );
     }
 
+    setRefreshCookie(reply, result.refreshToken);
     return result.payload;
+  }
+
+  @Public()
+  @Post("refresh")
+  @HttpCode(200)
+  async refresh(@Req() request: AuthenticatedRequest, @Res({ passthrough: true }) reply: Response) {
+    const refreshToken = parseCookie(request.headers.cookie, REFRESH_COOKIE_NAME);
+    if (!refreshToken) {
+      throw new UnauthorizedException({ error: "REFRESH_TOKEN_MISSING" });
+    }
+    const result = await this.authService.refresh(refreshToken);
+    if (result.type === "invalid_token") {
+      clearRefreshCookie(reply);
+      throw new UnauthorizedException({ error: "REFRESH_TOKEN_INVALID" });
+    }
+    setRefreshCookie(reply, result.refreshToken);
+    return {
+      accessToken: result.accessToken,
+      tokenType: "Bearer",
+      expiresInSeconds: result.expiresInSeconds,
+    };
   }
 
   @Public()
@@ -256,12 +311,14 @@ export class AuthController {
   @Post("logout")
   @Roles(...APP_ROLES)
   @HttpCode(204)
-  async logout(@Req() request: AuthenticatedRequest): Promise<void> {
+  async logout(@Req() request: AuthenticatedRequest, @Res({ passthrough: true }) reply: Response): Promise<void> {
     const claims = request.pimJwtClaims;
     if (!claims) {
       throw new UnauthorizedException("Bearer token is required.");
     }
-    await this.authService.logout(claims);
+    const refreshToken = parseCookie(request.headers.cookie, REFRESH_COOKIE_NAME);
+    await this.authService.logout(claims, refreshToken);
+    clearRefreshCookie(reply);
   }
 
   @Post("step-up")
