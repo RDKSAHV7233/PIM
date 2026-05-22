@@ -65,6 +65,9 @@ export class JwtAuthGuard implements CanActivate {
 
     const claims = decodePimJwtFromAuthHeader(request.headers.authorization);
     if (claims) {
+      if (claims.tokenType === "refresh") {
+        throw new UnauthorizedException({ error: "REFRESH_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+      }
       if (claims.tokenType === "step_up") {
         throw new UnauthorizedException({ error: "STEP_UP_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
       }
