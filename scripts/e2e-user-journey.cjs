@@ -2021,7 +2021,10 @@ function buildChecks() {
     assert(html.includes("Workspace Users"), "workspace users card missing");
     assert(html.includes("Close Invite"), "invite toggle missing");
     assert(html.includes("Create User"), "invite form submit button missing");
-    assert(!html.includes("Read-only"), "page still rendered read-only state for admin");
+    assert(
+      !html.includes("Admin role is required to invite users, change roles, or change account access state."),
+      "page still rendered non-admin access fallback for admin",
+    );
     return "admin controls visible";
   });
 
@@ -2188,6 +2191,11 @@ function buildChecks() {
   addCleanup("delete_variant", async () => {
     if (!ctx.variantId) {
       skip("variant not created");
+    }
+    const variant = ctx.knownVariants.get(String(ctx.variantId));
+    const parentProductId = variant?.productId ?? ctx.productId;
+    if (parentProductId) {
+      await normalizeProductForDelete(String(parentProductId));
     }
     const result = await api("DELETE", `/catalog/variants/${encodeURIComponent(ctx.variantId)}`, {
       token: ctx.adminToken,

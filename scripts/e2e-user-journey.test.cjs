@@ -51,8 +51,14 @@ try {
   assert(
     script.includes('web("GET", "/admin/users?showInvite=true"') &&
       script.includes('assert(html.includes("Close Invite"), "invite toggle missing")') &&
-      script.includes('assert(html.includes("Create User"), "invite form submit button missing")'),
-    "admin users page check must verify the invite form on the explicit showInvite route",
+      script.includes('assert(html.includes("Create User"), "invite form submit button missing")') &&
+      script.includes("Admin role is required to invite users, change roles, or change account access state."),
+    "admin users page check must verify controls without treating role-matrix read-only copy as a non-admin fallback",
+  );
+  assert(
+    script.includes("const parentProductId = variant?.productId ?? ctx.productId;") &&
+      script.includes("await normalizeProductForDelete(String(parentProductId));"),
+    "variant cleanup must normalize the parent product before deleting workflow-locked variants",
   );
 
   console.log(
@@ -67,7 +73,8 @@ try {
           "optional_amazon_connector_secrets_supported",
           "amazon_install_check_skips_without_staging_credentials",
           "locked_user_check_skips_without_shared_password",
-          "admin_users_page_check_uses_show_invite_route",
+          "admin_users_page_check_targets_non_admin_fallback",
+          "variant_cleanup_normalizes_parent_product",
         ],
       },
       null,
