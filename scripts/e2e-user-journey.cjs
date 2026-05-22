@@ -642,6 +642,37 @@ async function normalizeProductForDelete(productId) {
   }
 }
 
+async function purgeCreatedProductsForCategory(categoryId) {
+  const targetCategoryId = String(categoryId);
+  let attempted = 0;
+  let purged = 0;
+  for (const productId of [...new Set(ctx.createdProductIds)].reverse()) {
+    const knownProduct = ctx.knownProducts.get(String(productId));
+    if (String(knownProduct?.categoryId ?? "") !== targetCategoryId) {
+      continue;
+    }
+    attempted += 1;
+    try {
+      await normalizeProductForDelete(productId);
+      const deleteResult = await api("DELETE", `/catalog/products/${encodeURIComponent(productId)}`, {
+        token: ctx.adminToken,
+      });
+      if (![200, 204, 404].includes(deleteResult.status)) {
+        continue;
+      }
+      const purgeResult = await api("POST", `/catalog/products/${encodeURIComponent(productId)}/purge`, {
+        token: ctx.adminToken,
+      });
+      if ([200, 204, 404].includes(purgeResult.status)) {
+        purged += 1;
+      }
+    } catch {
+      // Best effort: category cleanup will still skip if hard references remain.
+    }
+  }
+  return { attempted, purged };
+}
+
 function encodeUser(userId) {
   return encodeURIComponent(String(userId));
 }
@@ -2242,7 +2273,7 @@ function buildChecks() {
     let result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
       token: ctx.adminToken,
     });
-    if (result.status === 400) {
+    if (![200, 204].includes(result.status)) {
       const productsResult = await api("GET", "/catalog/products?slim=true&limit=200", {
         token: ctx.adminToken,
       });
@@ -2255,6 +2286,7 @@ function buildChecks() {
           token: ctx.adminToken,
         });
       }
+      await purgeCreatedProductsForCategory(ctx.categoryId);
       await new Promise((resolve) => setTimeout(resolve, 1500));
       result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
         token: ctx.adminToken,

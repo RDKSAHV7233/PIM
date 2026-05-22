@@ -60,6 +60,12 @@ try {
       script.includes("await normalizeProductForDelete(String(parentProductId));"),
     "variant cleanup must normalize the parent product before deleting workflow-locked variants",
   );
+  assert(
+    script.includes("async function purgeCreatedProductsForCategory(categoryId)") &&
+      script.includes('api("POST", `/catalog/products/${encodeURIComponent(productId)}/purge`') &&
+      script.includes("await purgeCreatedProductsForCategory(ctx.categoryId);"),
+    "category cleanup must hard-purge journey-created products before deleting temporary categories",
+  );
 
   console.log(
     JSON.stringify(
@@ -75,6 +81,7 @@ try {
           "locked_user_check_skips_without_shared_password",
           "admin_users_page_check_targets_non_admin_fallback",
           "variant_cleanup_normalizes_parent_product",
+          "category_cleanup_purges_journey_products",
         ],
       },
       null,
