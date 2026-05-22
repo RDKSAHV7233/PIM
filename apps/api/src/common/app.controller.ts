@@ -1,5 +1,5 @@
-import { Controller, Get, Header, HttpCode, Param, Post } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Controller, Get, Header, HttpCode, Param, Post, Query } from "@nestjs/common";
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { AdminBoundaryAccess } from "./rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "./rbac/api-client-policy.decorator";
@@ -59,6 +59,24 @@ export class AppController {
         workerEnabled: this.queueService.isWorkerEnabled(),
       },
     };
+  }
+
+  @DisallowApiClient()
+  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_security" })
+  @Roles("admin")
+  @Get("queue/:queueName/lanes/:laneKey/failed")
+  @ApiOperation({ summary: "List failed BullMQ jobs in a lane without exposing payloads (admin only)" })
+  @ApiQuery({ name: "limit", required: false, type: Number, description: "Maximum failed jobs to return, capped at 100" })
+  @ApiResponse({ status: 200, description: "Failed job diagnostic summaries" })
+  async listFailedQueueJobs(
+    @Param("queueName") queueName: string,
+    @Param("laneKey") laneKey: string,
+    @Query("limit") limitInput?: string,
+  ) {
+    const limit = Number.parseInt(String(limitInput ?? "20"), 10);
+    const items = await this.queueService.listFailedJobs(queueName, laneKey, limit);
+    return { items };
   }
 
   @DisallowApiClient()

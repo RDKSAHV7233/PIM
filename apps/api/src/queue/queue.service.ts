@@ -59,6 +59,16 @@ export interface QueueMetrics {
   >;
 }
 
+export interface QueueFailedJobSummary {
+  id: string;
+  name: string;
+  failedReason: string | null;
+  attemptsMade: number;
+  timestamp: string | null;
+  processedOn: string | null;
+  finishedOn: string | null;
+}
+
 type MemoryQueueRegistration = {
   kind: "memory";
   handler: QueueHandler<unknown>;
@@ -570,6 +580,28 @@ export class QueueService implements OnModuleDestroy {
     return failedJobs.length;
   }
 
+  async listFailedJobs(queueName: string, laneKey: string, limit = 20): Promise<QueueFailedJobSummary[]> {
+    const registration = this.registrations.get(queueName);
+    if (registration?.kind !== "bullmq") {
+      return [];
+    }
+    const lane = registration.lanes.get(laneKey);
+    if (!lane) {
+      return [];
+    }
+    const resolvedLimit = Math.max(1, Math.min(100, Number.isFinite(limit) ? Math.trunc(limit) : 20));
+    const failedJobs = await lane.queue.getFailed(0, resolvedLimit - 1);
+    return failedJobs.map((job: Job): QueueFailedJobSummary => ({
+      id: String(job.id ?? ""),
+      name: String(job.name ?? ""),
+      failedReason: this.truncateDiagnostic(job.failedReason),
+      attemptsMade: Number(job.attemptsMade ?? 0),
+      timestamp: this.toIsoTimestamp(job.timestamp),
+      processedOn: this.toIsoTimestamp(job.processedOn),
+      finishedOn: this.toIsoTimestamp(job.finishedOn),
+    }));
+  }
+
   private async enqueueToBullLane(
     queueName: string,
     registration: BullQueueRegistration,
@@ -789,6 +821,19 @@ export class QueueService implements OnModuleDestroy {
       return error.message.trim();
     }
     return String(error ?? "Unknown queue handler error");
+  }
+
+  private truncateDiagnostic(value: unknown): string | null {
+    const text = String(value ?? "").trim();
+    return text ? text.slice(0, 1000) : null;
+  }
+
+  private toIsoTimestamp(value: unknown): string | null {
+    const timestamp = Number(value ?? 0);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      return null;
+    }
+    return new Date(timestamp).toISOString();
   }
 
   private resolveQueueName(registration: QueueRegistration): string {

@@ -31,6 +31,47 @@
         ]
       }
     },
+    "/api/v1/queue/{queueName}/lanes/{laneKey}/failed": {
+      "get": {
+        "operationId": "AppController_listFailedQueueJobs",
+        "parameters": [
+          {
+            "name": "queueName",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "laneKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Maximum failed jobs to return, capped at 100",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Failed job diagnostic summaries"
+          }
+        },
+        "summary": "List failed BullMQ jobs in a lane without exposing payloads (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/queue/{queueName}/lanes/{laneKey}/retry-failed": {
       "post": {
         "operationId": "AppController_retryFailedQueueJobs",
