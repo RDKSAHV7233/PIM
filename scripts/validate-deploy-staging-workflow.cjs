@@ -66,6 +66,7 @@ function main() {
   const job = jobs["deploy-staging"];
   assert(job && typeof job === "object", "Missing deploy-staging job");
   assert(job.environment === "staging", "deploy-staging job must target environment=staging");
+  assert(Number.parseInt(String(job["timeout-minutes"] ?? ""), 10) <= 75, "deploy-staging job must cap runtime at 75 minutes or less");
   assert(job.concurrency && typeof job.concurrency === "object", "deploy-staging job must define concurrency");
   assert(String(job.concurrency.group ?? "").trim() === "deploy-staging", "deploy-staging concurrency group must be deploy-staging");
   assert(job.concurrency["cancel-in-progress"] === false, "deploy-staging concurrency must not cancel in-progress deploys");
@@ -117,11 +118,15 @@ function main() {
   requireStepOrder(steps, "Install Railway CLI", "Deploy to staging");
 
   const deployStep = requireStep(steps, "Deploy to staging");
+  assert(Number.parseInt(String(deployStep["timeout-minutes"] ?? ""), 10) <= 45, "Deploy to staging must cap runtime at 45 minutes or less");
   requireAnyEnvVar(deployStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
   assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
   const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");

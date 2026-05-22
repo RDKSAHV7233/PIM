@@ -81,6 +81,7 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
   const railwayBin = String(env.RAILWAY_CLI_BIN ?? "railway").trim() || "railway";
   const deployRetries = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRIES ?? "3"), 10);
   const deployRetryDelayMs = Number.parseInt(String(env.RAILWAY_DEPLOY_RETRY_DELAY_MS ?? "5000"), 10);
+  const deployTimeoutMs = Number.parseInt(String(env.RAILWAY_DEPLOY_TIMEOUT_MS ?? "900000"), 10);
   const railwayToken = optionalEnv("RAILWAY_TOKEN", env);
   const railwayApiToken = optionalEnv("RAILWAY_API_TOKEN", env);
 
@@ -111,6 +112,7 @@ function resolveConfig(env = process.env, repoRoot = path.resolve(__dirname, "..
     railwayBin,
     deployRetries: Number.isFinite(deployRetries) ? Math.max(1, deployRetries) : 3,
     deployRetryDelayMs: Number.isFinite(deployRetryDelayMs) ? Math.max(0, deployRetryDelayMs) : 5000,
+    deployTimeoutMs: Number.isFinite(deployTimeoutMs) ? Math.max(60_000, deployTimeoutMs) : 900_000,
   };
 }
 
@@ -225,6 +227,7 @@ function runCommand(command, args, options) {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
+    timeout: options.timeoutMs,
   });
   if (result.stdout) {
     process.stdout.write(result.stdout);
@@ -233,6 +236,9 @@ function runCommand(command, args, options) {
     process.stderr.write(result.stderr);
   }
   if (result.error) {
+    result.error.stdout = result.stdout;
+    result.error.stderr = result.stderr;
+    result.error.combinedOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
     throw result.error;
   }
   if (result.status !== 0) {
@@ -262,6 +268,7 @@ function runCommandCapture(command, args, options) {
 function isRetryableRailwayDeployError(error) {
   const combined = [
     error instanceof Error ? error.message : String(error),
+    error && typeof error === "object" ? String(error.code ?? "") : "",
     error && typeof error === "object" ? String(error.stdout ?? "") : "",
     error && typeof error === "object" ? String(error.stderr ?? "") : "",
     error && typeof error === "object" ? String(error.combinedOutput ?? "") : "",
@@ -269,6 +276,8 @@ function isRetryableRailwayDeployError(error) {
     .join("\n")
     .toLowerCase();
   return (
+    combined.includes("etimedout") ||
+    combined.includes("timed out") ||
     combined.includes("operation timed out") ||
     combined.includes("error sending request for url") ||
     combined.includes("build daemon returned an error") ||
@@ -315,6 +324,7 @@ function runDeployCommandWithRetry(command, options) {
         cwd: options.cwd,
         env: options.env,
         label: command.label,
+        timeoutMs: options.timeoutMs,
       });
       return;
     } catch (error) {
@@ -479,6 +489,7 @@ function runDeployCommandAcrossServiceTargets(command, options) {
           env: options.env,
           maxAttempts: options.maxAttempts,
           retryDelayMs: options.retryDelayMs,
+          timeoutMs: options.deployTimeoutMs,
         },
       );
       if (serviceTarget !== command.serviceTargets[0]) {
@@ -649,6 +660,7 @@ function main(env = process.env) {
         railwayBin: config.railwayBin,
         maxAttempts: config.deployRetries,
         retryDelayMs: config.deployRetryDelayMs,
+        deployTimeoutMs: config.deployTimeoutMs,
       },
     );
   }

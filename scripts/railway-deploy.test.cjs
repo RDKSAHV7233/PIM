@@ -40,6 +40,7 @@ function main() {
   assert.equal(path.relative(repoRoot, config.webSourcePath), path.join(".tmp", "railway-web-service"));
   assert.equal(config.deployRetries, 3);
   assert.equal(config.deployRetryDelayMs, 5000);
+  assert.equal(config.deployTimeoutMs, 900000);
   assert.equal(normalizeServiceTarget(" App Vexa "), "app vexa");
   assert.deepEqual(
     findOverlappingServiceTargets(
@@ -95,6 +96,14 @@ function main() {
     }),
     true,
     "Timeout upload failures should be retryable",
+  );
+  assert.equal(
+    isRetryableRailwayDeployError({
+      message: "spawnSync railway ETIMEDOUT",
+      code: "ETIMEDOUT",
+    }),
+    true,
+    "Subprocess timeouts should be retryable",
   );
   assert.equal(
     isRetryableRailwayDeployError({

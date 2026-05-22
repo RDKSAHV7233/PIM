@@ -17,6 +17,7 @@ on:
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     environment: staging
     concurrency:
       group: deploy-staging
@@ -85,6 +86,7 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy to staging
+        timeout-minutes: 45
         shell: bash
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -99,6 +101,9 @@ jobs:
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
           STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          RAILWAY_DEPLOY_RETRIES: "2"
+          RAILWAY_DEPLOY_TIMEOUT_MS: "600000"
+          RAILWAY_DEPLOY_RETRY_DELAY_MS: "5000"
         run: |
           node scripts/railway-deploy.cjs
 
