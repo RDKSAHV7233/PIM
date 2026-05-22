@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getInstalledConnectors, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { canManageChannels } from "@/lib/role-capabilities";
+import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerAuthHeader } from "@/lib/server-auth";
 import { getServerActorRole } from "@/lib/server-session";
 
@@ -25,7 +25,7 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
 export default async function ChannelsOverviewPage() {
   const authHeader = await getServerAuthHeader();
   const actorRole = await getServerActorRole();
-  const canEditChannelSetup = canManageChannels(actorRole);
+  const canEditChannelSetup = canEditWorkspace(actorRole);
   const canManageConnectorAccess = actorRole === "admin";
 
   try {

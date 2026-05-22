@@ -26,7 +26,7 @@ const workspaceAdminModules = [
     title: "Connector Access",
     description: "Grant or revoke connector permissions for the workspace.",
     href: "/admin/connectors",
-    visibility: "connector_admin_plus" as AdminNavigationAudience,
+    visibility: "editor_plus" as AdminNavigationAudience,
   },
   {
     title: "API Keys",

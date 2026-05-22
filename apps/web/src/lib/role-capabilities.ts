@@ -5,11 +5,11 @@ export function canEditWorkspace(role: AppRole): boolean {
 }
 
 export function canManageChannels(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "channel_manager";
+  return role === "admin" || role === "editor";
 }
 
 export function canManageConnectors(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "connector_admin";
+  return role === "admin" || role === "editor";
 }
 
 export function canResolveIssueInboxWarnings(role: AppRole): boolean {
@@ -17,9 +17,13 @@ export function canResolveIssueInboxWarnings(role: AppRole): boolean {
 }
 
 export function canDecideApproval(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "approver";
+  return role === "admin" || role === "editor" || role === "reviewer";
 }
 
 export function canViewConnectors(role: AppRole): boolean {
-  return role === "admin" || role === "editor" || role === "connector_admin" || role === "channel_manager";
+  return true;
+}
+
+export function isReadOnlyRole(role: AppRole): boolean {
+  return !canEditWorkspace(role);
 }

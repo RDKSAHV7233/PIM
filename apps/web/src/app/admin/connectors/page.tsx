@@ -43,7 +43,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
   const authHeader = await getServerAuthHeader();
   const status = String(query.status ?? "").trim();
 
-  if (role !== "admin" && role !== "connector_admin") {
+  if (role !== "admin") {
     redirect(buildLoginRedirect("/admin/connectors", { status: 403 }));
   }
 

@@ -37,7 +37,7 @@ const STEP_UP_ERROR_CODES = new Set([
   "STEP_UP_SCOPE_MISMATCH",
   "STEP_UP_PASSWORD_REQUIRED",
 ]);
-const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]);
+const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "reviewer", "viewer"]);
 
 function rethrowRedirectError(error: unknown): void {
   if (isRedirectError(error)) {
@@ -1183,7 +1183,7 @@ export async function grantConnectorPermissionAction(formData: FormData) {
     throw new Error("Principal type must be user or role.");
   }
   if (principalType === "role" && !CONNECTOR_PERMISSION_ROLE_IDS.has(principalId.toLowerCase())) {
-    throw new Error("Role must be one of: admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer.");
+    throw new Error("Role must be one of: admin, editor, reviewer, viewer.");
   }
   if (!["install", "reconnect", "uninstall"].includes(action)) {
     throw new Error("Action must be install, reconnect, or uninstall.");
