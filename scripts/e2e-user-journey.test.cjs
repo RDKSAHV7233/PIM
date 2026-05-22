@@ -62,9 +62,10 @@ try {
   );
   assert(
     script.includes("async function purgeCreatedProductsForCategory(categoryId)") &&
-      script.includes('api("POST", `/catalog/products/${encodeURIComponent(productId)}/purge`') &&
-      script.includes("await purgeCreatedProductsForCategory(ctx.categoryId);"),
-    "category cleanup must hard-purge journey-created products before deleting temporary categories",
+      script.includes('api("DELETE", `/catalog/products/${encodeURIComponent(productId)}/purge`') &&
+      script.includes("purgeStats = await purgeCreatedProductsForCategory(ctx.categoryId);") &&
+      script.includes("productPurge=${purgeStats.purged}/${purgeStats.attempted}"),
+    "category cleanup must hard-purge journey-created products via the DELETE purge route before deleting temporary categories",
   );
 
   console.log(

@@ -660,7 +660,7 @@ async function purgeCreatedProductsForCategory(categoryId) {
       if (![200, 204, 404].includes(deleteResult.status)) {
         continue;
       }
-      const purgeResult = await api("POST", `/catalog/products/${encodeURIComponent(productId)}/purge`, {
+      const purgeResult = await api("DELETE", `/catalog/products/${encodeURIComponent(productId)}/purge`, {
         token: ctx.adminToken,
       });
       if ([200, 204, 404].includes(purgeResult.status)) {
@@ -2270,6 +2270,7 @@ function buildChecks() {
       assertStatus(templateDeleteResult, [200, 204, 404], "DELETE /marketplace/templates/:id during category cleanup");
       ctx.templateId = null;
     }
+    let purgeStats = { attempted: 0, purged: 0 };
     let result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
       token: ctx.adminToken,
     });
@@ -2286,14 +2287,16 @@ function buildChecks() {
           token: ctx.adminToken,
         });
       }
-      await purgeCreatedProductsForCategory(ctx.categoryId);
+      purgeStats = await purgeCreatedProductsForCategory(ctx.categoryId);
       await new Promise((resolve) => setTimeout(resolve, 1500));
       result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
         token: ctx.adminToken,
       });
     }
     if (![200, 204].includes(result.status)) {
-      skip(`category still referenced after cleanup retry (${result.status})`);
+      skip(
+        `category still referenced after cleanup retry (${result.status}; productPurge=${purgeStats.purged}/${purgeStats.attempted})`,
+      );
     }
     return `status=${result.status}`;
   });
