@@ -704,12 +704,15 @@
           "status": "completed",
           "locked": true,
           "owner": "codex",
-          "commit": "55fca22",
+          "commit": "e58d377",
           "tests_passed": [
             "node scripts/capture-controlled-rollout-snapshot.cjs --environment development --tenantId SMOKE_TENANT_LOCAL --apiBase http://127.0.0.1:4000/api/v1 --timeoutMs 2000",
             "node scripts/capture-controlled-rollout-snapshot.test.cjs",
             "node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId staging-smoke --apiBase https://api-staging-4faf.up.railway.app/api/v1 --gatesDir docs/execution/gates --rolloutDir .tmp/rollout-validation",
             "Select-String -Path .github/workflows/deploy-staging.yml -Pattern 'Capture controlled rollout snapshot|Upload staging gate artifacts|actions/upload-artifact@v4|capture-controlled-rollout-snapshot.cjs'",
+            "node --check scripts/capture-controlled-rollout-snapshot.cjs",
+            "node --check scripts/capture-controlled-rollout-snapshot.test.cjs",
+            "node scripts/capture-controlled-rollout-snapshot.test.cjs",
             "node -e \"JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')\""
           ],
           "scope": [
@@ -723,8 +726,8 @@
             "RISK-P0-001 remains open only for the external live staging run evidence and 14-day/SLO observation window."
           ],
           "reopened_by": "codex",
-          "reopened_reason": "The broad-rollout portion of the snapshot remained hardcoded after live staging proof landed, so the automation must compute evidence-window coverage instead of emitting permanent placeholder blockers.",
-          "regression_evidence": "Exact failing command: node scripts/capture-controlled-rollout-snapshot.cjs --environment staging --tenantId staging-smoke --apiBase https://api-staging-4faf.up.railway.app/api/v1. Failing output snippet: broadPending still reported generic placeholders (\"14-day controlled rollout observation window not complete.\", \"Production SLO trend evidence window not complete.\") even after the live staging workflow passed and the script already reported artifactsInWindow counts. Likely file: scripts/capture-controlled-rollout-snapshot.cjs."
+          "reopened_reason": "The live staging health snapshot reports failed queue jobs while controlled rollout evidence still reports no pending blockers, so release evidence must treat queue failure health as a readiness signal.",
+          "regression_evidence": "Exact evidence file: docs/execution/rollout/2026-05-22T07-54-51.180Z_CONTROLLED_ROLLOUT_SNAPSHOT.json. Failing output snippet: health.body.queues.account-export.failed=4 while controlledRollout.pending=[]. Likely file: scripts/capture-controlled-rollout-snapshot.cjs."
         },
         {
           "storyId": "ST-REL-CAPABILITY-GATING-006",

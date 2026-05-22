@@ -52,7 +52,7 @@ function runSnapshot(args, cwd) {
   });
 }
 
-async function startHealthServer() {
+async function startHealthServer(options = {}) {
   const server = http.createServer((req, res) => {
     if (req.url === "/api/v1/health") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -64,6 +64,7 @@ async function startHealthServer() {
             backend: "bullmq",
             workerEnabled: true,
           },
+          queues: options.queues ?? {},
         }),
       );
       return;
@@ -325,6 +326,46 @@ async function main() {
       Array.isArray(completeJson.summary.broadPending) && completeJson.summary.broadPending.length === 0,
       `Expected no broad pending blockers once coverage is complete, got ${completeRun.stdout}`,
     );
+
+    const failedQueueHealth = await startHealthServer({
+      queues: {
+        "account-export": {
+          waiting: 0,
+          active: 0,
+          failed: 4,
+        },
+      },
+    });
+    try {
+      const failedQueueRun = await runSnapshot(
+        [
+          "--environment",
+          "staging",
+          "--tenantId",
+          "staging-smoke",
+          "--apiBase",
+          failedQueueHealth.apiBase,
+          "--windowDays",
+          "14",
+          "--gatesDir",
+          gatesDir,
+          "--rolloutDir",
+          rolloutDir,
+        ],
+        tempRoot,
+      );
+      assert(
+        failedQueueRun.status === 0,
+        `Expected failed-queue snapshot to succeed with pending evidence, got status=${failedQueueRun.status} stderr=${failedQueueRun.stderr}`,
+      );
+      const failedQueueJson = JSON.parse(failedQueueRun.stdout);
+      assert(
+        failedQueueJson.summary.controlledPending.includes("Queue failures remain in health snapshot: account-export=4."),
+        `Expected queue failure to block controlled rollout evidence, got ${failedQueueRun.stdout}`,
+      );
+    } finally {
+      failedQueueHealth.server.close();
+    }
 
     console.log("capture-controlled-rollout-snapshot.test.cjs: PASS");
   } finally {

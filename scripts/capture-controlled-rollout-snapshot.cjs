@@ -229,6 +229,21 @@ async function fetchHealth(apiBase, timeoutMs) {
   }
 }
 
+function collectFailedQueues(healthBody) {
+  const queues = healthBody && typeof healthBody === "object" ? healthBody.queues : null;
+  if (!queues || typeof queues !== "object") {
+    return [];
+  }
+
+  return Object.entries(queues)
+    .map(([name, metrics]) => ({
+      name,
+      failed: Number(metrics && typeof metrics === "object" ? metrics.failed : 0),
+    }))
+    .filter((queue) => Number.isFinite(queue.failed) && queue.failed > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 function toSummary(entry) {
   return {
     file: entry.name,
@@ -254,6 +269,8 @@ async function main() {
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
   const reportedEnv = String(health?.body?.env || "").trim().toLowerCase();
   const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
+  const failedQueues = collectFailedQueues(health?.body);
+  const queueFailuresClear = health.ok === true && failedQueues.length === 0;
   const observationWindowDays = countDistinctUtcDays(signoffArtifacts, (entry) => entry.dateMs);
   const sloWindowDays = countDistinctUtcDays(historicalRolloutSnapshots, (entry) => entry.capturedAtMs);
   sloWindowDays.add(toUtcDayString(now.getTime()));
@@ -277,6 +294,7 @@ async function main() {
         pilotWorkflowEvidencePresent: hasArtifact(allRecordedArtifacts, "PILOT_WORKFLOW_VALIDATION"),
         governanceEvidencePresent: hasArtifact(allRecordedArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
         healthEndpointHealthy,
+        queueFailuresClear,
       },
       pending: [],
     },
@@ -316,6 +334,11 @@ async function main() {
         `Health endpoint did not provide a valid '${snapshot.environment}' environment marker.`,
       );
     }
+  }
+  if (healthEndpointHealthy && !snapshot.controlledRollout.criteria.queueFailuresClear) {
+    snapshot.controlledRollout.pending.push(
+      `Queue failures remain in health snapshot: ${failedQueues.map((queue) => `${queue.name}=${queue.failed}`).join(", ")}.`,
+    );
   }
   if (!snapshot.broadRollout.criteria.observationWindowComplete) {
     snapshot.broadRollout.pending.push(
