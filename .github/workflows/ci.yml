@@ -83,6 +83,12 @@ jobs:
           GIT_BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
         run: node scripts/check-unsafe-raw-comments.cjs
 
+      - name: PR scope guard
+        if: github.event_name == 'pull_request'
+        env:
+          GIT_BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-pr-scope.cjs
+
       - name: Lint API
         run: npm run lint --workspace @pim1/api
 
@@ -112,6 +118,7 @@ jobs:
 
       - name: DevOps contract tests
         run: |
+          node scripts/check-pr-scope.test.cjs
           node scripts/railway-deploy.test.cjs
           node scripts/validate-deploy-staging-workflow.cjs
           node scripts/validate-promote-stage3-workflow.cjs
