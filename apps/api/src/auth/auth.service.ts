@@ -392,14 +392,16 @@ export class AuthService implements OnModuleDestroy {
     }
 
     const submittedWorkspaceSlug = normalizeWorkspaceSlug(dto.workspaceSlug ?? process.env.PIM_DEFAULT_WORKSPACE_SLUG ?? "");
-    const localIdentities = process.env.PIM_AUTH_IDENTITIES_JSON;
+    const localIdentities = String(process.env.PIM_AUTH_IDENTITIES_JSON ?? "").trim();
+    const localWorkspaceDirectory = String(process.env.PIM_AUTH_WORKSPACES_JSON ?? "").trim();
     const workspace =
       (submittedWorkspaceSlug
         ? await this.tenantDirectoryService.resolveWorkspaceSlug(submittedWorkspaceSlug)
         : null) ??
       (dto.tenantId ? await this.tenantDirectoryService.resolveTenantAlias(dto.tenantId) : null) ??
-      // Local dev fallback: if PIM_AUTH_IDENTITIES_JSON is set, treat workspaceSlug as tenantId directly
-      (localIdentities && submittedWorkspaceSlug
+      // Local dev fallback: synthesize a tenant from the workspace slug only
+      // when no explicit workspace directory is configured.
+      (!localWorkspaceDirectory && localIdentities && submittedWorkspaceSlug
         ? { tenantId: submittedWorkspaceSlug, workspaceSlug: submittedWorkspaceSlug }
         : null);
     if (!workspace) {
