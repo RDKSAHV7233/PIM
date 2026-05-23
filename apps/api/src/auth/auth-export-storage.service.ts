@@ -7,6 +7,8 @@ import { promises as fs } from "node:fs";
 const DOWNLOAD_URL_EXPIRY_SECONDS = 15 * 60;
 const ACCOUNT_EXPORT_STORAGE_PUBLIC_MESSAGE =
   "Account export storage is temporarily unavailable. Please contact support if this persists.";
+const LOCAL_PLACEHOLDER_ACCOUNT_ID = "local-dev";
+const LOCAL_PLACEHOLDER_BUCKET_NAME = "vexa-pim-local";
 
 export class AccountExportStorageError extends Error {
   constructor(
@@ -48,10 +50,14 @@ export interface AccountExportStorageProbeResult {
 @Injectable()
 export class AuthExportStorageService {
   private readonly logger = new Logger(AuthExportStorageService.name);
+  private readonly accountId = String(process.env.R2_ACCOUNT_ID ?? "").trim();
+  private readonly accessKeyId = String(process.env.R2_ACCESS_KEY_ID ?? "").trim();
+  private readonly secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim();
   private readonly bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
+  private readonly explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
   private readonly endpoint =
-    String(process.env.R2_ENDPOINT ?? "").trim() ||
-    `https://${String(process.env.R2_ACCOUNT_ID ?? "").trim()}.r2.cloudflarestorage.com`;
+    this.explicitEndpoint ||
+    `https://${this.accountId}.r2.cloudflarestorage.com`;
   private readonly useLocalFallback = this.shouldUseLocalFallback();
   private readonly s3Client = this.useLocalFallback
     ? null
@@ -60,8 +66,8 @@ export class AuthExportStorageService {
         endpoint: this.endpoint,
         forcePathStyle: this.shouldUsePathStyle(this.endpoint),
         credentials: {
-          accessKeyId: String(process.env.R2_ACCESS_KEY_ID ?? "").trim(),
-          secretAccessKey: String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim(),
+          accessKeyId: this.accessKeyId,
+          secretAccessKey: this.secretAccessKey,
         },
       });
 
@@ -87,6 +93,14 @@ export class AuthExportStorageService {
         storagePath,
         fileName,
       };
+    }
+
+    const configError = this.validateObjectStorageConfiguration();
+    if (configError) {
+      this.logger.error(
+        `${configError.message} endpointHost=${this.endpointHost()} bucket=${this.bucketName || "unset"}`,
+      );
+      throw configError;
     }
 
     const key = `exports/${safeTenantId}/${safeJobId}${extension}`;
@@ -192,6 +206,19 @@ export class AuthExportStorageService {
       };
     }
 
+    const configError = this.validateObjectStorageConfiguration();
+    if (configError) {
+      return {
+        ok: false,
+        checkedAt,
+        mode: "object_storage",
+        code: this.extractStorageErrorCode(configError.message),
+        message: configError.message,
+        endpointHost: this.endpointHost(),
+        bucketName: this.bucketName || null,
+      };
+    }
+
     const probeKey = this.buildProbeKey();
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
@@ -255,6 +282,59 @@ export class AuthExportStorageService {
     return String(value ?? "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "export";
   }
 
+  private validateObjectStorageConfiguration(): AccountExportStorageError | null {
+    if (this.useLocalFallback) {
+      return null;
+    }
+
+    const missingVariables: string[] = [];
+    if (!this.bucketName) {
+      missingVariables.push("R2_BUCKET_NAME");
+    }
+    if (!this.accessKeyId) {
+      missingVariables.push("R2_ACCESS_KEY_ID");
+    }
+    if (!this.secretAccessKey) {
+      missingVariables.push("R2_SECRET_ACCESS_KEY");
+    }
+    if (!this.accountId && !this.explicitEndpoint) {
+      missingVariables.push("R2_ACCOUNT_ID");
+    }
+    if (missingVariables.length > 0) {
+      return new AccountExportStorageError(
+        `account_export_storage_config_invalid: Missing required storage configuration (${missingVariables.join(", ")}).`,
+      );
+    }
+
+    if (this.isLocalEndpointForTesting()) {
+      return null;
+    }
+
+    const placeholderValues: string[] = [];
+    if (this.accountId.toLowerCase() === LOCAL_PLACEHOLDER_ACCOUNT_ID) {
+      placeholderValues.push("R2_ACCOUNT_ID=local-dev");
+    }
+    if (this.accessKeyId.toLowerCase() === LOCAL_PLACEHOLDER_ACCOUNT_ID) {
+      placeholderValues.push("R2_ACCESS_KEY_ID=local-dev");
+    }
+    if (this.secretAccessKey.toLowerCase() === LOCAL_PLACEHOLDER_ACCOUNT_ID) {
+      placeholderValues.push("R2_SECRET_ACCESS_KEY=local-dev");
+    }
+    if (this.bucketName.toLowerCase() === LOCAL_PLACEHOLDER_BUCKET_NAME) {
+      placeholderValues.push("R2_BUCKET_NAME=vexa-pim-local");
+    }
+    if (this.endpointHost() === `${LOCAL_PLACEHOLDER_ACCOUNT_ID}.r2.cloudflarestorage.com`) {
+      placeholderValues.push(`endpointHost=${LOCAL_PLACEHOLDER_ACCOUNT_ID}.r2.cloudflarestorage.com`);
+    }
+    if (placeholderValues.length > 0) {
+      return new AccountExportStorageError(
+        `account_export_storage_config_invalid: Placeholder/local-default storage configuration detected (${placeholderValues.join(", ")}).`,
+      );
+    }
+
+    return null;
+  }
+
   private normalizeStorageWriteError(error: unknown): AccountExportStorageError {
     const rawMessage = this.toErrorMessage(error);
     const normalized = rawMessage.toLowerCase();
@@ -295,6 +375,10 @@ export class AuthExportStorageService {
     } catch {
       return "invalid-endpoint";
     }
+  }
+
+  private isLocalEndpointForTesting(): boolean {
+    return this.shouldUsePathStyle(this.endpoint);
   }
 
   private buildProbeKey(): string {
