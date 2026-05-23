@@ -26,6 +26,11 @@ function requireRunContains(step, text, label) {
   assert(String(step.run || "").includes(text), `${label} must include "${text}"`);
 }
 
+function requireEnvVar(step, name, label) {
+  const env = step.env || {};
+  assert(Object.prototype.hasOwnProperty.call(env, name), `${label} must declare env.${name}`);
+}
+
 function main() {
   const dailyWorkflow = readWorkflow(".github/workflows/capture-daily-rollout-evidence.yml");
   const deployWorkflow = readWorkflow(".github/workflows/deploy-staging.yml");
@@ -50,13 +55,20 @@ function main() {
   requireRunContains(recordStep, "STAGING_BROAD_ROLLOUT_DAILY", "Record daily rollout gate artifact");
 
   const snapshotStep = requireStep(dailyJob, "Capture daily rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_BASE_URL", "Capture daily rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_TENANT_ID", "Capture daily rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_WORKSPACE", "Capture daily rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_USER", "Capture daily rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_PASSWORD", "Capture daily rollout snapshot");
   requireRunContains(snapshotStep, "node scripts/capture-controlled-rollout-snapshot.cjs", "Capture daily rollout snapshot");
+  requireRunContains(snapshotStep, "--diagnosticOutputPath \".run-logs/queue-failure-diagnostics-${GITHUB_RUN_ID}.json\"", "Capture daily rollout snapshot");
 
   const uploadStep = requireStep(dailyJob, "Upload daily rollout artifacts");
   assert(
     /^actions\/upload-artifact@v\d+$/.test(String(uploadStep.uses || "").trim()),
     "Upload daily rollout artifacts must use actions/upload-artifact",
   );
+  assert(String(uploadStep.with?.path || "").includes(".run-logs/queue-failure-diagnostics-*.json"), "Daily rollout artifact upload must include queue failure diagnostics");
 
   const commitStep = requireStep(dailyJob, "Commit daily rollout evidence");
   requireRunContains(commitStep, "git commit -m \"chore(release): record daily rollout evidence [skip ci]\"", "Commit daily rollout evidence");

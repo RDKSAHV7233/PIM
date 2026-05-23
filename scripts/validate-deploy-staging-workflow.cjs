@@ -200,9 +200,13 @@ function main() {
   const snapshotStep = requireStep(steps, "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_BASE_URL", "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_SMOKE_TENANT_ID", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_WORKSPACE", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_USER", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_PASSWORD", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "node scripts/capture-controlled-rollout-snapshot.cjs", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "--environment staging", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "--apiBase \"${STAGING_BASE_URL}/api/v1\"", "Capture controlled rollout snapshot");
+  requireRunContains(snapshotStep, "--diagnosticOutputPath \".run-logs/queue-failure-diagnostics-${GITHUB_RUN_ID}.json\"", "Capture controlled rollout snapshot");
 
   const uploadStep = requireStep(steps, "Upload gate + rollout + smoke artifacts");
   assert(
@@ -213,6 +217,7 @@ function main() {
   const uploadPath = String(uploadWith.path ?? "");
   assert(uploadPath.includes("docs/execution/gates/*.json"), "Upload step missing gate artifact path");
   assert(uploadPath.includes("docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json"), "Upload step missing rollout snapshot path");
+  assert(uploadPath.includes(".run-logs/queue-failure-diagnostics-*.json"), "Upload step missing queue failure diagnostics path");
   assert(uploadPath.includes(".run-logs/e2e-smoke-*.log"), "Upload step missing E2E smoke log path");
   assert(uploadPath.includes(".run-logs/e2e-result-*.json"), "Upload step missing E2E smoke result path");
   assert(uploadWith["include-hidden-files"] === true, "Upload step must include hidden files");

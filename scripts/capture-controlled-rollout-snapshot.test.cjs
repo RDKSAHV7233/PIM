@@ -53,8 +53,13 @@ function runSnapshot(args, cwd) {
 }
 
 async function startHealthServer(options = {}) {
+  const state = {
+    loginRequests: [],
+    failedQueueRequests: [],
+  };
   const server = http.createServer((req, res) => {
-    if (req.url === "/api/v1/health") {
+    const requestUrl = new URL(req.url, "http://127.0.0.1");
+    if (requestUrl.pathname === "/api/v1/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -70,6 +75,30 @@ async function startHealthServer(options = {}) {
       return;
     }
 
+    if (requestUrl.pathname === "/api/v1/auth/login" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      req.on("end", () => {
+        const payload = JSON.parse(body || "{}");
+        state.loginRequests.push(payload);
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify({ accessToken: options.accessToken || "staging-admin-token" }));
+      });
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/v1/queue/account-export/lanes/default/failed" && req.method === "GET") {
+      state.failedQueueRequests.push({
+        authorization: req.headers.authorization || "",
+        limit: requestUrl.searchParams.get("limit"),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ items: options.failedQueueItems || [] }));
+      return;
+    }
+
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ status: "not_found" }));
   });
@@ -79,6 +108,7 @@ async function startHealthServer(options = {}) {
   return {
     server,
     apiBase: `http://127.0.0.1:${address.port}/api/v1`,
+    state,
   };
 }
 
@@ -333,10 +363,30 @@ async function main() {
           waiting: 0,
           active: 0,
           failed: 4,
+          lanes: {
+            default: {
+              waiting: 0,
+              active: 0,
+              failed: 4,
+              pausedUntil: null,
+            },
+          },
         },
       },
+      failedQueueItems: [
+        {
+          id: "job-1",
+          name: "account-export:default",
+          failedReason: "Cloudflare R2 bucket not found.",
+          attemptsMade: 3,
+          timestamp: "2026-05-22T21:00:00.000Z",
+          processedOn: "2026-05-22T21:00:03.000Z",
+          finishedOn: "2026-05-22T21:00:04.000Z",
+        },
+      ],
     });
     try {
+      const diagnosticsOutputPath = path.join(tempRoot, ".run-logs", "queue-failure-diagnostics.json");
       const failedQueueRun = await runSnapshot(
         [
           "--environment",
@@ -351,6 +401,14 @@ async function main() {
           gatesDir,
           "--rolloutDir",
           rolloutDir,
+          "--workspaceSlug",
+          "default",
+          "--smokeUser",
+          "admin@vexa-pim.local",
+          "--smokePassword",
+          "super-secret-password",
+          "--diagnosticOutputPath",
+          diagnosticsOutputPath,
         ],
         tempRoot,
       );
@@ -362,6 +420,29 @@ async function main() {
       assert(
         failedQueueJson.summary.controlledPending.includes("Queue failures remain in health snapshot: account-export=4."),
         `Expected queue failure to block controlled rollout evidence, got ${failedQueueRun.stdout}`,
+      );
+      assert(
+        failedQueueJson.summary.queueFailureDiagnostics &&
+          failedQueueJson.summary.queueFailureDiagnostics.captured === true &&
+          failedQueueJson.summary.queueFailureDiagnostics.authenticated === true,
+        `Expected queue failure diagnostics capture summary, got ${failedQueueRun.stdout}`,
+      );
+      assert(fs.existsSync(diagnosticsOutputPath), "Expected queue failure diagnostics artifact to be written");
+      const diagnosticsArtifact = JSON.parse(fs.readFileSync(diagnosticsOutputPath, "utf8"));
+      assert(
+        Array.isArray(diagnosticsArtifact.queues) &&
+          diagnosticsArtifact.queues[0]?.lanes?.[0]?.items?.[0]?.failedReason === "Cloudflare R2 bucket not found.",
+        `Expected failed job summaries in diagnostics artifact, got ${JSON.stringify(diagnosticsArtifact)}`,
+      );
+      assert(
+        failedQueueHealth.state.loginRequests.length === 1 &&
+          failedQueueHealth.state.loginRequests[0].workspaceSlug === "default",
+        `Expected diagnostics capture to authenticate with the smoke workspace, got ${JSON.stringify(failedQueueHealth.state.loginRequests)}`,
+      );
+      assert(
+        failedQueueHealth.state.failedQueueRequests.length === 1 &&
+          failedQueueHealth.state.failedQueueRequests[0].authorization === "Bearer staging-admin-token",
+        `Expected diagnostics capture to call failed-queue route with bearer auth, got ${JSON.stringify(failedQueueHealth.state.failedQueueRequests)}`,
       );
     } finally {
       failedQueueHealth.server.close();
