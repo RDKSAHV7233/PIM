@@ -26,6 +26,7 @@ import {
   PaginatedResponse,
 } from "../connector-framework/connector.types";
 import {
+  ConnectorActionMatrix,
   ConnectorActor,
   ConnectorPermissionService,
 } from "./connector-permission.service";
@@ -165,19 +166,27 @@ export class ConnectorInstallerService {
       FROM connector_definitions
       WHERE is_active = TRUE
       ORDER BY display_name ASC
+      LIMIT 500
     `);
 
+    const nonStubRows = rows.filter((row) => !stubSlugs.has(String(row.slug).toLowerCase()));
+    const slugs = nonStubRows.map((row) => String(row.slug));
+    // One batched call replaces N per-slug calls; sequential per-slug connector_accounts
+    // checks are handled internally by buildDefinitionActionsForSlugs.
+    const actionsMap = await this.connectorPermissionService.buildDefinitionActionsForSlugs(actor, slugs);
+
+    const fallbackActions: ConnectorActionMatrix = {
+      install: { allowed: false, reason: "UNKNOWN" },
+      reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+    };
+
     const definitions: ConnectorDefinitionRecord[] = [];
-    // Resolve install actions sequentially to avoid request-local plan-check fanout
-    // exhausting the DB pool under the current tenant-scoped Prisma client model.
-    for (const row of rows) {
+    for (const row of nonStubRows) {
       const slug = String(row.slug);
-      if (stubSlugs.has(slug.toLowerCase())) {
-        continue;
-      }
       const capabilities = parseCapabilities(row.capabilities);
       const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
-      const actions = await this.connectorPermissionService.buildDefinitionActions(actor, slug);
+      const actions = actionsMap.get(slug.trim().toLowerCase()) ?? fallbackActions;
       definitions.push({
         id: String(row.id),
         slug,
@@ -359,19 +368,20 @@ export class ConnectorInstallerService {
         throw new BadRequestException("Connector installed but could not be retrieved.");
       }
 
-      await this.planUsageService.touchUsageForCurrentTenant();
-
-      await this.auditService.record({
-        actorId: actor.actorId,
-        actorRole: actor.actorRole,
-        action: "CONNECTOR_INSTALL_SUCCESS",
-        resource: "CONNECTOR_INSTALLATION",
-        resourceId: item.id,
-        metadata: {
-          connectorSlug: item.slug,
-          accountAlias: item.accountAlias,
-        },
-      });
+      await Promise.all([
+        this.planUsageService.touchUsageForCurrentTenant(),
+        this.auditService.record({
+          actorId: actor.actorId,
+          actorRole: actor.actorRole,
+          action: "CONNECTOR_INSTALL_SUCCESS",
+          resource: "CONNECTOR_INSTALLATION",
+          resourceId: item.id,
+          metadata: {
+            connectorSlug: item.slug,
+            accountAlias: item.accountAlias,
+          },
+        }),
+      ]);
       return item;
     } catch (error: unknown) {
       await this.auditService.record({
@@ -551,20 +561,21 @@ export class ConnectorInstallerService {
         throw new NotFoundException("Connector installation not found.");
       }
 
-      await this.planUsageService.touchUsageForCurrentTenant();
-
-      await this.auditService.record({
-        actorId: actor.actorId,
-        actorRole: actor.actorRole,
-        action: "CONNECTOR_UNINSTALL_SUCCESS",
-        resource: "CONNECTOR_INSTALLATION",
-        resourceId: installationId,
-        metadata: {
-          status: "DISABLED",
-          connectorSlug: installation.slug,
-          accountAlias: installation.accountAlias,
-        },
-      });
+      await Promise.all([
+        this.planUsageService.touchUsageForCurrentTenant(),
+        this.auditService.record({
+          actorId: actor.actorId,
+          actorRole: actor.actorRole,
+          action: "CONNECTOR_UNINSTALL_SUCCESS",
+          resource: "CONNECTOR_INSTALLATION",
+          resourceId: installationId,
+          metadata: {
+            status: "DISABLED",
+            connectorSlug: installation.slug,
+            accountAlias: installation.accountAlias,
+          },
+        }),
+      ]);
       return { id: installationId, status: "DISABLED" };
     } catch (error: unknown) {
       await this.auditService.record({

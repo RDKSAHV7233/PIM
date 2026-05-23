@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 
@@ -17,9 +18,11 @@ const SOURCE_FORMATS = ["csv", "json"] as const;
 export class CreateBulkImportJobDto {
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   runId?: string;
 
   @IsString()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsIn(SOURCE_FORMATS)
@@ -27,10 +30,12 @@ export class CreateBulkImportJobDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   sourceName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(5_000_000)  // bounded by 10 MB body limit; explicit cap prevents outsized JSON strings
   csvContent?: string;
 
   @IsOptional()

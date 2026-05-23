@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Header, Headers, HttpCode, Logger, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { AuditService } from "../audit/audit.service";
@@ -37,6 +37,8 @@ type AuthenticatedRequest = Request & {
 @DisallowApiClient()
 @ApiTags("Billing")
 export class BillingController {
+  private readonly logger = new Logger(BillingController.name);
+
   constructor(
     private readonly planUsageService: PlanUsageService,
     private readonly auditService: AuditService,
@@ -348,8 +350,9 @@ export class BillingController {
         actorId,
       );
     } catch (error: unknown) {
-      const code = error instanceof Error ? error.message : String(error ?? "unknown error");
-      throw new BadRequestException({ error: code });
+      // Log full error server-side; return a generic code so internal DB details are not leaked in HTTP responses.
+      this.logger.error(`updateUpgradeRequestStatusInternal failed for request ${dto.requestId}`, error instanceof Error ? error.stack : String(error));
+      throw new BadRequestException({ error: "UPGRADE_REQUEST_STATUS_UPDATE_FAILED" });
     }
 
     await this.auditService.record({
@@ -397,8 +400,9 @@ export class BillingController {
     try {
       results = await this.planUsageService.searchCommercialTenants(query.q, query.limit);
     } catch (error: unknown) {
-      const code = error instanceof Error ? error.message : String(error ?? "unknown error");
-      throw new BadRequestException({ error: code });
+      // Log full error server-side; return a generic code so internal DB details are not leaked in HTTP responses.
+      this.logger.error(`searchCommercialTenants failed for query "${query.q}"`, error instanceof Error ? error.stack : String(error));
+      throw new BadRequestException({ error: "COMMERCIAL_TENANT_SEARCH_FAILED" });
     }
     await this.auditService.record({
       actorId,

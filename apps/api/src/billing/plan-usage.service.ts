@@ -647,6 +647,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         isActive: true,
         updatedAt: true,
       },
+      take: 1_000,
     });
 
     const rows = await this.buildCommercialTenantRows(
@@ -734,6 +735,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         isActive: true,
         updatedAt: true,
       },
+      take: 5_000, // Admin-only overview; stats are approximate above 5 000 tenants.
     });
     const rows = await this.buildCommercialTenantRows(
       workspaces.map((workspace) => ({
@@ -1199,6 +1201,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       select: {
         tenantKey: true,
       },
+      take: 500,
     });
     return new Set(matches.map((match) => normalizeTenantKey(match.tenantKey)));
   }
@@ -1256,6 +1259,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         where: {
           tenantKey: { in: tenantKeys },
         },
+        take: 5_000,
         select: {
           tenantKey: true,
           planTier: true,
@@ -1274,6 +1278,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         where: {
           tenantKey: { in: tenantKeys },
         },
+        take: 25_000, // up to 5 000 tenants × multiple months of usage rows
         select: {
           tenantKey: true,
           planTier: true,
@@ -1291,6 +1296,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           },
           isActive: true,
         },
+        take: 10_000, // up to ~2 admins per tenant × 5 000 tenants
         select: {
           tenantKey: true,
           userId: true,

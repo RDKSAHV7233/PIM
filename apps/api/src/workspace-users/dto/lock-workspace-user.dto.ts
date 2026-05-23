@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsInt, IsOptional, IsString } from "class-validator";
+import { IsInt, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class LockWorkspaceUserDto {
   @Transform(({ value }) => {
@@ -18,5 +18,6 @@ export class LockWorkspaceUserDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   reason?: string;
 }

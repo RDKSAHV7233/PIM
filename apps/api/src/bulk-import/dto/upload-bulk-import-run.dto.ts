@@ -1,8 +1,9 @@
 import { Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class UploadBulkImportRunDto {
   @IsString()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsOptional()

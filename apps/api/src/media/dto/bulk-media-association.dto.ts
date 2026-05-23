@@ -1,5 +1,6 @@
 import { Transform, Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   IsArray,
   IsBase64,
   IsInt,
@@ -55,6 +56,7 @@ export class BulkMediaAssociationDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(5000)
   @ValidateNested({ each: true })
   @Type(() => BulkMediaAssociationRowDto)
   rows?: BulkMediaAssociationRowDto[];

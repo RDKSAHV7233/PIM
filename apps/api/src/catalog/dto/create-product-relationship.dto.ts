@@ -1,8 +1,9 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from "class-validator";
 import { ProductRelationshipType } from "@prisma/client";
 
 export class CreateProductRelationshipDto {
   @IsString()
+  @MaxLength(50)
   targetProductId!: string;
 
   @IsEnum(ProductRelationshipType)

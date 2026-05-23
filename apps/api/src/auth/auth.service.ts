@@ -1839,6 +1839,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountConsentEvent.findMany({
         where: { userId },
         orderBy: { consentRecordedAt: "desc" },
+        take: 500,
         select: {
           id: true,
           accepted: true,
@@ -1851,6 +1852,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountExportRequest.findMany({
         where: { userId },
         orderBy: { requestedAt: "desc" },
+        take: 100,
         select: {
           id: true,
           actorRole: true,
@@ -1867,6 +1869,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountDeletionRequest.findMany({
         where: { userId },
         orderBy: { requestedAt: "desc" },
+        take: 100,
         select: {
           id: true,
           actorRole: true,
@@ -1879,6 +1882,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.userNotification.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
+        take: 1_000,
         select: {
           id: true,
           eventType: true,
@@ -1910,6 +1914,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.userMfaEnrollment.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
+        take: 50,
         select: {
           id: true,
           method: true,

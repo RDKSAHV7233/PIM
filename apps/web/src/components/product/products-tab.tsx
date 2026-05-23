@@ -53,6 +53,17 @@ interface ProductsTabProps {
   initialSearch?: string;
 }
 
+function buildBlankReadinessState(productIds: string[]): ProductReadinessState {
+  return Object.fromEntries(
+    productIds.map((productId) => [
+      productId,
+      Object.fromEntries(
+        READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
+      ),
+    ]),
+  ) as ProductReadinessState;
+}
+
 function formatUpdatedAt(value: string): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) {
@@ -265,14 +276,7 @@ export function ProductsTab({
           return;
         }
 
-        const nextState = Object.fromEntries(
-          productIds.map((productId) => [
-            productId,
-            Object.fromEntries(
-              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
-            ),
-          ]),
-        ) as ProductReadinessState;
+        const nextState = buildBlankReadinessState(productIds);
 
         for (const item of payload.items ?? []) {
           nextState[item.productId] = Object.fromEntries(
@@ -290,15 +294,7 @@ export function ProductsTab({
         if (controller.signal.aborted) {
           return;
         }
-        const fallbackState = Object.fromEntries(
-          productIds.map((productId) => [
-            productId,
-            Object.fromEntries(
-              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
-            ),
-          ]),
-        ) as ProductReadinessState;
-        setReadinessState(fallbackState);
+        setReadinessState(buildBlankReadinessState(productIds));
       }
     }
 

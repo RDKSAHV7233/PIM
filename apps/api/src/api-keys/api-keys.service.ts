@@ -91,6 +91,7 @@ export class ApiKeysService {
         { createdAt: "desc" },
         { id: "desc" },
       ],
+      take: 200,
       select: {
         id: true,
         tenantKey: true,

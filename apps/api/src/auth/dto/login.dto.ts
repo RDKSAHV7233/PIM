@@ -13,12 +13,14 @@ export class LoginDto {
 
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())
   @IsString()
+  @MaxLength(64)
   @IsOptional()
   tenantId?: string;
 
   @IsString()
   @Transform(({ value }) => String(value ?? "").trim())
   @MinLength(1)
+  @MaxLength(255)
   userId!: string;
 
   @IsOptional()
@@ -29,5 +31,6 @@ export class LoginDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(72)
   password!: string;
 }

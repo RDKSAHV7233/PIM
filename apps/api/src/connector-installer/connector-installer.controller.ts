@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Logger, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -25,6 +25,8 @@ type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; p
 @AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @ApiTags("Connectors")
 export class ConnectorInstallerController {
+  private readonly logger = new Logger(ConnectorInstallerController.name);
+
   constructor(private readonly connectorInstallerService: ConnectorInstallerService) {}
 
   private resolveActor(request: AuthenticatedRequest) {
@@ -37,6 +39,7 @@ export class ConnectorInstallerController {
 
   @Get("definitions")
   @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher", "viewer")
+  @Header("Cache-Control", "private, max-age=120, stale-while-revalidate=300")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }
@@ -140,8 +143,10 @@ export class ConnectorInstallerController {
       );
       res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+      // Log the full error server-side; never expose raw error details in the redirect URL
+      // (raw messages may contain internal DB errors or third-party API details).
+      this.logger.error(`OAuth callback (static) failed for installation ${installationId}`, err instanceof Error ? err.stack : String(err));
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=oauth_callback_failed`);
     }
   }
 
@@ -163,8 +168,10 @@ export class ConnectorInstallerController {
       );
       res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_complete`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=${encodeURIComponent(msg)}`);
+      // Log the full error server-side; never expose raw error details in the redirect URL
+      // (raw messages may contain internal DB errors or third-party API details).
+      this.logger.error(`OAuth callback failed for installation ${installationId}`, err instanceof Error ? err.stack : String(err));
+      res.redirect(`${webRoot}/channels/connectors/${encodeURIComponent(installationId)}?status=oauth_error&detail=oauth_callback_failed`);
     }
   }
 

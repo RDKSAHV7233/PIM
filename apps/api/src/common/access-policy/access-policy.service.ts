@@ -574,6 +574,7 @@ export class AccessPolicyService {
         },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 1_000,
     });
 
     const connectorIds = rows
@@ -582,6 +583,7 @@ export class AccessPolicyService {
     const connectors = connectorIds.length > 0
       ? await this.prisma.tenant(tenantId).connectorInstallation.findMany({
           where: { id: { in: connectorIds } },
+          take: 1_000,
           select: {
             id: true,
             accountAlias: true,
@@ -596,6 +598,7 @@ export class AccessPolicyService {
               in: connectors.map((connector) => connector.connectorId),
             },
           },
+          take: 1_000,
           select: {
             id: true,
             slug: true,
@@ -2086,6 +2089,7 @@ export class AccessPolicyService {
           },
         ],
       },
+      take: 1_000,
     });
 
     return assignments.filter((assignment) => this.assignmentAllowsAction(assignment.actions, action));

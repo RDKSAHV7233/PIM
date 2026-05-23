@@ -63,6 +63,7 @@ export class WorkspaceUsersService {
           id: "desc",
         },
       ],
+      take: 500,
       select: {
         id: true,
         userId: true,
@@ -86,6 +87,7 @@ export class WorkspaceUsersService {
           method: "totp",
           status: "active",
         },
+        take: 500,
         select: { userId: true },
       });
       enrolledUserIds = new Set(mfaRows.map((r) => r.userId));

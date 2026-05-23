@@ -321,6 +321,7 @@ export class MarketplaceService implements OnModuleInit {
         ...(ownerWhere ?? {}),
       },
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+      take: 200,
     });
   }
 
@@ -1313,20 +1314,7 @@ export class MarketplaceService implements OnModuleInit {
           include: { template: true },
         });
         // Update per-installation sync state so delta sync doesn't re-queue this product
-        if (effectiveInstallationId) {
-          const syncProduct = await this.prisma.tenant().product.findUnique({
-            where: { id: existing.productId },
-            select: { version: true },
-          });
-          if (syncProduct) {
-            await this.upsertSyncState(
-              effectiveInstallationId,
-              existing.productId,
-              syncProduct.version ?? 1,
-              "SUCCESS",
-            ).catch(() => { /* non-critical — delta sync will re-process next cycle */ });
-          }
-        }
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "SUCCESS");
         await this.notificationsService.emitPublishStatus(updated.id, "completed");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;
@@ -1349,20 +1337,7 @@ export class MarketplaceService implements OnModuleInit {
         await this.notificationsService.emitPublishStatus(updated.id, "dead_letter");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue this product on every run
-        if (effectiveInstallationId) {
-          const syncProduct = await this.prisma.tenant().product.findUnique({
-            where: { id: existing.productId },
-            select: { version: true },
-          }).catch(() => null);
-          if (syncProduct) {
-            await this.upsertSyncState(
-              effectiveInstallationId,
-              existing.productId,
-              syncProduct.version ?? 1,
-              "ERROR",
-            ).catch(() => { /* non-critical */ });
-          }
-        }
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
         return updated;
       }
 
@@ -1399,20 +1374,7 @@ export class MarketplaceService implements OnModuleInit {
       await this.notificationsService.emitPublishStatus(updated.id, "failed");
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
       // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue on every subsequent run
-      if (effectiveInstallationId) {
-        const syncProduct = await this.prisma.tenant().product.findUnique({
-          where: { id: existing.productId },
-          select: { version: true },
-        }).catch(() => null);
-        if (syncProduct) {
-          await this.upsertSyncState(
-            effectiveInstallationId,
-            existing.productId,
-            syncProduct.version ?? 1,
-            "ERROR",
-          ).catch(() => { /* non-critical */ });
-        }
-      }
+      await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
       return updated;
     }
   }
@@ -1627,6 +1589,7 @@ export class MarketplaceService implements OnModuleInit {
         validationIssues: {
           where: { status: ValidationIssueStatus.open },
           orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+          take: 100,
         },
       },
     });
@@ -1639,6 +1602,7 @@ export class MarketplaceService implements OnModuleInit {
         validationIssues: {
           where: { status: ValidationIssueStatus.open },
           orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+          take: 100,
         },
       },
     });
@@ -2809,6 +2773,7 @@ export class MarketplaceService implements OnModuleInit {
         submittedAt: true,
       },
       orderBy: { submittedAt: "desc" },
+      take: 1_000,
     });
 
     const groupMap = new Map<string, { affectedCount: number; exampleMessage: string; productIds: string[] }>();
@@ -2856,6 +2821,7 @@ export class MarketplaceService implements OnModuleInit {
     const failed = await db.connectorSubmission.findMany({
       where: { installationId, status: "FAILED" },
       select: { productId: true, channelErrors: true },
+      take: 500,
     });
 
     const eligible = failed.filter((sub) => {
@@ -2867,16 +2833,24 @@ export class MarketplaceService implements OnModuleInit {
 
     const uniqueProductIds = [...new Set(eligible.map((s) => s.productId))];
 
+    // Batch-fetch categoryIds to avoid one findUnique per product in the loop below.
+    const productRows = await db.product.findMany({
+      where: { id: { in: uniqueProductIds } },
+      select: { id: true, categoryId: true },
+      take: 500, // uniqueProductIds is at most 500 (bounded by the failed submission take above)
+    });
+    const categoryById = new Map(productRows.map((p) => [p.id, p.categoryId]));
+
     let queued = 0;
     for (const productId of uniqueProductIds) {
       try {
-        const product = await db.product.findUnique({ where: { id: productId }, select: { categoryId: true } });
-        if (!product) continue;
+        const categoryId = categoryById.get(productId);
+        if (!categoryId) continue;
         const job = await db.marketplaceExportJob.create({
           data: {
             createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
             productId,
-            categoryId: product.categoryId,
+            categoryId,
             channel,
             status: ExportJobStatus.queued,
             retryCount: 0,
@@ -3066,18 +3040,24 @@ export class MarketplaceService implements OnModuleInit {
     let queued = 0;
     let skipped = 0;
 
+    // Batch-fetch categoryIds to avoid one findUnique per candidate in the loop below.
+    const candidateIds = candidates.map((c) => c.productId);
+    const productRows = await db.product.findMany({
+      where: { id: { in: candidateIds } },
+      select: { id: true, categoryId: true },
+      take: 500, // getDeltaSyncCandidates caps products at 500
+    });
+    const categoryById = new Map(productRows.map((p) => [p.id, p.categoryId]));
+
     for (const { productId } of candidates) {
       try {
-        const product = await db.product.findUnique({
-          where: { id: productId },
-          select: { id: true, categoryId: true },
-        });
-        if (!product) { skipped++; continue; }
+        const categoryId = categoryById.get(productId);
+        if (!categoryId) { skipped++; continue; }
 
         await db.marketplaceExportJob.create({
           data: {
             productId,
-            categoryId: product.categoryId,
+            categoryId,
             channel: connectorDef?.slug ?? "shopify",
             status: ExportJobStatus.queued,
             maxRetries: 3,
@@ -3092,6 +3072,20 @@ export class MarketplaceService implements OnModuleInit {
     }
 
     return { queued, skipped };
+  }
+
+  private async persistSyncStateForProduct(
+    installationId: string | null,
+    productId: string,
+    outcome: "SUCCESS" | "ERROR",
+  ): Promise<void> {
+    if (!installationId) return;
+    const syncProduct = await this.prisma.tenant().product
+      .findUnique({ where: { id: productId }, select: { version: true } })
+      .catch(() => null);
+    if (!syncProduct) return;
+    await this.upsertSyncState(installationId, productId, syncProduct.version ?? 1, outcome)
+      .catch(() => { /* non-critical — delta sync will re-process next cycle */ });
   }
 
   async upsertSyncState(installationId: string, productId: string, version: number, status: string): Promise<void> {
@@ -3256,6 +3250,7 @@ export class MarketplaceService implements OnModuleInit {
       select: { productId: true, externalRef: true },
       orderBy: [{ submittedAt: "desc" }],
       distinct: ["productId"],
+      take: 10_000,
     });
 
     const products = await db.product.findMany({
@@ -3288,20 +3283,41 @@ export class MarketplaceService implements OnModuleInit {
     actor?: PolicyActor,
   ): Promise<{ confirmed: number }> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    let confirmed = 0;
-    for (const link of links) {
-      const id = `link_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-      await tenantExecRaw(
-        this.prisma.tenant(tenantKey),
-        `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW(), NOW())
-         ON CONFLICT (tenant_key, installation_id, product_id)
-         DO UPDATE SET shopify_gid = $5, matched_by = $6, confirmed_at = NOW(), confirmed_by = $7, updated_at = NOW()`,
-        [id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, actor?.actorId ?? null],
+    // Cap at 500 to prevent unbounded batch inserts.
+    const safeLinks = links.slice(0, 500);
+    if (safeLinks.length === 0) return { confirmed: 0 };
+
+    // Build one multi-row INSERT … ON CONFLICT upsert instead of N sequential writes.
+    // (The merge conflict left both the old for-loop and the orphaned batch code;
+    //  this restores the correct single-statement batch approach.)
+    const params: unknown[] = [];
+    const valueClauses: string[] = [];
+    const confirmedBy = actor?.actorId ?? null;
+
+    for (const link of safeLinks) {
+      const base = params.length;
+      const id = randomUUID();
+      params.push(id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, confirmedBy);
+      valueClauses.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, NOW(), $${base + 7}, NOW(), NOW())`,
       );
-      confirmed++;
     }
-    return { confirmed };
+
+    await tenantExecRaw(
+      this.prisma.tenant(tenantKey),
+      `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
+       VALUES ${valueClauses.join(", ")}
+       ON CONFLICT (tenant_key, installation_id, product_id)
+       DO UPDATE SET
+         shopify_gid   = EXCLUDED.shopify_gid,
+         matched_by    = EXCLUDED.matched_by,
+         confirmed_at  = NOW(),
+         confirmed_by  = EXCLUDED.confirmed_by,
+         updated_at    = NOW()`,
+      params,
+    );
+
+    return { confirmed: safeLinks.length };
   }
 
   async getProductLinks(installationId: string): Promise<Array<{

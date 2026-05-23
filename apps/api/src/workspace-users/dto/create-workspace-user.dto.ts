@@ -1,11 +1,12 @@
 import { Transform } from "class-transformer";
-import { ArrayUnique, IsArray, IsIn, IsOptional, IsString, MinLength } from "class-validator";
+import { ArrayUnique, IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { APP_ROLES, FOUNDATION_ROLES, type AppRole, type FoundationRole } from "../../common/rbac/roles";
 
 export class CreateWorkspaceUserDto {
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())
   @IsString()
   @MinLength(1)
+  @MaxLength(255)
   userId!: string;
 
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())

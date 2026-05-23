@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsIn, IsArray, IsInt, Min, Max } from "class-validator";
+import { ArrayMaxSize, IsOptional, IsString, IsIn, IsArray, IsInt, Max, MaxLength, Min } from "class-validator";
 import { Transform, Type } from "class-transformer";
 
 /**
@@ -16,6 +16,7 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   q?: string;
 
   /**
@@ -24,7 +25,9 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(50, { each: true })
   @Transform(({ value }) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []))
   status?: string[];
 
@@ -33,6 +36,7 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
   /**
@@ -40,6 +44,7 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   brand?: string;
 
   /**
@@ -49,6 +54,7 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   channelSlug?: string;
 
   /**
@@ -56,6 +62,7 @@ export class AdvancedSearchProductsDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   cursor?: string;
 
   /**

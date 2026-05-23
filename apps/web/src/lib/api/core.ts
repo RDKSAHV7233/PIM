@@ -1357,6 +1357,9 @@ export interface ApiRequestOptions {
   tenantKey?: string;
   authHeader?: string;
   headers?: Record<string, string>;
+  cachePolicy?: RequestCache;
+  /** Next.js ISR: revalidate after N seconds. Passes `next.revalidate` to the fetch call. */
+  revalidateSeconds?: number;
 }
 
 export class ApiHttpError extends Error {
@@ -1449,7 +1452,8 @@ export async function fetchJson<T>(path: string, init?: RequestInit, options?: A
       ...(options?.headers ?? {}),
       ...(init?.headers ?? {}),
     },
-    cache: "no-store",
+    cache: options?.cachePolicy ?? "no-store",
+    ...(options?.revalidateSeconds !== undefined ? { next: { revalidate: options.revalidateSeconds } } : {}),
   });
 
   if (!response.ok) {

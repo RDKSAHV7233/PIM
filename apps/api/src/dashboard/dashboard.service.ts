@@ -1,9 +1,9 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { Prisma, RecordStatus } from "@prisma/client";
-import { createClient } from "redis";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { CacheService } from "../common/cache/cache.service";
 import { MetricsService } from "../metrics/metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -61,17 +61,10 @@ type DashboardOperationsSummaryResponse = {
   asOf: string;
 };
 
-type DashboardCachedValue =
-  | ReadinessResponse
-  | CatalogHealthResponse
-  | DashboardHealthResponse
-  | DashboardOperationsSummaryResponse;
-
 const CACHE_TTL_SECONDS = 5 * 60;
 const STALE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 const SNAPSHOT_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SNAPSHOT_TREND_DAYS = 30;
-const REDIS_RETRY_BACKOFF_MS = 30_000;
 const DISTRIBUTION_BUCKETS = [
   "0-10",
   "10-20",
@@ -101,13 +94,6 @@ type DashboardSnapshotRow = Prisma.DashboardSnapshotGetPayload<{
   select: typeof DASHBOARD_SNAPSHOT_SELECT;
 }>;
 
-function isProductionAppEnv(): boolean {
-  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development")
-    .trim()
-    .toLowerCase();
-  return appEnv === "production";
-}
-
 function resolveStubConnectorSlugs(): string[] {
   return String(process.env.CONNECTOR_STUB_SLUGS ?? "")
     .split(",")
@@ -117,30 +103,19 @@ function resolveStubConnectorSlugs(): string[] {
 
 @Injectable()
 export class DashboardService implements OnModuleDestroy {
-  private readonly redisDisabled =
-    String(process.env.DASHBOARD_CACHE_REDIS_DISABLED ?? "").trim().toLowerCase() === "true";
-  private readonly redisUrl = String(process.env.REDIS_URL ?? "redis://localhost:6379").trim();
-  private redisClient: ReturnType<typeof createClient> | null = null;
-  private redisConnecting: Promise<void> | null = null;
-  private redisAvailable = false;
-  private redisRetryAfterMs = 0;
   private readonly catalogHealthRefreshes = new Map<string, Promise<void>>();
   private readonly dashboardHealthRefreshes = new Map<string, Promise<void>>();
-  private readonly allowInMemoryFallbackCache = true;
-  private readonly fallbackCache = new Map<
-    string,
-    { value: DashboardCachedValue; expiresAt: number }
-  >();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly metricsService: MetricsService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async getReadiness(): Promise<ReadinessResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const cacheKey = `dashboard:readiness:${tenantKey}`;
-    return this.getOrSetCache(cacheKey, async () => this.computeReadiness(tenantKey));
+    return this.cacheService.getOrSet(cacheKey, () => this.computeReadiness(tenantKey), CACHE_TTL_SECONDS);
   }
 
   async getCatalogHealth(): Promise<CatalogHealthResponse> {
@@ -152,39 +127,31 @@ export class DashboardService implements OnModuleDestroy {
   async getHealth(): Promise<DashboardHealthResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const cacheKey = `dashboard:health:v3:${tenantKey}`;
-    return this.getOrSetCache(cacheKey, async () => this.computeDashboardHealth(tenantKey, cacheKey));
+    return this.cacheService.getOrSet(cacheKey, () => this.computeDashboardHealth(tenantKey, cacheKey), CACHE_TTL_SECONDS);
   }
 
   async getOperationsSummary(): Promise<DashboardOperationsSummaryResponse> {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const cacheKey = `dashboard:operations-summary:${tenantKey}`;
-    return this.getOrSetCache(cacheKey, async () => this.computeOperationsSummary(tenantKey));
+    return this.cacheService.getOrSet(cacheKey, () => this.computeOperationsSummary(tenantKey), CACHE_TTL_SECONDS);
   }
 
-  private async getOrSetCache<T extends DashboardCachedValue>(
-    key: string,
-    producer: () => Promise<T>,
-  ): Promise<T> {
-    const cached = await this.readCache<T>(key);
-    if (cached) {
-      return cached;
-    }
-    const value = await producer();
-    await this.writeCache(key, value);
-    return value;
+  onModuleDestroy(): void {
+    this.catalogHealthRefreshes.clear();
+    this.dashboardHealthRefreshes.clear();
   }
 
   private async getCatalogHealthCached(
     tenantKey: string,
     cacheKey: string,
   ): Promise<CatalogHealthResponse> {
-    const cached = await this.readCache<CatalogHealthResponse>(cacheKey);
+    const cached = await this.cacheService.get<CatalogHealthResponse>(cacheKey, CACHE_TTL_SECONDS);
     if (cached) {
       return cached;
     }
 
     const staleCacheKey = `${cacheKey}:stale`;
-    const stale = await this.readStaleCache<CatalogHealthResponse>(staleCacheKey);
+    const stale = await this.cacheService.get<CatalogHealthResponse>(staleCacheKey, STALE_CACHE_TTL_SECONDS);
     if (stale) {
       this.scheduleCatalogHealthRefresh(tenantKey, cacheKey, staleCacheKey);
       return stale;
@@ -192,162 +159,10 @@ export class DashboardService implements OnModuleDestroy {
 
     const value = await this.computeCatalogHealth(tenantKey);
     await Promise.all([
-      this.writeCache(cacheKey, value),
-      this.writeStaleCache(staleCacheKey, value),
+      this.cacheService.set(cacheKey, value, CACHE_TTL_SECONDS),
+      this.cacheService.set(staleCacheKey, value, STALE_CACHE_TTL_SECONDS),
     ]);
     return value;
-  }
-
-  private async readCache<T>(key: string): Promise<T | null> {
-    return this.readCacheValue<T>(key, CACHE_TTL_SECONDS);
-  }
-
-  private async writeCache<T>(key: string, value: T): Promise<void> {
-    await this.writeCacheValue(key, value, CACHE_TTL_SECONDS);
-  }
-
-  private async deleteCache(key: string): Promise<void> {
-    if (this.allowInMemoryFallbackCache) {
-      this.fallbackCache.delete(key);
-    }
-    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
-      return;
-    }
-    try {
-      await this.redisClient.del(key);
-    } catch {
-      this.markRedisUnavailable();
-    }
-  }
-
-  private async readStaleCache<T>(key: string): Promise<T | null> {
-    return this.readCacheValue<T>(key, STALE_CACHE_TTL_SECONDS);
-  }
-
-  private async writeStaleCache<T>(key: string, value: T): Promise<void> {
-    await this.writeCacheValue(key, value, STALE_CACHE_TTL_SECONDS);
-  }
-
-  private readFallbackCache<T>(key: string): T | null {
-    const cached = this.fallbackCache.get(key);
-    if (!cached) {
-      return null;
-    }
-    if (Date.now() >= cached.expiresAt) {
-      this.fallbackCache.delete(key);
-      return null;
-    }
-    return cached.value as T;
-  }
-
-  private writeFallbackCache(
-    key: string,
-    value: DashboardCachedValue,
-    ttlSeconds = CACHE_TTL_SECONDS,
-  ): void {
-    this.fallbackCache.set(key, {
-      value,
-      expiresAt: Date.now() + ttlSeconds * 1000,
-    });
-  }
-
-  private async readCacheValue<T>(key: string, ttlSeconds: number): Promise<T | null> {
-    if (this.allowInMemoryFallbackCache) {
-      const fallback = this.readFallbackCache<T>(key);
-      if (fallback) {
-        return fallback;
-      }
-    }
-    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
-      return null;
-    }
-    try {
-      const raw = await this.redisClient.get(key);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(String(raw)) as T;
-      if (this.allowInMemoryFallbackCache) {
-        this.writeFallbackCache(key, parsed as DashboardCachedValue, ttlSeconds);
-      }
-      return parsed;
-    } catch {
-      this.markRedisUnavailable();
-      return null;
-    }
-  }
-
-  private async writeCacheValue<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
-    if (this.allowInMemoryFallbackCache) {
-      this.writeFallbackCache(key, value as DashboardCachedValue, ttlSeconds);
-    }
-    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
-      return;
-    }
-    try {
-      await this.redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
-    } catch {
-      this.markRedisUnavailable();
-    }
-  }
-
-  private async ensureRedisAvailable(): Promise<boolean> {
-    if (this.redisDisabled) {
-      this.redisAvailable = false;
-      return false;
-    }
-    if (this.redisAvailable) {
-      return true;
-    }
-    const nowMs = Date.now();
-    if (nowMs < this.redisRetryAfterMs) {
-      return false;
-    }
-    if (this.redisConnecting) {
-      await this.redisConnecting;
-      return this.redisAvailable;
-    }
-
-    this.redisConnecting = (async () => {
-      try {
-        const client = createClient({
-          url: this.redisUrl,
-          socket: {
-            connectTimeout: 2_000,
-            reconnectStrategy: () => false,
-          },
-        });
-        client.on("error", () => {
-          this.markRedisUnavailable();
-        });
-        await client.connect();
-        this.redisClient = client;
-        this.redisAvailable = true;
-        this.redisRetryAfterMs = 0;
-      } catch {
-        this.markRedisUnavailable();
-      } finally {
-        this.redisConnecting = null;
-      }
-    })();
-
-    await this.redisConnecting;
-    return this.redisAvailable;
-  }
-
-  private markRedisUnavailable(): void {
-    this.redisAvailable = false;
-    this.redisRetryAfterMs = Date.now() + REDIS_RETRY_BACKOFF_MS;
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    this.catalogHealthRefreshes.clear();
-    this.dashboardHealthRefreshes.clear();
-    if (this.redisClient) {
-      await this.redisClient.quit().catch(() => undefined);
-      this.redisClient = null;
-    }
-    this.redisAvailable = false;
   }
 
   private async computeReadiness(tenantKey: string): Promise<ReadinessResponse> {
@@ -355,6 +170,7 @@ export class DashboardService implements OnModuleDestroy {
       this.prisma.tenant(tenantKey).connectorDefinition.findMany({
         where: { isActive: true },
         orderBy: [{ displayName: "asc" }],
+        take: 500,
         select: {
           id: true,
           slug: true,
@@ -369,6 +185,7 @@ export class DashboardService implements OnModuleDestroy {
           id: true,
           connectorId: true,
         },
+        take: 500,
       }),
     ]);
 
@@ -383,6 +200,7 @@ export class DashboardService implements OnModuleDestroy {
             installationId: true,
             status: true,
           },
+          take: 10_000,
         });
 
     const installationsByConnector = new Map<string, string[]>();
@@ -465,6 +283,7 @@ export class DashboardService implements OnModuleDestroy {
           categoryId: true,
           key: true,
         },
+        take: 5_000,
       }),
       this.prisma.tenant(tenantKey).product.findMany({
         where: {
@@ -480,6 +299,8 @@ export class DashboardService implements OnModuleDestroy {
           attributes: true,
           categoryId: true,
         },
+        // Defensive ceiling: stats are approximate for catalogs exceeding 50 000 SKUs.
+        take: 50_000,
       }),
       this.prisma.tenant(tenantKey).mediaAsset.findMany({
         where: {
@@ -489,6 +310,7 @@ export class DashboardService implements OnModuleDestroy {
         select: {
           productId: true,
         },
+        take: 50_000,
       }),
     ]);
 
@@ -569,12 +391,14 @@ export class DashboardService implements OnModuleDestroy {
     const stubSlugs = resolveStubConnectorSlugs();
     const [definitions, installations, submissions, deadLetterJobs, importJobs] = await Promise.all([
       this.prisma.tenant(tenantKey).connectorDefinition.findMany({
+        take: 500,
         select: {
           id: true,
           slug: true,
         },
       }),
       this.prisma.tenant(tenantKey).connectorInstallation.findMany({
+        take: 500,
         select: {
           connectorId: true,
           status: true,
@@ -667,6 +491,7 @@ export class DashboardService implements OnModuleDestroy {
         },
       },
       orderBy: [{ capturedAt: "asc" }],
+      take: SNAPSHOT_TREND_DAYS + 10, // at most one snapshot per day plus a small buffer
       select: DASHBOARD_SNAPSHOT_SELECT,
     });
 
@@ -697,8 +522,8 @@ export class DashboardService implements OnModuleDestroy {
       try {
         const value = await this.computeCatalogHealth(tenantKey);
         await Promise.all([
-          this.writeCache(cacheKey, value),
-          this.writeStaleCache(staleCacheKey, value),
+          this.cacheService.set(cacheKey, value, CACHE_TTL_SECONDS),
+          this.cacheService.set(staleCacheKey, value, STALE_CACHE_TTL_SECONDS),
         ]);
       } catch {
         // Best-effort refresh: keep serving the last catalog-health value if refresh fails.
@@ -718,7 +543,7 @@ export class DashboardService implements OnModuleDestroy {
     const refresh = (async () => {
       try {
         await this.captureSnapshot(tenantKey);
-        await this.deleteCache(cacheKey);
+        await this.cacheService.invalidate(cacheKey);
       } catch {
         // Best-effort refresh: keep serving the last snapshot if background refresh fails.
       } finally {

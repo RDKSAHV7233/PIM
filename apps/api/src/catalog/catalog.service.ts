@@ -3,7 +3,10 @@ import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity,
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
 import { ComplianceService } from "../compliance/compliance.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { withSoftDeleteBypass } from "../common/prisma-soft-delete.middleware";
 import {
   CursorPaginationQuery,
@@ -45,6 +48,8 @@ function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, righ
   return left ?? right;
 }
 
+const COMPLETENESS_CACHE_TTL = 5 * 60;
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -54,6 +59,7 @@ export class CatalogService {
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async stats(actor?: ActorContext) {
@@ -111,9 +117,13 @@ export class CatalogService {
           scopeWhere,
         ),
         include: {
-          category: true,
-          variants: true,
-          validationIssues: { where: { status: "open" } },
+          category: { select: { id: true, name: true, slug: true, path: true, parentId: true, createdAt: true, updatedAt: true } },
+          variants: { select: { id: true, productId: true, skuCode: true, attributes: true, mrp: true, sellingPrice: true, inventoryQty: true, status: true, createdAt: true, updatedAt: true } },
+          validationIssues: {
+            where: { status: "open" },
+            select: { id: true, severity: true, ruleCode: true, message: true, fieldPath: true },
+            take: 100,
+          },
         },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: limit + 1,
@@ -139,14 +149,28 @@ export class CatalogService {
       };
     }
 
+    // Legacy (non-cursor) path — hard-capped at 200 to prevent full-table loads.
+    // Prefer ?pagination=cursor for all list surfaces.
     const products = await this.prisma.tenant().product.findMany({
       where: scopeWhere,
-      include: {
-        category: true,
-        variants: true,
-        validationIssues: { where: { status: "open" } },
+      select: {
+        id: true,
+        title: true,
+        brand: true,
+        description: true,
+        categoryId: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        category: { select: { id: true, name: true, path: true } },
+        variants: { select: { id: true, skuCode: true, attributes: true, status: true, createdAt: true, updatedAt: true } },
+        validationIssues: { where: { status: "open" }, select: { id: true, severity: true, ruleCode: true, message: true, fieldPath: true }, take: 100 },
       },
       orderBy: [{ updatedAt: "desc" }],
+      take: 200,
     });
     const scored = await this.attachCompletenessScores(products);
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_products_redacted", scored);
@@ -431,9 +455,9 @@ export class CatalogService {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
-        category: true,
-        variants: { orderBy: [{ updatedAt: "desc" }] },
-        validationIssues: { where: { status: "open" }, orderBy: [{ createdAt: "desc" }] },
+        category: { select: { id: true, name: true, path: true, parentId: true, slug: true, createdAt: true, updatedAt: true } },
+        variants: { orderBy: [{ updatedAt: "desc" }], take: 500 },
+        validationIssues: { where: { status: "open" }, orderBy: [{ createdAt: "desc" }], take: 100 },
       },
     });
     if (!product) {
@@ -496,7 +520,6 @@ export class CatalogService {
     actor?: ActorContext,
   ) {
     const policyActor = this.toPolicyActor(actor);
-    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(policyActor, "view");
     const pageLimit = Math.max(1, Math.min(100, Number.isFinite(params.limit) ? Number(params.limit) : 20));
     const sort = params.sort ?? "updatedAt";
     const sortDir: "asc" | "desc" = params.sortDir ?? "desc";
@@ -504,6 +527,17 @@ export class CatalogService {
     if (params.cursor && !token) {
       throw new BadRequestException("Invalid cursor token.");
     }
+
+    // Resolve access scope and channel definition in parallel — independent DB reads
+    const [scopeWhere, channelDefResult] = await Promise.all([
+      this.accessPolicy.buildProductScopeWhere(policyActor, "view"),
+      params.channelSlug
+        ? this.prisma.tenant().connectorDefinition.findFirst({
+            where: { slug: params.channelSlug },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
 
     const filterClauses: Prisma.ProductWhereInput[] = [];
 
@@ -544,12 +578,9 @@ export class CatalogService {
       }
     }
 
-    // Channel/connector submission filter — resolves slug → definition → installations → product IDs
+    // Channel/connector submission filter — resolves slug → installations → product IDs
     if (params.channelSlug) {
-      const channelDef = await this.prisma.tenant().connectorDefinition.findFirst({
-        where: { slug: params.channelSlug },
-        select: { id: true },
-      });
+      const channelDef = channelDefResult;
       if (!channelDef) {
         return {
           items: [],
@@ -562,6 +593,7 @@ export class CatalogService {
       const channelInstallations = await this.prisma.tenant().connectorInstallation.findMany({
         where: { connectorId: channelDef.id },
         select: { id: true },
+        take: 500,
       });
       if (channelInstallations.length === 0) {
         return {
@@ -576,6 +608,7 @@ export class CatalogService {
         where: { installationId: { in: channelInstallations.map((i) => i.id) } },
         select: { productId: true },
         distinct: ["productId"],
+        take: 10_000,
       });
       const channelProductIds = channelSubmissions.map((s) => s.productId);
       if (channelProductIds.length === 0) {
@@ -710,7 +743,10 @@ export class CatalogService {
         attributes: attributes as Prisma.JsonObject,
         status: RecordStatus.draft,
       },
-      include: { category: true, variants: true },
+      include: {
+        category: { select: { id: true, name: true, slug: true, path: true, parentId: true, createdAt: true, updatedAt: true } },
+        variants: { select: { id: true, productId: true, skuCode: true, attributes: true, mrp: true, sellingPrice: true, inventoryQty: true, status: true, createdAt: true, updatedAt: true } },
+      },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     await this.planUsageService.touchUsageForCurrentTenant();
@@ -786,7 +822,10 @@ export class CatalogService {
     }
     const product = await this.prisma.tenant().product.findUniqueOrThrow({
       where: { id: productId },
-      include: { category: true, variants: true },
+      include: {
+        category: { select: { id: true, name: true, slug: true, path: true, parentId: true, createdAt: true, updatedAt: true } },
+        variants: { select: { id: true, productId: true, skuCode: true, attributes: true, mrp: true, sellingPrice: true, inventoryQty: true, status: true, createdAt: true, updatedAt: true } },
+      },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     const changedFields = this.collectChangedProductFields(current, {
@@ -800,8 +839,9 @@ export class CatalogService {
       attributes,
       status: nextStatus,
     });
+    const auditTasks: Promise<void>[] = [];
     if (changedFields.length > 0) {
-      await this.auditService.record({
+      auditTasks.push(this.auditService.record({
         actorId: actor?.id ?? "system",
         actorRole: actor?.role ?? "admin",
         action: "PRODUCT_UPDATED",
@@ -815,10 +855,10 @@ export class CatalogService {
           changedFieldCount: changedFields.length,
           changedSectionCount: this.countChangedSections(changedFields),
         },
-      });
+      }));
     }
     if (current.status !== nextStatus) {
-      await this.auditService.record({
+      auditTasks.push(this.auditService.record({
         actorId: actor?.id ?? "system",
         actorRole: actor?.role ?? "admin",
         action: "STATUS_TRANSITION",
@@ -829,8 +869,9 @@ export class CatalogService {
           fromStatus: current.status,
           toStatus: nextStatus,
         },
-      });
+      }));
     }
+    await Promise.all(auditTasks);
     return product;
   }
 
@@ -879,48 +920,51 @@ export class CatalogService {
         status: nextStatus,
         version: { increment: 1 },
       },
-      include: { category: true, variants: true },
-    });
-
-    await this.auditService.record({
-      actorId: actor.id,
-      actorRole: actor.role,
-      action: "REVIEW_DECISION",
-      resource: "/api/v1/catalog/products/:id/review-decision",
-      resourceId: product.id,
-      metadata: {
-        model: "Product",
-        fromStatus: current.status,
-        toStatus: nextStatus,
-        changedFields: [
-          {
-            path: "status",
-            label: "Status",
-            before: current.status,
-            after: nextStatus,
-          },
-        ],
-        changedFieldCount: 1,
-        changedSectionCount: 1,
-        decisionNote: dto.note?.trim() || null,
+      include: {
+        category: { select: { id: true, name: true, slug: true, path: true, parentId: true, createdAt: true, updatedAt: true } },
+        variants: { select: { id: true, productId: true, skuCode: true, attributes: true, mrp: true, sellingPrice: true, inventoryQty: true, status: true, createdAt: true, updatedAt: true } },
       },
     });
 
-    await this.auditService.record({
-      actorId: actor.id,
-      actorRole: actor.role,
-      action: "STATUS_TRANSITION",
-      resource: "/api/v1/catalog/products/:id/review-decision",
-      resourceId: product.id,
-      metadata: {
-        model: "Product",
-        fromStatus: current.status,
-        toStatus: nextStatus,
-        decisionNote: dto.note?.trim() || null,
-      },
-    });
-
-    await this.notificationsService.emitApprovalDecision(product.id, dto.status);
+    await Promise.all([
+      this.auditService.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: "REVIEW_DECISION",
+        resource: "/api/v1/catalog/products/:id/review-decision",
+        resourceId: product.id,
+        metadata: {
+          model: "Product",
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          changedFields: [
+            {
+              path: "status",
+              label: "Status",
+              before: current.status,
+              after: nextStatus,
+            },
+          ],
+          changedFieldCount: 1,
+          changedSectionCount: 1,
+          decisionNote: dto.note?.trim() || null,
+        },
+      }),
+      this.auditService.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: "STATUS_TRANSITION",
+        resource: "/api/v1/catalog/products/:id/review-decision",
+        resourceId: product.id,
+        metadata: {
+          model: "Product",
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          decisionNote: dto.note?.trim() || null,
+        },
+      }),
+      this.notificationsService.emitApprovalDecision(product.id, dto.status),
+    ]);
 
     return product;
   }
@@ -1189,6 +1233,7 @@ export class CatalogService {
     const variants = await this.prisma.tenant().variant.findMany({
       where: { productId },
       orderBy: [{ updatedAt: "desc" }],
+      take: 500,
     });
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_variants_redacted", variants);
   }
@@ -1503,25 +1548,27 @@ export class CatalogService {
       return [];
     }
 
-    const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));
-    const requiredAttributes = await this.prisma.tenant().attributeDefinition.findMany({
-      where: {
-        categoryId: { in: categoryIds },
-        appliesTo: AppliesTo.product,
-        required: true,
-      },
-      select: {
-        categoryId: true,
-        key: true,
-      },
-    });
+    // Per-category cache keys — once a category warms up, any page containing it is a hit
+    // regardless of the other categories on the page. Lookups are parallelized so N cache
+    // reads (and any cold-miss DB queries) resolve in one round-trip, not N.
+    const uniqueCategoryIds = Array.from(new Set(products.map((p) => p.categoryId)));
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
 
-    const requiredByCategory = new Map<string, string[]>();
-    for (const attribute of requiredAttributes) {
-      const existing = requiredByCategory.get(attribute.categoryId) ?? [];
-      existing.push(attribute.key);
-      requiredByCategory.set(attribute.categoryId, existing);
-    }
+    const entries = await Promise.all(
+      uniqueCategoryIds.map(async (categoryId) => {
+        const keys = await this.cache.getOrSet(
+          `completeness:required:${tenantKey}:${categoryId}`,
+          () => this.prisma.tenant().attributeDefinition.findMany({
+            where: { categoryId, appliesTo: AppliesTo.product, required: true },
+            take: 500,
+            select: { key: true },
+          }).then((defs) => defs.map((d) => d.key)),
+          COMPLETENESS_CACHE_TTL,
+        );
+        return [categoryId, keys] as const;
+      }),
+    );
+    const requiredByCategory = new Map<string, string[]>(entries);
 
     return products.map((product) => ({
       ...product,
@@ -1816,11 +1863,13 @@ export class CatalogService {
         where: { sourceProductId: productId, tenantKey },
         include: { targetProduct: { select: { id: true, title: true, status: true } } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        take: 500,
       }),
       this.prisma.tenant().productRelationship.findMany({
         where: { targetProductId: productId, tenantKey },
         include: { sourceProduct: { select: { id: true, title: true, status: true } } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        take: 500,
       }),
     ]);
 

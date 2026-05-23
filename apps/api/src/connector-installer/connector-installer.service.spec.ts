@@ -29,6 +29,10 @@ describe("ConnectorInstallerService", () => {
     const credentialEncryptionService = {
       storeCredential: jest.fn().mockResolvedValue({ id: "cred_1", keyVersion: "v1" }),
     };
+    const planUsageService = {
+      checkLimit: jest.fn().mockResolvedValue({ allowed: true }),
+      touchUsageForCurrentTenant: jest.fn().mockResolvedValue(undefined),
+    };
     const connectorPermissionService = {
       assertActionAllowed: jest.fn().mockResolvedValue(undefined),
       buildDefinitionActions: jest.fn().mockResolvedValue({
@@ -36,6 +40,7 @@ describe("ConnectorInstallerService", () => {
         reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
         uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
       }),
+      buildDefinitionActionsForSlugs: jest.fn().mockResolvedValue(new Map()),
       buildInstallationActions: jest.fn().mockResolvedValue({
         install: { allowed: false, reason: "ALREADY_INSTALLED" },
         reconnect: { allowed: true, reason: null },
@@ -45,13 +50,19 @@ describe("ConnectorInstallerService", () => {
       grantPermission: jest.fn(),
       revokePermission: jest.fn(),
     };
+    const accessPolicy = {
+      buildProductScopeWhere: jest.fn().mockResolvedValue(undefined),
+      assertProductAccess: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new ConnectorInstallerService(
       prisma as never,
       auditService,
+      planUsageService as never,
       marketplaceService as never,
       connectorRegistry as never,
       credentialEncryptionService as never,
       connectorPermissionService as never,
+      accessPolicy as never,
     );
     return {
       service,

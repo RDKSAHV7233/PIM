@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { ApiClientScopes, DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { CursorPaginationDto } from "../common/pagination/cursor-pagination.dto";
@@ -37,6 +37,7 @@ export class TaxonomyController {
   @FoundationRoleAccess("category_manager")
   @ReadAccessPolicy("taxonomy_safe_metadata")
   @ApiClientScopes("taxonomy.read")
+  @Header("Cache-Control", "private, max-age=300, stale-while-revalidate=600")
   listCategories(
     @Query() pagination: CursorPaginationDto,
     @Query("all") all?: string,

@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -24,7 +25,9 @@ export class UpdateMappingTemplateDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(200)
   @IsString({ each: true })
+  @MaxLength(100, { each: true })
   requiredFields?: string[];
 
   @IsOptional()

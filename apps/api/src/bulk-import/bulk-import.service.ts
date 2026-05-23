@@ -769,6 +769,7 @@ export class BulkImportService {
         },
       },
       orderBy: [{ rowNumber: "asc" }],
+      take: 50_000, // Defensive ceiling — prevent OOM on very large failed imports.
       select: {
         rowNumber: true,
         status: true,
@@ -809,6 +810,7 @@ export class BulkImportService {
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: { jobId },
       orderBy: [{ rowNumber: "asc" }],
+      take: 10_000,
     });
 
     const skuSeen = new Map<string, number[]>();
@@ -978,30 +980,28 @@ export class BulkImportService {
   }
 
   private async refreshJobCounters(jobId: string) {
-    const current = await this.prisma.tenant().bulkImportJob.findUnique({
-      where: { id: jobId },
-      select: { status: true },
-    });
-    const rows = await this.prisma.tenant().bulkImportRow.findMany({
-      where: { jobId },
-      select: { status: true },
-    });
+    const [current, groups] = await Promise.all([
+      this.prisma.tenant().bulkImportJob.findUnique({
+        where: { id: jobId },
+        select: { status: true },
+      }),
+      this.prisma.tenant().bulkImportRow.groupBy({
+        by: ["status"],
+        where: { jobId },
+        _count: { _all: true },
+      }),
+    ]);
 
-    const counters = {
-      success: 0,
-      failed: 0,
-      deadLetter: 0,
-      pending: 0,
-    };
-    for (const row of rows) {
-      if (row.status === BulkImportRowStatus.success) {
-        counters.success += 1;
-      } else if (row.status === BulkImportRowStatus.failed) {
-        counters.failed += 1;
-      } else if (row.status === BulkImportRowStatus.dead_letter) {
-        counters.deadLetter += 1;
+    const counters = { success: 0, failed: 0, deadLetter: 0, pending: 0 };
+    for (const group of groups) {
+      if (group.status === BulkImportRowStatus.success) {
+        counters.success = group._count._all;
+      } else if (group.status === BulkImportRowStatus.failed) {
+        counters.failed = group._count._all;
+      } else if (group.status === BulkImportRowStatus.dead_letter) {
+        counters.deadLetter = group._count._all;
       } else {
-        counters.pending += 1;
+        counters.pending += group._count._all;
       }
     }
 
@@ -1695,6 +1695,7 @@ export class BulkImportService {
         required: true,
         appliesTo: true,
       },
+      take: 5_000,
     });
 
     const attributesByCategory = new Map<string, CategoryAttributeSnapshot[]>();
@@ -1728,6 +1729,7 @@ export class BulkImportService {
         appliesTo: true,
       },
       orderBy: [{ key: "asc" }],
+      take: 500,
     });
     return {
       capturedAt: new Date().toISOString(),

@@ -58,6 +58,7 @@ export class ConnectorRegistry implements OnModuleInit {
         where: {
           isActive: true,
         },
+        take: 500,
         select: {
           slug: true,
         },

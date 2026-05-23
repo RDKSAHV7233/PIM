@@ -113,6 +113,7 @@ export class OutboundWebhooksService {
         tenantKey,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 200,
       select: {
         id: true,
         name: true,
@@ -324,6 +325,7 @@ export class OutboundWebhooksService {
             tenantKey,
             id: { in: endpointIds },
           },
+          take: 200,
           select: {
             id: true,
             name: true,
@@ -391,6 +393,7 @@ export class OutboundWebhooksService {
       select: {
         id: true,
       },
+      take: 100,
     });
 
     if (endpoints.length === 0) {
@@ -398,9 +401,11 @@ export class OutboundWebhooksService {
     }
 
     const payload = this.buildPayload(input);
-    for (const endpoint of endpoints) {
-      await this.createQueuedDelivery(tenantKey, endpoint.id, input.eventType, input.notificationId, payload);
-    }
+    await Promise.all(
+      endpoints.map((endpoint) =>
+        this.createQueuedDelivery(tenantKey, endpoint.id, input.eventType, input.notificationId, payload),
+      ),
+    );
   }
 
   private registerWorker() {
@@ -514,7 +519,7 @@ export class OutboundWebhooksService {
         signal: AbortSignal.timeout(OUTBOUND_WEBHOOK_TIMEOUT_MS),
       });
 
-      const responseBody = this.truncateResponse(await response.text());
+      const responseBody = await this.readResponseBodyCapped(response);
       if (!response.ok) {
         const error = new Error(`Outbound webhook endpoint returned ${response.status}`);
         (error as Error & { responseStatus?: number; responseBody?: string | null }).responseStatus = response.status;
@@ -663,7 +668,60 @@ export class OutboundWebhooksService {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new BadRequestException("Webhook target URL must use http or https.");
     }
+    this.assertPublicUrl(parsed);
     return parsed.toString();
+  }
+
+  /**
+   * Block SSRF targets — loopback, RFC-1918 private ranges, link-local, and
+   * the AWS metadata address. Called at endpoint creation/update time so
+   * user-supplied URLs cannot be used to probe internal infrastructure.
+   *
+   * Note: this is URL-level only and does not defend against DNS rebinding
+   * (a hostname that resolves externally at creation time but internally at
+   * delivery time). Pair with network-level egress controls in production.
+   *
+   * Skipped in development to allow local integration tests to register
+   * loopback webhook servers.
+   */
+  private assertPublicUrl(parsed: URL): void {
+    if (process.env.APP_ENV === "development") {
+      return;
+    }
+
+    // Strip IPv6 bracket notation (e.g. [::1] → ::1)
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+
+    // Reject obviously-bad hostnames
+    if (!hostname || hostname === "localhost" || hostname === "0.0.0.0") {
+      throw new BadRequestException("Webhook target URL must be a publicly reachable address.");
+    }
+
+    // Reject IPv4 private / reserved ranges
+    const octets = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (octets) {
+      const [a, b] = [Number(octets[1]), Number(octets[2])];
+      const isPrivate =
+        a === 0 ||                                  // 0.0.0.0/8   — "this" network
+        a === 10 ||                                 // 10.0.0.0/8  — RFC 1918
+        a === 127 ||                                // 127.0.0.0/8 — loopback
+        (a === 169 && b === 254) ||                 // 169.254.0.0/16 — link-local (AWS metadata service)
+        (a === 172 && b >= 16 && b <= 31) ||        // 172.16.0.0/12 — RFC 1918
+        (a === 192 && b === 168) ||                 // 192.168.0.0/16 — RFC 1918
+        a >= 224;                                   // 224.0.0.0+  — multicast and reserved
+      if (isPrivate) {
+        throw new BadRequestException("Webhook target URL must be a publicly reachable address.");
+      }
+    }
+
+    // Reject IPv6 loopback, unique-local (fc00::/7), and link-local (fe80::/10)
+    if (
+      hostname === "::1" ||
+      /^f[cd]/i.test(hostname) ||   // fc** / fd** — unique local
+      /^fe[89ab]/i.test(hostname)   // fe80–feb* — link-local
+    ) {
+      throw new BadRequestException("Webhook target URL must be a publicly reachable address.");
+    }
   }
 
   private encryptSecret(secret: string): { cipher: string; keyVersion: string } {
@@ -688,12 +746,27 @@ export class OutboundWebhooksService {
     return createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
   }
 
-  private truncateResponse(value: string): string | null {
-    const normalized = String(value ?? "");
-    if (!normalized) {
-      return null;
+  private async readResponseBodyCapped(response: Response): Promise<string | null> {
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    try {
+      while (totalBytes < OUTBOUND_WEBHOOK_MAX_RESPONSE_CHARS) {
+        const { done, value } = await reader.read();
+        if (done || !value) break;
+        const remaining = OUTBOUND_WEBHOOK_MAX_RESPONSE_CHARS - totalBytes;
+        chunks.push(value.length <= remaining ? value : value.subarray(0, remaining));
+        totalBytes += Math.min(value.length, remaining);
+      }
+    } finally {
+      reader.cancel().catch(() => {});
     }
-    return normalized.slice(0, OUTBOUND_WEBHOOK_MAX_RESPONSE_CHARS);
+    if (totalBytes === 0) return null;
+    const combined = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.length; }
+    return new TextDecoder().decode(combined);
   }
 
   private async requireEndpoint(tenantKey: string, endpointId: string) {

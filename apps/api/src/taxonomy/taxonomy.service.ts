@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -27,6 +30,7 @@ export class TaxonomyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async listCategories(
@@ -41,6 +45,7 @@ export class TaxonomyService {
       return this.prisma.tenant().category.findMany({
         where: scopeWhere,
         orderBy: [{ path: "asc" }],
+        take: 5_000,
       });
     }
 
@@ -106,7 +111,7 @@ export class TaxonomyService {
     const path = parent ? `${parent.path} > ${normalizedName}` : normalizedName;
     const slug = this.makeSlug(path);
 
-    return this.prisma.tenant().category.create({
+    const result = await this.prisma.tenant().category.create({
       data: {
         name: normalizedName,
         parentId: dto.parentId ?? null,
@@ -114,6 +119,8 @@ export class TaxonomyService {
         slug: await this.ensureUniqueSlug(slug),
       },
     });
+    await this.invalidateCategoryCache();
+    return result;
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
@@ -135,6 +142,7 @@ export class TaxonomyService {
         },
       },
       orderBy: [{ path: "asc" }, { id: "asc" }],
+      take: 5_000,
     });
     const affectedIds = [id, ...descendants.map((child) => child.id)];
     const existingSlugs = new Set(
@@ -148,6 +156,7 @@ export class TaxonomyService {
           select: {
             slug: true,
           },
+          take: 5_000,
         })
       ).map((category) => category.slug),
     );
@@ -181,6 +190,7 @@ export class TaxonomyService {
         }),
       ),
     );
+    await this.invalidateCategoryCache();
     return updated;
   }
 
@@ -206,6 +216,7 @@ export class TaxonomyService {
     }
 
     await this.prisma.tenant().category.delete({ where: { id } });
+    await this.invalidateCategoryCache();
   }
 
   async listAttributeDefinitions(categoryId: string, actor?: ActorContext) {
@@ -213,6 +224,7 @@ export class TaxonomyService {
     return this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
       orderBy: [{ appliesTo: "asc" }, { key: "asc" }],
+      take: 500,
     });
   }
 
@@ -220,7 +232,7 @@ export class TaxonomyService {
     await this.getCategory(categoryId, actor);
     await this.accessPolicy.assertCategoryAccess(this.toPolicyActor(actor), "edit", categoryId, "AttributeDefinition");
     try {
-      return await this.prisma.tenant().attributeDefinition.create({
+      const result = await this.prisma.tenant().attributeDefinition.create({
         data: {
           categoryId,
           key: this.normalizeKey(dto.key),
@@ -231,6 +243,8 @@ export class TaxonomyService {
           allowedValues: (dto.allowedValues ?? undefined) as Prisma.JsonObject | undefined,
         },
       });
+      await this.invalidateAttributeCache();
+      return result;
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new BadRequestException("Attribute key already exists for this category and target.");
@@ -249,7 +263,7 @@ export class TaxonomyService {
       attributeId,
     );
     try {
-      return await this.prisma.tenant().attributeDefinition.update({
+      const result = await this.prisma.tenant().attributeDefinition.update({
         where: { id: attributeId },
         data: {
           key: this.normalizeKey(dto.key),
@@ -260,6 +274,8 @@ export class TaxonomyService {
           allowedValues: (dto.allowedValues ?? undefined) as Prisma.JsonObject | undefined,
         },
       });
+      await this.invalidateAttributeCache();
+      return result;
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new BadRequestException("Attribute key already exists for this category and target.");
@@ -278,6 +294,20 @@ export class TaxonomyService {
       attributeId,
     );
     await this.prisma.tenant().attributeDefinition.delete({ where: { id: attributeId } });
+    await this.invalidateAttributeCache();
+  }
+
+  private async invalidateAttributeCache(): Promise<void> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    await Promise.all([
+      this.cache.invalidatePattern(`compliance:attrs:${tenantKey}:`),
+      this.cache.invalidatePattern(`completeness:required:${tenantKey}:`),
+    ]).catch(() => undefined);
+  }
+
+  private async invalidateCategoryCache(): Promise<void> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    await this.cache.invalidate(`auto-suggest:categories:${tenantKey}`).catch(() => undefined);
   }
 
   private makeSlug(value: string) {

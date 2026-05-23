@@ -152,15 +152,89 @@ export class ConnectorPermissionService {
 
     return {
       install,
-      reconnect: {
-        allowed: false,
-        reason: "INSTALLATION_REQUIRED",
-      },
-      uninstall: {
-        allowed: false,
-        reason: "INSTALLATION_REQUIRED",
-      },
+      reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
     };
+  }
+
+  async buildDefinitionActionsForSlugs(
+    actor: ConnectorActor,
+    slugs: string[],
+  ): Promise<Map<string, ConnectorActionMatrix>> {
+    if (slugs.length === 0) {
+      return new Map();
+    }
+
+    const tenantKey = this.getTenantKey();
+    const denied: ConnectorActionMatrix = {
+      install: { allowed: false, reason: "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED" },
+      reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+    };
+
+    // Check the tenant-level installation limit once — identical result for every slug.
+    const installationsCheck = await this.planUsageService.checkLimit(
+      "connectors_installations",
+      1,
+      tenantKey,
+    );
+    if (!installationsCheck.allowed) {
+      return new Map(slugs.map((s) => [s, denied]));
+    }
+
+    // Normalize slugs to match the storage format used by grantPermission.
+    const normalizedSlugs = slugs.map((s) => s.trim().toLowerCase());
+
+    // For non-admin: fetch all relevant ConnectorPermission rows in one query.
+    let permittedSlugs: Set<string> | null = null;
+    if (actor.actorRole !== "admin") {
+      const rows = await this.prisma.tenant(tenantKey).$queryRaw<Array<{ connectorSlug: string }>>(
+        Prisma.sql`
+          SELECT "connectorSlug" AS "connectorSlug"
+          FROM "ConnectorPermission"
+          WHERE "tenantKey" = ${tenantKey}
+            AND "connectorSlug" = ANY(${normalizedSlugs}::text[])
+            AND "action"::text = 'install'
+            AND (
+              ("principalType" = 'user' AND "principalId" = ${actor.actorId})
+              OR ("principalType" = 'role' AND "principalId" = ${actor.actorRole})
+            )
+            AND "accountAlias" IN ('*')
+        `,
+      );
+      permittedSlugs = new Set(rows.map((r) => r.connectorSlug));
+    }
+
+    const result = new Map<string, ConnectorActionMatrix>();
+
+    // Per-slug connector_accounts check remains sequential to respect DB pool limits
+    // under the tenant-scoped Prisma client model (see listAvailableDefinitions comment).
+    for (const slug of normalizedSlugs) {
+      if (permittedSlugs !== null && !permittedSlugs.has(slug)) {
+        result.set(slug, {
+          install: { allowed: false, reason: "CONNECTOR_PERMISSION_REQUIRED" },
+          reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+          uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        });
+        continue;
+      }
+
+      const accountCheck = await this.planUsageService.checkLimit(
+        "connector_accounts",
+        1,
+        tenantKey,
+        { connectorSlug: slug },
+      );
+      result.set(slug, {
+        install: accountCheck.allowed
+          ? { allowed: true, reason: null }
+          : { allowed: false, reason: "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED" },
+        reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      });
+    }
+
+    return result;
   }
 
   async buildInstallationActions(

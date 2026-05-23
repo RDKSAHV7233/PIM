@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Headers, HttpCode, Post, Req, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Headers, HttpCode, Logger, Post, Req, UnauthorizedException } from "@nestjs/common";
 import type { Request } from "express";
 import { AuditService } from "../audit/audit.service";
 import { Public } from "../auth/public.decorator";
@@ -8,6 +8,8 @@ import { CreatePlatformTenantDto } from "./dto/create-platform-tenant.dto";
 
 @Controller("platform/tenants")
 export class PlatformAdminController {
+  private readonly logger = new Logger(PlatformAdminController.name);
+
   constructor(
     private readonly tenantDirectoryService: TenantDirectoryService,
     private readonly auditService: AuditService,
@@ -73,8 +75,9 @@ export class PlatformAdminController {
       });
       return result;
     } catch (error: unknown) {
-      const code = error instanceof Error ? error.message : String(error ?? "unknown error");
-      throw new BadRequestException({ error: code });
+      // Log full error server-side; return a generic code so internal DB / provisioning details are not leaked.
+      this.logger.error(`createTenant failed for tenant ${dto.tenantKey}`, error instanceof Error ? error.stack : String(error));
+      throw new BadRequestException({ error: "TENANT_PROVISIONING_FAILED" });
     }
   }
 }

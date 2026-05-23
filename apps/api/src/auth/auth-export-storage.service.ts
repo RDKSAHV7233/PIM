@@ -347,7 +347,13 @@ export class AuthExportStorageService {
   }
 
   private sanitizeSegment(value: string): string {
-    return String(value ?? "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "export";
+    return (
+      String(value ?? "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "_") // strip everything except alphanumeric, dot, hyphen, underscore
+        .replace(/\.{2,}/g, "_")             // collapse ".." sequences to prevent path traversal
+        .replace(/^[._-]+|[._-]+$/g, "")     // strip leading/trailing punctuation
+      || "export"
+    );
   }
 
   private validateObjectStorageConfiguration(): AccountExportStorageError | null {

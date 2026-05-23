@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export type IssueInboxSeverityFilter = "BLOCKING" | "WARNING";
 
@@ -10,10 +10,12 @@ export class IssueInboxQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   installationId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
   @IsOptional()
@@ -33,5 +35,6 @@ export class IssueInboxQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   cursor?: string;
 }

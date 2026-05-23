@@ -135,6 +135,7 @@ export class BulkEditService {
     const products = await this.prisma.tenant().product.findMany({
       where,
       orderBy: [{ updatedAt: "desc" }],
+      take: 5_000,
       select: this.productSelect,
     });
 
@@ -212,6 +213,7 @@ export class BulkEditService {
       include: {
         items: {
           orderBy: [{ createdAt: "desc" }],
+          take: 500,
         },
       },
     });
@@ -282,6 +284,7 @@ export class BulkEditService {
       include: {
         items: {
           orderBy: [{ createdAt: "desc" }],
+          take: 500,
         },
       },
     });

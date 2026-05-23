@@ -334,6 +334,8 @@ model ValidationIssue {
   @@index([status])
   @@index([ruleCode])
   @@index([tenantKey])
+  @@index([tenantKey, status, productId])
+  @@index([tenantKey, severity, status])
 }
 
 model ChannelMappingTemplate {
@@ -389,6 +391,8 @@ model MarketplaceExportJob {
   @@index([tenantKey])
   @@index([tenantKey, createdBy, updatedAt])
   @@index([installationId])
+  @@index([tenantKey, status, channel])
+  @@index([tenantKey, status, updatedAt])
 }
 
 model BulkImportJob {

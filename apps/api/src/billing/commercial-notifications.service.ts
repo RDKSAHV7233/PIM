@@ -253,6 +253,7 @@ export class CommercialNotificationsService {
       orderBy: {
         userId: "asc",
       },
+      take: 50,
       select: {
         userId: true,
       },

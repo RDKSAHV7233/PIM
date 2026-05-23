@@ -1,8 +1,9 @@
-import { IsIn, IsString, MinLength } from "class-validator";
+import { IsIn, IsString, MaxLength, MinLength } from "class-validator";
 
 export class InternalSetTenantPlanTierDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(64)
   tenantKey!: string;
 
   @IsString()

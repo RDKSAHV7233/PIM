@@ -1,13 +1,15 @@
 import { Type } from "class-transformer";
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class CreateBulkImportRunDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   sourceName?: string;
 
   @IsOptional()

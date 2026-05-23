@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RecordStatus, RuleSeverity, RuleType, ValidationIssueStatus } from "@prisma/client";
 import { AccessPolicyService, type PolicyActor } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
 import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
@@ -64,17 +65,21 @@ const ISSUE_INBOX_SELECT = {
 
 type IssueInboxRecord = Prisma.ValidationIssueGetPayload<{ select: typeof ISSUE_INBOX_SELECT }>;
 
+const COMPLIANCE_CACHE_TTL = 5 * 60;
+
 @Injectable()
 export class ComplianceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async listRules(categoryId?: string) {
     return this.prisma.tenant().complianceRule.findMany({
       where: categoryId ? { categoryId } : undefined,
       orderBy: [{ updatedAt: "desc" }],
+      take: 500,
     });
   }
 
@@ -83,7 +88,7 @@ export class ComplianceService {
       await this.requireCategory(dto.categoryId);
     }
     try {
-      return await this.prisma.tenant().complianceRule.create({
+      const rule = await this.prisma.tenant().complianceRule.create({
         data: {
           ruleCode: dto.ruleCode.trim().toUpperCase(),
           name: dto.name.trim(),
@@ -94,6 +99,8 @@ export class ComplianceService {
           active: dto.active,
         },
       });
+      await this.invalidateRuleCache();
+      return rule;
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new BadRequestException("Rule code already exists.");
@@ -107,7 +114,7 @@ export class ComplianceService {
     if (dto.categoryId) {
       await this.requireCategory(dto.categoryId);
     }
-    return this.prisma.tenant().complianceRule.update({
+    const rule = await this.prisma.tenant().complianceRule.update({
       where: { id: ruleId },
       data: {
         name: dto.name.trim(),
@@ -118,11 +125,19 @@ export class ComplianceService {
         active: dto.active,
       },
     });
+    await this.invalidateRuleCache();
+    return rule;
   }
 
   async deleteRule(ruleId: string) {
     await this.requireRule(ruleId);
     await this.prisma.tenant().complianceRule.delete({ where: { id: ruleId } });
+    await this.invalidateRuleCache();
+  }
+
+  private async invalidateRuleCache(): Promise<void> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    await this.cache.invalidatePattern(`compliance:rules:${tenantKey}:`).catch(() => undefined);
   }
 
   async getProductIssues(productId: string, actor?: PolicyActor) {
@@ -154,6 +169,7 @@ export class ComplianceService {
         where: { installationId: query.installationId },
         select: { productId: true },
         distinct: ["productId"],
+        take: 10_000,
       });
     }
     const productScopeWhere = await this.accessPolicy.buildProductScopeWhere(actor ?? {}, "view");
@@ -242,6 +258,7 @@ export class ComplianceService {
         tenantKey,
         id: { in: uniqueIssueIds },
       },
+      take: 1_000,
       select: {
         id: true,
         severity: true,
@@ -317,7 +334,21 @@ export class ComplianceService {
   async validateAndPersistProduct(productId: string, actor?: PolicyActor) {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
-      include: { category: true },
+      // Only fetch the scalar fields used by validateAndPersistProduct and its callees.
+      // assertProductAccess uses categoryId/brand/vendorScopeKey; collectComplianceRuleIssues
+      // uses title/description/brand/hsnCode/gstRate/attributes.  The full category record
+      // is never accessed here — include: { category: true } was pulling unused data.
+      select: {
+        id: true,
+        categoryId: true,
+        brand: true,
+        vendorScopeKey: true,
+        title: true,
+        description: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+      },
     });
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -328,8 +359,11 @@ export class ComplianceService {
     const issues: IssueDraft[] = [];
 
     this.applyGstHsnChecks(product.hsnCode, product.gstRate, issues);
-    await this.applyDynamicAttributeChecks(product.categoryId, attributes, issues);
-    await this.applyComplianceRuleChecks(product.categoryId, product, attributes, issues);
+    const [dynamicIssues, ruleIssues] = await Promise.all([
+      this.collectDynamicAttributeIssues(product.categoryId, attributes),
+      this.collectComplianceRuleIssues(product.categoryId, product, attributes),
+    ]);
+    issues.push(...dynamicIssues, ...ruleIssues);
 
     await this.prisma.tenant().$transaction(async (tx) => {
       await tx.validationIssue.deleteMany({ where: { productId } });
@@ -394,19 +428,23 @@ export class ComplianceService {
     }
   }
 
-  private async applyDynamicAttributeChecks(
+  private async collectDynamicAttributeIssues(
     categoryId: string,
     attributes: Record<string, unknown>,
-    issues: IssueDraft[],
-  ) {
-    const definitions = await this.prisma.tenant().attributeDefinition.findMany({
-      where: {
-        categoryId,
-        appliesTo: "product",
-      },
-      orderBy: [{ key: "asc" }],
-    });
+  ): Promise<IssueDraft[]> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `compliance:attrs:${tenantKey}:${categoryId}`;
+    const definitions = await this.cache.getOrSet(
+      cacheKey,
+      () => this.prisma.tenant().attributeDefinition.findMany({
+        where: { categoryId, appliesTo: "product" },
+        orderBy: [{ key: "asc" }],
+        take: 500,
+      }),
+      COMPLIANCE_CACHE_TTL,
+    );
 
+    const issues: IssueDraft[] = [];
     for (const def of definitions) {
       const value = attributes[def.key];
       if (def.required && this.isEmpty(value)) {
@@ -443,9 +481,10 @@ export class ComplianceService {
         });
       }
     }
+    return issues;
   }
 
-  private async applyComplianceRuleChecks(
+  private async collectComplianceRuleIssues(
     categoryId: string,
     product: {
       title: string;
@@ -456,16 +495,20 @@ export class ComplianceService {
       attributes: Prisma.JsonValue;
     },
     attributes: Record<string, unknown>,
-    issues: IssueDraft[],
-  ) {
-    const rules = await this.prisma.tenant().complianceRule.findMany({
-      where: {
-        active: true,
-        OR: [{ categoryId: null }, { categoryId }],
-      },
-      orderBy: [{ updatedAt: "desc" }],
-    });
+  ): Promise<IssueDraft[]> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `compliance:rules:${tenantKey}:${categoryId}`;
+    const rules = await this.cache.getOrSet(
+      cacheKey,
+      () => this.prisma.tenant().complianceRule.findMany({
+        where: { active: true, OR: [{ categoryId: null }, { categoryId }] },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 500,
+      }),
+      COMPLIANCE_CACHE_TTL,
+    );
 
+    const issues: IssueDraft[] = [];
     for (const rule of rules) {
       const config = this.asRecord(rule.config);
       const field = typeof config.field === "string" ? config.field : undefined;
@@ -519,6 +562,7 @@ export class ComplianceService {
         }
       }
     }
+    return issues;
   }
 
   private validateDataType(type: string, value: unknown) {

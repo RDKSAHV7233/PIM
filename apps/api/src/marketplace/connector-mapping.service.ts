@@ -384,6 +384,7 @@ export class ConnectorMappingService {
         ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
       },
       orderBy: { createdAt: "desc" },
+      take: 500,
     });
     const versions = rows.map((row) => toVersion(row as unknown as Record<string, unknown>));
     if (versions.length === 0) {
@@ -395,6 +396,7 @@ export class ConnectorMappingService {
         mappingVersionId: { in: versions.map((version) => version.id) },
       },
       orderBy: { createdAt: "asc" },
+      take: 2_500,
     });
     const historyByVersion = new Map<string, ConnectorMappingHistory>();
     for (const eventRow of eventRows) {
@@ -583,6 +585,7 @@ export class ConnectorMappingService {
           lifecycleState: "published",
           NOT: { id: selected.id },
         },
+        take: 50,
         select: { id: true },
       });
       const supersededRows = supersededCandidates.filter((row) => {
@@ -630,19 +633,21 @@ export class ConnectorMappingService {
         throw new NotFoundException("mapping_version_not_found");
       }
       const published = toVersion(publishedRow as unknown as Record<string, unknown>);
-      for (const supersededId of supersededIds) {
-        await tx.connectorMappingEvent.create({
-          data: {
-            id: randomUUID(),
-            mappingVersionId: supersededId,
-            eventType: "superseded",
-            actorId: input.actorId ?? null,
-            metadata: {
-              superseded_by: published.id,
-            } as Prisma.InputJsonValue,
-          },
-        });
-      }
+      await Promise.all(
+        supersededIds.map((supersededId) =>
+          tx.connectorMappingEvent.create({
+            data: {
+              id: randomUUID(),
+              mappingVersionId: supersededId,
+              eventType: "superseded",
+              actorId: input.actorId ?? null,
+              metadata: {
+                superseded_by: published.id,
+              } as Prisma.InputJsonValue,
+            },
+          }),
+        ),
+      );
       await tx.connectorMappingEvent.create({
         data: {
           id: randomUUID(),
@@ -716,6 +721,7 @@ export class ConnectorMappingService {
           lifecycleState: "published",
         },
         orderBy: { createdAt: "desc" },
+        take: 50,
       });
       const currentlyPublishedRows = allCurrentlyPublishedRows.filter((row) => {
         const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
@@ -787,25 +793,25 @@ export class ConnectorMappingService {
       }
       const published = toVersion(rollbackRow as unknown as Record<string, unknown>);
 
-      for (const currentPublished of currentlyPublishedRows.map((row) =>
-        toVersion(row as unknown as Record<string, unknown>),
-      )) {
-        if (currentPublished.id === source.id) {
-          continue;
-        }
-        await tx.connectorMappingEvent.create({
-          data: {
-            id: randomUUID(),
-            mappingVersionId: currentPublished.id,
-            eventType: "superseded",
-            actorId: input.actorId ?? null,
-            metadata: {
-              superseded_by: published.id,
-              rollback_source_version_id: source.id,
-            } as Prisma.InputJsonValue,
-          },
-        });
-      }
+      await Promise.all(
+        currentlyPublishedRows
+          .map((row) => toVersion(row as unknown as Record<string, unknown>))
+          .filter((currentPublished) => currentPublished.id !== source.id)
+          .map((currentPublished) =>
+            tx.connectorMappingEvent.create({
+              data: {
+                id: randomUUID(),
+                mappingVersionId: currentPublished.id,
+                eventType: "superseded",
+                actorId: input.actorId ?? null,
+                metadata: {
+                  superseded_by: published.id,
+                  rollback_source_version_id: source.id,
+                } as Prisma.InputJsonValue,
+              },
+            }),
+          ),
+      );
 
       await tx.connectorMappingEvent.create({
         data: {
@@ -927,6 +933,7 @@ export class ConnectorMappingService {
         ],
       },
       orderBy: { createdAt: "asc" },
+      take: 500,
     });
 
     // Post-filter: keep slug-scoped (null installationId) + installation-scoped for this installationId
@@ -1103,6 +1110,7 @@ export class ConnectorMappingService {
         lifecycleState: "published",
         mappingLevel: "tenant_connector_category_mapping",
       },
+      take: 5_000,
       select: {
         categoryScope: true,
       },
@@ -1115,6 +1123,7 @@ export class ConnectorMappingService {
     );
     const categories = await this.prisma.tenant(tenantKey).category.findMany({
       orderBy: [{ path: "asc" }],
+      take: 5_000,
       include: {
         attributeDefinitions: {
           where: { required: true, appliesTo: "product" },
@@ -1191,6 +1200,7 @@ export class ConnectorMappingService {
         required: true,
         appliesTo: "product",
       },
+      take: 500,
       select: { key: true },
     });
     const missingRequiredMappings = requiredDefs
@@ -1429,6 +1439,7 @@ export class ConnectorMappingService {
             lifecycleState: "published",
             mappingLevel: "tenant_connector_category_mapping",
           },
+          take: 5_000,
           select: {
             categoryScope: true,
           },

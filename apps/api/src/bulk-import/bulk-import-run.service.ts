@@ -316,6 +316,7 @@ export class BulkImportRunService implements OnModuleInit {
         const existingVariants = await this.prisma.tenant().variant.findMany({
           where: { skuCode: { in: chunk } },
           select: { skuCode: true },
+          take: 1_000, // chunk is already capped at 1 000 items above
         });
         for (const variant of existingVariants) {
           const rowNumbers = skuCodesSeen.get(variant.skuCode) ?? [];
@@ -457,6 +458,7 @@ export class BulkImportRunService implements OnModuleInit {
     const existingJobs = await this.prisma.tenant().bulkImportJob.findMany({
       where: { runId },
       select: { id: true },
+      take: 500,
     });
     if (existingJobs.length > 0) {
       return this.getRun(runId, actor);
@@ -581,6 +583,7 @@ export class BulkImportRunService implements OnModuleInit {
         },
       },
       orderBy: [{ rowNumberGlobal: "asc" }, { rowNumber: "asc" }],
+      take: 50_000, // Defensive ceiling — prevent OOM on very large failed imports.
     });
 
     const lines: string[] = [
@@ -714,20 +717,21 @@ export class BulkImportRunService implements OnModuleInit {
   }
 
   private async refreshJobCounters(jobId: string) {
-    const rows = await this.prisma.tenant().bulkImportRow.findMany({
+    const groups = await this.prisma.tenant().bulkImportRow.groupBy({
+      by: ["status"],
       where: { jobId },
-      select: { status: true },
+      _count: { _all: true },
     });
 
     let success = 0;
     let failed = 0;
     let deadLetter = 0;
     let pending = 0;
-    for (const row of rows) {
-      if (row.status === BulkImportRowStatus.success) success++;
-      else if (row.status === BulkImportRowStatus.failed) failed++;
-      else if (row.status === BulkImportRowStatus.dead_letter) deadLetter++;
-      else pending++;
+    for (const group of groups) {
+      if (group.status === BulkImportRowStatus.success) success = group._count._all;
+      else if (group.status === BulkImportRowStatus.failed) failed = group._count._all;
+      else if (group.status === BulkImportRowStatus.dead_letter) deadLetter = group._count._all;
+      else pending += group._count._all;
     }
 
     const status =
@@ -753,6 +757,7 @@ export class BulkImportRunService implements OnModuleInit {
     const jobs = await this.prisma.tenant().bulkImportJob.findMany({
       where: { runId },
       select: { status: true, successRows: true, failedRows: true, deadLetterRows: true },
+      take: 500,
     });
 
     let totalSuccess = 0;

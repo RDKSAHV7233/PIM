@@ -11,6 +11,7 @@ export class UpdateComplianceRuleDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
   @IsIn(SEVERITIES)
