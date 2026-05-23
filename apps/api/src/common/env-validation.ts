@@ -5,6 +5,7 @@ type BoolText = "true" | "false";
 type AuthMode = "local" | "db";
 type QueueBackend = "memory" | "bullmq";
 type AuthEmailProvider = "file" | "console" | "resend";
+type AccountExportStorageMode = "auto" | "filesystem" | "object_storage";
 
 export interface ValidatedEnv {
   DATABASE_URL_POOLED: string;
@@ -21,6 +22,8 @@ export interface ValidatedEnv {
   R2_BUCKET_NAME: string;
   R2_PUBLIC_URL: string;
   R2_ENDPOINT?: string;
+  ACCOUNT_EXPORT_STORAGE_MODE: AccountExportStorageMode;
+  ACCOUNT_EXPORT_STORAGE_DIR?: string;
   APP_ENV: AppEnv;
   AUTH_MODE: AuthMode;
   AUTH_EMAIL_PROVIDER: AuthEmailProvider;
@@ -51,6 +54,13 @@ export interface ValidatedEnv {
 }
 
 const UrlSchema = z.string().url();
+const OptionalTrimmedText = z.preprocess(
+  (value) => {
+    const normalized = String(value ?? "").trim();
+    return normalized.length === 0 ? undefined : normalized;
+  },
+  z.string().optional(),
+);
 
 function parseCsvUrls(raw: string | undefined): string[] {
   if (!raw) {
@@ -82,7 +92,15 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().min(1),
   R2_BUCKET_NAME: z.string().min(1),
   R2_PUBLIC_URL: UrlSchema,
-  R2_ENDPOINT: z.string().url().optional(),
+  R2_ENDPOINT: z.preprocess(
+    (value) => {
+      const normalized = String(value ?? "").trim();
+      return normalized.length === 0 ? undefined : normalized;
+    },
+    z.string().url().optional(),
+  ),
+  ACCOUNT_EXPORT_STORAGE_MODE: z.enum(["auto", "filesystem", "object_storage"] as const).default("auto"),
+  ACCOUNT_EXPORT_STORAGE_DIR: OptionalTrimmedText,
   APP_ENV: z.enum(["development", "staging", "production"] as const),
   AUTH_MODE: z.enum(["local", "db"] as const).default("local"),
   AUTH_EMAIL_PROVIDER: z.enum(["file", "console", "resend"] as const).default("file"),
@@ -191,6 +209,15 @@ export function validateEnv(): ValidatedEnv {
     }
     if (data.AUTH_MODE === "db" && String(envInput.PIM_AUTH_IDENTITIES_JSON ?? "").trim().length > 0) {
       issues.push("PIM_AUTH_IDENTITIES_JSON: must not be used when AUTH_MODE=db");
+    }
+    if (
+      (data.APP_ENV === "staging" || data.APP_ENV === "production") &&
+      data.ACCOUNT_EXPORT_STORAGE_MODE === "filesystem" &&
+      !String(data.ACCOUNT_EXPORT_STORAGE_DIR ?? "").trim()
+    ) {
+      issues.push(
+        "ACCOUNT_EXPORT_STORAGE_DIR: required when ACCOUNT_EXPORT_STORAGE_MODE=filesystem in staging/production",
+      );
     }
     if (data.FEATURE_PUBLIC_SIGNUP_ENABLED === "true" && data.AUTH_MODE !== "db") {
       issues.push(

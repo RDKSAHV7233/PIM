@@ -5,10 +5,14 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 
 const DOWNLOAD_URL_EXPIRY_SECONDS = 15 * 60;
+const DEFAULT_ACCOUNT_EXPORT_STORAGE_DIR = path.join("storage", "account-exports");
 const ACCOUNT_EXPORT_STORAGE_PUBLIC_MESSAGE =
   "Account export storage is temporarily unavailable. Please contact support if this persists.";
 const LOCAL_PLACEHOLDER_ACCOUNT_ID = "local-dev";
 const LOCAL_PLACEHOLDER_BUCKET_NAME = "vexa-pim-local";
+
+type AccountExportStorageMode = "auto" | "filesystem" | "object_storage";
+type AccountExportStorageBackend = "filesystem" | "object_storage";
 
 export class AccountExportStorageError extends Error {
   constructor(
@@ -40,7 +44,7 @@ export type AuthExportDownloadLocation =
 export interface AccountExportStorageProbeResult {
   ok: boolean;
   checkedAt: string;
-  mode: "local_fallback" | "object_storage";
+  mode: "filesystem" | "object_storage";
   code: string | null;
   message: string | null;
   endpointHost: string | null;
@@ -55,11 +59,13 @@ export class AuthExportStorageService {
   private readonly secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY ?? "").trim();
   private readonly bucketName = String(process.env.R2_BUCKET_NAME ?? "").trim();
   private readonly explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
+  private readonly configuredStorageMode = this.readConfiguredStorageMode();
+  private readonly filesystemStorageRoot = this.resolveFilesystemStorageRoot();
   private readonly endpoint =
     this.explicitEndpoint ||
     `https://${this.accountId}.r2.cloudflarestorage.com`;
-  private readonly useLocalFallback = this.shouldUseLocalFallback();
-  private readonly s3Client = this.useLocalFallback
+  private readonly storageBackend = this.resolveStorageBackend();
+  private readonly s3Client = this.storageBackend === "filesystem"
     ? null
     : new S3Client({
         region: "auto",
@@ -84,15 +90,23 @@ export class AuthExportStorageService {
     const extension = input.format === "csv" ? ".csv" : ".json";
     const fileName = `${safeUserId}-${safeJobId}${extension}`;
 
-    if (this.useLocalFallback) {
-      const storageDir = path.join(process.cwd(), "storage", "account-exports", safeTenantId);
-      await fs.mkdir(storageDir, { recursive: true });
-      const storagePath = path.join(storageDir, fileName);
-      await fs.writeFile(storagePath, input.fileContents, "utf8");
-      return {
-        storagePath,
-        fileName,
-      };
+    if (this.storageBackend === "filesystem") {
+      try {
+        const storageDir = path.join(this.filesystemStorageRoot, safeTenantId);
+        await fs.mkdir(storageDir, { recursive: true });
+        const storagePath = path.join(storageDir, fileName);
+        await fs.writeFile(storagePath, input.fileContents, "utf8");
+        return {
+          storagePath,
+          fileName,
+        };
+      } catch (error: unknown) {
+        const storageError = this.normalizeFilesystemWriteError(error);
+        this.logger.error(
+          `${storageError.message} storageDir=${this.filesystemStorageRoot} raw=${this.toErrorMessage(error)}`,
+        );
+        throw storageError;
+      }
     }
 
     const configError = this.validateObjectStorageConfiguration();
@@ -194,16 +208,44 @@ export class AuthExportStorageService {
 
   async probeAccountExportStorage(): Promise<AccountExportStorageProbeResult> {
     const checkedAt = new Date().toISOString();
-    if (this.useLocalFallback) {
-      return {
-        ok: true,
-        checkedAt,
-        mode: "local_fallback",
-        code: null,
-        message: null,
-        endpointHost: null,
-        bucketName: null,
-      };
+    if (this.storageBackend === "filesystem") {
+      const probePath = path.join(this.filesystemStorageRoot, this.buildProbeFileRelativePath());
+      try {
+        await fs.mkdir(path.dirname(probePath), { recursive: true });
+        await fs.writeFile(
+          probePath,
+          JSON.stringify(
+            {
+              checkedAt,
+              env: String(process.env.APP_ENV ?? "development").trim().toLowerCase() || "development",
+              mode: this.configuredStorageMode,
+            },
+            null,
+            2,
+          ),
+          "utf8",
+        );
+        return {
+          ok: true,
+          checkedAt,
+          mode: "filesystem",
+          code: null,
+          message: null,
+          endpointHost: null,
+          bucketName: null,
+        };
+      } catch (error: unknown) {
+        const storageError = this.normalizeFilesystemWriteError(error);
+        return {
+          ok: false,
+          checkedAt,
+          mode: "filesystem",
+          code: this.extractStorageErrorCode(storageError.message),
+          message: `${storageError.message} storageDir=${this.filesystemStorageRoot}`,
+          endpointHost: null,
+          bucketName: null,
+        };
+      }
     }
 
     const configError = this.validateObjectStorageConfiguration();
@@ -256,6 +298,32 @@ export class AuthExportStorageService {
     }
   }
 
+  private readConfiguredStorageMode(): AccountExportStorageMode {
+    const normalized = String(process.env.ACCOUNT_EXPORT_STORAGE_MODE ?? "").trim().toLowerCase();
+    if (normalized === "filesystem" || normalized === "object_storage") {
+      return normalized;
+    }
+    return "auto";
+  }
+
+  private resolveStorageBackend(): AccountExportStorageBackend {
+    if (this.configuredStorageMode === "filesystem") {
+      return "filesystem";
+    }
+    if (this.configuredStorageMode === "object_storage") {
+      return "object_storage";
+    }
+    return this.shouldUseLocalFallback() ? "filesystem" : "object_storage";
+  }
+
+  private resolveFilesystemStorageRoot(): string {
+    const configuredRoot = String(process.env.ACCOUNT_EXPORT_STORAGE_DIR ?? "").trim();
+    if (configuredRoot) {
+      return path.resolve(configuredRoot);
+    }
+    return path.join(process.cwd(), DEFAULT_ACCOUNT_EXPORT_STORAGE_DIR);
+  }
+
   private shouldUseLocalFallback(): boolean {
     const env = String(process.env.APP_ENV ?? "").trim().toLowerCase();
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
@@ -283,7 +351,7 @@ export class AuthExportStorageService {
   }
 
   private validateObjectStorageConfiguration(): AccountExportStorageError | null {
-    if (this.useLocalFallback) {
+    if (this.storageBackend === "filesystem") {
       return null;
     }
 
@@ -335,6 +403,27 @@ export class AuthExportStorageService {
     return null;
   }
 
+  private normalizeFilesystemWriteError(error: unknown): AccountExportStorageError {
+    const rawMessage = this.toErrorMessage(error);
+    const normalized = rawMessage.toLowerCase();
+
+    if (normalized.includes("eacces") || normalized.includes("eperm") || normalized.includes("read-only")) {
+      return new AccountExportStorageError(
+        "account_export_storage_filesystem_unwritable: Verify ACCOUNT_EXPORT_STORAGE_DIR is writable for account export storage.",
+      );
+    }
+
+    if (normalized.includes("enoent") || normalized.includes("enotdir")) {
+      return new AccountExportStorageError(
+        "account_export_storage_filesystem_path_invalid: Verify ACCOUNT_EXPORT_STORAGE_DIR points to a writable directory for account export storage.",
+      );
+    }
+
+    return new AccountExportStorageError(
+      "account_export_storage_filesystem_failed: Verify ACCOUNT_EXPORT_STORAGE_DIR and retry the export.",
+    );
+  }
+
   private normalizeStorageWriteError(error: unknown): AccountExportStorageError {
     const rawMessage = this.toErrorMessage(error);
     const normalized = rawMessage.toLowerCase();
@@ -384,6 +473,11 @@ export class AuthExportStorageService {
   private buildProbeKey(): string {
     const env = this.sanitizeSegment(String(process.env.APP_ENV ?? "development").trim().toLowerCase() || "development");
     return `healthchecks/account-export-storage/${env}.json`;
+  }
+
+  private buildProbeFileRelativePath(): string {
+    const env = this.sanitizeSegment(String(process.env.APP_ENV ?? "development").trim().toLowerCase() || "development");
+    return path.join("healthchecks", "account-export-storage", `${env}.json`);
   }
 
   private extractStorageErrorCode(message: string): string {

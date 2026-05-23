@@ -96,6 +96,7 @@ function buildBaseEnv() {
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
   setDefaultEnv("R2_BUCKET_NAME", "vexa-pim-local");
   setDefaultEnv("R2_PUBLIC_URL", "https://example.com/vexa-pim-local");
+  setDefaultEnv("ACCOUNT_EXPORT_STORAGE_MODE", "auto");
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
 
@@ -397,6 +398,40 @@ async function runCaseStagingRequiresCommercialOpsToken(baseEnv) {
   );
 }
 
+async function runCaseRejectsInvalidAccountExportStorageMode(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5506 + Math.floor(Math.random() * 100)),
+      ACCOUNT_EXPORT_STORAGE_MODE: "railway",
+    },
+    "ACCOUNT_EXPORT_STORAGE_MODE",
+    "Expected startup to fail when ACCOUNT_EXPORT_STORAGE_MODE is invalid, but validation passed unexpectedly.",
+  );
+}
+
+async function runCaseStagingFilesystemModeRequiresDirectory(baseEnv) {
+  await runValidationOnlyFailureCase(
+    baseEnv,
+    {
+      PORT: String(5508 + Math.floor(Math.random() * 100)),
+      APP_ENV: "staging",
+      AUTH_MODE: "db",
+      CORS_ORIGIN: "https://staging.example.com",
+      AUTH_EMAIL_PROVIDER: "console",
+      QUEUE_BACKEND: "bullmq",
+      QUEUE_WORKER_ENABLED: "true",
+      PIM_AUTH_IDENTITIES_JSON: "",
+      PIM_COMMERCIAL_CONTACT_URL: "https://example.com/contact-sales",
+      PIM_COMMERCIAL_OPS_TOKEN: "staging-commercial-ops-token",
+      ACCOUNT_EXPORT_STORAGE_MODE: "filesystem",
+      ACCOUNT_EXPORT_STORAGE_DIR: "",
+    },
+    "ACCOUNT_EXPORT_STORAGE_DIR",
+    "Expected staging startup to fail when ACCOUNT_EXPORT_STORAGE_MODE=filesystem has no storage dir, but validation passed unexpectedly.",
+  );
+}
+
 async function runCaseStagingRejectsPlaceholderJwtSecret(baseEnv) {
   await runValidationOnlyFailureCase(
     baseEnv,
@@ -434,6 +469,8 @@ async function run() {
   await runCaseStagingRequiresResendCredentials(baseEnv);
   await runCaseStagingRequiresCommercialContact(baseEnv);
   await runCaseStagingRequiresCommercialOpsToken(baseEnv);
+  await runCaseRejectsInvalidAccountExportStorageMode(baseEnv);
+  await runCaseStagingFilesystemModeRequiresDirectory(baseEnv);
   await runCaseProductionRejectsConsoleEmailProvider(baseEnv);
   await runCaseStagingRejectsPlaceholderJwtSecret(baseEnv);
   await runCaseValidEnvStarts(baseEnv);
@@ -451,6 +488,8 @@ async function run() {
           "staging_requires_resend_credentials",
           "staging_requires_commercial_contact_config",
           "staging_requires_commercial_ops_token",
+          "account_export_storage_mode_is_validated",
+          "staging_filesystem_account_export_requires_storage_dir",
           "production_requires_resend_email_provider",
           "staging_rejects_placeholder_jwt_secret",
           "valid_env_starts_api",
