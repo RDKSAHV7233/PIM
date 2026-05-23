@@ -23,7 +23,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
-import { AuthExportStorageService } from "./auth-export-storage.service";
+import { AccountExportStorageError, AuthExportStorageService } from "./auth-export-storage.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
@@ -1782,7 +1782,7 @@ export class AuthService implements OnModuleDestroy {
         "account_export_ready",
       );
     } catch (error: unknown) {
-      const errorMessage = this.toErrorMessage(error);
+      const errorMessage = this.toAccountExportErrorMessage(error);
       await tenantPrisma.accountExportRequest.updateMany({
         where: {
           id: payload.jobId,
@@ -2368,6 +2368,13 @@ export class AuthService implements OnModuleDestroy {
       return error.message.trim();
     }
     return String(error ?? "unknown_error");
+  }
+
+  private toAccountExportErrorMessage(error: unknown): string {
+    if (error instanceof AccountExportStorageError) {
+      return error.publicMessage;
+    }
+    return this.toErrorMessage(error);
   }
 
   async onModuleDestroy(): Promise<void> {

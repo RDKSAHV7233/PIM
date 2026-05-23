@@ -5,6 +5,18 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 
 const DOWNLOAD_URL_EXPIRY_SECONDS = 15 * 60;
+const ACCOUNT_EXPORT_STORAGE_PUBLIC_MESSAGE =
+  "Account export storage is temporarily unavailable. Please contact support if this persists.";
+
+export class AccountExportStorageError extends Error {
+  constructor(
+    message: string,
+    readonly publicMessage = ACCOUNT_EXPORT_STORAGE_PUBLIC_MESSAGE,
+  ) {
+    super(message);
+    this.name = "AccountExportStorageError";
+  }
+}
 
 export type AuthExportDownloadLocation =
   | {
@@ -22,6 +34,16 @@ export type AuthExportDownloadLocation =
       kind: "unavailable";
       reason: string;
     };
+
+export interface AccountExportStorageProbeResult {
+  ok: boolean;
+  checkedAt: string;
+  mode: "local_fallback" | "object_storage";
+  code: string | null;
+  message: string | null;
+  endpointHost: string | null;
+  bucketName: string | null;
+}
 
 @Injectable()
 export class AuthExportStorageService {
@@ -75,7 +97,15 @@ export class AuthExportStorageService {
       ContentType: input.format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8",
       ContentDisposition: `attachment; filename="account-export-${safeJobId}${extension}"`,
     });
-    await this.s3Client?.send(command);
+    try {
+      await this.s3Client?.send(command);
+    } catch (error: unknown) {
+      const storageError = this.normalizeStorageWriteError(error);
+      this.logger.error(
+        `${storageError.message} endpointHost=${this.endpointHost()} bucket=${this.bucketName || "unset"} raw=${this.toErrorMessage(error)}`,
+      );
+      throw storageError;
+    }
     return {
       storagePath: key,
       fileName,
@@ -148,6 +178,57 @@ export class AuthExportStorageService {
     };
   }
 
+  async probeAccountExportStorage(): Promise<AccountExportStorageProbeResult> {
+    const checkedAt = new Date().toISOString();
+    if (this.useLocalFallback) {
+      return {
+        ok: true,
+        checkedAt,
+        mode: "local_fallback",
+        code: null,
+        message: null,
+        endpointHost: null,
+        bucketName: null,
+      };
+    }
+
+    const probeKey = this.buildProbeKey();
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: probeKey,
+      Body: JSON.stringify({
+        checkedAt,
+        env: String(process.env.APP_ENV ?? "development").trim().toLowerCase() || "development",
+      }),
+      ContentType: "application/json; charset=utf-8",
+      CacheControl: "no-store",
+    });
+
+    try {
+      await this.s3Client?.send(command);
+      return {
+        ok: true,
+        checkedAt,
+        mode: "object_storage",
+        code: null,
+        message: null,
+        endpointHost: this.endpointHost(),
+        bucketName: this.bucketName || null,
+      };
+    } catch (error: unknown) {
+      const storageError = this.normalizeStorageWriteError(error);
+      return {
+        ok: false,
+        checkedAt,
+        mode: "object_storage",
+        code: this.extractStorageErrorCode(storageError.message),
+        message: storageError.message,
+        endpointHost: this.endpointHost(),
+        bucketName: this.bucketName || null,
+      };
+    }
+  }
+
   private shouldUseLocalFallback(): boolean {
     const env = String(process.env.APP_ENV ?? "").trim().toLowerCase();
     const explicitEndpoint = String(process.env.R2_ENDPOINT ?? "").trim();
@@ -172,5 +253,64 @@ export class AuthExportStorageService {
 
   private sanitizeSegment(value: string): string {
     return String(value ?? "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "export";
+  }
+
+  private normalizeStorageWriteError(error: unknown): AccountExportStorageError {
+    const rawMessage = this.toErrorMessage(error);
+    const normalized = rawMessage.toLowerCase();
+
+    if (
+      normalized.includes("eproto") ||
+      normalized.includes("ssl/tls") ||
+      normalized.includes("ssl routines") ||
+      normalized.includes("handshake failure") ||
+      normalized.includes("wrong version number") ||
+      normalized.includes("secure tls connection")
+    ) {
+      return new AccountExportStorageError(
+        "account_export_storage_tls_handshake_failed: Verify R2 endpoint and TLS settings for account export storage.",
+      );
+    }
+
+    if (
+      normalized.includes("econnrefused") ||
+      normalized.includes("enotfound") ||
+      normalized.includes("eai_again") ||
+      normalized.includes("timed out") ||
+      normalized.includes("etimedout")
+    ) {
+      return new AccountExportStorageError(
+        "account_export_storage_unreachable: Verify R2 endpoint reachability and network access for account export storage.",
+      );
+    }
+
+    return new AccountExportStorageError(
+      "account_export_storage_write_failed: Verify account export storage configuration and retry the export.",
+    );
+  }
+
+  private endpointHost(): string {
+    try {
+      return new URL(this.endpoint).host;
+    } catch {
+      return "invalid-endpoint";
+    }
+  }
+
+  private buildProbeKey(): string {
+    const env = this.sanitizeSegment(String(process.env.APP_ENV ?? "development").trim().toLowerCase() || "development");
+    return `healthchecks/account-export-storage/${env}.json`;
+  }
+
+  private extractStorageErrorCode(message: string): string {
+    const prefix = String(message ?? "").split(":")[0]?.trim();
+    return prefix || "account_export_storage_probe_failed";
+  }
+
+  private toErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message.trim();
+    }
+    return String(error ?? "unknown_error");
   }
 }

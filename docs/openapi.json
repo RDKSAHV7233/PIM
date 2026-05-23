@@ -72,6 +72,21 @@
         ]
       }
     },
+    "/api/v1/health/account-export-storage": {
+      "get": {
+        "operationId": "AppController_probeAccountExportStorage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Account export storage probe result"
+          }
+        },
+        "summary": "Probe account export object storage with a bounded write check (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/queue/{queueName}/lanes/{laneKey}/retry-failed": {
       "post": {
         "operationId": "AppController_retryFailedQueueJobs",

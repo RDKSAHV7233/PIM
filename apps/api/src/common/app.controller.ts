@@ -8,6 +8,7 @@ import { AuthenticatedReadRoute } from "./rbac/read-access-policy.decorator";
 import { Roles } from "./rbac/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
+import { AuthExportStorageService } from "../auth/auth-export-storage.service";
 
 @Controller()
 @ApiTags("System")
@@ -15,6 +16,7 @@ export class AppController {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly queueService: QueueService,
+    private readonly authExportStorageService: AuthExportStorageService,
     private readonly observability: ObservabilityService,
   ) {}
 
@@ -77,6 +79,17 @@ export class AppController {
     const limit = Number.parseInt(String(limitInput ?? "20"), 10);
     const items = await this.queueService.listFailedJobs(queueName, laneKey, limit);
     return { items };
+  }
+
+  @DisallowApiClient()
+  @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @AdminBoundaryAccess({ capability: "manage_security" })
+  @Roles("admin")
+  @Get("health/account-export-storage")
+  @ApiOperation({ summary: "Probe account export object storage with a bounded write check (admin only)" })
+  @ApiResponse({ status: 200, description: "Account export storage probe result" })
+  async probeAccountExportStorage() {
+    return this.authExportStorageService.probeAccountExportStorage();
   }
 
   @DisallowApiClient()

@@ -352,7 +352,60 @@ async function loginForDiagnostics(args) {
   };
 }
 
-async function captureQueueFailureDiagnostics(args, health, failedQueues) {
+async function captureAccountExportStorageDiagnostics(args, login) {
+  const summary = {
+    attempted: true,
+    authenticated: false,
+    ok: null,
+    code: null,
+    mode: null,
+    reason: null,
+  };
+
+  if (!login.ok) {
+    summary.reason = login.reason;
+    return { summary, details: null };
+  }
+
+  summary.authenticated = true;
+  const result = await requestJson(args.apiBase, "/health/account-export-storage", {
+    timeoutMs: args.timeoutMs,
+    headers: {
+      authorization: `Bearer ${login.token}`,
+    },
+  });
+  if (!result.ok) {
+    summary.reason = sanitizeDiagnosticText(result.error || `status_${result.status ?? "unknown"}`);
+    return { summary, details: null };
+  }
+
+  const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+  summary.ok = payload.ok === true;
+  summary.code = sanitizeDiagnosticText(payload.code);
+  summary.mode = sanitizeDiagnosticText(payload.mode);
+  summary.reason = null;
+
+  return {
+    summary,
+    details: {
+      capturedAt: new Date().toISOString(),
+      environment: args.environment,
+      tenantId: args.tenantId,
+      apiBase: args.apiBase,
+      probe: {
+        ok: payload.ok === true,
+        checkedAt: sanitizeDiagnosticText(payload.checkedAt),
+        mode: sanitizeDiagnosticText(payload.mode),
+        code: sanitizeDiagnosticText(payload.code),
+        message: sanitizeDiagnosticText(payload.message),
+        endpointHost: sanitizeDiagnosticText(payload.endpointHost),
+        bucketName: sanitizeDiagnosticText(payload.bucketName),
+      },
+    },
+  };
+}
+
+async function captureQueueFailureDiagnostics(args, failedQueues, login) {
   const summary = {
     attempted: failedQueues.length > 0,
     captured: false,
@@ -365,7 +418,6 @@ async function captureQueueFailureDiagnostics(args, health, failedQueues) {
     summary.reason = "no_failed_queues";
     return { summary, details: null };
   }
-  const login = await loginForDiagnostics(args);
   if (!login.ok) {
     summary.reason = login.reason;
     return { summary, details: null };
@@ -463,7 +515,9 @@ async function main() {
   const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
   const failedQueues = collectFailedQueues(health?.body);
   const queueFailuresClear = health.ok === true && failedQueues.length === 0;
-  const queueFailureDiagnostics = await captureQueueFailureDiagnostics(args, health, failedQueues);
+  const login = await loginForDiagnostics(args);
+  const accountExportStorage = await captureAccountExportStorageDiagnostics(args, login);
+  const queueFailureDiagnostics = await captureQueueFailureDiagnostics(args, failedQueues, login);
   const observationWindowDays = countDistinctUtcDays(signoffArtifacts, (entry) => entry.dateMs);
   const sloWindowDays = countDistinctUtcDays(historicalRolloutSnapshots, (entry) => entry.capturedAtMs);
   sloWindowDays.add(toUtcDayString(now.getTime()));
@@ -475,6 +529,7 @@ async function main() {
     apiBase: args.apiBase,
     windowDays: args.windowDays,
     health,
+    accountExportStorage: accountExportStorage.summary,
     queueFailureDiagnostics: queueFailureDiagnostics.summary,
     gates: {
       artifactsInWindow: signoffArtifacts.length,
@@ -488,6 +543,7 @@ async function main() {
         pilotWorkflowEvidencePresent: hasArtifact(allRecordedArtifacts, "PILOT_WORKFLOW_VALIDATION"),
         governanceEvidencePresent: hasArtifact(allRecordedArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
         healthEndpointHealthy,
+        accountExportStorageHealthy: accountExportStorage.summary.ok !== false,
         queueFailuresClear,
       },
       pending: [],
@@ -534,6 +590,11 @@ async function main() {
       `Queue failures remain in health snapshot: ${failedQueues.map((queue) => `${queue.name}=${queue.failed}`).join(", ")}.`,
     );
   }
+  if (healthEndpointHealthy && accountExportStorage.summary.ok === false) {
+    snapshot.controlledRollout.pending.push(
+      `Account export storage probe failed: ${accountExportStorage.summary.code || "account_export_storage_probe_failed"}.`,
+    );
+  }
   if (!snapshot.broadRollout.criteria.observationWindowComplete) {
     snapshot.broadRollout.pending.push(
       `Controlled rollout observation window covers ${snapshot.broadRollout.criteria.observationWindowDaysCovered} of ${snapshot.broadRollout.criteria.observationWindowDaysRequired} required days.`,
@@ -549,9 +610,21 @@ async function main() {
   const stamp = now.toISOString().replace(/[:]/g, "-");
   const outputPath = path.join(args.rolloutDir, `${stamp}_CONTROLLED_ROLLOUT_SNAPSHOT.json`);
   fs.writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
-  if (args.diagnosticOutputPath && queueFailureDiagnostics.details) {
+  const diagnosticDetails =
+    accountExportStorage.details || queueFailureDiagnostics.details
+      ? {
+          capturedAt: new Date().toISOString(),
+          environment: args.environment,
+          tenantId: args.tenantId,
+          apiBase: args.apiBase,
+          accountExportStorage: accountExportStorage.details ? accountExportStorage.details.probe : null,
+          queueFailures: queueFailureDiagnostics.details ? queueFailureDiagnostics.details.queues : null,
+          diagnosticLimit: queueFailureDiagnostics.details ? queueFailureDiagnostics.details.diagnosticLimit : null,
+        }
+      : null;
+  if (args.diagnosticOutputPath && diagnosticDetails) {
     fs.mkdirSync(path.dirname(args.diagnosticOutputPath), { recursive: true });
-    fs.writeFileSync(args.diagnosticOutputPath, `${JSON.stringify(queueFailureDiagnostics.details, null, 2)}\n`, "utf8");
+    fs.writeFileSync(args.diagnosticOutputPath, `${JSON.stringify(diagnosticDetails, null, 2)}\n`, "utf8");
   }
 
   console.log(
@@ -564,6 +637,7 @@ async function main() {
           artifactsInWindow: snapshot.gates.artifactsInWindow,
           consecutiveE10SignoffRuns: snapshot.gates.consecutiveE10SignoffRuns,
           healthOk: Boolean(snapshot.health && snapshot.health.ok),
+          accountExportStorage: snapshot.accountExportStorage,
           queueFailureDiagnostics: snapshot.queueFailureDiagnostics,
           controlledPending: snapshot.controlledRollout.pending,
           broadPending: snapshot.broadRollout.pending,
