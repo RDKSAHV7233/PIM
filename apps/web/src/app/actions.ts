@@ -610,15 +610,6 @@ export async function createProductAction(formData: FormData) {
   revalidatePath("/catalog/products");
 }
 
-function extractCurrentVersionFromError(message: string): number | null {
-  const match = message.match(/"currentVersion"\s*:\s*(\d+)/);
-  if (!match) {
-    return null;
-  }
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 export async function updateProductAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "").trim();
   if (!productId) {
@@ -663,17 +654,23 @@ export async function updateProductAction(formData: FormData) {
     );
   } catch (error: unknown) {
     rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : String(error ?? "");
-    if (message.includes("VERSION_CONFLICT")) {
-      const currentVersion = extractCurrentVersionFromError(message);
-      redirect(
-        appendQueryParams(basePath, {
-          tab: currentTab,
-          returnTo,
-          updateStatus: "conflict",
-          currentVersion: currentVersion !== null ? String(currentVersion) : undefined,
-        }),
-      );
+    if (error instanceof ApiHttpError && error.status === 409) {
+      const body =
+        typeof error.body === "object" && error.body !== null
+          ? (error.body as Record<string, unknown>)
+          : null;
+      if (body?.code === "VERSION_CONFLICT") {
+        const currentVersion =
+          typeof body.currentVersion === "number" ? body.currentVersion : null;
+        redirect(
+          appendQueryParams(basePath, {
+            tab: currentTab,
+            returnTo,
+            updateStatus: "conflict",
+            currentVersion: currentVersion !== null ? String(currentVersion) : undefined,
+          }),
+        );
+      }
     }
     redirect(
       appendQueryParams(basePath, {
