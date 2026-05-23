@@ -950,7 +950,7 @@ export async function updateMappingTemplateAction(formData: FormData) {
 
   await patchJsonForAction(formData, `/marketplace/templates/${templateId}`, payload);
   revalidatePath("/channels/mappings");
-  revalidatePath("/products");
+  revalidatePath("/catalog/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
     redirect(redirectTo);
@@ -975,7 +975,7 @@ export async function cloneMappingTemplateAction(formData: FormData) {
 
   await postJsonForAction(formData, `/marketplace/templates/${templateId}/clone`, payload);
   revalidatePath("/channels/mappings");
-  revalidatePath("/products");
+  revalidatePath("/catalog/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
     redirect(redirectTo);
@@ -991,7 +991,7 @@ export async function deleteMappingTemplateAction(formData: FormData) {
 
   await deleteJsonForAction(formData, `/marketplace/templates/${templateId}`);
   revalidatePath("/channels/mappings");
-  revalidatePath("/products");
+  revalidatePath("/catalog/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
     redirect(redirectTo);
@@ -1448,6 +1448,7 @@ export async function retrySubmissionAction(formData: FormData) {
 
   await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
   revalidatePath("/operations/jobs");
+  revalidatePath("/dashboard");
 
   const jobsParams = new URLSearchParams();
   jobsParams.set("submissionId", submissionId);
@@ -1646,6 +1647,7 @@ export async function processBulkImportJobAction(formData: FormData) {
     // redirect so the user can poll the status rather than seeing an error boundary.
   }
   revalidatePath("/operations/imports");
+  revalidatePath("/dashboard");
   redirect(returnTo);
 }
 
@@ -1659,6 +1661,7 @@ export async function requeueBulkImportDlqAction(formData: FormData) {
     limit,
   });
   revalidatePath("/operations/imports");
+  revalidatePath("/dashboard");
 }
 
 export async function processBulkImportRowAction(formData: FormData) {
@@ -1669,6 +1672,7 @@ export async function processBulkImportRowAction(formData: FormData) {
   }
   await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/rows/${rowId}/process`, {});
   revalidatePath("/operations/imports");
+  revalidatePath("/dashboard");
 }
 
 export async function repairBulkImportRowAction(formData: FormData) {
@@ -1686,6 +1690,7 @@ export async function repairBulkImportRowAction(formData: FormData) {
   });
   revalidatePath("/operations/repair");
   revalidatePath("/operations/imports");
+  revalidatePath("/dashboard");
 }
 
 export async function applyBulkEditAction(formData: FormData) {
@@ -1712,7 +1717,7 @@ export async function applyBulkEditAction(formData: FormData) {
   await applyBulkEditRequest(scope, updates, {
     ...(await resolveActionOptions(formData)),
   });
-  revalidatePath("/products");
+  revalidatePath("/catalog/products");
   revalidatePath("/operations/bulk-edit");
 }
 
