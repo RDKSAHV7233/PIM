@@ -5,11 +5,60 @@ export interface UserFacingError {
 }
 
 const ERROR_MAP: Record<string, UserFacingError> = {
+  // ── Catalog / workflow ──────────────────────────────────────────────────────
   VERSION_CONFLICT: {
     title: "Someone else updated this product",
     description: "This product was saved by another user while you were editing. Your changes were not applied.",
     action: "Reload the page to see the latest version, then make your changes again.",
   },
+  APPROVAL_BLOCKED: {
+    title: "Approval blocked",
+    description: "This product has open validation issues that must be resolved before it can be approved.",
+    action: "Open the Quality tab, fix each blocking issue, then resubmit for approval.",
+  },
+  WORKFLOW_CONTENT_LOCKED: {
+    title: "Content is locked",
+    description: "Products in this workflow state cannot be edited directly.",
+    action: "Change the workflow status to Draft first, then make your changes.",
+  },
+  WORKFLOW_ENTRY_INVALID: {
+    title: "Invalid status transition",
+    description: "This product cannot move to the requested workflow state from its current state.",
+    action: "Check the current product status and choose a valid next step.",
+  },
+
+  // ── Bulk import ─────────────────────────────────────────────────────────────
+  NO_ROWS: {
+    title: "No data rows found",
+    description: "The file or data you uploaded contains no importable rows.",
+    action: "Check that the file is not empty and the correct sheet or format is selected.",
+  },
+  ROW_LIMIT_EXCEEDED: {
+    title: "Too many rows",
+    description: "The import exceeds the maximum number of rows allowed per job.",
+    action: "Split the file into smaller batches and upload each one separately.",
+  },
+  UNMAPPED_FIELDS: {
+    title: "Unmapped columns",
+    description: "Some columns in your file are not mapped to product fields.",
+    action: "Return to the mapping step and assign each column to a product field, or mark it as ignored.",
+  },
+
+  // ── Bulk edit ───────────────────────────────────────────────────────────────
+  EMPTY_SCOPE: {
+    title: "No products matched",
+    description: "The filters you set did not match any products in your catalog.",
+    action: "Widen the filter criteria and try again.",
+  },
+
+  // ── Marketplace / connector ─────────────────────────────────────────────────
+  CONNECTOR_UPDATE_FAILED: {
+    title: "Channel update failed",
+    description: "The product could not be updated on the connected channel.",
+    action: "Check the connector health page for error details, then retry the export.",
+  },
+
+  // ── Import job row states ───────────────────────────────────────────────────
   dead_letter: {
     title: "Could not be processed automatically",
     description: "These rows have errors that need your attention before they can be imported.",
@@ -25,6 +74,8 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "This export was intentionally not processed because the workspace is suspended.",
     action: "Resume the workspace first, then process the export again.",
   },
+
+  // ── Validation issues (shown in Quality tab) ────────────────────────────────
   REQUIRED_FIELD: {
     title: "Required field missing",
     description: "This field must be filled before the product can be published.",
@@ -40,6 +91,8 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "This GST rate is not a standard Indian GST slab (0%, 5%, 12%, 18%, 28%).",
     action: "Verify the rate is correct. If unsure, check with your CA.",
   },
+
+  // ── Fallback ─────────────────────────────────────────────────────────────────
   UNKNOWN_ERROR: {
     title: "Something went wrong",
     description: "An unexpected error occurred.",
@@ -69,6 +122,14 @@ export function extractErrorCode(input: string | undefined | null): string {
 
   const known = [
     "VERSION_CONFLICT",
+    "APPROVAL_BLOCKED",
+    "WORKFLOW_CONTENT_LOCKED",
+    "WORKFLOW_ENTRY_INVALID",
+    "NO_ROWS",
+    "ROW_LIMIT_EXCEEDED",
+    "UNMAPPED_FIELDS",
+    "EMPTY_SCOPE",
+    "CONNECTOR_UPDATE_FAILED",
     "dead_letter",
     "retrying",
     "skipped",

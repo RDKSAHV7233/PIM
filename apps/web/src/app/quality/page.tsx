@@ -147,7 +147,7 @@ export default async function QualityPage() {
             <p className="mt-2 text-sm text-slate-600">
               {canRecordReviewDecisions
                 ? "Review products in workflow review and record final approval decisions."
-                : "Review products in workflow review. Final approval decisions require reviewer, editor, or admin access."}
+                : "Review products in workflow review. Final approval decisions require approver, editor, or admin access."}
             </p>
             <Link href="/quality/approvals" className="mt-4 inline-flex text-sm font-medium text-blue-700 hover:underline">
               {canRecordReviewDecisions ? "Open Approval Queue" : "Review Approval Queue"}

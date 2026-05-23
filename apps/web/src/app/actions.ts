@@ -386,7 +386,8 @@ export async function createCategoryAction(formData: FormData) {
     name,
     parentId: parentId || undefined,
   });
-  revalidatePath("/");
+  revalidatePath("/catalog/categories");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteCategoryAction(formData: FormData) {
@@ -402,8 +403,8 @@ export async function deleteCategoryAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/taxonomy/categories/${encodeURIComponent(categoryId)}`);
-    revalidatePath("/");
     revalidatePath("/catalog/categories");
+    revalidatePath("/dashboard");
     redirect(
       appendQueryParams(returnTo, {
         deleteStatus: "deleted",
@@ -606,8 +607,8 @@ export async function createProductAction(formData: FormData) {
     }
     throw error;
   }
-  revalidatePath("/");
   revalidatePath("/catalog/products");
+  revalidatePath("/dashboard");
 }
 
 export async function updateProductAction(formData: FormData) {
@@ -715,7 +716,7 @@ export async function createAttributeDefinitionAction(formData: FormData) {
     appliesTo: String(formData.get("appliesTo") ?? "product"),
     allowedValues,
   });
-  revalidatePath("/");
+  revalidatePath("/catalog/attributes");
 }
 
 export async function validateProductAction(formData: FormData) {
@@ -740,9 +741,9 @@ export async function deleteProductAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}`);
-    revalidatePath("/");
     revalidatePath("/catalog/products");
     revalidatePath(`/products/${productId}`);
+    revalidatePath("/dashboard");
     redirect(
       appendQueryParams(returnTo, {
         deleteStatus: "deleted",
@@ -787,9 +788,9 @@ export async function purgeProductAction(formData: FormData) {
 
   try {
     await deleteJsonForAction(formData, `/catalog/products/${encodeURIComponent(productId)}/purge`);
-    revalidatePath("/");
     revalidatePath("/catalog/products");
     revalidatePath(`/products/${productId}`);
+    revalidatePath("/dashboard");
     redirect(
       appendQueryParams(returnTo, {
         deleteStatus: "purged",
@@ -904,7 +905,7 @@ export async function createMappingTemplateAction(formData: FormData) {
     isDefault,
   });
 
-  revalidatePath("/");
+  revalidatePath("/channels/mappings");
   if (productId) {
     revalidatePath(`/products/${productId}`);
   }
@@ -948,7 +949,7 @@ export async function updateMappingTemplateAction(formData: FormData) {
   }
 
   await patchJsonForAction(formData, `/marketplace/templates/${templateId}`, payload);
-  revalidatePath("/");
+  revalidatePath("/channels/mappings");
   revalidatePath("/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
@@ -973,7 +974,7 @@ export async function cloneMappingTemplateAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/marketplace/templates/${templateId}/clone`, payload);
-  revalidatePath("/");
+  revalidatePath("/channels/mappings");
   revalidatePath("/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
@@ -989,7 +990,7 @@ export async function deleteMappingTemplateAction(formData: FormData) {
   const redirectTo = String(formData.get("redirectTo") ?? "").trim();
 
   await deleteJsonForAction(formData, `/marketplace/templates/${templateId}`);
-  revalidatePath("/");
+  revalidatePath("/channels/mappings");
   revalidatePath("/products");
   if (redirectTo) {
     revalidatePath(redirectTo);
@@ -1043,7 +1044,7 @@ export async function installConnectorAction(formData: FormData) {
   if (returnTo.startsWith("/")) {
     revalidatePath(returnTo);
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   redirect(
     appendQueryParams(returnTo, {
       status: "installed",
@@ -1135,7 +1136,7 @@ export async function uninstallConnectorAction(formData: FormData) {
   await postJsonForAction(formData, `/connectors/${encodeURIComponent(installationId)}/uninstall`, {});
   revalidatePath("/channels/connectors");
   revalidatePath("/channels");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   redirect("/channels/connectors?status=disabled");
 }
 
@@ -1159,7 +1160,7 @@ export async function deleteConnectorInstallationAction(formData: FormData) {
   );
   revalidatePath("/channels/connectors");
   revalidatePath("/channels");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   redirect("/channels/connectors?status=deleted");
 }
 
@@ -1446,7 +1447,7 @@ export async function retrySubmissionAction(formData: FormData) {
   }
 
   await postJsonForAction(formData, `/submissions/${submissionId}/retry`, {});
-  revalidatePath("/");
+  revalidatePath("/operations/jobs");
 
   const jobsParams = new URLSearchParams();
   jobsParams.set("submissionId", submissionId);
@@ -1557,7 +1558,6 @@ export async function createBulkImportJobAction(formData: FormData) {
   // Large import runs start only after validation
   if (validatedRun.status === "large") {
     await startBulkImportRun(formData, linkedRunId);
-    revalidatePath("/");
     revalidatePath("/operations/imports");
     redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);
   }
@@ -1623,7 +1623,7 @@ export async function createBulkImportTemplateAction(formData: FormData) {
     maxRetries,
     mapping,
   });
-  revalidatePath("/");
+  revalidatePath("/operations/imports");
 }
 
 export async function processBulkImportJobAction(formData: FormData) {
@@ -1645,7 +1645,6 @@ export async function processBulkImportJobAction(formData: FormData) {
     // processing in the background. The job moves to processing/done on its own;
     // redirect so the user can poll the status rather than seeing an error boundary.
   }
-  revalidatePath("/");
   revalidatePath("/operations/imports");
   redirect(returnTo);
 }
@@ -1659,7 +1658,7 @@ export async function requeueBulkImportDlqAction(formData: FormData) {
   await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/requeue-dlq`, {
     limit,
   });
-  revalidatePath("/");
+  revalidatePath("/operations/imports");
 }
 
 export async function processBulkImportRowAction(formData: FormData) {
@@ -1669,7 +1668,7 @@ export async function processBulkImportRowAction(formData: FormData) {
     throw new Error("Bulk import job id and row id are required.");
   }
   await postJsonForAction(formData, `/bulk-import/jobs/${jobId}/rows/${rowId}/process`, {});
-  revalidatePath("/");
+  revalidatePath("/operations/imports");
 }
 
 export async function repairBulkImportRowAction(formData: FormData) {
@@ -1685,7 +1684,8 @@ export async function repairBulkImportRowAction(formData: FormData) {
     payload,
     requeue,
   });
-  revalidatePath("/");
+  revalidatePath("/operations/repair");
+  revalidatePath("/operations/imports");
 }
 
 export async function applyBulkEditAction(formData: FormData) {
@@ -1712,7 +1712,8 @@ export async function applyBulkEditAction(formData: FormData) {
   await applyBulkEditRequest(scope, updates, {
     ...(await resolveActionOptions(formData)),
   });
-  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath("/operations/bulk-edit");
 }
 
 export async function uploadMediaAssetAction(formData: FormData) {

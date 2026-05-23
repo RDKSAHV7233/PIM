@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ToastContext, type ToastTone, setToastDispatcher } from "./toast";
 
@@ -18,12 +18,27 @@ const toneClass: Record<ToastTone, string> = {
   info: "border-slate-200 bg-white text-slate-900",
 };
 
+// Success toasts are confirmations — auto-dismiss is correct UX.
+// Error and info toasts may require the user to read and act on them,
+// so they get a manual dismiss button in addition to auto-dismiss.
+const DISMISSIBLE_TONES = new Set<ToastTone>(["error", "info"]);
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [mounted, setMounted] = useState(false);
+  const timerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    const timer = timerRef.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timerRef.current.delete(id);
+    }
+    setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
 
   const contextValue = useMemo(
@@ -34,9 +49,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ? crypto.randomUUID()
             : `toast-${Date.now()}-${++toastCounter}`;
         setToasts((current) => [...current, { id, tone, message }].slice(-3));
-        window.setTimeout(() => {
+        const timer = setTimeout(() => {
+          timerRef.current.delete(id);
           setToasts((current) => current.filter((item) => item.id !== id));
         }, 4_000);
+        timerRef.current.set(id, timer);
       },
     }),
     [],
@@ -59,15 +76,25 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               aria-live="polite"
               aria-atomic="false"
             >
-              {toasts.map((toast) => (
+              {toasts.map((item) => (
                 <div
-                  key={toast.id}
-                  role={toast.tone === "error" ? "alert" : "status"}
-                  aria-live={toast.tone === "error" ? "assertive" : "polite"}
+                  key={item.id}
+                  role={item.tone === "error" ? "alert" : "status"}
+                  aria-live={item.tone === "error" ? "assertive" : "polite"}
                   aria-atomic="true"
-                  className={`rounded-md border px-3 py-2 text-sm shadow ${toneClass[toast.tone]}`}
+                  className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm shadow ${toneClass[item.tone]}`}
                 >
-                  {toast.message}
+                  <span className="flex-1">{item.message}</span>
+                  {DISMISSIBLE_TONES.has(item.tone) && (
+                    <button
+                      type="button"
+                      onClick={() => removeToast(item.id)}
+                      aria-label="Dismiss notification"
+                      className="ml-1 flex-shrink-0 opacity-60 hover:opacity-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>,
