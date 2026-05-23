@@ -10,10 +10,10 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
+  getAllProductsSlim,
   getBulkEditOperations,
   getBulkEditPreview,
   getCategoryTree,
-  getProducts,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
@@ -164,7 +164,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     const [operations, categories, products] = await Promise.all([
       getBulkEditOperations(100, { role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader }),
-      getProducts({ role: actorRole, authHeader }),
+      getAllProductsSlim({ role: actorRole, authHeader }),
     ]);
 
     const filteredCategories = filterTestData(categories, hideTestData);
@@ -193,11 +193,11 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
     const previewProducts = matchedProducts.map((product) => ({
       id: product.id,
       title: product.title,
-      description: product.description,
+      description: product.description ?? "",
       brand: product.brand,
       status: product.status,
-      hsnCode: product.hsnCode,
-      gstRate: product.gstRate,
+      hsnCode: product.hsnCode ?? null,
+      gstRate: product.gstRate ?? null,
       firstSku: product.variants?.[0]?.skuCode ?? product.id.slice(0, 8),
     }));
 

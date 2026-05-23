@@ -160,13 +160,18 @@ export interface ProductListItem {
   id: string;
   title: string;
   brand: string;
+  description?: string;
   categoryId: string;
   categoryName?: string;
   categoryPath?: string;
+  hsnCode?: string | null;
+  gstRate?: number | null;
+  attributes?: Record<string, unknown>;
   status: CatalogStatus;
   completenessScore?: number;
   variantCount: number;
   skuCodes?: string[];
+  variants?: Array<{ skuCode?: string | null }>;
   openValidationErrorCount: number;
   openValidationWarningCount: number;
   createdAt: string;

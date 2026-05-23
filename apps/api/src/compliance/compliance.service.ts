@@ -87,6 +87,22 @@ export class ComplianceService {
     if (dto.categoryId) {
       await this.requireCategory(dto.categoryId);
     }
+    if (dto.ruleType === "regex_field") {
+      const pattern = typeof (dto.config as Record<string, unknown>).pattern === "string"
+        ? String((dto.config as Record<string, unknown>).pattern)
+        : undefined;
+      if (!pattern) {
+        throw new BadRequestException("regex_field rules require config.pattern to be a non-empty string.");
+      }
+      if (pattern.length > 300) {
+        throw new BadRequestException("config.pattern must not exceed 300 characters.");
+      }
+      try {
+        new RegExp(pattern);
+      } catch {
+        throw new BadRequestException("config.pattern is not a valid regular expression.");
+      }
+    }
     try {
       const rule = await this.prisma.tenant().complianceRule.create({
         data: {
@@ -113,6 +129,22 @@ export class ComplianceService {
     await this.requireRule(ruleId);
     if (dto.categoryId) {
       await this.requireCategory(dto.categoryId);
+    }
+    if (dto.ruleType === "regex_field") {
+      const pattern = typeof (dto.config as Record<string, unknown>).pattern === "string"
+        ? String((dto.config as Record<string, unknown>).pattern)
+        : undefined;
+      if (!pattern) {
+        throw new BadRequestException("regex_field rules require config.pattern to be a non-empty string.");
+      }
+      if (pattern.length > 300) {
+        throw new BadRequestException("config.pattern must not exceed 300 characters.");
+      }
+      try {
+        new RegExp(pattern);
+      } catch {
+        throw new BadRequestException("config.pattern is not a valid regular expression.");
+      }
     }
     const rule = await this.prisma.tenant().complianceRule.update({
       where: { id: ruleId },
@@ -534,8 +566,14 @@ export class ComplianceService {
         if (!pattern) {
           continue;
         }
-        const regex = new RegExp(pattern);
-        if (!regex.test(String(value))) {
+        let regexMatches: boolean;
+        try {
+          regexMatches = new RegExp(pattern).test(String(value));
+        } catch {
+          // Invalid pattern stored in DB — skip rather than throw; createRule now rejects invalid patterns at write time.
+          continue;
+        }
+        if (!regexMatches) {
           issues.push({
             ruleId: rule.id,
             severity: rule.severity,

@@ -8,7 +8,7 @@ import {
 export class StepUpChallengeDto {
   @IsString()
   @MinLength(1)
-  @MaxLength(72)
+  @MaxLength(1000)
   password!: string;
 
   @IsIn([STEP_UP_SCOPE_MAPPING_HIGH_RISK, STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK])

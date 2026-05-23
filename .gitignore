@@ -46,3 +46,6 @@ VEXA_PIM_DEEP_REVIEW_2026-05-09.md
 
 # Test output
 apps/web/test-results/
+
+# Temporary staging files
+.tmp/

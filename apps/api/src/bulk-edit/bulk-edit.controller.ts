@@ -47,7 +47,14 @@ export class BulkEditController {
 
   @Roles("admin", "editor")
   @Get("operations/:id")
-  getOperation(@Param("id") operationId: string) {
-    return this.bulkEditService.getOperation(operationId);
+  getOperation(
+    @Param("id") operationId: string,
+    @Query("itemsCursor") itemsCursor?: string,
+    @Query("itemsLimit") itemsLimit?: string,
+  ) {
+    return this.bulkEditService.getOperation(operationId, {
+      cursor: itemsCursor,
+      limit: itemsLimit ? Math.min(Math.max(Number(itemsLimit) || 100, 1), 500) : 100,
+    });
   }
 }

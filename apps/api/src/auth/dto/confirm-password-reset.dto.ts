@@ -7,6 +7,6 @@ export class ConfirmPasswordResetDto {
 
   @IsString()
   @MinLength(8)
-  @MaxLength(72)
+  @MaxLength(1000)
   password!: string;
 }

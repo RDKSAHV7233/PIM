@@ -10,11 +10,13 @@ import { FoundationRoleAccess } from "../common/rbac/foundation-role-access.deco
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { AppRole, Roles } from "../common/rbac/roles";
 import { CatalogService } from "./catalog.service";
+import { AssignProductDto } from "./dto/assign-product.dto";
 import { CreateApprovalCommentDto } from "./dto/create-approval-comment.dto";
 import { CreateProductRelationshipDto } from "./dto/create-product-relationship.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { DecideProductReviewDto } from "./dto/decide-product-review.dto";
+import { RequestChangesDto } from "./dto/request-changes.dto";
 import { AdvancedSearchProductsDto } from "./dto/advanced-search-products.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateVariantDto } from "./dto/update-variant.dto";
@@ -225,7 +227,7 @@ export class CatalogController {
   @ApiResponse({ status: 200, description: "Assignee updated" })
   assignProduct(
     @Param("id") id: string,
-    @Body() dto: { assigneeId: string | null },
+    @Body() dto: AssignProductDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
   ) {
     return this.catalogService.assignProduct(id, dto.assigneeId ?? null, this.resolveActor(request));
@@ -240,7 +242,7 @@ export class CatalogController {
   @ApiResponse({ status: 201, description: "Change request created" })
   requestChanges(
     @Param("id") id: string,
-    @Body() dto: { reason: string },
+    @Body() dto: RequestChangesDto,
     @Req() request: Request & { pimUserId?: string; pimRole?: AppRole },
   ) {
     return this.catalogService.requestChanges(id, dto.reason, this.resolveActor(request));

@@ -600,6 +600,14 @@ export class AuthService implements OnModuleDestroy {
     if (revoked) {
       return { type: "invalid_token" };
     }
+    const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(
+      normalizeTenantKey(claims.tenantId),
+      claims.sub,
+      claims.iat,
+    );
+    if (credRevoked) {
+      return { type: "invalid_token" };
+    }
 
     const nowSeconds = Math.floor(Date.now() / 1000);
     const revokeCurrentRefresh = async () => {
@@ -985,6 +993,9 @@ export class AuthService implements OnModuleDestroy {
         },
       }),
     ]);
+
+    // Revoke all outstanding tokens — the user changed their credentials.
+    await this.jwtBlocklistService.revokeCredentials(tenantId, userId).catch(() => undefined);
 
     const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
     if (workspace?.workspaceSlug) {

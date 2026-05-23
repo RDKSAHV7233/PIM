@@ -9,7 +9,7 @@ import { AuthController } from "./auth.controller";
 import { AuthEmailService } from "./auth-email.service";
 import { AuthExportStorageService } from "./auth-export-storage.service";
 import { AuthService } from "./auth.service";
-import { JwtBlocklistService } from "./jwt-blocklist.service";
+import { JwtBlocklistModule } from "./jwt-blocklist.module";
 import { MfaController } from "./mfa.controller";
 import { MfaService } from "./mfa.service";
 import { OidcAuthService } from "./oidc-auth.service";
@@ -19,14 +19,13 @@ import { OidcService } from "./oidc.service";
 import { StepUpGuard } from "./step-up.guard";
 
 @Module({
-  imports: [AuditModule, TenantDirectoryModule, QueueModule],
+  imports: [AuditModule, TenantDirectoryModule, QueueModule, JwtBlocklistModule],
   controllers: [AuthController, AuthPolicyController, MfaController, OidcController],
   providers: [
     AuthService,
     AuthPolicyService,
     AuthEmailService,
     AuthExportStorageService,
-    JwtBlocklistService,
     MfaService,
     OidcAuthService,
     OidcConfigService,
@@ -39,13 +38,13 @@ import { StepUpGuard } from "./step-up.guard";
     AuthPolicyService,
     AuthEmailService,
     AuthExportStorageService,
-    JwtBlocklistService,
     MfaService,
     OidcAuthService,
     OidcConfigService,
     OidcService,
     StepUpGuard,
     AccountDeletionWorkerService,
+    JwtBlocklistModule,
   ],
 })
 export class AuthModule {}

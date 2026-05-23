@@ -1596,6 +1596,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryRecoveryGroupDto"
       responses:
         "200":
           description: ""
@@ -1678,6 +1684,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertScheduleDto"
       responses:
         "201":
           description: ""
@@ -1754,6 +1766,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertScheduleDto"
       responses:
         "201":
           description: ""
@@ -1779,6 +1797,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerBulkPublishDto"
       responses:
         "200":
           description: ""
@@ -1844,6 +1868,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmCatalogLinksDto"
       responses:
         "201":
           description: ""
@@ -2460,6 +2490,16 @@ paths:
           in: path
           schema:
             type: string
+        - name: itemsCursor
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: itemsLimit
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: ""
@@ -2671,6 +2711,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignProductDto"
       responses:
         "200":
           description: Assignee updated
@@ -2685,6 +2731,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestChangesDto"
       responses:
         "201":
           description: Change request created
@@ -3715,6 +3767,18 @@ components:
     CreateExportJobAliasDto:
       type: object
       properties: {}
+    RetryRecoveryGroupDto:
+      type: object
+      properties: {}
+    UpsertScheduleDto:
+      type: object
+      properties: {}
+    TriggerBulkPublishDto:
+      type: object
+      properties: {}
+    ConfirmCatalogLinksDto:
+      type: object
+      properties: {}
     CreateOutboundWebhookDto:
       type: object
       properties: {}
@@ -3761,6 +3825,12 @@ components:
       type: object
       properties: {}
     CreateApprovalCommentDto:
+      type: object
+      properties: {}
+    AssignProductDto:
+      type: object
+      properties: {}
+    RequestChangesDto:
       type: object
       properties: {}
     CreateVariantDto:

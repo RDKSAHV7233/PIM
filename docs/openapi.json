@@ -2707,6 +2707,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryRecoveryGroupDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2851,6 +2861,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertScheduleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2985,6 +3005,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertScheduleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -3029,6 +3059,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerBulkPublishDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3144,6 +3184,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCatalogLinksDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -4198,6 +4248,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "itemsCursor",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemsLimit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4557,6 +4623,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignProductDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Assignee updated"
@@ -4581,6 +4657,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestChangesDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Change request created"
@@ -6176,6 +6262,22 @@
         "type": "object",
         "properties": {}
       },
+      "RetryRecoveryGroupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertScheduleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TriggerBulkPublishDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConfirmCatalogLinksDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateOutboundWebhookDto": {
         "type": "object",
         "properties": {}
@@ -6237,6 +6339,14 @@
         "properties": {}
       },
       "CreateApprovalCommentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AssignProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestChangesDto": {
         "type": "object",
         "properties": {}
       },

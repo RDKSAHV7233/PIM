@@ -210,12 +210,6 @@ export class BulkEditService {
         appliedCount,
         failedCount,
       },
-      include: {
-        items: {
-          orderBy: [{ createdAt: "desc" }],
-          take: 500,
-        },
-      },
     });
   }
 
@@ -278,20 +272,30 @@ export class BulkEditService {
     });
   }
 
-  async getOperation(operationId: string) {
+  async getOperation(operationId: string, itemsPagination?: { cursor?: string; limit?: number }) {
     const operation = await this.prisma.tenant().bulkEditOperation.findUnique({
       where: { id: operationId },
-      include: {
-        items: {
-          orderBy: [{ createdAt: "desc" }],
-          take: 500,
-        },
-      },
     });
     if (!operation) {
       throw new NotFoundException("Bulk edit operation not found");
     }
-    return operation;
+    const limit = Math.min(Math.max(itemsPagination?.limit ?? 100, 1), 500);
+    const cursorId = itemsPagination?.cursor;
+    const items = await this.prisma.tenant().bulkEditOperationItem.findMany({
+      where: {
+        operationId,
+        ...(cursorId ? { id: { lt: cursorId } } : {}),
+      },
+      orderBy: [{ id: "desc" }],
+      take: limit + 1,
+    });
+    const hasNext = items.length > limit;
+    const pageItems = hasNext ? items.slice(0, limit) : items;
+    return {
+      ...operation,
+      items: pageItems,
+      itemsNextCursor: hasNext ? pageItems[pageItems.length - 1]?.id ?? null : null,
+    };
   }
 
   private readonly productSelect = {

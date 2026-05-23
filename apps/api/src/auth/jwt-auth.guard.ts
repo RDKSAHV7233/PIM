@@ -88,6 +88,10 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });
       }
       const tenantId = normalizeTenantKey(claims.tenantId);
+      const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat);
+      if (credRevoked) {
+        throw new UnauthorizedException({ error: "CREDENTIALS_CHANGED" });
+      }
       if (!allowSuspendedTenant) {
         await this.assertTenantAccessActive(tenantId);
       }

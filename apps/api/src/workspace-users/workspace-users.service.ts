@@ -8,6 +8,7 @@ import {
 import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { JwtBlocklistService } from "../auth/jwt-blocklist.service";
 import { type AppRole, type FoundationRole } from "../common/rbac/roles";
 import { normalizeAppRole, normalizeFoundationRole } from "../common/rbac/role-utils";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -47,6 +48,7 @@ export class WorkspaceUsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly jwtBlocklistService: JwtBlocklistService,
   ) {}
 
   async listUsers(tenantId: string): Promise<WorkspaceUserRow[]> {
@@ -409,6 +411,11 @@ export class WorkspaceUsersService {
         passwordHash,
       },
     });
+
+    // Revoke all outstanding tokens for the target user.
+    await this.jwtBlocklistService
+      .revokeCredentials(normalizedTenantId, normalizedTargetUserId)
+      .catch(() => undefined);
 
     await this.auditService.record({
       actorId: normalizedActorId,

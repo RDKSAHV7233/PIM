@@ -2802,6 +2802,9 @@ export class MarketplaceService implements OnModuleInit {
   }
 
   async retryRecoveryGroup(installationId: string, errorFamily: string, actor?: PolicyActor) {
+    if (String(errorFamily).length > 100) {
+      throw new BadRequestException("errorFamily must not exceed 100 characters.");
+    }
     const db = this.prisma.tenant();
     const installation = await db.connectorInstallation.findFirst({
       where: { id: installationId },
@@ -3179,6 +3182,16 @@ export class MarketplaceService implements OnModuleInit {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const { cronExpression, scope, status } = data;
 
+    if (String(cronExpression).length > 100) {
+      throw new BadRequestException("cronExpression must not exceed 100 characters.");
+    }
+    if (String(scope).length > 50) {
+      throw new BadRequestException("scope must not exceed 50 characters.");
+    }
+    if (String(status).length > 50) {
+      throw new BadRequestException("status must not exceed 50 characters.");
+    }
+
     // Validate cron expression — basic 5-field check
     const fields = cronExpression.trim().split(/\s+/);
     if (fields.length < 5 || fields.length > 6) {
@@ -3356,6 +3369,9 @@ export class MarketplaceService implements OnModuleInit {
   ): Promise<{ feedId: string; feedDocumentId: string; productCount: number; submissionIds: string[] }> {
     if (!productIds.length) {
       throw new BadRequestException("productIds must contain at least one product.");
+    }
+    if (productIds.length > 200) {
+      throw new BadRequestException("productIds must contain at most 200 products per request.");
     }
 
     const db = this.prisma.tenant();
