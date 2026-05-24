@@ -59,6 +59,9 @@ const NOTIFICATION_ORDER_BY: Prisma.UserNotificationOrderByWithRelationInput[] =
   { id: "desc" },
 ];
 
+const PRODUCT_NOTIFICATION_FALLBACK_URL = "/catalog/products";
+const PRODUCT_NOTIFICATION_FALLBACK_LABEL = "View products";
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -140,6 +143,38 @@ export class NotificationsService {
         readAt: new Date(),
       },
     });
+    return { updated: updated.count };
+  }
+
+  async retargetProductNotifications(productId: string) {
+    const normalizedProductId = String(productId ?? "").trim();
+    if (normalizedProductId.length === 0) {
+      return { updated: 0 };
+    }
+
+    const productDetailPrefix = `/products/${encodeURIComponent(normalizedProductId)}`;
+    const updated = await this.prisma.tenant().userNotification.updateMany({
+      where: {
+        OR: [
+          {
+            metadata: {
+              path: ["productId"],
+              equals: normalizedProductId,
+            },
+          },
+          {
+            actionUrl: {
+              startsWith: productDetailPrefix,
+            },
+          },
+        ],
+      },
+      data: {
+        actionUrl: PRODUCT_NOTIFICATION_FALLBACK_URL,
+        actionLabel: PRODUCT_NOTIFICATION_FALLBACK_LABEL,
+      },
+    });
+
     return { updated: updated.count };
   }
 
