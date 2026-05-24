@@ -1095,6 +1095,7 @@ export class CatalogService {
         purgedById: null,
       },
     });
+    await this.notificationsService.retargetProductNotifications(productId);
   }
 
   async purgeProduct(productId: string, actor: ActorContext) {
@@ -1110,6 +1111,7 @@ export class CatalogService {
     }
 
     await this.prisma.tenant().product.delete({ where: { id: productId } });
+    await this.notificationsService.retargetProductNotifications(productId);
     await this.auditService.record({
       actorId: actor.id,
       actorRole: actor.role,
