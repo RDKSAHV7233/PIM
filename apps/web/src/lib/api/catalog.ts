@@ -50,6 +50,17 @@ export async function getProductList(
   return response.items;
 }
 
+export async function getAllProductsSlim(options?: ApiRequestOptions): Promise<ProductListItem[]> {
+  const all: ProductListItem[] = [];
+  let cursor: string | null | undefined = undefined;
+  do {
+    const page = await getProductListPage({ slim: true, limit: 200, cursor: cursor ?? undefined }, options);
+    all.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return all;
+}
+
 export async function getProductListPage(
   inputOrOptions?: ProductListQuery | ApiRequestOptions,
   maybeOptions?: ApiRequestOptions,
@@ -59,6 +70,9 @@ export async function getProductListPage(
   const params = new URLSearchParams();
   if (queryInput.slim) {
     params.set("slim", "true");
+    // slim is only served by the cursor path — always activate it so the first page
+    // isn't silently capped at 200 by the legacy non-cursor path.
+    params.set("pagination", "cursor");
   }
   if (queryInput.cursor) {
     params.set("cursor", queryInput.cursor);

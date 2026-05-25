@@ -642,6 +642,37 @@ async function normalizeProductForDelete(productId) {
   }
 }
 
+async function purgeCreatedProductsForCategory(categoryId) {
+  const targetCategoryId = String(categoryId);
+  let attempted = 0;
+  let purged = 0;
+  for (const productId of [...new Set(ctx.createdProductIds)].reverse()) {
+    const knownProduct = ctx.knownProducts.get(String(productId));
+    if (String(knownProduct?.categoryId ?? "") !== targetCategoryId) {
+      continue;
+    }
+    attempted += 1;
+    try {
+      await normalizeProductForDelete(productId);
+      const deleteResult = await api("DELETE", `/catalog/products/${encodeURIComponent(productId)}`, {
+        token: ctx.adminToken,
+      });
+      if (![200, 204, 404].includes(deleteResult.status)) {
+        continue;
+      }
+      const purgeResult = await api("DELETE", `/catalog/products/${encodeURIComponent(productId)}/purge`, {
+        token: ctx.adminToken,
+      });
+      if ([200, 204, 404].includes(purgeResult.status)) {
+        purged += 1;
+      }
+    } catch {
+      // Best effort: category cleanup will still skip if hard references remain.
+    }
+  }
+  return { attempted, purged };
+}
+
 function encodeUser(userId) {
   return encodeURIComponent(String(userId));
 }
@@ -2021,7 +2052,10 @@ function buildChecks() {
     assert(html.includes("Workspace Users"), "workspace users card missing");
     assert(html.includes("Close Invite"), "invite toggle missing");
     assert(html.includes("Create User"), "invite form submit button missing");
-    assert(!html.includes("Read-only"), "page still rendered read-only state for admin");
+    assert(
+      !html.includes("Admin role is required to invite users, change roles, or change account access state."),
+      "page still rendered non-admin access fallback for admin",
+    );
     return "admin controls visible";
   });
 
@@ -2189,6 +2223,11 @@ function buildChecks() {
     if (!ctx.variantId) {
       skip("variant not created");
     }
+    const variant = ctx.knownVariants.get(String(ctx.variantId));
+    const parentProductId = variant?.productId ?? ctx.productId;
+    if (parentProductId) {
+      await normalizeProductForDelete(String(parentProductId));
+    }
     const result = await api("DELETE", `/catalog/variants/${encodeURIComponent(ctx.variantId)}`, {
       token: ctx.adminToken,
     });
@@ -2231,10 +2270,11 @@ function buildChecks() {
       assertStatus(templateDeleteResult, [200, 204, 404], "DELETE /marketplace/templates/:id during category cleanup");
       ctx.templateId = null;
     }
+    let purgeStats = { attempted: 0, purged: 0 };
     let result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
       token: ctx.adminToken,
     });
-    if (result.status === 400) {
+    if (![200, 204].includes(result.status)) {
       const productsResult = await api("GET", "/catalog/products?slim=true&limit=200", {
         token: ctx.adminToken,
       });
@@ -2247,13 +2287,16 @@ function buildChecks() {
           token: ctx.adminToken,
         });
       }
+      purgeStats = await purgeCreatedProductsForCategory(ctx.categoryId);
       await new Promise((resolve) => setTimeout(resolve, 1500));
       result = await api("DELETE", `/taxonomy/categories/${encodeURIComponent(ctx.categoryId)}`, {
         token: ctx.adminToken,
       });
     }
     if (![200, 204].includes(result.status)) {
-      skip(`category still referenced after cleanup retry (${result.status})`);
+      skip(
+        `category still referenced after cleanup retry (${result.status}; productPurge=${purgeStats.purged}/${purgeStats.attempted})`,
+      );
     }
     return `status=${result.status}`;
   });

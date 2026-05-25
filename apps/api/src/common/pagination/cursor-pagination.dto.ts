@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class CursorPaginationDto {
   @IsOptional()
@@ -15,5 +15,6 @@ export class CursorPaginationDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   cursor?: string;
 }

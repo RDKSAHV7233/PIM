@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 
 const NODE_TYPES = ["buyer_app", "seller_app", "gateway", "logistics"] as const;
 
@@ -9,6 +9,7 @@ export class CreateOndcMappingDto {
   name!: string;
 
   @IsString()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsString()
@@ -20,6 +21,9 @@ export class CreateOndcMappingDto {
   version!: string;
 
   @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
   requiredFields!: string[];
 
   @IsObject()

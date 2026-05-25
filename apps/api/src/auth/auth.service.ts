@@ -23,7 +23,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
-import { AuthExportStorageService } from "./auth-export-storage.service";
+import { AccountExportStorageError, AuthExportStorageService } from "./auth-export-storage.service";
 import { AuthPolicyService } from "./auth-policy.service";
 import { LoginDto } from "./dto/login.dto";
 import { JwtBlocklistService } from "./jwt-blocklist.service";
@@ -32,6 +32,7 @@ import { PimJwtClaims, StepUpScope, signPimJwt, verifyPimJwt } from "./jwt";
 
 const DEFAULT_LOGIN_EXPIRY_MINUTES = 4 * 60;
 const MAX_LOGIN_EXPIRY_MINUTES = 4 * 60;
+const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_IP_ATTEMPT_LIMIT = 10;
 const DEFAULT_IP_WINDOW_MS = 15 * 60 * 1000;
 const USER_ATTEMPT_LIMIT = 5;
@@ -129,6 +130,7 @@ export type LoginResult =
   | {
       type: "success";
       payload: LoginResponse;
+      refreshToken: string;
     }
   | {
       type: "invalid_credentials";
@@ -166,6 +168,17 @@ export type LoginResult =
   | {
       type: "auth_method_not_allowed";
       allowedMethods: string[];
+    };
+
+export type RefreshResult =
+  | {
+      type: "success";
+      accessToken: string;
+      refreshToken: string;
+      expiresInSeconds: number;
+    }
+  | {
+      type: "invalid_token";
     };
 
 export interface ResendUnlockResult {
@@ -392,14 +405,16 @@ export class AuthService implements OnModuleDestroy {
     }
 
     const submittedWorkspaceSlug = normalizeWorkspaceSlug(dto.workspaceSlug ?? process.env.PIM_DEFAULT_WORKSPACE_SLUG ?? "");
-    const localIdentities = process.env.PIM_AUTH_IDENTITIES_JSON;
+    const localIdentities = String(process.env.PIM_AUTH_IDENTITIES_JSON ?? "").trim();
+    const localWorkspaceDirectory = String(process.env.PIM_AUTH_WORKSPACES_JSON ?? "").trim();
     const workspace =
       (submittedWorkspaceSlug
         ? await this.tenantDirectoryService.resolveWorkspaceSlug(submittedWorkspaceSlug)
         : null) ??
       (dto.tenantId ? await this.tenantDirectoryService.resolveTenantAlias(dto.tenantId) : null) ??
-      // Local dev fallback: if PIM_AUTH_IDENTITIES_JSON is set, treat workspaceSlug as tenantId directly
-      (localIdentities && submittedWorkspaceSlug
+      // Local dev fallback: synthesize a tenant from the workspace slug only
+      // when no explicit workspace directory is configured.
+      (!localWorkspaceDirectory && localIdentities && submittedWorkspaceSlug
         ? { tenantId: submittedWorkspaceSlug, workspaceSlug: submittedWorkspaceSlug }
         : null);
     if (!workspace) {
@@ -553,6 +568,7 @@ export class AuthService implements OnModuleDestroy {
 
     return {
       type: "success",
+      refreshToken: this.issueRefreshToken(identity),
       payload: {
         accessToken,
         tokenType: "Bearer",
@@ -564,10 +580,90 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
-  async logout(claims: PimJwtClaims): Promise<void> {
+  issueRefreshToken(identity: { userId: string; tenantId: string; role?: AppRole; assignedRoles?: FoundationRole[] }): string {
+    return signPimJwt({
+      sub: identity.userId,
+      tenantId: identity.tenantId,
+      role: identity.role,
+      assignedRoles: identity.assignedRoles,
+      tokenType: "refresh",
+      expiresInSeconds: REFRESH_TOKEN_TTL_SECONDS,
+    });
+  }
+
+  async refresh(refreshToken: string): Promise<RefreshResult> {
+    const claims = verifyPimJwt(refreshToken);
+    if (!claims || claims.tokenType !== "refresh") {
+      return { type: "invalid_token" };
+    }
+    const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+    if (revoked) {
+      return { type: "invalid_token" };
+    }
+    const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(
+      normalizeTenantKey(claims.tenantId),
+      claims.sub,
+      claims.iat,
+    );
+    if (credRevoked) {
+      return { type: "invalid_token" };
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const revokeCurrentRefresh = async () => {
+      await this.jwtBlocklistService.revoke(claims.jti, Math.max(1, claims.exp - nowSeconds));
+    };
+
+    const identity = await this.resolveLoginIdentity(claims.sub, claims.tenantId);
+    if (!identity || (identity.lockedUntil && identity.lockedUntil.getTime() > Date.now())) {
+      await revokeCurrentRefresh();
+      return { type: "invalid_token" };
+    }
+
+    const commercialProfile = await this.planUsageService.getTenantPlanProfile(identity.tenantId);
+    if (commercialProfile.accessStatus === "suspended") {
+      await revokeCurrentRefresh();
+      return { type: "invalid_token" };
+    }
+
+    await revokeCurrentRefresh();
+
+    const sessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(identity.tenantId);
+    const expiresInSeconds = Math.min(MAX_LOGIN_EXPIRY_MINUTES, sessionTimeoutMinutes) * 60;
+    const accessToken = signPimJwt({
+      sub: identity.userId,
+      tenantId: identity.tenantId,
+      role: identity.role,
+      assignedRoles: identity.assignedRoles,
+      tokenType: "access",
+      mfaVerified: claims.mfaVerified,
+      expiresInSeconds,
+    });
+    const nextRefreshToken = this.issueRefreshToken(identity);
+
+    await this.auditService.record({
+      actorId: identity.userId,
+      actorRole: identity.role,
+      action: "auth.token_refreshed",
+      resource: "auth.session",
+      tenantKey: identity.tenantId,
+      metadata: { expiresInSeconds },
+    });
+
+    return { type: "success", accessToken, refreshToken: nextRefreshToken, expiresInSeconds };
+  }
+
+  async logout(claims: PimJwtClaims, refreshToken?: string): Promise<void> {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const ttlSeconds = Math.max(1, claims.exp - nowSeconds);
     await this.jwtBlocklistService.revoke(claims.jti, ttlSeconds);
+    if (refreshToken) {
+      const refreshClaims = verifyPimJwt(refreshToken);
+      if (refreshClaims?.tokenType === "refresh") {
+        const refreshTtlSeconds = Math.max(1, refreshClaims.exp - nowSeconds);
+        await this.jwtBlocklistService.revoke(refreshClaims.jti, refreshTtlSeconds);
+      }
+    }
     await this.auditService.record({
       actorId: claims.sub,
       actorRole: claims.role ?? "viewer",
@@ -897,6 +993,9 @@ export class AuthService implements OnModuleDestroy {
         },
       }),
     ]);
+
+    // Revoke all outstanding tokens — the user changed their credentials.
+    await this.jwtBlocklistService.revokeCredentials(tenantId, userId).catch(() => undefined);
 
     const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
     if (workspace?.workspaceSlug) {
@@ -1694,7 +1793,7 @@ export class AuthService implements OnModuleDestroy {
         "account_export_ready",
       );
     } catch (error: unknown) {
-      const errorMessage = this.toErrorMessage(error);
+      const errorMessage = this.toAccountExportErrorMessage(error);
       await tenantPrisma.accountExportRequest.updateMany({
         where: {
           id: payload.jobId,
@@ -1751,6 +1850,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountConsentEvent.findMany({
         where: { userId },
         orderBy: { consentRecordedAt: "desc" },
+        take: 500,
         select: {
           id: true,
           accepted: true,
@@ -1763,6 +1863,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountExportRequest.findMany({
         where: { userId },
         orderBy: { requestedAt: "desc" },
+        take: 100,
         select: {
           id: true,
           actorRole: true,
@@ -1779,6 +1880,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.accountDeletionRequest.findMany({
         where: { userId },
         orderBy: { requestedAt: "desc" },
+        take: 100,
         select: {
           id: true,
           actorRole: true,
@@ -1791,6 +1893,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.userNotification.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
+        take: 1_000,
         select: {
           id: true,
           eventType: true,
@@ -1822,6 +1925,7 @@ export class AuthService implements OnModuleDestroy {
       tenantPrisma.userMfaEnrollment.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
+        take: 50,
         select: {
           id: true,
           method: true,
@@ -2280,6 +2384,13 @@ export class AuthService implements OnModuleDestroy {
       return error.message.trim();
     }
     return String(error ?? "unknown_error");
+  }
+
+  private toAccountExportErrorMessage(error: unknown): string {
+    if (error instanceof AccountExportStorageError) {
+      return error.publicMessage;
+    }
+    return this.toErrorMessage(error);
   }
 
   async onModuleDestroy(): Promise<void> {

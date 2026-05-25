@@ -39,6 +39,7 @@ export class UpdateProductDto {
   vendorScopeKey?: string;
 
   @IsString()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsOptional()

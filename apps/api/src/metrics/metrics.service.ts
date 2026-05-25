@@ -145,6 +145,7 @@ export class MetricsService {
           metricKey: true,
           metricValue: true,
         },
+        take: 50_000, // Trend accuracy degrades gracefully beyond this; OOM risk otherwise.
       }),
       tenantClient.marketplaceExportJob.findMany({
         where: {
@@ -157,6 +158,7 @@ export class MetricsService {
           status: true,
           retryCount: true,
         },
+        take: 50_000, // Same ceiling as kpiMetricEvent — prevents OOM on very active tenants.
       }),
       tenantClient.connectorInstallation.findMany({
         select: {
@@ -197,6 +199,7 @@ export class MetricsService {
               in: connectorDefinitionIds,
             },
           },
+          take: 500,
           select: {
             id: true,
             slug: true,

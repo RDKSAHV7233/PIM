@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -20,7 +21,9 @@ export class CreateMappingTemplateDto {
   channel!: (typeof MARKETPLACE_CHANNELS)[number];
 
   @IsArray()
+  @ArrayMaxSize(200)
   @IsString({ each: true })
+  @MaxLength(100, { each: true })
   requiredFields!: string[];
 
   @IsObject()

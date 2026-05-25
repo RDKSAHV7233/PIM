@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   Post,
   Query,
@@ -28,6 +29,8 @@ import { SignupRateLimitError, SignupService } from "./signup.service";
 @Controller("signup")
 @ApiTags("Public Signup")
 export class SignupController {
+  private readonly logger = new Logger(SignupController.name);
+
   constructor(private readonly signupService: SignupService) {}
 
   @Public()
@@ -133,8 +136,8 @@ export class SignupController {
     if (code === "EMAIL_PROVIDER_MISCONFIGURED" || code === "SIGNUP_VERIFICATION_SEND_FAILED") {
       throw new BadGatewayException({ error: code });
     }
-    throw new InternalServerErrorException({
-      error: code === "unknown error" ? "SIGNUP_INTERNAL_ERROR" : code,
-    });
+    // Unknown / unexpected error — log full details server-side, never expose raw error messages to the client.
+    this.logger.error("Unhandled signup error", error instanceof Error ? error.stack : String(error));
+    throw new InternalServerErrorException({ error: "SIGNUP_INTERNAL_ERROR" });
   }
 }

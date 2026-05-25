@@ -65,6 +65,9 @@ export class JwtAuthGuard implements CanActivate {
 
     const claims = decodePimJwtFromAuthHeader(request.headers.authorization);
     if (claims) {
+      if (claims.tokenType === "refresh") {
+        throw new UnauthorizedException({ error: "REFRESH_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
+      }
       if (claims.tokenType === "step_up") {
         throw new UnauthorizedException({ error: "STEP_UP_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
       }
@@ -85,6 +88,10 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });
       }
       const tenantId = normalizeTenantKey(claims.tenantId);
+      const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat);
+      if (credRevoked) {
+        throw new UnauthorizedException({ error: "CREDENTIALS_CHANGED" });
+      }
       if (!allowSuspendedTenant) {
         await this.assertTenantAccessActive(tenantId);
       }

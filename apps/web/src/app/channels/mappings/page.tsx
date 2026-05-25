@@ -10,9 +10,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
+  getAllProductsSlim,
   getInstalledConnectors,
   getProduct,
-  getProducts,
   type ConnectorInstallation,
   type MarketplaceChannel,
   evaluateConnectorMappingPreflight,
@@ -269,11 +269,11 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             throw error;
           })
         : Promise.resolve(null),
-      selectedProductId ? Promise.resolve([]) : getProducts({ role: actorRole, authHeader }).catch(() => []),
+      selectedProductId ? Promise.resolve([]) : getAllProductsSlim({ role: actorRole, authHeader }).catch(() => []),
     ]);
     const sampleProducts = filterTestData(sampleProductsRaw, true);
     const categorySampleProduct =
-      sampleProducts.find((product) => product.categoryId === selectedCategoryId) ?? null;
+      (sampleProducts.find((product) => product.categoryId === selectedCategoryId) ?? null) as import("@/lib/api").Product | null;
     const previewProduct = selectedProduct ?? categorySampleProduct;
     const sampleProductLabel = previewProduct
       ? `${previewProduct.title}${previewProduct.brand ? ` (${previewProduct.brand})` : ""}`

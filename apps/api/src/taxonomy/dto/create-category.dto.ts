@@ -8,5 +8,6 @@ export class CreateCategoryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   parentId?: string;
 }

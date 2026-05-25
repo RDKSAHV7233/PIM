@@ -52,9 +52,15 @@ function runSnapshot(args, cwd) {
   });
 }
 
-async function startHealthServer() {
+async function startHealthServer(options = {}) {
+  const state = {
+    loginRequests: [],
+    failedQueueRequests: [],
+    storageProbeRequests: [],
+  };
   const server = http.createServer((req, res) => {
-    if (req.url === "/api/v1/health") {
+    const requestUrl = new URL(req.url, "http://127.0.0.1");
+    if (requestUrl.pathname === "/api/v1/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -64,8 +70,54 @@ async function startHealthServer() {
             backend: "bullmq",
             workerEnabled: true,
           },
+          queues: options.queues ?? {},
         }),
       );
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/v1/auth/login" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      req.on("end", () => {
+        const payload = JSON.parse(body || "{}");
+        state.loginRequests.push(payload);
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify({ accessToken: options.accessToken || "staging-admin-token" }));
+      });
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/v1/health/account-export-storage" && req.method === "GET") {
+      state.storageProbeRequests.push({
+        authorization: req.headers.authorization || "",
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          options.accountExportStorageResponse || {
+            ok: true,
+            checkedAt: new Date().toISOString(),
+            mode: "object_storage",
+            code: null,
+            message: null,
+            endpointHost: "r2.example.com",
+            bucketName: "vexa-pim-staging",
+          },
+        ),
+      );
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/v1/queue/account-export/lanes/default/failed" && req.method === "GET") {
+      state.failedQueueRequests.push({
+        authorization: req.headers.authorization || "",
+        limit: requestUrl.searchParams.get("limit"),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ items: options.failedQueueItems || [] }));
       return;
     }
 
@@ -78,6 +130,7 @@ async function startHealthServer() {
   return {
     server,
     apiBase: `http://127.0.0.1:${address.port}/api/v1`,
+    state,
   };
 }
 
@@ -325,6 +378,179 @@ async function main() {
       Array.isArray(completeJson.summary.broadPending) && completeJson.summary.broadPending.length === 0,
       `Expected no broad pending blockers once coverage is complete, got ${completeRun.stdout}`,
     );
+    assert(
+      completeJson.summary.accountExportStorage &&
+        completeJson.summary.accountExportStorage.ok === null,
+      `Expected account export storage probe to remain non-blocking without smoke credentials, got ${completeRun.stdout}`,
+    );
+
+    const failingStorageHealth = await startHealthServer({
+      accountExportStorageResponse: {
+        ok: false,
+        checkedAt: "2026-05-23T06:14:16.937Z",
+        mode: "object_storage",
+        code: "account_export_storage_tls_handshake_failed",
+        message: "account_export_storage_tls_handshake_failed: Verify R2 endpoint and TLS settings for account export storage.",
+        endpointHost: "broken-r2.example.com",
+        bucketName: "vexa-pim-staging",
+      },
+    });
+    try {
+      const storageDiagnosticsOutputPath = path.join(tempRoot, ".run-logs", "account-export-storage-diagnostics.json");
+      const failingStorageRun = await runSnapshot(
+        [
+          "--environment",
+          "staging",
+          "--tenantId",
+          "staging-smoke",
+          "--apiBase",
+          failingStorageHealth.apiBase,
+          "--windowDays",
+          "14",
+          "--gatesDir",
+          gatesDir,
+          "--rolloutDir",
+          rolloutDir,
+          "--workspaceSlug",
+          "default",
+          "--smokeUser",
+          "admin@vexa-pim.local",
+          "--smokePassword",
+          "super-secret-password",
+          "--diagnosticOutputPath",
+          storageDiagnosticsOutputPath,
+        ],
+        tempRoot,
+      );
+      assert(
+        failingStorageRun.status === 0,
+        `Expected failing-storage snapshot to succeed with pending evidence, got status=${failingStorageRun.status} stderr=${failingStorageRun.stderr}`,
+      );
+      const failingStorageJson = JSON.parse(failingStorageRun.stdout);
+      assert(
+        failingStorageJson.summary.controlledPending.includes(
+          "Account export storage probe failed: account_export_storage_tls_handshake_failed.",
+        ),
+        `Expected storage probe failure to block controlled rollout evidence, got ${failingStorageRun.stdout}`,
+      );
+      assert(
+        failingStorageJson.summary.accountExportStorage &&
+          failingStorageJson.summary.accountExportStorage.ok === false &&
+          failingStorageJson.summary.accountExportStorage.code === "account_export_storage_tls_handshake_failed",
+        `Expected storage probe summary in rollout output, got ${failingStorageRun.stdout}`,
+      );
+      assert(fs.existsSync(storageDiagnosticsOutputPath), "Expected storage probe diagnostics artifact to be written");
+      const storageDiagnosticsArtifact = JSON.parse(fs.readFileSync(storageDiagnosticsOutputPath, "utf8"));
+      assert(
+        storageDiagnosticsArtifact.accountExportStorage &&
+          storageDiagnosticsArtifact.accountExportStorage.code === "account_export_storage_tls_handshake_failed",
+        `Expected account export storage diagnostics in artifact, got ${JSON.stringify(storageDiagnosticsArtifact)}`,
+      );
+      assert(
+        failingStorageHealth.state.loginRequests.length === 1 &&
+          failingStorageHealth.state.storageProbeRequests.length === 1 &&
+          failingStorageHealth.state.storageProbeRequests[0].authorization === "Bearer staging-admin-token",
+        `Expected rollout snapshot to authenticate and call the storage probe route, got ${JSON.stringify(failingStorageHealth.state)}`,
+      );
+    } finally {
+      failingStorageHealth.server.close();
+    }
+
+    const failedQueueHealth = await startHealthServer({
+      queues: {
+        "account-export": {
+          waiting: 0,
+          active: 0,
+          failed: 4,
+          lanes: {
+            default: {
+              waiting: 0,
+              active: 0,
+              failed: 4,
+              pausedUntil: null,
+            },
+          },
+        },
+      },
+      failedQueueItems: [
+        {
+          id: "job-1",
+          name: "account-export:default",
+          failedReason: "Cloudflare R2 bucket not found.",
+          attemptsMade: 3,
+          timestamp: "2026-05-22T21:00:00.000Z",
+          processedOn: "2026-05-22T21:00:03.000Z",
+          finishedOn: "2026-05-22T21:00:04.000Z",
+        },
+      ],
+    });
+    try {
+      const diagnosticsOutputPath = path.join(tempRoot, ".run-logs", "queue-failure-diagnostics.json");
+      const failedQueueRun = await runSnapshot(
+        [
+          "--environment",
+          "staging",
+          "--tenantId",
+          "staging-smoke",
+          "--apiBase",
+          failedQueueHealth.apiBase,
+          "--windowDays",
+          "14",
+          "--gatesDir",
+          gatesDir,
+          "--rolloutDir",
+          rolloutDir,
+          "--workspaceSlug",
+          "default",
+          "--smokeUser",
+          "admin@vexa-pim.local",
+          "--smokePassword",
+          "super-secret-password",
+          "--diagnosticOutputPath",
+          diagnosticsOutputPath,
+        ],
+        tempRoot,
+      );
+      assert(
+        failedQueueRun.status === 0,
+        `Expected failed-queue snapshot to succeed with pending evidence, got status=${failedQueueRun.status} stderr=${failedQueueRun.stderr}`,
+      );
+      const failedQueueJson = JSON.parse(failedQueueRun.stdout);
+      assert(
+        failedQueueJson.summary.controlledPending.includes("Queue failures remain in health snapshot: account-export=4."),
+        `Expected queue failure to block controlled rollout evidence, got ${failedQueueRun.stdout}`,
+      );
+      assert(
+        failedQueueJson.summary.queueFailureDiagnostics &&
+          failedQueueJson.summary.queueFailureDiagnostics.captured === true &&
+          failedQueueJson.summary.queueFailureDiagnostics.authenticated === true,
+        `Expected queue failure diagnostics capture summary, got ${failedQueueRun.stdout}`,
+      );
+      assert(fs.existsSync(diagnosticsOutputPath), "Expected queue failure diagnostics artifact to be written");
+      const diagnosticsArtifact = JSON.parse(fs.readFileSync(diagnosticsOutputPath, "utf8"));
+      assert(
+        Array.isArray(diagnosticsArtifact.queueFailures) &&
+          diagnosticsArtifact.queueFailures[0]?.lanes?.[0]?.items?.[0]?.failedReason === "Cloudflare R2 bucket not found.",
+        `Expected failed job summaries in diagnostics artifact, got ${JSON.stringify(diagnosticsArtifact)}`,
+      );
+      assert(
+        failedQueueHealth.state.loginRequests.length === 1 &&
+          failedQueueHealth.state.loginRequests[0].workspaceSlug === "default",
+        `Expected diagnostics capture to authenticate with the smoke workspace, got ${JSON.stringify(failedQueueHealth.state.loginRequests)}`,
+      );
+      assert(
+        failedQueueHealth.state.storageProbeRequests.length === 1 &&
+          failedQueueHealth.state.storageProbeRequests[0].authorization === "Bearer staging-admin-token",
+        `Expected diagnostics capture to call storage probe route with bearer auth, got ${JSON.stringify(failedQueueHealth.state.storageProbeRequests)}`,
+      );
+      assert(
+        failedQueueHealth.state.failedQueueRequests.length === 1 &&
+          failedQueueHealth.state.failedQueueRequests[0].authorization === "Bearer staging-admin-token",
+        `Expected diagnostics capture to call failed-queue route with bearer auth, got ${JSON.stringify(failedQueueHealth.state.failedQueueRequests)}`,
+      );
+    } finally {
+      failedQueueHealth.server.close();
+    }
 
     console.log("capture-controlled-rollout-snapshot.test.cjs: PASS");
   } finally {

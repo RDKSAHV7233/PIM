@@ -17,6 +17,11 @@ function parseArgs(argv) {
     timeoutMs: 5000,
     gatesDir: GATES_DIR,
     rolloutDir: OUTPUT_DIR,
+    workspaceSlug: String(process.env.STAGING_SMOKE_WORKSPACE || "").trim(),
+    smokeUser: String(process.env.STAGING_SMOKE_USER || "").trim(),
+    smokePassword: String(process.env.STAGING_SMOKE_PASSWORD || "").trim(),
+    diagnosticLimit: Number.parseInt(String(process.env.ROLLOUT_QUEUE_DIAGNOSTIC_LIMIT || "5"), 10),
+    diagnosticOutputPath: "",
   };
   while (args.length > 0) {
     const token = args.shift();
@@ -42,6 +47,21 @@ function parseArgs(argv) {
       case "--rolloutDir":
         parsed.rolloutDir = path.resolve(String(args.shift() || parsed.rolloutDir).trim());
         break;
+      case "--workspaceSlug":
+        parsed.workspaceSlug = String(args.shift() || parsed.workspaceSlug).trim();
+        break;
+      case "--smokeUser":
+        parsed.smokeUser = String(args.shift() || parsed.smokeUser).trim();
+        break;
+      case "--smokePassword":
+        parsed.smokePassword = String(args.shift() || parsed.smokePassword).trim();
+        break;
+      case "--diagnosticLimit":
+        parsed.diagnosticLimit = Number.parseInt(String(args.shift() || parsed.diagnosticLimit), 10);
+        break;
+      case "--diagnosticOutputPath":
+        parsed.diagnosticOutputPath = path.resolve(String(args.shift() || parsed.diagnosticOutputPath).trim());
+        break;
       default:
         throw new Error(`Unknown argument: ${token}`);
     }
@@ -54,6 +74,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(parsed.timeoutMs) || parsed.timeoutMs <= 0) {
     throw new Error("timeoutMs must be a positive integer.");
+  }
+  if (!Number.isFinite(parsed.diagnosticLimit) || parsed.diagnosticLimit <= 0) {
+    throw new Error("diagnosticLimit must be a positive integer.");
   }
   return parsed;
 }
@@ -229,6 +252,242 @@ async function fetchHealth(apiBase, timeoutMs) {
   }
 }
 
+async function requestJson(apiBase, requestPath, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : 5000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${apiBase.replace(/\/$/, "")}${requestPath}`, {
+      method: options.method || "GET",
+      headers: options.headers || {},
+      body: options.body,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    return {
+      ok: response.ok,
+      status: response.status,
+      payload,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      payload: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function sanitizeDiagnosticText(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return null;
+  }
+  return text
+    .replace(/:\/\/([^/\s:@]+):([^/\s@]+)@/gi, "://[redacted]@")
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._~-]+\b/gi, "$1 [redacted]")
+    .replace(/\b(password|secret|token|accessKeyId|secretAccessKey)\b\s*[:=]\s*["']?[^"',\s]+/gi, "$1=[redacted]")
+    .slice(0, 1000);
+}
+
+function collectFailedQueues(healthBody) {
+  const queues = healthBody && typeof healthBody === "object" ? healthBody.queues : null;
+  if (!queues || typeof queues !== "object") {
+    return [];
+  }
+
+  return Object.entries(queues)
+    .map(([name, metrics]) => ({
+      name,
+      failed: Number(metrics && typeof metrics === "object" ? metrics.failed : 0),
+      lanes:
+        metrics && typeof metrics === "object" && metrics.lanes && typeof metrics.lanes === "object"
+          ? Object.entries(metrics.lanes)
+              .map(([laneKey, laneMetrics]) => ({
+                laneKey,
+                failed: Number(laneMetrics && typeof laneMetrics === "object" ? laneMetrics.failed : 0),
+              }))
+              .filter((lane) => Number.isFinite(lane.failed) && lane.failed > 0)
+              .sort((left, right) => left.laneKey.localeCompare(right.laneKey))
+          : [],
+    }))
+    .filter((queue) => Number.isFinite(queue.failed) && queue.failed > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function loginForDiagnostics(args) {
+  if (!args.workspaceSlug || !args.smokeUser || !args.smokePassword) {
+    return {
+      ok: false,
+      reason: "missing_smoke_credentials",
+    };
+  }
+
+  const result = await requestJson(args.apiBase, "/auth/login", {
+    method: "POST",
+    timeoutMs: args.timeoutMs,
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      workspaceSlug: args.workspaceSlug,
+      userId: args.smokeUser,
+      password: args.smokePassword,
+      expiresInMinutes: 15,
+    }),
+  });
+  const accessToken = String(result.payload && typeof result.payload === "object" ? result.payload.accessToken || "" : "");
+  if (!result.ok || !accessToken) {
+    return {
+      ok: false,
+      reason: result.error ? `login_failed:${result.error}` : `login_failed_status_${result.status ?? "unknown"}`,
+    };
+  }
+  return {
+    ok: true,
+    token: accessToken,
+  };
+}
+
+async function captureAccountExportStorageDiagnostics(args, login) {
+  const summary = {
+    attempted: true,
+    authenticated: false,
+    ok: null,
+    code: null,
+    mode: null,
+    reason: null,
+  };
+
+  if (!login.ok) {
+    summary.reason = login.reason;
+    return { summary, details: null };
+  }
+
+  summary.authenticated = true;
+  const result = await requestJson(args.apiBase, "/health/account-export-storage", {
+    timeoutMs: args.timeoutMs,
+    headers: {
+      authorization: `Bearer ${login.token}`,
+    },
+  });
+  if (!result.ok) {
+    summary.reason = sanitizeDiagnosticText(result.error || `status_${result.status ?? "unknown"}`);
+    return { summary, details: null };
+  }
+
+  const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+  summary.ok = payload.ok === true;
+  summary.code = sanitizeDiagnosticText(payload.code);
+  summary.mode = sanitizeDiagnosticText(payload.mode);
+  summary.reason = null;
+
+  return {
+    summary,
+    details: {
+      capturedAt: new Date().toISOString(),
+      environment: args.environment,
+      tenantId: args.tenantId,
+      apiBase: args.apiBase,
+      probe: {
+        ok: payload.ok === true,
+        checkedAt: sanitizeDiagnosticText(payload.checkedAt),
+        mode: sanitizeDiagnosticText(payload.mode),
+        code: sanitizeDiagnosticText(payload.code),
+        message: sanitizeDiagnosticText(payload.message),
+        endpointHost: sanitizeDiagnosticText(payload.endpointHost),
+        bucketName: sanitizeDiagnosticText(payload.bucketName),
+      },
+    },
+  };
+}
+
+async function captureQueueFailureDiagnostics(args, failedQueues, login) {
+  const summary = {
+    attempted: failedQueues.length > 0,
+    captured: false,
+    authenticated: false,
+    queueCount: failedQueues.length,
+    laneCount: failedQueues.reduce((total, queue) => total + queue.lanes.length, 0),
+    reason: null,
+  };
+  if (failedQueues.length === 0) {
+    summary.reason = "no_failed_queues";
+    return { summary, details: null };
+  }
+  if (!login.ok) {
+    summary.reason = login.reason;
+    return { summary, details: null };
+  }
+
+  summary.authenticated = true;
+  const details = {
+    capturedAt: new Date().toISOString(),
+    environment: args.environment,
+    tenantId: args.tenantId,
+    apiBase: args.apiBase,
+    diagnosticLimit: args.diagnosticLimit,
+    queues: [],
+  };
+
+  for (const queue of failedQueues) {
+    const queueEntry = {
+      name: queue.name,
+      failed: queue.failed,
+      lanes: [],
+    };
+    if (!queue.lanes.length) {
+      queueEntry.reason = "failed_queue_has_no_lane_metrics";
+      details.queues.push(queueEntry);
+      continue;
+    }
+    for (const lane of queue.lanes) {
+      const query = new URLSearchParams({ limit: String(args.diagnosticLimit) }).toString();
+      const result = await requestJson(
+        args.apiBase,
+        `/queue/${encodeURIComponent(queue.name)}/lanes/${encodeURIComponent(lane.laneKey)}/failed?${query}`,
+        {
+          timeoutMs: args.timeoutMs,
+          headers: {
+            authorization: `Bearer ${login.token}`,
+          },
+        },
+      );
+      if (!result.ok) {
+        queueEntry.lanes.push({
+          laneKey: lane.laneKey,
+          failed: lane.failed,
+          error: sanitizeDiagnosticText(result.error || `status_${result.status ?? "unknown"}`),
+          items: [],
+        });
+        continue;
+      }
+      const items = Array.isArray(result.payload && result.payload.items) ? result.payload.items : [];
+      queueEntry.lanes.push({
+        laneKey: lane.laneKey,
+        failed: lane.failed,
+        items: items.map((item) => ({
+          id: String(item && typeof item === "object" ? item.id || "" : ""),
+          name: String(item && typeof item === "object" ? item.name || "" : ""),
+          failedReason: sanitizeDiagnosticText(item && typeof item === "object" ? item.failedReason : null),
+          attemptsMade: Number(item && typeof item === "object" ? item.attemptsMade : 0),
+          timestamp: String(item && typeof item === "object" ? item.timestamp || "" : "") || null,
+          processedOn: String(item && typeof item === "object" ? item.processedOn || "" : "") || null,
+          finishedOn: String(item && typeof item === "object" ? item.finishedOn || "" : "") || null,
+        })),
+      });
+    }
+    details.queues.push(queueEntry);
+  }
+
+  summary.captured = true;
+  summary.reason = null;
+  return { summary, details };
+}
+
 function toSummary(entry) {
   return {
     file: entry.name,
@@ -254,6 +513,11 @@ async function main() {
   const health = await fetchHealth(args.apiBase, args.timeoutMs);
   const reportedEnv = String(health?.body?.env || "").trim().toLowerCase();
   const healthEndpointHealthy = health.ok === true && reportedEnv === args.environment;
+  const failedQueues = collectFailedQueues(health?.body);
+  const queueFailuresClear = health.ok === true && failedQueues.length === 0;
+  const login = await loginForDiagnostics(args);
+  const accountExportStorage = await captureAccountExportStorageDiagnostics(args, login);
+  const queueFailureDiagnostics = await captureQueueFailureDiagnostics(args, failedQueues, login);
   const observationWindowDays = countDistinctUtcDays(signoffArtifacts, (entry) => entry.dateMs);
   const sloWindowDays = countDistinctUtcDays(historicalRolloutSnapshots, (entry) => entry.capturedAtMs);
   sloWindowDays.add(toUtcDayString(now.getTime()));
@@ -265,6 +529,8 @@ async function main() {
     apiBase: args.apiBase,
     windowDays: args.windowDays,
     health,
+    accountExportStorage: accountExportStorage.summary,
+    queueFailureDiagnostics: queueFailureDiagnostics.summary,
     gates: {
       artifactsInWindow: signoffArtifacts.length,
       allEvidenceArtifactsInWindow: allArtifactsInWindow.length,
@@ -277,6 +543,8 @@ async function main() {
         pilotWorkflowEvidencePresent: hasArtifact(allRecordedArtifacts, "PILOT_WORKFLOW_VALIDATION"),
         governanceEvidencePresent: hasArtifact(allRecordedArtifacts, "PAYLOAD_GOVERNANCE_ENFORCE"),
         healthEndpointHealthy,
+        accountExportStorageHealthy: accountExportStorage.summary.ok !== false,
+        queueFailuresClear,
       },
       pending: [],
     },
@@ -317,6 +585,16 @@ async function main() {
       );
     }
   }
+  if (healthEndpointHealthy && !snapshot.controlledRollout.criteria.queueFailuresClear) {
+    snapshot.controlledRollout.pending.push(
+      `Queue failures remain in health snapshot: ${failedQueues.map((queue) => `${queue.name}=${queue.failed}`).join(", ")}.`,
+    );
+  }
+  if (healthEndpointHealthy && accountExportStorage.summary.ok === false) {
+    snapshot.controlledRollout.pending.push(
+      `Account export storage probe failed: ${accountExportStorage.summary.code || "account_export_storage_probe_failed"}.`,
+    );
+  }
   if (!snapshot.broadRollout.criteria.observationWindowComplete) {
     snapshot.broadRollout.pending.push(
       `Controlled rollout observation window covers ${snapshot.broadRollout.criteria.observationWindowDaysCovered} of ${snapshot.broadRollout.criteria.observationWindowDaysRequired} required days.`,
@@ -332,6 +610,22 @@ async function main() {
   const stamp = now.toISOString().replace(/[:]/g, "-");
   const outputPath = path.join(args.rolloutDir, `${stamp}_CONTROLLED_ROLLOUT_SNAPSHOT.json`);
   fs.writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  const diagnosticDetails =
+    accountExportStorage.details || queueFailureDiagnostics.details
+      ? {
+          capturedAt: new Date().toISOString(),
+          environment: args.environment,
+          tenantId: args.tenantId,
+          apiBase: args.apiBase,
+          accountExportStorage: accountExportStorage.details ? accountExportStorage.details.probe : null,
+          queueFailures: queueFailureDiagnostics.details ? queueFailureDiagnostics.details.queues : null,
+          diagnosticLimit: queueFailureDiagnostics.details ? queueFailureDiagnostics.details.diagnosticLimit : null,
+        }
+      : null;
+  if (args.diagnosticOutputPath && diagnosticDetails) {
+    fs.mkdirSync(path.dirname(args.diagnosticOutputPath), { recursive: true });
+    fs.writeFileSync(args.diagnosticOutputPath, `${JSON.stringify(diagnosticDetails, null, 2)}\n`, "utf8");
+  }
 
   console.log(
     JSON.stringify(
@@ -343,6 +637,8 @@ async function main() {
           artifactsInWindow: snapshot.gates.artifactsInWindow,
           consecutiveE10SignoffRuns: snapshot.gates.consecutiveE10SignoffRuns,
           healthOk: Boolean(snapshot.health && snapshot.health.ok),
+          accountExportStorage: snapshot.accountExportStorage,
+          queueFailureDiagnostics: snapshot.queueFailureDiagnostics,
           controlledPending: snapshot.controlledRollout.pending,
           broadPending: snapshot.broadRollout.pending,
         },

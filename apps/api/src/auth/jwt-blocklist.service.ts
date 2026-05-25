@@ -8,6 +8,9 @@ const CACHE_MAX_SIZE = 500;
 const REDIS_RETRY_BACKOFF_MS = 30_000;
 const REDIS_WARN_THROTTLE_MS = 10_000;
 const REDIS_CONNECT_TIMEOUT_MS = 1_000;
+// Must exceed the longest-lived token type (refresh = 7 days).
+const CRED_REV_TTL_SECONDS = 7 * 24 * 60 * 60;
+const CRED_REV_CACHE_TTL_MS = 30_000;
 
 interface CacheEntry {
   value: boolean;
@@ -19,6 +22,7 @@ export class JwtBlocklistService implements OnModuleDestroy {
   private readonly logger = new Logger(JwtBlocklistService.name);
   private readonly memoryBlocklist = new Map<string, number>();
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly credRevCache = new Map<string, { epoch: number; expiresAtMs: number }>();
   private redisClient: ReturnType<typeof createClient> | null = null;
   private redisConnecting: Promise<void> | null = null;
   private redisAvailable = false;
@@ -191,6 +195,67 @@ export class JwtBlocklistService implements OnModuleDestroy {
       const message = error instanceof Error ? error.message : String(error ?? "unknown error");
       this.markRedisUnavailable(`Failed reading JWT blocklist key for jti=${normalizedJti}: ${message}`);
       this.cache.set(normalizedJti, { value: false, expiresAtMs: nowMs + CACHE_TTL_MS });
+      return false;
+    }
+  }
+
+  // ── Credential-level revocation ──────────────────────────────────────────
+  // When a password is changed, all tokens issued before that moment are
+  // invalidated even if their JTIs are not individually blocklisted.
+
+  private credRevKey(tenantKey: string, userId: string): string {
+    return `cred_rev:${tenantKey}:${userId}`;
+  }
+
+  async revokeCredentials(tenantKey: string, userId: string): Promise<void> {
+    const key = this.credRevKey(tenantKey, userId);
+    const epochSeconds = Math.floor(Date.now() / 1000);
+    this.credRevCache.set(key, {
+      epoch: epochSeconds,
+      expiresAtMs: Date.now() + CRED_REV_TTL_SECONDS * 1000,
+    });
+
+    await this.ensureRedisConnection();
+    if (!this.redisAvailable || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.setEx(key, CRED_REV_TTL_SECONDS, String(epochSeconds));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.markRedisUnavailable(`Failed writing cred_rev key ${key}: ${message}`);
+    }
+  }
+
+  async isCredentialRevoked(tenantKey: string, userId: string, iat: number): Promise<boolean> {
+    const key = this.credRevKey(tenantKey, userId);
+    const nowMs = Date.now();
+
+    const cached = this.credRevCache.get(key);
+    if (cached && cached.expiresAtMs > nowMs) {
+      return iat < cached.epoch;
+    }
+
+    await this.ensureRedisConnection();
+    if (!this.redisAvailable || !this.redisClient) {
+      // Fail open: don't block access when Redis is down.
+      return false;
+    }
+    try {
+      const raw = await this.redisClient.get(key);
+      if (!raw) {
+        this.credRevCache.set(key, { epoch: 0, expiresAtMs: nowMs + CRED_REV_CACHE_TTL_MS });
+        return false;
+      }
+      const epoch = parseInt(raw, 10);
+      if (!Number.isFinite(epoch)) {
+        return false;
+      }
+      this.credRevCache.set(key, { epoch, expiresAtMs: nowMs + CRED_REV_CACHE_TTL_MS });
+      return iat < epoch;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? "unknown");
+      this.markRedisUnavailable(`Failed reading cred_rev key ${key}: ${message}`);
       return false;
     }
   }

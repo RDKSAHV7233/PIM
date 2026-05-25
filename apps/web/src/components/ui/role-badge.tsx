@@ -9,11 +9,7 @@ import { canViewAdminNavigationItem } from "@/lib/admin-navigation";
 const roleConfig: Record<AppRole, { label: string; bg: string; text: string; border: string }> = {
   admin:           { label: "Admin",           bg: "#f0fdf4", text: "#166534", border: "#bbf7d0" },
   editor:          { label: "Editor",          bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
-  publisher:       { label: "Publisher",       bg: "#fdf4ff", text: "#7e22ce", border: "#e9d5ff" },
-  approver:        { label: "Approver",        bg: "#fffbeb", text: "#92400e", border: "#fde68a" },
-  channel_manager: { label: "Channel Manager", bg: "#f0f9ff", text: "#075985", border: "#bae6fd" },
-  connector_admin: { label: "Connector Admin", bg: "#fafaf5", text: "#365314", border: "#d9f99d" },
-  reviewer:        { label: "Reviewer",        bg: "#fff7ed", text: "#9a3412", border: "#fdba74" },
+  reviewer: { label: "Reviewer", bg: "#fff7ed", text: "#9a3412", border: "#fdba74" },
   viewer:          { label: "Viewer",          bg: "#fafafa", text: "#6b7280", border: "#e5e7eb" },
 };
 
@@ -42,17 +38,9 @@ export function RoleBadge({ role }: RoleBadgeProps) {
       ? "Full access to all product, channel, connector, and workspace operations"
       : role === "editor"
         ? "Edit catalog, import products, manage categories and attributes"
-        : role === "publisher"
-          ? "Publish approved products to channels; cannot edit catalog content"
-          : role === "approver"
-            ? "Approve or reject products in review; cannot edit catalog content"
-            : role === "channel_manager"
-              ? "Manage channel mappings, connector configurations, and readiness gates"
-              : role === "connector_admin"
-                ? "Install, configure, and manage connector credentials"
-                : role === "reviewer"
-                  ? "Read catalog and submission data, add comments"
-                  : "Read-only access to catalog and reporting";
+        : role === "reviewer"
+          ? "Read catalog and submission data, add comments"
+          : "Read-only access to catalog and reporting";
   const canManageRoles = canViewAdminNavigationItem(role, "editor_plus");
   const manageRolesHref = pathname === "/admin/users" ? "#workspace-users" : "/admin/users#workspace-users";
 

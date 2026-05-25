@@ -90,6 +90,41 @@ async function waitForHealth(baseUrl, timeoutMs) {
   throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
 }
 
+function hasExited(childProcess) {
+  return childProcess.exitCode !== null || childProcess.signalCode !== null;
+}
+
+async function waitForExit(childProcess, timeoutMs) {
+  if (hasExited(childProcess)) return true;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      childProcess.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    function onExit() {
+      clearTimeout(timer);
+      resolve(true);
+    }
+    childProcess.once("exit", onExit);
+  });
+}
+
+async function stopApiProcess(apiProcess) {
+  if (!apiProcess.pid || hasExited(apiProcess)) return;
+  if (process.platform === "win32") {
+    try {
+      execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], { stdio: "ignore" });
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  apiProcess.kill("SIGTERM");
+  if (!(await waitForExit(apiProcess, 500)) && !hasExited(apiProcess)) {
+    apiProcess.kill("SIGKILL");
+  }
+}
+
 async function apiRequest(baseUrl, method, route, token, body, extraHeaders = {}) {
   const headers = { Accept: "application/json", ...extraHeaders };
   if (token) {
@@ -485,13 +520,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect().catch(() => undefined);
-    if (!apiProcess.killed && apiProcess.pid) {
-      try {
-        execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], { stdio: "ignore" });
-      } catch {
-        // ignore
-      }
-    }
+    await stopApiProcess(apiProcess);
   }
 }
 

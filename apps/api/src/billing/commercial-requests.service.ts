@@ -588,6 +588,7 @@ export class CommercialRequestsService {
           in: normalizedTenantKeys,
         },
       },
+      take: 500,
       select: {
         tenantKey: true,
         workspaceSlug: true,

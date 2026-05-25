@@ -3,6 +3,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+const RESEND_TIMEOUT_MS = 10_000;
+
 type AuthEmailProvider = "file" | "console" | "resend";
 
 export interface AuthEmailMessage {
@@ -84,6 +86,7 @@ export class AuthEmailService {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });
     if (!response.ok) {
       const body = await response.text().catch(() => "");

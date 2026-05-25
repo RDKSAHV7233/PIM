@@ -28,6 +28,10 @@ import { CreateExportJobAliasDto } from "./dto/create-export-job-alias.dto";
 import { CreateExportJobDto } from "./dto/create-export-job.dto";
 import { CreateMappingTemplateDto } from "./dto/create-mapping-template.dto";
 import { SimulateMarketplaceDto } from "./dto/simulate-marketplace.dto";
+import { ConfirmCatalogLinksDto } from "./dto/confirm-catalog-links.dto";
+import { RetryRecoveryGroupDto } from "./dto/retry-recovery-group.dto";
+import { TriggerBulkPublishDto } from "./dto/trigger-bulk-publish.dto";
+import { UpsertScheduleDto } from "./dto/upsert-schedule.dto";
 import { UpdateMappingTemplateDto } from "./dto/update-mapping-template.dto";
 import { DEFAULT_MARKETPLACE_CHANNEL } from "./marketplace-channels";
 import { MarketplaceService } from "./marketplace.service";
@@ -407,10 +411,10 @@ export class MarketplaceController {
   @HttpCode(200)
   retryRecoveryGroup(
     @Param("installationId") installationId: string,
-    @Body() body: { errorFamily: string },
+    @Body() dto: RetryRecoveryGroupDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.marketplaceService.retryRecoveryGroup(installationId, body.errorFamily, this.resolveActor(request));
+    return this.marketplaceService.retryRecoveryGroup(installationId, dto.errorFamily, this.resolveActor(request));
   }
 
   @Post("connectors/shopify/:installationId/products/:productId/preview-changes")
@@ -474,12 +478,12 @@ export class MarketplaceController {
   @Roles("admin", "editor")
   upsertSchedule(
     @Param("installationId") installationId: string,
-    @Body() body: { cronExpression: string; scope?: string; status?: string },
+    @Body() dto: UpsertScheduleDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole },
   ) {
     return this.marketplaceService.upsertSchedule(
       installationId,
-      { cronExpression: body.cronExpression, scope: body.scope ?? "approved_only", status: body.status ?? "active" },
+      { cronExpression: dto.cronExpression, scope: dto.scope ?? "approved_only", status: dto.status ?? "active" },
       this.resolveActor(request),
     );
   }
@@ -545,15 +549,15 @@ export class MarketplaceController {
   @Roles("admin", "editor")
   upsertConnectorSchedule(
     @Param("installationId") installationId: string,
-    @Body() body: { cronExpression: string; scope?: string; status?: string },
+    @Body() dto: UpsertScheduleDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole },
   ) {
     return this.marketplaceService.upsertSchedule(
       installationId,
       {
-        cronExpression: body.cronExpression,
-        scope: body.scope ?? "approved_only",
-        status: body.status ?? "active",
+        cronExpression: dto.cronExpression,
+        scope: dto.scope ?? "approved_only",
+        status: dto.status ?? "active",
       },
       this.resolveActor(request),
     );
@@ -575,9 +579,9 @@ export class MarketplaceController {
   @HttpCode(200)
   triggerBulkPublish(
     @Param("installationId") installationId: string,
-    @Body() body: { productIds: string[] },
+    @Body() dto: TriggerBulkPublishDto,
   ) {
-    return this.marketplaceService.triggerBulkPublish(installationId, body.productIds ?? []);
+    return this.marketplaceService.triggerBulkPublish(installationId, dto.productIds);
   }
 
   // ─── Sprint 10: Catalog linking ──────────────────────────────────────────
@@ -617,9 +621,9 @@ export class MarketplaceController {
   @Roles("admin", "editor")
   confirmCatalogLinks(
     @Param("installationId") installationId: string,
-    @Body() body: { links: Array<{ productId: string; shopifyGid: string; matchedBy: string }> },
+    @Body() dto: ConfirmCatalogLinksDto,
     @Req() request: { pimUserId?: string; pimRole?: AppRole },
   ) {
-    return this.marketplaceService.confirmCatalogLinks(installationId, body.links ?? [], this.resolveActor(request));
+    return this.marketplaceService.confirmCatalogLinks(installationId, dto.links, this.resolveActor(request));
   }
 }

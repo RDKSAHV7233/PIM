@@ -8,6 +8,7 @@ export class CreateExportJobDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   templateId?: string;
 
   @IsOptional()

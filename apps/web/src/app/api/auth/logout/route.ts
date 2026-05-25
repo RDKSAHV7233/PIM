@@ -22,6 +22,13 @@ function clearAuthCookies(response: NextResponse): NextResponse {
     path: "/",
     maxAge: 0,
   });
+  response.cookies.set("pim_refresh_token", "", {
+    httpOnly: true,
+    secure: secureCookies,
+    sameSite: "strict",
+    path: "/",
+    maxAge: 0,
+  });
   return response;
 }
 
@@ -40,6 +47,7 @@ export async function POST(request: NextRequest) {
     method: "POST",
     headers: {
       Authorization: authHeader,
+      ...(request.headers.get("cookie") ? { Cookie: request.headers.get("cookie") ?? "" } : {}),
     },
     cache: "no-store",
   });

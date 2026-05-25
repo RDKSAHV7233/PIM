@@ -3,6 +3,7 @@ import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
+import { SimulateOndcProductDto } from "./dto/simulate-ondc-product.dto";
 import { OndcService } from "./ondc.service";
 
 @Controller("ondc")
@@ -39,14 +40,9 @@ export class OndcController {
   @Post("products/:id/simulate")
   simulateProduct(
     @Param("id") productId: string,
-    @Body()
-    body: {
-      nodeType: string;
-      version: string;
-      mappingId?: string;
-    },
+    @Body() dto: SimulateOndcProductDto,
   ) {
-    return this.ondcService.simulateProduct(productId, body.nodeType, body.version, body.mappingId);
+    return this.ondcService.simulateProduct(productId, dto.nodeType, dto.version, dto.mappingId);
   }
 
   @Get("products/:id/simulate")

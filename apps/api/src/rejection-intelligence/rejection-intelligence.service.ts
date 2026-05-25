@@ -20,6 +20,7 @@ export class RejectionIntelligenceService {
       include: {
         validationIssues: {
           where: { status: ValidationIssueStatus.open },
+          take: 100,
         },
       },
     });
@@ -52,6 +53,7 @@ export class RejectionIntelligenceService {
         height: true,
         mimeType: true,
       },
+      take: 200,
     });
 
     const complianceErrors = product.validationIssues.filter(

@@ -13,7 +13,10 @@ import { BulkImportStorageService } from "./bulk-import-storage.service";
     ComplianceModule,
     NotificationsModule,
     AccessPolicyModule,
-    MulterModule.register({ storage: undefined }),
+    // Enforce a module-level Multer size cap so the upload is rejected in the middleware
+    // layer before the file is fully buffered into memory.  The service enforces the same
+    // threshold (LARGE_IMPORT_MAX_FILE_SIZE_BYTES = 32 MB) but only after buffering is done.
+    MulterModule.register({ storage: undefined, limits: { fileSize: 32 * 1024 * 1024 } }),
   ],
   controllers: [BulkImportController],
   providers: [BulkImportService, BulkImportRunService, BulkImportStorageService],

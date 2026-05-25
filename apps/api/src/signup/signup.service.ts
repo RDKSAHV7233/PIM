@@ -182,6 +182,7 @@ export class SignupService implements OnModuleDestroy {
             OR: [{ workspaceSlug }, { adminEmail }],
           },
           orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+          take: 100,
         });
 
         const verifiedWorkspace = matchingRequests.find(

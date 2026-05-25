@@ -263,7 +263,7 @@ export class BulkImportController {
 
   @Roles("admin", "editor")
   @Post("runs/upload")
-  @UseInterceptors(FileInterceptor("sourceFile"))
+  @UseInterceptors(FileInterceptor("sourceFile", { limits: { fileSize: 32 * 1024 * 1024 } }))
   async uploadRun(
     @Body() dto: CreateBulkImportRunDto,
     @UploadedFile() file: { buffer: Buffer; originalname: string; size: number },

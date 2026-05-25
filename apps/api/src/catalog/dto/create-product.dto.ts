@@ -23,6 +23,7 @@ export class CreateProductDto {
   vendorScopeKey?: string;
 
   @IsString()
+  @MaxLength(50)
   categoryId!: string;
 
   @IsOptional()

@@ -1,7 +1,8 @@
-import { IsIn, IsString } from "class-validator";
+import { IsIn, IsString, MaxLength } from "class-validator";
 
 export class UpdatePlanUpgradeRequestStatusDto {
   @IsString()
+  @MaxLength(50)
   requestId!: string;
 
   @IsString()

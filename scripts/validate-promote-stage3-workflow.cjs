@@ -62,6 +62,7 @@ function main() {
   const job = jobs["promote-stage3"];
   assert(job && typeof job === "object", "Missing promote-stage3 job");
   assert(job.environment === "production", "promote-stage3 job must target environment=production");
+  assert(Number.parseInt(String(job["timeout-minutes"] ?? ""), 10) <= 75, "promote-stage3 job must cap runtime at 75 minutes or less");
   assert(job.concurrency && typeof job.concurrency === "object", "promote-stage3 job must define concurrency");
   assert(String(job.concurrency.group ?? "").trim() === "promote-stage3", "promote-stage3 concurrency group must be promote-stage3");
   assert(job.concurrency["cancel-in-progress"] === false, "promote-stage3 concurrency must not cancel in-progress deploys");
@@ -97,6 +98,7 @@ function main() {
   requireStepOrder(steps, "Install Railway CLI", "Deploy to production");
 
   const deployStep = requireStep(steps, "Deploy to production");
+  assert(Number.parseInt(String(deployStep["timeout-minutes"] ?? ""), 10) <= 45, "Deploy to production must cap runtime at 45 minutes or less");
   requireAnyEnvVar(deployStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Deploy to production");
   requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to production");
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to production");
@@ -104,6 +106,9 @@ function main() {
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_BASE_URL", "Deploy to production");
   requireEnvVar(deployStep, "STAGING_WEB_URL", "Deploy to production");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to production");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to production");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to production");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to production");
 
   const resolveWebUrlStep = requireStep(steps, "Resolve production web URL");

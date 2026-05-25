@@ -10,6 +10,7 @@ export class CreatePublicSignupDto {
 
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())
   @IsString()
+  @MaxLength(64)
   workspaceSlug!: string;
 
   @Transform(({ value }) => String(value ?? "").trim().toLowerCase())
@@ -19,6 +20,8 @@ export class CreatePublicSignupDto {
 
   @Transform(({ value }) => String(value ?? ""))
   @IsString()
+  @MinLength(8)
+  @MaxLength(72)
   password!: string;
 
   @IsBoolean()

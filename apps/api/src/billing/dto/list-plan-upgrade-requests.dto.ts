@@ -1,9 +1,10 @@
 import { Transform } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class ListPlanUpgradeRequestsDto {
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   tenantKey?: string;
 
   @IsOptional()

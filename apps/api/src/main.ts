@@ -3,6 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
+import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { validateEnv } from "./common/env-validation";
 import { correlationMiddleware } from "./common/logging/correlation.middleware";
@@ -34,6 +35,12 @@ async function bootstrap() {
 
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,       // pure JSON API — no HTML responses
+      crossOriginEmbedderPolicy: false,   // not serving cross-origin resources
+    }),
+  );
   app.getHttpAdapter().getInstance().get("/", (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
     response.status(200).json({
       service: "Vexa PIM API",

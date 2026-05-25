@@ -49,3 +49,9 @@ These rules are mandatory for any coding agent working in this repository.
 - Pass/fail results
 - Remaining blockers (if any)
 - Lock updates made in `INCREMENT_STATE.json`
+
+## 9) PR Split Rule
+- Prefer single-purpose PRs with one dominant risk domain.
+- Split broad changes before review when they mix product behavior with auth, deploy, CI, or test-harness work.
+- CI blocks default PRs that exceed scope bounds or span too many risk domains.
+- A deliberately large PR requires explicit CTO review and the `cto-large-pr-approved` label.

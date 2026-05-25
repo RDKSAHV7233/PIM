@@ -66,6 +66,7 @@ function main() {
   const job = jobs["deploy-staging"];
   assert(job && typeof job === "object", "Missing deploy-staging job");
   assert(job.environment === "staging", "deploy-staging job must target environment=staging");
+  assert(Number.parseInt(String(job["timeout-minutes"] ?? ""), 10) <= 75, "deploy-staging job must cap runtime at 75 minutes or less");
   assert(job.concurrency && typeof job.concurrency === "object", "deploy-staging job must define concurrency");
   assert(String(job.concurrency.group ?? "").trim() === "deploy-staging", "deploy-staging concurrency group must be deploy-staging");
   assert(job.concurrency["cancel-in-progress"] === false, "deploy-staging concurrency must not cancel in-progress deploys");
@@ -117,11 +118,15 @@ function main() {
   requireStepOrder(steps, "Install Railway CLI", "Deploy to staging");
 
   const deployStep = requireStep(steps, "Deploy to staging");
+  assert(Number.parseInt(String(deployStep["timeout-minutes"] ?? ""), 10) <= 45, "Deploy to staging must cap runtime at 45 minutes or less");
   requireAnyEnvVar(deployStep, ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_PROJECT_ID", "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_API_SERVICE", "RAILWAY_API_SERVICE_ID"], "Deploy to staging");
   requireAnyEnvVar(deployStep, ["RAILWAY_WEB_SERVICE", "RAILWAY_WEB_SERVICE_ID"], "Deploy to staging");
   requireEnvVar(deployStep, "RAILWAY_ENVIRONMENT_NAME", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRIES", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_TIMEOUT_MS", "Deploy to staging");
+  requireEnvVar(deployStep, "RAILWAY_DEPLOY_RETRY_DELAY_MS", "Deploy to staging");
   requireRunContains(deployStep, "node scripts/railway-deploy.cjs", "Deploy to staging");
   assert(!String(deployStep.run ?? "").includes("eval"), "Deploy to staging must not use eval");
   const resolveWebUrlStep = requireStep(steps, "Resolve staging web URL");
@@ -195,9 +200,13 @@ function main() {
   const snapshotStep = requireStep(steps, "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_BASE_URL", "Capture controlled rollout snapshot");
   requireEnvVar(snapshotStep, "STAGING_SMOKE_TENANT_ID", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_WORKSPACE", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_USER", "Capture controlled rollout snapshot");
+  requireEnvVar(snapshotStep, "STAGING_SMOKE_PASSWORD", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "node scripts/capture-controlled-rollout-snapshot.cjs", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "--environment staging", "Capture controlled rollout snapshot");
   requireRunContains(snapshotStep, "--apiBase \"${STAGING_BASE_URL}/api/v1\"", "Capture controlled rollout snapshot");
+  requireRunContains(snapshotStep, "--diagnosticOutputPath \".run-logs/queue-failure-diagnostics-${GITHUB_RUN_ID}.json\"", "Capture controlled rollout snapshot");
 
   const uploadStep = requireStep(steps, "Upload gate + rollout + smoke artifacts");
   assert(
@@ -208,6 +217,7 @@ function main() {
   const uploadPath = String(uploadWith.path ?? "");
   assert(uploadPath.includes("docs/execution/gates/*.json"), "Upload step missing gate artifact path");
   assert(uploadPath.includes("docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json"), "Upload step missing rollout snapshot path");
+  assert(uploadPath.includes(".run-logs/queue-failure-diagnostics-*.json"), "Upload step missing queue failure diagnostics path");
   assert(uploadPath.includes(".run-logs/e2e-smoke-*.log"), "Upload step missing E2E smoke log path");
   assert(uploadPath.includes(".run-logs/e2e-result-*.json"), "Upload step missing E2E smoke result path");
   assert(uploadWith["include-hidden-files"] === true, "Upload step must include hidden files");

@@ -16,6 +16,7 @@ export class CreateComplianceRuleDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
   @IsIn(SEVERITIES)

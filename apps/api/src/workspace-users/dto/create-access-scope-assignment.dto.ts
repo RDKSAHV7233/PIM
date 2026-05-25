@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString } from "class-validator";
+import { IsArray, IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 
 const SUBJECT_TYPES = ["user", "role"] as const;
 const SCOPE_TYPES = [
@@ -40,6 +40,7 @@ export class CreateAccessScopeAssignmentDto {
   subjectType!: (typeof SUBJECT_TYPES)[number];
 
   @IsString()
+  @MaxLength(255)
   subjectId!: string;
 
   @IsIn(SCOPE_TYPES)
@@ -47,14 +48,17 @@ export class CreateAccessScopeAssignmentDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   connectorInstallationId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   scopeValue?: string;
 
   @IsOptional()

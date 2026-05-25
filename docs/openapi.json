@@ -31,6 +31,62 @@
         ]
       }
     },
+    "/api/v1/queue/{queueName}/lanes/{laneKey}/failed": {
+      "get": {
+        "operationId": "AppController_listFailedQueueJobs",
+        "parameters": [
+          {
+            "name": "queueName",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "laneKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Maximum failed jobs to return, capped at 100",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Failed job diagnostic summaries"
+          }
+        },
+        "summary": "List failed BullMQ jobs in a lane without exposing payloads (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/health/account-export-storage": {
+      "get": {
+        "operationId": "AppController_probeAccountExportStorage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Account export storage probe result"
+          }
+        },
+        "summary": "Probe account export object storage with a bounded write check (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/queue/{queueName}/lanes/{laneKey}/retry-failed": {
       "post": {
         "operationId": "AppController_retryFailedQueueJobs",
@@ -212,6 +268,20 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -2637,6 +2707,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryRecoveryGroupDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -2781,6 +2861,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertScheduleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2915,6 +3005,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertScheduleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2959,6 +3059,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerBulkPublishDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -3074,6 +3184,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCatalogLinksDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -4128,6 +4248,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "itemsCursor",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemsLimit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4487,6 +4623,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignProductDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Assignee updated"
@@ -4511,6 +4657,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestChangesDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Change request created"
@@ -6106,6 +6262,22 @@
         "type": "object",
         "properties": {}
       },
+      "RetryRecoveryGroupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertScheduleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TriggerBulkPublishDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConfirmCatalogLinksDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateOutboundWebhookDto": {
         "type": "object",
         "properties": {}
@@ -6167,6 +6339,14 @@
         "properties": {}
       },
       "CreateApprovalCommentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AssignProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestChangesDto": {
         "type": "object",
         "properties": {}
       },

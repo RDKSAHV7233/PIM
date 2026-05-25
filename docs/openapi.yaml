@@ -19,6 +19,41 @@ paths:
           description: Detailed internal health
       summary: Internal health — db pool, queue metrics, auth mode (admin only)
       tags: *a1
+  /api/v1/queue/{queueName}/lanes/{laneKey}/failed:
+    get:
+      operationId: AppController_listFailedQueueJobs
+      parameters:
+        - name: queueName
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: laneKey
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: limit
+          required: false
+          in: query
+          description: Maximum failed jobs to return, capped at 100
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Failed job diagnostic summaries
+      summary: List failed BullMQ jobs in a lane without exposing payloads (admin only)
+      tags: *a1
+  /api/v1/health/account-export-storage:
+    get:
+      operationId: AppController_probeAccountExportStorage
+      parameters: []
+      responses:
+        "200":
+          description: Account export storage probe result
+      summary: Probe account export object storage with a bounded write check (admin
+        only)
+      tags: *a1
   /api/v1/queue/{queueName}/lanes/{laneKey}/retry-failed:
     post:
       operationId: AppController_retryFailedQueueJobs
@@ -132,6 +167,14 @@ paths:
           description: ""
       tags: &a4
         - Auth
+  /api/v1/auth/refresh:
+    post:
+      operationId: AuthController_refresh
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a4
   /api/v1/auth/resend-unlock:
     post:
       operationId: AuthController_resendUnlock
@@ -1553,6 +1596,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryRecoveryGroupDto"
       responses:
         "200":
           description: ""
@@ -1635,6 +1684,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertScheduleDto"
       responses:
         "201":
           description: ""
@@ -1711,6 +1766,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertScheduleDto"
       responses:
         "201":
           description: ""
@@ -1736,6 +1797,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerBulkPublishDto"
       responses:
         "200":
           description: ""
@@ -1801,6 +1868,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmCatalogLinksDto"
       responses:
         "201":
           description: ""
@@ -2417,6 +2490,16 @@ paths:
           in: path
           schema:
             type: string
+        - name: itemsCursor
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: itemsLimit
+          required: true
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: ""
@@ -2628,6 +2711,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignProductDto"
       responses:
         "200":
           description: Assignee updated
@@ -2642,6 +2731,12 @@ paths:
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestChangesDto"
       responses:
         "201":
           description: Change request created
@@ -3672,6 +3767,18 @@ components:
     CreateExportJobAliasDto:
       type: object
       properties: {}
+    RetryRecoveryGroupDto:
+      type: object
+      properties: {}
+    UpsertScheduleDto:
+      type: object
+      properties: {}
+    TriggerBulkPublishDto:
+      type: object
+      properties: {}
+    ConfirmCatalogLinksDto:
+      type: object
+      properties: {}
     CreateOutboundWebhookDto:
       type: object
       properties: {}
@@ -3718,6 +3825,12 @@ components:
       type: object
       properties: {}
     CreateApprovalCommentDto:
+      type: object
+      properties: {}
+    AssignProductDto:
+      type: object
+      properties: {}
+    RequestChangesDto:
       type: object
       properties: {}
     CreateVariantDto:
