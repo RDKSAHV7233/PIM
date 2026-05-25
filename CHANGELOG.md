@@ -4,6 +4,27 @@ All notable changes to Vexa PIM. Legacy technical codename: `PIM1`. Format: [dat
 
 ---
 
+## [2026-05-26] - 6f57e4c - v0.9.1-release
+### Added
+- 5 composite DB index migrations (2026-05-24/25): `ValidationIssue` status/severity, `MarketplaceExportJob` status/channel/updatedAt, `BulkImportJob`, `BulkEditOperation`, `AttributeDefinition`, `ConnectorSubmission` installation+status, `Product` delta-sync scan `(tenantKey, status, deletedAt, id)`.
+- Partial unique index `uq_export_job_product_installation` on `MarketplaceExportJob(tenantKey, productId, installationId) WHERE installationId IS NOT NULL` — enforces delta-sync idempotency at DB level.
+- Redis-backed `CacheService` wired into `ComplianceService`, `CatalogService`, `TaxonomyService`, `AutoSuggestionsService` — in-memory fallback, SCAN-based prefix invalidation, 30s retry backoff.
+- `retargetProductNotifications(productId)` in `NotificationsService` — redirects stale notification links to `/catalog/products` on product delete and purge (PR #139).
+- Backfill script `scripts/repair-stale-product-notifications.cjs` with dry-run and per-tenant scoping.
+- Node.js upgraded to v22 (current LTS) in CI.
+- `npm audit --audit-level=high` step added to CI pipeline.
+
+### Changed
+- PRD updated to v1.1: 8-role table from live code, INC-08 marked complete, release readiness updated to reflect Gate 3 closure.
+- `admin-guide.md` roles section updated to document all 8 roles.
+- `PROD_READINESS_RISK_REGISTER.md` RISK-P0-001 closed; Gate 3 formally closed 2026-05-26 (14/14 observation days).
+- Issue #1 (Release Readiness) closed — all 5 gates confirmed closed.
+
+### Fixed
+- Duplicate `take` property in `bulk-edit.service.ts` (TS1117 error).
+- Duplicate `take` property in `rejection-intelligence.service.ts` (TS1117 error).
+- `@nestjs/cli` upgraded to 11.0.21 to resolve picomatch HIGH vulnerability.
+
 ## [2026-05-17] - v0.9.0-pilot
 ### Added
 - AuditLog composite index `idx_audit_logs_tenant_resource_action_created` via migration `20260517000002_auditlog_resource_action_index` to support product revision and activity queries at scale (ADR-005).

@@ -18,7 +18,20 @@ Implemented admin pages and APIs cover:
 
 ## Roles
 
-The application uses role-aware route and API behavior. Current documented defaults include `admin`, `editor`, `reviewer`, and `viewer`; verify any new role against the auth guards and route tests before documenting it.
+Eight roles are enforced by the RBAC guard. Source of truth: `apps/api/src/common/rbac/roles.ts`.
+
+| Role | Primary surface |
+|------|----------------|
+| `admin` | All admin pages, user management, API keys, webhooks, OIDC, privacy, audit |
+| `editor` | Catalog operations, bulk import, bulk edit, category management |
+| `publisher` | Channel submissions, publish/export queueing |
+| `approver` | Approval queue (approve/reject in-review products) |
+| `channel_manager` | Channel mappings, connector configurations, readiness gates |
+| `connector_admin` | Connector installation, credentials, installation health |
+| `reviewer` | Read-only catalog and submissions, comments |
+| `viewer` | Read-only catalog and reporting |
+
+Default write roles (undecorated mutations): `admin`, `editor`. Admin-boundary routes (API keys, workspace users) require `admin` and disallow machine API clients.
 
 ## User Management
 

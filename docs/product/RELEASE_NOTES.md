@@ -4,6 +4,17 @@
 
 ## May 2026
 
+### Week of May 26 — v0.9.1-release
+
+**Faster catalog operations and channel sync**
+Search, filter, and list operations on large catalogs are now faster. Vexa now keeps an intelligent background index of your products by status and category so that common catalog views and channel readiness checks complete more quickly as your catalog grows.
+
+**Channel sync no longer creates duplicate jobs**
+If a product is already queued for a channel sync run, Vexa now detects this and skips it cleanly instead of queuing a second job. Large catalogs with many products can now run automated sync reliably without generating duplicate submissions.
+
+**Notifications link to the right place after product removal**
+Notifications pointing to a product that has since been deleted or removed now redirect you to the product catalog instead of showing an error page. A one-time repair is available for any pre-existing notifications via an operator script.
+
 ### Week of May 17 — v0.9.0-pilot
 
 **Approval comment threads on every product**

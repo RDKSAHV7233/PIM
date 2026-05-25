@@ -11,7 +11,7 @@ The codebase is the source of truth. Use the documentation below for current wor
 - Database: PostgreSQL with Prisma
 - Queue/cache: in-memory locally or BullMQ/Redis for staging and production
 - Media: Cloudflare R2-compatible object storage
-- Connectors: Amazon India, Flipkart, Shopify, and partial Meesho export support
+- Connectors: Amazon India (limited), Flipkart, Shopify; Meesho (in development — export not yet live); ONDC (flag-gated)
 
 ## Quick Start
 
