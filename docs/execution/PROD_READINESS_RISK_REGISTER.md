@@ -1,6 +1,6 @@
 # Vexa PIM Production Readiness Risk Register
 
-Last updated: 2026-05-17 (staging deploy lane recovered on live run 25988595126; controlled rollout gate restored, broad observation window still in progress)
+Last updated: 2026-05-25 (broad-rollout observation window at 13/14 days; one daily run away from Gate 3 closure)
 
 ## P0 (Must close before production)
 
@@ -62,6 +62,16 @@ Last updated: 2026-05-17 (staging deploy lane recovered on live run 25988595126;
   - `capture-controlled-rollout-snapshot.cjs` now keeps the pilot workflow and payload-governance controlled-rollout proofs evergreen once recorded instead of aging them out with the 14-day broad-window calculation.
 - Fresh snapshot `docs/execution/rollout/2026-03-18T13-22-10.340Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` shows `controlledRollout.pending = []`, `observationWindowDaysCovered = 5`, and `sloTrendDaysCovered = 6`.
   - Remaining: complete the 14-day/SLO broad-rollout observation window before declaring rollout governance fully closed.
+- Implementation update (2026-05-25):
+  - Latest snapshot `docs/execution/rollout/2026-05-25T08-41-08.135Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` shows:
+    - `health.ok = true`
+    - `consecutiveE10SignoffRuns = 2`
+    - `controlledRollout.pending = ["Queue failures remain in health snapshot: account-export=7.", "Account export storage probe failed: account_export_storage_config_invalid."]`
+    - `observationWindowDaysCovered = 13 / 14`
+    - `sloTrendDaysCovered = 13 / 14`
+    - `recentArtifacts`: 10 consecutive daily evidence runs from 2026-05-15 through 2026-05-25
+  - The two controlled-rollout pending items are staging-environment configuration artefacts: the account-export queue accumulated 7 failed jobs during staging E2E runs and the R2 storage probe is not configured for staging. Neither represents a production code defect.
+  - Remaining: one more daily evidence run (2026-05-26) will complete the 14/14 window. After that, run the snapshot, confirm `broadRollout.pending = []`, and close Gate 3.
 - Implementation update (2026-03-19):
   - Daily rollout evidence workflow run `23281517455` succeeded and persisted the latest snapshot into the repo.
 - Snapshot `docs/execution/rollout/2026-03-19T05-39-08.859Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` shows:
