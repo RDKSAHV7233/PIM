@@ -14,11 +14,19 @@ owner: DevOps + Engineering Lead
 | P1 | Feature degraded, elevated error rate, or one tenant materially affected | 1 hour | Queue backlog grows; one tenant cannot publish |
 | P2 | Performance degraded or a non-critical feature is broken | 4 hours | Dashboard reads are slow; an audit filter is broken |
 
-## 2. On-call contacts
+## 2. On-call contacts and escalation matrix
+
+| Severity | Who to page | When | How |
+|----------|-------------|------|-----|
+| P0 — data loss, auth broken, service fully down | CTO + DevOps on call | Immediately (within 5 min of detection) | Phone + Slack DM |
+| P1 — degraded service, one tenant affected, Redis/R2 down | DevOps on call | Within 30 minutes | Slack DM |
+| P2 — single feature broken, performance degraded | DevOps | Next business day | Slack channel |
 
 Primary on-call: [FILL: name, phone, PagerDuty or Slack handle]  
 Secondary: [FILL: name, phone]  
-Escalation: [FILL: CTO contact]
+CTO escalation: [FILL: CTO name, phone] — page for all P0s without exception
+
+**Rule:** If you are unsure of severity, treat as P0 until proven otherwise.
 
 ## 3. First 5 minutes - triage checklist
 
@@ -140,7 +148,31 @@ Escalation: [FILL: CTO contact]
      - `/channels` shows `Open governance` for the smoke admin
      - `/admin/connectors` shows `Create Governance Policy`
 
-## 8. Post-incident report template
+## 8. Customer communication template
+
+When a P0 incident is confirmed, send within 15 minutes to all active pilot tenants:
+
+> **Subject: Vexa PIM — Service Disruption**
+>
+> We are aware of an issue affecting Vexa PIM and are actively investigating. [Brief description, e.g., "Product catalog and submission operations are temporarily unavailable."]
+>
+> Current status: Under investigation. We will provide an update within [1 hour / 2 hours].
+>
+> Affected features: [List affected features].
+>
+> Your data is safe. No action is required from you at this time.
+
+Send a follow-up when service is restored:
+
+> **Subject: Vexa PIM — Service Restored**
+>
+> The issue affecting Vexa PIM has been resolved as of [HH:MM UTC]. [Brief description of what was fixed.]
+>
+> Duration: [X hours Y minutes]. A full post-incident report will follow within 48 hours if the incident was P0.
+
+---
+
+## 9. Post-incident report template
 
 ```markdown
 ## Incident: <title>
