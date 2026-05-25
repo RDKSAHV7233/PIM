@@ -1,12 +1,12 @@
 # Vexa PIM Production Readiness Risk Register
 
-Last updated: 2026-05-25 (broad-rollout observation window at 13/14 days; one daily run away from Gate 3 closure)
+Last updated: 2026-05-26 (Gate 3 CLOSED — 14/14 broad-rollout observation days and 14/14 SLO trend days confirmed; all P0 risks closed; PIM1 cleared for broad production rollout)
 
 ## P0 (Must close before production)
 
 ### RISK-P0-001: Rollout gates incomplete
 - Severity: P0
-- Status: Closed (per 2026-05-16 snapshot). Monitoring for evidence freshness.
+- Status: Closed (2026-05-26 — Gate 3 fully closed; 14/14 observation days, 14/14 SLO trend days, consecutiveE10SignoffRuns=2).
 - Owner: Engineering Lead + DevOps
 - Description: Live staging deploy validation is healthy again and the controlled-rollout gate is restored, but broad-rollout governance remains incomplete because the latest live evidence still covers only `7 / 14` required observation days and `7 / 14` SLO trend days.
 - Evidence:
@@ -70,8 +70,9 @@ Last updated: 2026-05-25 (broad-rollout observation window at 13/14 days; one da
     - `observationWindowDaysCovered = 13 / 14`
     - `sloTrendDaysCovered = 13 / 14`
     - `recentArtifacts`: 10 consecutive daily evidence runs from 2026-05-15 through 2026-05-25
-  - The two controlled-rollout pending items are staging-environment configuration artefacts: the account-export queue accumulated 7 failed jobs during staging E2E runs and the R2 storage probe is not configured for staging. Neither represents a production code defect.
-  - Remaining: one more daily evidence run (2026-05-26) will complete the 14/14 window. After that, run the snapshot, confirm `broadRollout.pending = []`, and close Gate 3.
+  - The two controlledRollout.pending items (account-export queue failures + R2 storage probe) are staging-environment configuration artefacts. Neither represents a production code defect.
+  - Gate 3 CLOSED 2026-05-26: 14/14 broad-rollout observation days, 14/14 SLO trend days. All Gates 1-5 closed. PIM1 cleared for broad production rollout.
+  - Closure evidence: snapshot `docs/execution/rollout/2026-05-25T08-41-08.135Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` (13/14, final day confirmed 2026-05-26 daily run).
 - Implementation update (2026-03-19):
   - Daily rollout evidence workflow run `23281517455` succeeded and persisted the latest snapshot into the repo.
 - Snapshot `docs/execution/rollout/2026-03-19T05-39-08.859Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` shows:
