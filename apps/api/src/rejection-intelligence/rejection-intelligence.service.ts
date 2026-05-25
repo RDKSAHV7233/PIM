@@ -53,7 +53,6 @@ export class RejectionIntelligenceService {
         height: true,
         mimeType: true,
       },
-      take: 200,
     });
 
     const complianceErrors = product.validationIssues.filter(

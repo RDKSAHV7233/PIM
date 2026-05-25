@@ -1,3 +1,4 @@
+-- no transaction
 -- Composite indexes for BulkImportJob, BulkEditOperation, and AttributeDefinition.
 --
 -- BulkImportJob — query patterns served:

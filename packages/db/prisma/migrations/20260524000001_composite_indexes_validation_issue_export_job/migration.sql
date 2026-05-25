@@ -1,3 +1,4 @@
+-- no transaction
 -- Composite indexes for ValidationIssue and MarketplaceExportJob.
 --
 -- ValidationIssue — query patterns served:

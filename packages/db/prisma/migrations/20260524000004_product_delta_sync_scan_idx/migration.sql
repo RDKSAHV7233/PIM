@@ -1,3 +1,4 @@
+-- no transaction
 -- Index to support fetchDeltaCandidatesPage — the cursor-paginated LEFT JOIN query
 -- that powers enterprise-scale delta sync candidate detection.
 --

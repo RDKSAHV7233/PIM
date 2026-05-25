@@ -1,3 +1,4 @@
+-- no transaction
 -- Partial unique index for delta-sync idempotency.
 --
 -- Enforces: at most one MarketplaceExportJob row per (tenantKey, productId, installationId)

@@ -1,3 +1,4 @@
+-- no transaction
 -- Composite index for ConnectorSubmission installation + status queries.
 --
 -- ConnectorSubmission — query patterns served:

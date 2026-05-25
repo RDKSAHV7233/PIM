@@ -135,7 +135,6 @@ export class BulkEditService {
     const products = await this.prisma.tenant().product.findMany({
       where,
       orderBy: [{ updatedAt: "desc" }],
-      take: 5_000,
       select: this.productSelect,
       take: 10_000, // defensive cap — prevents full-table scan for category-scoped edits
     });
