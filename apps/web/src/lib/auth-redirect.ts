@@ -26,6 +26,9 @@ export function resolveLoginRedirectReason(failure?: AuthFailureLike): LoginRedi
 
 export function buildLoginRedirect(nextPath: string, failure?: AuthFailureLike): string {
   const reason = resolveLoginRedirectReason(failure);
+  if (reason === "tenant_suspended") {
+    return "/account-suspended";
+  }
   const normalizedNext = sanitizeNextPath(nextPath);
   const params = new URLSearchParams({
     reason,

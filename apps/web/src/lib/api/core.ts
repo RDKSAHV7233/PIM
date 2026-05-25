@@ -635,6 +635,7 @@ export interface PlanLimitExceededPayload {
   limit: number;
   current: number;
   upgrade_url: string;
+  contact_url: string | null;
 }
 
 export interface MarketplaceChannelConfig {
@@ -1431,12 +1432,14 @@ export function getPlanLimitExceededPayload(error: unknown): PlanLimitExceededPa
   if (!resource || !upgradeUrl || !Number.isFinite(limit) || !Number.isFinite(current)) {
     return null;
   }
+  const rawContactUrl = String(payload.contact_url ?? "").trim();
   return {
     error: "PLAN_LIMIT_EXCEEDED",
     resource,
     limit,
     current,
     upgrade_url: upgradeUrl,
+    contact_url: rawContactUrl || null,
   };
 }
 

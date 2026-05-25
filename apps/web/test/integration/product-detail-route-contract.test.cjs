@@ -46,7 +46,7 @@ function run() {
   );
   assert(
     pageSource.includes('String(query.planLimit ?? "").trim() === "1"') &&
-      pageSource.includes('if (["planLimit", "planResource", "planLimitValue", "planCurrent", "planUpgrade"].includes(key)) return;') &&
+      pageSource.includes('if (["planLimit", "planResource", "planLimitValue", "planCurrent", "planUpgrade", "planContact"].includes(key)) return;') &&
       pageSource.includes('return encoded ? `/products/${encodeURIComponent(id)}?${encoded}` : `/products/${encodeURIComponent(id)}`;'),
     "Product detail route must only open the plan-limit modal when the full plan contract is present and must strip modal query state from the dismiss link.",
   );

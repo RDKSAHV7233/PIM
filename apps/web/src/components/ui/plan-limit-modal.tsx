@@ -12,6 +12,7 @@ interface PlanLimitModalProps {
   limit: number;
   current: number;
   upgradeUrl: string;
+  contactUrl?: string | null;
   dismissHref: string;
 }
 
@@ -35,6 +36,7 @@ export function PlanLimitModal({
   limit,
   current,
   upgradeUrl,
+  contactUrl,
   dismissHref,
 }: PlanLimitModalProps) {
   const router = useRouter();
@@ -53,13 +55,24 @@ export function PlanLimitModal({
       onClose={() => router.push(dismissHref)}
       size="md"
     >
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Link href={dismissHref} className={cn(buttonVariants({ variant: "secondary" }))}>
           Maybe later
         </Link>
-        <Link href={upgradeUrl} className={cn(buttonVariants({ variant: "dark" }))}>
-          Request upgrade
-        </Link>
+        {contactUrl ? (
+          <a
+            href={contactUrl}
+            className={cn(buttonVariants({ variant: "dark" }))}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Contact us to upgrade
+          </a>
+        ) : (
+          <Link href={upgradeUrl} className={cn(buttonVariants({ variant: "dark" }))}>
+            Request upgrade
+          </Link>
+        )}
       </div>
     </AppDialog>
   );

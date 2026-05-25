@@ -67,6 +67,7 @@ export class PlanGuard implements CanActivate {
         continue;
       }
 
+      const contactUrl = String(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "").trim() || null;
       throw new HttpException(
         {
           error: "PLAN_LIMIT_EXCEEDED",
@@ -74,6 +75,7 @@ export class PlanGuard implements CanActivate {
           limit: check.limit,
           current: check.current,
           upgrade_url: "/admin/plan",
+          contact_url: contactUrl,
         },
         HttpStatus.PAYMENT_REQUIRED,
       );

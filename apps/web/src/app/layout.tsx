@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { AuthenticatedShell } from "@/components/nav/authenticated-shell";
+import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { hasServerAuthToken } from "@/lib/server-auth";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
@@ -39,6 +40,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </a>
         {hasAuthToken ? (
           <AuthenticatedShell actorRole={actorRole} locale={locale} showRoleBadge={Boolean(sessionClaims)}>
+            <BillingStatusBanner />
             {children}
           </AuthenticatedShell>
         ) : (

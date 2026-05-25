@@ -367,13 +367,16 @@ function withPlanLimitQuery(basePath: string, error: unknown): string | null {
   }
   const upgradeUrl = payload.upgrade_url;
   const separator = basePath.includes("?") ? "&" : "?";
-  return (
+  let query =
     `${basePath}${separator}planLimit=1` +
     `&planResource=${encodeURIComponent(payload.resource)}` +
     `&planLimitValue=${encodeURIComponent(String(payload.limit))}` +
     `&planCurrent=${encodeURIComponent(String(payload.current))}` +
-    `&planUpgrade=${encodeURIComponent(upgradeUrl)}`
-  );
+    `&planUpgrade=${encodeURIComponent(upgradeUrl)}`;
+  if (payload.contact_url) {
+    query += `&planContact=${encodeURIComponent(payload.contact_url)}`;
+  }
+  return query;
 }
 
 export async function createCategoryAction(formData: FormData) {

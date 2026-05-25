@@ -68,6 +68,7 @@ interface MediaPageProps {
     planLimitValue?: string;
     planCurrent?: string;
     planUpgrade?: string;
+    planContact?: string;
   }>;
 }
 
@@ -92,6 +93,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
   const planLimitValue = Number(query.planLimitValue);
   const planCurrent = Number(query.planCurrent);
   const planUpgrade = String(query.planUpgrade ?? "").trim();
+  const planContact = String(query.planContact ?? "").trim() || null;
   const dismissPlanLimitHref = (() => {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([key, raw]) => {
@@ -100,7 +102,8 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         key === "planResource" ||
         key === "planLimitValue" ||
         key === "planCurrent" ||
-        key === "planUpgrade"
+        key === "planUpgrade" ||
+        key === "planContact"
       ) {
         return;
       }
@@ -254,6 +257,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         limit={planLimitValue}
         current={planCurrent}
         upgradeUrl={planUpgrade}
+        contactUrl={planContact}
         dismissHref={dismissPlanLimitHref}
       />
       <PageHeader

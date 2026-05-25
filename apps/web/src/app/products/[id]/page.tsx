@@ -36,7 +36,7 @@ import type { DetailTab } from "./_components/product-detail-types";
 import { StatusToastEffect } from "./_components/status-toast-effect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 
-interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; returnTo?: string; updateStatus?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; deleteStatus?: string; deleteError?: string; }>; }
+interface PageProps { params: Promise<{ id: string }>; searchParams: Promise<{ channel?: string; templateId?: string; tab?: string; returnTo?: string; updateStatus?: string; currentVersion?: string; planLimit?: string; planResource?: string; planLimitValue?: string; planCurrent?: string; planUpgrade?: string; planContact?: string; deleteStatus?: string; deleteError?: string; }>; }
 
 export const dynamic = "force-dynamic";
 
@@ -54,10 +54,11 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const deleteStatus = String(query.deleteStatus ?? "").trim();
   const deleteError = String(query.deleteError ?? "").trim();
   const showPlanLimitModal = String(query.planLimit ?? "").trim() === "1" && String(query.planResource ?? "").trim().length > 0 && Number.isFinite(Number(query.planLimitValue)) && Number.isFinite(Number(query.planCurrent)) && String(query.planUpgrade ?? "").trim().length > 0;
+  const planContact = String(query.planContact ?? "").trim() || null;
   const dismissPlanLimitHref = (() => {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([key, raw]) => {
-      if (["planLimit", "planResource", "planLimitValue", "planCurrent", "planUpgrade"].includes(key)) return;
+      if (["planLimit", "planResource", "planLimitValue", "planCurrent", "planUpgrade", "planContact"].includes(key)) return;
       const value = String(raw ?? "").trim();
       if (value.length > 0) params.set(key, value);
     });
@@ -430,7 +431,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
 
   return (
     <div className="space-y-5">
-      <PlanLimitModal isOpen={showPlanLimitModal} resource={String(query.planResource ?? "").trim()} limit={Number(query.planLimitValue)} current={Number(query.planCurrent)} upgradeUrl={String(query.planUpgrade ?? "").trim()} dismissHref={dismissPlanLimitHref} />
+      <PlanLimitModal isOpen={showPlanLimitModal} resource={String(query.planResource ?? "").trim()} limit={Number(query.planLimitValue)} current={Number(query.planCurrent)} upgradeUrl={String(query.planUpgrade ?? "").trim()} contactUrl={planContact} dismissHref={dismissPlanLimitHref} />
       <ProductDirtyNavigationGuard />
       <PageHeader
         className="sticky top-[4.5rem] z-20"
