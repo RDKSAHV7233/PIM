@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
+import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   DEFAULT_TENANT_KEY,
@@ -36,7 +37,10 @@ export class TenantDirectoryService {
   private readonly logger = new Logger(TenantDirectoryService.name);
   private readonly localDirectory = this.loadLocalWorkspaceDirectory();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
+  ) {}
 
   async resolveWorkspaceSlug(workspaceSlugInput: string): Promise<ResolvedWorkspaceDirectoryEntry | null> {
     const workspaceSlug = normalizeWorkspaceSlug(workspaceSlugInput);
@@ -139,7 +143,9 @@ export class TenantDirectoryService {
       throw new Error("INITIAL_ADMIN_USER_REQUIRED");
     }
 
-    const prisma = this.prisma.tenant(DEFAULT_TENANT_KEY);
+    // Workspace provisioning creates identities for arbitrary tenants, so it must bypass
+    // the tenant-scoped Prisma extension that would otherwise restamp tenantKey=default.
+    const prisma = this.prismaDirect.getClient();
     const existingBySlug = await prisma.workspaceDirectory.findUnique({
       where: { workspaceSlug },
     });
