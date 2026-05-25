@@ -1,7 +1,7 @@
 # Vexa PIM Connector Developer Guide
 
 Status: Active developer-facing connector guide  
-Date: 2026-03-23  
+Date: 2026-05-25  
 Audience: Connector engineers integrating with the current Vexa PIM platform
 
 ## 1. Start Here
@@ -37,7 +37,7 @@ Current connector truths:
 - canonical editable mapping path is `/channels/mappings`
 - legacy `/connectors/[installationId]/mapping` is transition-only
 - runtime discovery is hybrid, not plugin-dynamic
-- broad rollout evidence is still incomplete under `INC-08`
+- four connectors are in the compiled registry: `amazon-in`, `flipkart`, `shopify`, `meesho`
 
 ### Current connector matrix
 
@@ -51,10 +51,14 @@ Use this as the current implementation-level reality check before you design a f
   - implementation status: `full`
   - declared capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`, `WEBHOOK_RECEIVE`
   - current role: live Amazon India connector path with seller install, credential validation, publish, and status sync
+- `shopify`
+  - implementation status: `full`
+  - capabilities: `PUBLISH`, `VALIDATE`, `STATUS_SYNC`
+  - current role: Shopify storefront connector; supports managed OAuth install flow and publication target selection
 - `meesho`
   - implementation status: `partial`
   - capabilities: `VALIDATE`, `EXCEL_EXPORT`
-  - current role: export-only connector model, but export generation is not yet complete
+  - current role: export-only connector model; export generation is not yet complete; do not label user-facing actions as Publish
 - `ondc`
   - current role: separate admin and non-production workflow, feature-gated behind `FEATURE_ONDC_ENABLED`
   - do not treat it as a normal seller-facing marketplace connector flow
