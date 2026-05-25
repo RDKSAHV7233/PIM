@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import type { PolicyActor } from "../common/access-policy/access-policy.service";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -27,6 +27,7 @@ export class ComplianceController {
   @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin")
+  @Header("Cache-Control", "private, max-age=60, stale-while-revalidate=300")
   listRules(@Query("categoryId") categoryId?: string) {
     return this.complianceService.listRules(categoryId);
   }

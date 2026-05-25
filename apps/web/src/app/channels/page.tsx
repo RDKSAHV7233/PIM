@@ -7,8 +7,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getInstalledConnectors, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canManageChannels } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -23,14 +22,13 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
 }
 
 export default async function ChannelsOverviewPage() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canEditChannelSetup = canManageChannels(actorRole);
   const canManageConnectorAccess = actorRole === "admin";
 
   try {
     const [connectors, submissionsResponse, health] = await Promise.all([
-      getInstalledConnectors({ role: actorRole, authHeader }),
+      getInstalledConnectors({ role: actorRole, authHeader }).catch(() => [] as Awaited<ReturnType<typeof getInstalledConnectors>>),
       getSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
       getDashboardHealth({ role: actorRole, authHeader }),
     ]);

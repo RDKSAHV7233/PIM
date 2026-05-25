@@ -14,8 +14,7 @@ import {
   getAiTitleSuggestion,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +31,7 @@ interface AiPageProps {
 
 export default async function AiPage({ searchParams }: AiPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (actorRole !== "admin" || process.env.APP_ENV === "production") {
     notFound();
   }

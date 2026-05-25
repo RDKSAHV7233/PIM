@@ -121,3 +121,39 @@ export async function getServerActorRole(): Promise<AppRole> {
   }
   return "viewer";
 }
+
+/**
+ * Combined helper — reads cookies ONCE, verifies the JWT ONCE, and returns
+ * both values that almost every page needs.  Calling getServerAuthHeader()
+ * and getServerActorRole() separately incurs two `await cookies()` calls and
+ * two JWT decode paths; this helper halves that cost.
+ *
+ * Usage (destructure with rename if needed):
+ *   const { authHeader, actorRole } = await getServerSession();
+ *   const { authHeader, actorRole: role } = await getServerSession();
+ */
+export async function getServerSession(): Promise<{
+  authHeader: string | undefined;
+  actorRole: AppRole;
+}> {
+  const cookieStore = await cookies();
+  const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
+  const authHeader = token ? `Bearer ${token}` : undefined;
+
+  if (!token) {
+    return { authHeader: undefined, actorRole: "viewer" };
+  }
+
+  const secret = getJwtSecret();
+  if (!secret) {
+    if (requiresVerifiedSessions()) {
+      throw new Error("JWT_SECRET or PIM_JWT_SECRET is required for verified web sessions.");
+    }
+    return { authHeader, actorRole: "viewer" };
+  }
+
+  const claims = verifyToken(token);
+  const actorRole: AppRole =
+    claims?.role && APP_ROLES.includes(claims.role) ? claims.role : "viewer";
+  return { authHeader, actorRole };
+}

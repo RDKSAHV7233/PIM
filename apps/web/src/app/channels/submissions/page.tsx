@@ -12,8 +12,7 @@ import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getSubmissions } from "@/lib/api";
 import { getInstalledConnectors } from "@/lib/api/connectors";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { SubmissionsGrid } from "./_components/submissions-grid";
 
 export const dynamic = "force-dynamic";
@@ -106,8 +105,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
   const installationId = String(query.installationId ?? "").trim();
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [submissionsResponse, allInstallations] = await Promise.all([

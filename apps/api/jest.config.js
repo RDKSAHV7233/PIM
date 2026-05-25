@@ -4,11 +4,16 @@ module.exports = {
   testEnvironment: "node",
   rootDir: "src",
   testMatch: [
+    "**/audit/audit.service.spec.ts",
     "**/connector-framework/connector-launch-policy.spec.ts",
     "**/bulk-import/bulk-import.service.spec.ts",
     "**/marketplace/marketplace.service.spec.ts",
     "**/connectors/amazon/amazon-validation.spec.ts",
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
+    "**/connector-installer/connector-installer.service.spec.ts",
+    "**/bulk-import/bulk-import-run.service.spec.ts",
+    "**/connector-installer/credential-encryption.util.spec.ts",
+    "**/compliance/compliance.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

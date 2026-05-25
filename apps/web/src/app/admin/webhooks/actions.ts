@@ -8,8 +8,7 @@ import {
   sendOutboundWebhookTest,
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 const WEBHOOK_EVENTS = new Set([
   "import_completed",
@@ -21,8 +20,7 @@ const WEBHOOK_EVENTS = new Set([
 ]);
 
 async function requireAdminRequestOptions() {
-  const authHeader = await getServerAuthHeader();
-  const role = await getServerActorRole();
+  const { authHeader, actorRole: role } = await getServerSession();
   if (role !== "admin" || !authHeader) {
     throw new Error("Admin role is required.");
   }

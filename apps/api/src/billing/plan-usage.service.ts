@@ -1,11 +1,15 @@
 ﻿import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { CacheService } from "../common/cache/cache.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PLAN_LIMITS } from "./plan-limits.seed";
 import { PlanResource } from "./require-plan-limit.decorator";
+
+/** Plan profiles change only on admin billing operations — 5-minute TTL is safe. */
+const PLAN_PROFILE_CACHE_TTL_SECONDS = 300;
 
 const PLAN_TIERS = ["STARTER", "GROWTH", "ENTERPRISE"] as const;
 const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled"] as const;
@@ -145,7 +149,7 @@ interface ConnectorCountsRow {
 
 export interface PlanCheckResult {
   allowed: boolean;
-  resource: "skus" | "submissions" | "storageGb" | "connectors_installations" | "connector_accounts";
+  resource: "skus" | "submissions" | "storage_gb" | "connectors_installations" | "connector_accounts" | "users";
   limit: number;
   current: number;
 }
@@ -267,6 +271,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaDirect: PrismaDirectService,
+    private readonly cache: CacheService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -387,37 +392,106 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    if (resource === "users") {
+      // User count is not stored in PlanUsage — always fetch live to avoid stale data
+      // on the create-user hot path where accuracy matters most.
+      const liveCount = await this.prisma
+        .tenant(tenantKey)
+        .authIdentity.count({ where: { isActive: true } });
+      const current = liveCount + requestDelta;
+      return {
+        allowed: current <= limits.maxUsers,
+        resource: "users",
+        limit: limits.maxUsers,
+        current,
+      };
+    }
+
     const current = usage.storageGb + requestDelta;
     return {
       allowed: current <= limits.maxStorageGb,
-      resource: "storageGb",
+      resource: "storage_gb",
       limit: limits.maxStorageGb,
       current: Number(current.toFixed(6)),
     };
   }
 
+  /**
+   * Batch install-plan check for multiple connector slugs.
+   * Calls recomputeUsage + getPlanLimits once, then getConnectorAccountCount
+   * in parallel — replacing N×2 sequential queries with 2 + N parallel queries.
+   */
+  async checkInstallLimitBatch(
+    slugs: string[],
+    tenantKeyInput: string,
+  ): Promise<Map<string, { allowed: boolean; reason: string | null }>> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const result = new Map<string, { allowed: boolean; reason: string | null }>();
+    if (slugs.length === 0) return result;
+
+    const usage = await this.recomputeUsage(tenantKey);
+    const limits = await this.getPlanLimits(usage.planTier);
+
+    // Global installation cap — same answer for every slug
+    if (usage.connectorInstallationsCount + 1 > limits.maxConnectorInstallations) {
+      for (const slug of slugs) {
+        result.set(slug, { allowed: false, reason: "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED" });
+      }
+      return result;
+    }
+
+    // Per-slug account cap — independent queries, run in parallel
+    const accountCounts = await Promise.all(
+      slugs.map((slug) => this.getConnectorAccountCount(tenantKey, slug)),
+    );
+
+    for (let i = 0; i < slugs.length; i++) {
+      if (accountCounts[i] + 1 > limits.maxAccountsPerConnector) {
+        result.set(slugs[i], { allowed: false, reason: "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED" });
+      } else {
+        result.set(slugs[i], { allowed: true, reason: null });
+      }
+    }
+
+    return result;
+  }
+
   async getUsageSummary(tenantKeyInput?: string): Promise<PlanUsageSummary> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
     const month = this.getMonthKey();
-    const warmSummaryRow = await this.getUsageSummaryRow(tenantKey, month);
+
+    // Run the cache read and the live user-count in parallel — the user count is
+    // never stored in PlanUsage (no column), so we always fetch it fresh here.
+    const [warmSummaryRow, liveUserCount] = await Promise.all([
+      this.getUsageSummaryRow(tenantKey, month),
+      this.prisma
+        .tenant(tenantKey)
+        .authIdentity.count({ where: { isActive: true } })
+        .catch(() => 1),
+    ]);
+
+    let summary: PlanUsageSummary;
     if (this.isUsageSummaryRowFresh(warmSummaryRow)) {
-      return this.buildUsageSummary(
+      summary = this.buildUsageSummary(
         tenantKey,
         this.mapUsageSummaryRowToUsage(warmSummaryRow),
         this.mapUsageSummaryRowToLimits(warmSummaryRow),
         this.mapUsageSummaryRowToProfile(warmSummaryRow),
       );
+    } else {
+      const [cachedUsage, profile] = await Promise.all([
+        this.getUsageRow(tenantKey, month),
+        this.getOrCreateTenantPlanProfile(tenantKey),
+      ]);
+      const usage = this.isUsageRowFresh(cachedUsage)
+        ? cachedUsage
+        : await this.recomputeUsage(tenantKey, { month, profile });
+      const limits = await this.getPlanLimits(usage.planTier);
+      summary = this.buildUsageSummary(tenantKey, usage, limits, profile);
     }
 
-    const [cachedUsage, profile] = await Promise.all([
-      this.getUsageRow(tenantKey, month),
-      this.getOrCreateTenantPlanProfile(tenantKey),
-    ]);
-    const usage = this.isUsageRowFresh(cachedUsage)
-      ? cachedUsage
-      : await this.recomputeUsage(tenantKey, { month, profile });
-    const limits = await this.getPlanLimits(usage.planTier);
-    return this.buildUsageSummary(tenantKey, usage, limits, profile);
+    // Inject the live user count — overrides the placeholder 1 from buildUsageSummary.
+    return { ...summary, users: { current: liveUserCount, limit: summary.users.limit } };
   }
 
   async getTenantPlanProfile(tenantKeyInput?: string): Promise<PlanProfileSummary> {
@@ -443,7 +517,11 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         updatedAt: now,
       };
     }
-    return this.getOrCreateTenantPlanProfile(tenantKey);
+    return this.cache.getOrSet(
+      `plan:profile:${tenantKey}`,
+      PLAN_PROFILE_CACHE_TTL_SECONDS,
+      () => this.getOrCreateTenantPlanProfile(tenantKey),
+    );
   }
 
   async setTenantPlanTier(
@@ -491,6 +569,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     `);
 
     await this.recomputeUsage(tenantKey);
+    await this.cache.invalidate(`plan:profile:${tenantKey}`);
     return this.getOrCreateTenantPlanProfile(tenantKey);
   }
 
@@ -594,6 +673,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       WHERE "tenantKey" = ${tenantKey}
     `);
 
+    await this.cache.invalidate(`plan:profile:${tenantKey}`);
     return this.getOrCreateTenantPlanProfile(tenantKey);
   }
 
@@ -647,6 +727,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         isActive: true,
         updatedAt: true,
       },
+      // Generous cap — ranking + slicing happens in-memory below. limit max is 250.
+      take: 2_500,
     });
 
     const rows = await this.buildCommercialTenantRows(
@@ -734,6 +816,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         isActive: true,
         updatedAt: true,
       },
+      // Safety cap — counts are sampled above this threshold on very large deployments.
+      take: 10_000,
     });
     const rows = await this.buildCommercialTenantRows(
       workspaces.map((workspace) => ({
@@ -933,8 +1017,22 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       ORDER BY "tenantKey"
     `);
 
-    for (const row of rows) {
-      await this.recomputeUsage(normalizeTenantKey(row.tenantKey));
+    // Process tenants in parallel chunks to avoid starving the DB connection pool
+    // while still being ~10× faster than purely sequential processing.
+    // CHUNK_SIZE = 10 keeps peak parallelism bounded regardless of tenant count.
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
+      // allSettled: a single tenant failure must not abort the rest of the batch.
+      const results = await Promise.allSettled(
+        chunk.map((row) => this.recomputeUsage(normalizeTenantKey(row.tenantKey))),
+      );
+      for (const [j, result] of results.entries()) {
+        if (result.status === "rejected") {
+          const tenantKey = chunk[j]?.tenantKey ?? "unknown";
+          this.logger.error(`rollupAllTenantsUsage: failed for tenant ${tenantKey}`, result.reason);
+        }
+      }
     }
   }
 
@@ -1199,6 +1297,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       select: {
         tenantKey: true,
       },
+      // We only need the set of matching tenantKeys — 100 is far more than enough.
+      take: 100,
     });
     return new Set(matches.map((match) => normalizeTenantKey(match.tenantKey)));
   }
@@ -1296,6 +1396,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           userId: true,
         },
         orderBy: [{ tenantKey: "asc" }, { userId: "asc" }],
+        // Cap at 5 admins per tenant in the batch — in-memory aggregation uses at most 5 per tenant.
+        take: Math.max(tenantKeys.length * 5, 500),
       }),
     ]);
 

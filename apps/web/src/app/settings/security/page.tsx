@@ -1,19 +1,17 @@
 import { AccountSecurityClient } from "@/components/settings/account-security-client";
 import { redirect } from "next/navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 import { getMfaStatus, getTenantAuthPolicy } from "@/lib/api";
 import { ApiHttpError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountSecurityPage() {
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/settings/security", 401));
   }
-  const actorRole = await getServerActorRole();
   const claims = await getServerSessionClaims();
   const requestOptions = { role: actorRole, authHeader };
 

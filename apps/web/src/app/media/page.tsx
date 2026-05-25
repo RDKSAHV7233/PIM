@@ -26,8 +26,7 @@ import {
   normalizeMarketplaceChannel,
 } from "@/lib/marketplace-channels";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +57,7 @@ function formatDateTime(value: string | null): string {
 interface MediaPageProps {
   searchParams: Promise<{
     productId?: string;
+    productSearch?: string;
     variantId?: string;
     assetId?: string;
     bulkAssociationStatus?: string;
@@ -73,10 +73,10 @@ interface MediaPageProps {
 
 export default async function MediaPage({ searchParams }: MediaPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
   const productId = String(query.productId ?? "").trim();
+  const productSearch = String(query.productSearch ?? "").trim();
   const variantId = String(query.variantId ?? "").trim();
   const channel = normalizeChannel(query.channel);
   const assetId = String(query.assetId ?? "").trim();
@@ -127,7 +127,26 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     throw error;
   }
 
-  const products = filterTestData(rawProducts, true);
+  const allProducts = filterTestData(rawProducts, true);
+  // Cap product list for the select — filter by title search when provided.
+  // Always include the currently-selected product so the dropdown shows the active value.
+  const PRODUCT_SELECT_MAX = 100;
+  const products = (() => {
+    const q = productSearch.toLowerCase();
+    const matched = q
+      ? allProducts.filter(
+          (p) =>
+            p.title.toLowerCase().includes(q) ||
+            p.id === productId,
+        )
+      : allProducts;
+    // If the selected product isn't in matched, prepend it so it stays selectable.
+    if (productId && !matched.some((p) => p.id === productId)) {
+      const selected = allProducts.find((p) => p.id === productId);
+      return selected ? [selected, ...matched.slice(0, PRODUCT_SELECT_MAX - 1)] : matched.slice(0, PRODUCT_SELECT_MAX);
+    }
+    return matched.slice(0, PRODUCT_SELECT_MAX);
+  })();
   const validation = assetId
     ? await getMediaAssetValidation(assetId, channel, { role: actorRole, authHeader })
     : null;
@@ -267,8 +286,24 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         <CardTitle>Filter</CardTitle>
         <form method="get" className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-product-search">
+              Search products
+            </label>
+            <Input
+              id="media-product-search"
+              name="productSearch"
+              defaultValue={productSearch}
+              placeholder="Type to filter…"
+            />
+          </div>
+          <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-filter-product-id">
               Product
+              {allProducts.length > PRODUCT_SELECT_MAX && (
+                <span className="ml-1 font-normal text-slate-400">
+                  (showing {products.length} of {allProducts.length})
+                </span>
+              )}
             </label>
             <Select id="media-filter-product-id" name="productId" defaultValue={productId}>
               <option value="">All products</option>
@@ -285,7 +320,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
             </label>
             <Input id="media-filter-variant-id" name="variantId" defaultValue={variantId} placeholder="Optional" />
           </div>
-          <Button type="submit" className="w-fit">
+          <Button type="submit" className="w-fit self-end">
             Apply filter
           </Button>
         </form>

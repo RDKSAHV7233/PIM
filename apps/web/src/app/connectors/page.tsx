@@ -24,8 +24,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -136,7 +135,7 @@ function connectorStatusNote(
   }
   if (implementationStatus === "partial") {
     if (slug === "meesho") {
-      return "Meesho connector supports Excel export. Download the .xlsx file and upload it manually via Supplier Panel. Direct publish is not supported by Meesho.";
+      return "Meesho connector is in development. Excel export is not yet available — the template is not yet built. Direct publish is not supported by Meesho.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
@@ -493,8 +492,7 @@ function summarizeDefinitionWorkspace(
 
 export default async function ConnectorsPage({ searchParams }: ConnectorsPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const actionStatusMessage = formatStatusMessage(String(query.status ?? ""));
   const installErrorMessage = formatInstallErrorMessage(
     String(query.installError ?? ""),
@@ -505,7 +503,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
 
   try {
     const [definitions, installations, productsRaw] = await Promise.all([
-      getConnectorDefinitions({ role: actorRole, authHeader }).catch((err) => {
+      getConnectorDefinitions({ role: actorRole, authHeader, revalidateSeconds: 60 }).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) return [] as Awaited<ReturnType<typeof getConnectorDefinitions>>;
         throw err;
       }),

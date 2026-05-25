@@ -17,8 +17,7 @@ import {
   getOutboundWebhookEndpoints,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +70,7 @@ function resolveWebhookFieldErrors(message: string) {
 
 export default async function WebhookAdminPage({ searchParams }: WebhookAdminPageProps) {
   const query = await searchParams;
-  const role = await getServerActorRole();
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole: role } = await getServerSession();
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
   const webhookFieldErrors = resolveWebhookFieldErrors(errorMessage);

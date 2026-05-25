@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createApiAccessKey, normalizeAppRole, revokeApiAccessKey, type ApiClientScope } from "@/lib/api";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export type ApiKeyCreateActionState = {
   status: "idle" | "success" | "error";
@@ -15,8 +14,7 @@ export type ApiKeyCreateActionState = {
 const SUPPORTED_API_KEY_SCOPES: readonly ApiClientScope[] = ["catalog.read", "catalog.write"];
 
 async function requireAdminRequestOptions() {
-  const authHeader = await getServerAuthHeader();
-  const role = await getServerActorRole();
+  const { authHeader, actorRole: role } = await getServerSession();
   if (role !== "admin" || !authHeader) {
     throw new Error("Admin role is required.");
   }

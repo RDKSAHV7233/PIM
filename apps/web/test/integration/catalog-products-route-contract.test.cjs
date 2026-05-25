@@ -31,11 +31,10 @@ function run() {
     "Catalog products route must trim and length-cap the search query before handing it to the workbench.",
   );
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("await getServerSession();") &&
       source.includes("Promise.all([") &&
       source.includes("getStats({ role: actorRole, authHeader })") &&
-      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })") &&
+      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader") &&
       source.includes("loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader })") &&
       source.includes("getProductListPage(") &&
       source.includes("getInstalledConnectors({ role: actorRole, authHeader })"),

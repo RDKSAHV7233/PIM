@@ -40,6 +40,60 @@ interface ProductWithCompliance extends ProductWorkbenchItem {
 
 type ProductReadinessState = Record<string, Partial<Record<MarketplaceChannel, ChannelReadinessResult>>>;
 
+/**
+ * Build a ProductReadinessState where every product × channel slot is set to
+ * the "unknown" sentinel. Used as both the loading placeholder and the fallback
+ * when the batch request fails.
+ */
+function buildEmptyReadinessState(productIds: string[]): ProductReadinessState {
+  return Object.fromEntries(
+    productIds.map((productId) => [
+      productId,
+      Object.fromEntries(
+        READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
+      ),
+    ]),
+  );
+}
+
+/**
+ * Build a ProductReadinessState where every product × channel slot is set to
+ * the "loading" sentinel. Shown immediately while the batch request is in-flight
+ * so the UI can display skeleton/spinner indicators during data fetch.
+ */
+function buildLoadingReadinessState(productIds: string[]): ProductReadinessState {
+  return Object.fromEntries(
+    productIds.map((productId) => [
+      productId,
+      Object.fromEntries(
+        READINESS_CHANNELS.map((channel) => [channel, buildLoadingReadiness(channel)]),
+      ),
+    ]),
+  );
+}
+
+/**
+ * Merge the batch API response into a full ProductReadinessState, filling any
+ * missing product × channel combinations with the "unknown" sentinel.
+ */
+function mergeReadinessBatchResponse(
+  productIds: string[],
+  payload: ProductReadinessBatchResponse,
+): ProductReadinessState {
+  const state = buildEmptyReadinessState(productIds);
+  for (const item of payload.items ?? []) {
+    state[item.productId] = Object.fromEntries(
+      READINESS_CHANNELS.map((channel) => {
+        const result =
+          item.readiness.find((candidate) => candidate.channel === channel) ??
+          buildUnknownReadiness(channel);
+        return [channel, result];
+      }),
+    ) as Partial<Record<MarketplaceChannel, ChannelReadinessResult>>;
+  }
+  return state;
+}
+
 interface ProductsTabProps {
   role: AppRole;
   products: ProductWorkbenchItem[];
@@ -231,16 +285,7 @@ export function ProductsTab({
     }
 
     const controller = new AbortController();
-    const loadingState = Object.fromEntries(
-      productIds.map((productId) => [
-        productId,
-        Object.fromEntries(
-          READINESS_CHANNELS.map((channel) => [channel, buildLoadingReadiness(channel)]),
-        ),
-      ]),
-    ) as ProductReadinessState;
-
-    setReadinessState(loadingState);
+    setReadinessState(buildLoadingReadinessState(productIds));
 
     async function loadReadinessBatch() {
       try {
@@ -265,40 +310,12 @@ export function ProductsTab({
           return;
         }
 
-        const nextState = Object.fromEntries(
-          productIds.map((productId) => [
-            productId,
-            Object.fromEntries(
-              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
-            ),
-          ]),
-        ) as ProductReadinessState;
-
-        for (const item of payload.items ?? []) {
-          nextState[item.productId] = Object.fromEntries(
-            READINESS_CHANNELS.map((channel) => {
-              const result =
-                item.readiness.find((candidate) => candidate.channel === channel) ??
-                buildUnknownReadiness(channel);
-              return [channel, result];
-            }),
-          ) as Partial<Record<MarketplaceChannel, ChannelReadinessResult>>;
-        }
-
-        setReadinessState(nextState);
+        setReadinessState(mergeReadinessBatchResponse(productIds, payload));
       } catch {
         if (controller.signal.aborted) {
           return;
         }
-        const fallbackState = Object.fromEntries(
-          productIds.map((productId) => [
-            productId,
-            Object.fromEntries(
-              READINESS_CHANNELS.map((channel) => [channel, buildUnknownReadiness(channel)]),
-            ),
-          ]),
-        ) as ProductReadinessState;
-        setReadinessState(fallbackState);
+        setReadinessState(buildEmptyReadinessState(productIds));
       }
     }
 

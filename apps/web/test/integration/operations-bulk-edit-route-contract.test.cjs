@@ -32,8 +32,7 @@ function run() {
     "Operations bulk edit must normalize scoped product IDs by splitting comma/newline input and deduping values.",
   );
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("await getServerSession();") &&
       source.includes("const canWrite = canEditWorkspace(actorRole);"),
     "Operations bulk edit must derive shared auth/session context and write capability on the server.",
   );
@@ -45,7 +44,7 @@ function run() {
   assert(
     source.includes("const [operations, categories, products] = await Promise.all([") &&
       source.includes("getBulkEditOperations(100, { role: actorRole, authHeader })") &&
-      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })") &&
+      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader") &&
       source.includes("getProducts({ role: actorRole, authHeader })"),
     "Operations bulk edit must load operations, categories, and products together from the shared auth context.",
   );

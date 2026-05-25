@@ -1313,20 +1313,7 @@ export class MarketplaceService implements OnModuleInit {
           include: { template: true },
         });
         // Update per-installation sync state so delta sync doesn't re-queue this product
-        if (effectiveInstallationId) {
-          const syncProduct = await this.prisma.tenant().product.findUnique({
-            where: { id: existing.productId },
-            select: { version: true },
-          });
-          if (syncProduct) {
-            await this.upsertSyncState(
-              effectiveInstallationId,
-              existing.productId,
-              syncProduct.version ?? 1,
-              "SUCCESS",
-            ).catch(() => { /* non-critical — delta sync will re-process next cycle */ });
-          }
-        }
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "SUCCESS");
         await this.notificationsService.emitPublishStatus(updated.id, "completed");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         return updated;
@@ -1349,20 +1336,7 @@ export class MarketplaceService implements OnModuleInit {
         await this.notificationsService.emitPublishStatus(updated.id, "dead_letter");
         await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
         // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue this product on every run
-        if (effectiveInstallationId) {
-          const syncProduct = await this.prisma.tenant().product.findUnique({
-            where: { id: existing.productId },
-            select: { version: true },
-          }).catch(() => null);
-          if (syncProduct) {
-            await this.upsertSyncState(
-              effectiveInstallationId,
-              existing.productId,
-              syncProduct.version ?? 1,
-              "ERROR",
-            ).catch(() => { /* non-critical */ });
-          }
-        }
+        await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
         return updated;
       }
 
@@ -1399,20 +1373,7 @@ export class MarketplaceService implements OnModuleInit {
       await this.notificationsService.emitPublishStatus(updated.id, "failed");
       await this.emitExportThroughputMetric(existing.channel, startedAtMs, updated.status);
       // P0-1 + P3-4: record ERROR sync state so delta sync doesn't re-queue on every subsequent run
-      if (effectiveInstallationId) {
-        const syncProduct = await this.prisma.tenant().product.findUnique({
-          where: { id: existing.productId },
-          select: { version: true },
-        }).catch(() => null);
-        if (syncProduct) {
-          await this.upsertSyncState(
-            effectiveInstallationId,
-            existing.productId,
-            syncProduct.version ?? 1,
-            "ERROR",
-          ).catch(() => { /* non-critical */ });
-        }
-      }
+      await this.persistSyncStateForProduct(effectiveInstallationId, existing.productId, "ERROR");
       return updated;
     }
   }
@@ -2809,6 +2770,7 @@ export class MarketplaceService implements OnModuleInit {
         submittedAt: true,
       },
       orderBy: { submittedAt: "desc" },
+      take: 10_000, // defensive cap — large installations can have many failed submissions
     });
 
     const groupMap = new Map<string, { affectedCount: number; exampleMessage: string; productIds: string[] }>();
@@ -2855,6 +2817,7 @@ export class MarketplaceService implements OnModuleInit {
 
     const failed = await db.connectorSubmission.findMany({
       where: { installationId, status: "FAILED" },
+      take: 10_000, // defensive cap — large installations can have many failed submissions
       select: { productId: true, channelErrors: true },
     });
 
@@ -2867,16 +2830,27 @@ export class MarketplaceService implements OnModuleInit {
 
     const uniqueProductIds = [...new Set(eligible.map((s) => s.productId))];
 
-    let queued = 0;
-    for (const productId of uniqueProductIds) {
-      try {
-        const product = await db.product.findUnique({ where: { id: productId }, select: { categoryId: true } });
-        if (!product) continue;
+    // Batch-fetch categoryId for all eligible products — avoids N+1 findUnique inside the loop.
+    const productRows = await db.product.findMany({
+      where: { id: { in: uniqueProductIds } },
+      select: { id: true, categoryId: true },
+      take: uniqueProductIds.length,
+    });
+    const categoryIdByProduct = new Map(productRows.map((p) => [p.id, p.categoryId]));
+
+    const createdBy = actor?.actorId?.trim() ? actor.actorId.trim() : null;
+
+    // Parallel job creation + enqueue — each product is independent.
+    // Promise.allSettled so a single failure doesn't abort the rest.
+    const results = await Promise.allSettled(
+      uniqueProductIds.map(async (productId) => {
+        const categoryId = categoryIdByProduct.get(productId);
+        if (!categoryId) throw new Error("missing_category");
         const job = await db.marketplaceExportJob.create({
           data: {
-            createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : null,
+            createdBy,
             productId,
-            categoryId: product.categoryId,
+            categoryId,
             channel,
             status: ExportJobStatus.queued,
             retryCount: 0,
@@ -2888,12 +2862,10 @@ export class MarketplaceService implements OnModuleInit {
           jobId: job.id,
           connectorSlug,
         } satisfies ConnectorWorkerPayload);
-        queued++;
-      } catch {
-        // Skip individual product failures; best-effort bulk retry
-      }
-    }
+      }),
+    );
 
+    const queued = results.filter((r) => r.status === "fulfilled").length;
     return { queued };
   }
 
@@ -3009,36 +2981,118 @@ export class MarketplaceService implements OnModuleInit {
 
   // ─── Sprint 8: Delta sync ──────────────────────────────────────────────────
 
-  async getDeltaSyncCandidates(installationId: string): Promise<{ productId: string; version: number }[]> {
-    const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    const db = this.prisma.tenant(tenantKey);
-
-    // Products that have been modified (by version) since last sync for this installation
-    const products = await db.product.findMany({
-      where: { status: "approved" },
-      select: { id: true, version: true },
-      orderBy: [{ updatedAt: "desc" }],
-      take: 500,
-    });
-
-    if (products.length === 0) return [];
-
-    // Fetch sync states for this installation (raw to avoid Prisma type error on new model)
-    const syncStates = await tenantRaw<Array<{
-      product_id: string;
-      last_synced_version: number | null;
-    }>>(
+  /**
+   * Single-query delta candidate scan using a DB-side LEFT JOIN.
+   *
+   * Replaces the old two-step approach (load N products → load sync states →
+   * filter in-memory) with one query that returns ONLY products genuinely out
+   * of sync with the given installation:
+   *   • No sync state row exists yet  (new installation, first-time sync), OR
+   *   • Product version > last_synced_version  (product changed since last push).
+   *
+   * Supports keyset cursor pagination (ORDER BY p.id ASC; cursor = last id seen)
+   * so that queueDeltaSync can page through catalogs of up to 99 999 SKUs
+   * (ENTERPRISE plan limit) without loading the full table into memory.
+   */
+  private async fetchDeltaCandidatesPage(
+    installationId: string,
+    tenantKey: string,
+    cursor: string | null,
+    take: number,
+  ): Promise<Array<{ product_id: string; version: number; category_id: string }>> {
+    return tenantRaw<Array<{ product_id: string; version: number; category_id: string }>>(
       this.prisma.tenant(tenantKey),
-      `SELECT product_id, last_synced_version FROM connector_product_sync_states
-       WHERE tenant_key = $1 AND installation_id = $2`,
-      [tenantKey, installationId],
+      `SELECT p.id                   AS product_id,
+              COALESCE(p.version, 0) AS version,
+              p."categoryId"         AS category_id
+       FROM   "Product" p
+       LEFT JOIN connector_product_sync_states s
+              ON  s.product_id     = p.id
+              AND s.installation_id = $1
+              AND s.tenant_key     = $2
+       WHERE  p."tenantKey"  = $2
+         AND  p.status       = 'approved'
+         AND  p."deletedAt" IS NULL
+         AND  (s.product_id IS NULL
+               OR COALESCE(p.version, 0) > COALESCE(s.last_synced_version, -1))
+         AND  ($3::text IS NULL OR p.id > $3)
+       ORDER BY p.id ASC
+       LIMIT $4`,
+      [installationId, tenantKey, cursor, take],
+    );
+  }
+
+  /**
+   * Operational monitoring endpoint — returns a live breakdown of export-job
+   * statuses for a given installation so that operators can track progress of a
+   * running delta sync without needing an async SyncRun record.
+   *
+   * All counts are scoped to jobs where installationId = the requested value.
+   * A `pendingRatio` field (queued+processing+retrying / total) lets the caller
+   * render a progress bar without doing arithmetic.
+   */
+  async getDeltaSyncStatus(installationId: string): Promise<{
+    installationId: string;
+    total: number;
+    queued: number;
+    processing: number;
+    retrying: number;
+    skipped: number;
+    completed: number;
+    failed: number;
+    dead_letter: number;
+    pendingRatio: number;
+    lastUpdatedAt: string | null;
+  }> {
+    const db = this.prisma.tenant();
+
+    const [statusCounts, lastJob] = await Promise.all([
+      db.marketplaceExportJob.groupBy({
+        by: ["status"],
+        where: { installationId },
+        _count: { _all: true },
+      }),
+      db.marketplaceExportJob.findFirst({
+        where: { installationId },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      }),
+    ]);
+
+    const counts: Record<string, number> = Object.fromEntries(
+      statusCounts.map((r) => [r.status as string, r._count._all]),
     );
 
-    const syncMap = new Map(syncStates.map((s) => [s.product_id, s.last_synced_version ?? -1]));
+    const total = statusCounts.reduce((acc, r) => acc + r._count._all, 0);
+    const inFlight =
+      (counts["queued"] ?? 0) +
+      (counts["processing"] ?? 0) +
+      (counts["retrying"] ?? 0);
 
-    return products
-      .filter((p) => (p.version ?? 0) > (syncMap.get(p.id) ?? -1))
-      .map((p) => ({ productId: p.id, version: p.version ?? 0 }));
+    return {
+      installationId,
+      total,
+      queued: counts["queued"] ?? 0,
+      processing: counts["processing"] ?? 0,
+      retrying: counts["retrying"] ?? 0,
+      skipped: counts["skipped"] ?? 0,
+      completed: counts["completed"] ?? 0,
+      failed: counts["failed"] ?? 0,
+      dead_letter: counts["dead_letter"] ?? 0,
+      pendingRatio: total > 0 ? inFlight / total : 0,
+      lastUpdatedAt: lastJob?.updatedAt.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * Returns up to 5 000 delta-sync candidates for the UI preview endpoint.
+   * The actual job-queuing path (queueDeltaSync) uses fetchDeltaCandidatesPage
+   * with full cursor pagination and processes the entire catalog.
+   */
+  async getDeltaSyncCandidates(installationId: string): Promise<{ productId: string; version: number }[]> {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const rows = await this.fetchDeltaCandidatesPage(installationId, tenantKey, null, 5_000);
+    return rows.map((r) => ({ productId: r.product_id, version: r.version }));
   }
 
   async queueDeltaSync(
@@ -3062,36 +3116,91 @@ export class MarketplaceService implements OnModuleInit {
       throw new BadRequestException("This connector does not support publish — delta sync not available.");
     }
 
-    const candidates = await this.getDeltaSyncCandidates(installationId);
+    const channel = connectorDef?.slug ?? "shopify";
+    const createdBy = actor?.actorId?.trim() ? actor.actorId.trim() : "delta_sync";
     let queued = 0;
     let skipped = 0;
+    let cursor: string | null = null;
+    const PAGE_SIZE = 200;
 
-    for (const { productId } of candidates) {
-      try {
-        const product = await db.product.findUnique({
-          where: { id: productId },
-          select: { id: true, categoryId: true },
-        });
-        if (!product) { skipped++; continue; }
+    // Cursor-paginated loop — processes the full catalog in 200-row pages so that
+    // ENTERPRISE tenants with up to 99 999 approved products are handled correctly.
+    do {
+      const page = await this.fetchDeltaCandidatesPage(installationId, tenantKey, cursor, PAGE_SIZE);
+      if (page.length === 0) break;
 
-        await db.marketplaceExportJob.create({
-          data: {
-            productId,
-            categoryId: product.categoryId,
-            channel: connectorDef?.slug ?? "shopify",
-            status: ExportJobStatus.queued,
-            maxRetries: 3,
-            retryCount: 0,
-            createdBy: actor?.actorId?.trim() ? actor.actorId.trim() : "delta_sync",
-          },
-        });
-        queued++;
-      } catch {
-        skipped++;
+      // Parallel job creation — Promise.allSettled so one conflict/error doesn't
+      // abort the whole batch; each rejection is counted as skipped.
+      // upsert (not create) makes the loop idempotent: a restart after a partial run
+      // won't create duplicate jobs, and previously-failed jobs are automatically
+      // re-queued when the product's version has moved on.
+      const results = await Promise.allSettled(
+        page.map(({ product_id: productId, category_id: categoryId }) => {
+          if (!categoryId) return Promise.reject(new Error("missing_category"));
+          return db.marketplaceExportJob.upsert({
+            where: {
+              tenantKey_productId_installationId: { tenantKey, productId, installationId },
+            },
+            create: {
+              tenantKey,
+              productId,
+              categoryId,
+              channel,
+              installationId,
+              status: ExportJobStatus.queued,
+              maxRetries: 3,
+              retryCount: 0,
+              createdBy,
+            },
+            update: {
+              // Re-queue if this product previously failed and its version has since
+              // changed (fetchDeltaCandidatesPage already confirmed version > last_synced).
+              // Safe no-op if the job is already queued or processing.
+              status: ExportJobStatus.queued,
+              retryCount: 0,
+              failureReason: null,
+              dlqReason: null,
+              categoryId, // in case the product was re-categorised
+            },
+            select: { id: true },
+          });
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") queued++;
+        else skipped++;
       }
-    }
+
+      if (page.length < PAGE_SIZE) break; // partial page → catalog exhausted
+      cursor = page[page.length - 1]!.product_id;
+    } while (true); // eslint-disable-line no-constant-condition
 
     return { queued, skipped };
+  }
+
+  /**
+   * Convenience wrapper used by processExportJob: fetches the product version and
+   * upserts sync state in a single non-fatal call. All errors are silenced so that
+   * failure here never disrupts the export result returned to the job worker.
+   */
+  private async persistSyncStateForProduct(
+    installationId: string | null | undefined,
+    productId: string,
+    outcome: "SUCCESS" | "ERROR",
+  ): Promise<void> {
+    if (!installationId) return;
+    const syncProduct = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      select: { version: true },
+    }).catch(() => null);
+    if (!syncProduct) return;
+    await this.upsertSyncState(
+      installationId,
+      productId,
+      syncProduct.version ?? 1,
+      outcome,
+    ).catch(() => { /* non-critical — delta sync will re-process next cycle */ });
   }
 
   async upsertSyncState(installationId: string, productId: string, version: number, status: string): Promise<void> {
@@ -3256,12 +3365,13 @@ export class MarketplaceService implements OnModuleInit {
       select: { productId: true, externalRef: true },
       orderBy: [{ submittedAt: "desc" }],
       distinct: ["productId"],
+      take: 10_000, // defensive cap — one SUCCESS submission per submitted product
     });
 
     const products = await db.product.findMany({
       where: { status: "approved" },
       select: { id: true, title: true, variants: { take: 1, select: { skuCode: true } } },
-      take: 500,
+      take: 10_000, // raised from 500 — covers ENTERPRISE plan (up to 99 999 SKUs)
     });
 
     const submissionMap = new Map(submissions.map((s) => [s.productId, s.externalRef!]));
@@ -3288,20 +3398,22 @@ export class MarketplaceService implements OnModuleInit {
     actor?: PolicyActor,
   ): Promise<{ confirmed: number }> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
-    let confirmed = 0;
-    for (const link of links) {
-      const id = `link_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-      await tenantExecRaw(
-        this.prisma.tenant(tenantKey),
-        `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW(), NOW())
-         ON CONFLICT (tenant_key, installation_id, product_id)
-         DO UPDATE SET shopify_gid = $5, matched_by = $6, confirmed_at = NOW(), confirmed_by = $7, updated_at = NOW()`,
-        [id, tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, actor?.actorId ?? null],
-      );
-      confirmed++;
-    }
-    return { confirmed };
+    const confirmedBy = actor?.actorId ?? null;
+
+    const results = await Promise.allSettled(
+      links.map((link) =>
+        tenantExecRaw(
+          this.prisma.tenant(tenantKey),
+          `INSERT INTO connector_product_links (id, tenant_key, installation_id, product_id, shopify_gid, matched_by, confirmed_at, confirmed_by, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, NOW(), NOW())
+           ON CONFLICT (tenant_key, installation_id, product_id)
+           DO UPDATE SET shopify_gid = $5, matched_by = $6, confirmed_at = NOW(), confirmed_by = $7, updated_at = NOW()`,
+          [randomUUID(), tenantKey, installationId, link.productId, link.shopifyGid, link.matchedBy, confirmedBy],
+        ),
+      ),
+    );
+
+    return { confirmed: results.filter((r) => r.status === "fulfilled").length };
   }
 
   async getProductLinks(installationId: string): Promise<Array<{

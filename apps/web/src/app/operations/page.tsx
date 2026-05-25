@@ -12,8 +12,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   if (!value) {
@@ -46,8 +45,7 @@ const OPERATIONS_SUBMISSION_WINDOW_LIMIT = 200;
 export default async function OperationsPage() {
   const submissionWindowLimit = OPERATIONS_SUBMISSION_WINDOW_LIMIT;
   const deadLetterWindowLimit = OPERATIONS_SUBMISSION_WINDOW_LIMIT;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canRunWriteOperations = canEditWorkspace(actorRole);
 
   try {

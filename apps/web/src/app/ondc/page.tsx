@@ -18,8 +18,7 @@ import {
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +38,7 @@ interface OndcPageProps {
 
 export default async function OndcPage({ searchParams }: OndcPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const ondcEnabled =
     String(process.env.FEATURE_ONDC_ENABLED ?? "false").trim().toLowerCase() === "true";
   if (actorRole !== "admin" || process.env.APP_ENV === "production" || !ondcEnabled) {
@@ -58,7 +56,7 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
   let mappings: Awaited<ReturnType<typeof getOndcMappings>>;
   try {
     [rawCategories, rawProducts, versions, mappings] = await Promise.all([
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
       getOndcVersions({ role: actorRole, authHeader }),
       getOndcMappings(

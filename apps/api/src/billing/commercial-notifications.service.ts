@@ -253,6 +253,7 @@ export class CommercialNotificationsService {
       orderBy: {
         userId: "asc",
       },
+      take: 20, // defensive cap — admin recipients; no tenant has more than a handful of admins
       select: {
         userId: true,
       },

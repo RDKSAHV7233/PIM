@@ -8,6 +8,7 @@ import {
 import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { type AppRole, type FoundationRole } from "../common/rbac/roles";
 import { normalizeAppRole, normalizeFoundationRole } from "../common/rbac/role-utils";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -47,6 +48,7 @@ export class WorkspaceUsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   async listUsers(tenantId: string): Promise<WorkspaceUserRow[]> {
@@ -63,6 +65,7 @@ export class WorkspaceUsersService {
           id: "desc",
         },
       ],
+      take: 1_000, // defensive cap — workspace user lists are admin-only; no tenant reaches this
       select: {
         id: true,
         userId: true,
@@ -86,6 +89,7 @@ export class WorkspaceUsersService {
           method: "totp",
           status: "active",
         },
+        take: userIds.length, // at most one active TOTP enrollment per user
         select: { userId: true },
       });
       enrolledUserIds = new Set(mfaRows.map((r) => r.userId));
@@ -121,6 +125,16 @@ export class WorkspaceUsersService {
     });
     if (existing) {
       throw new ConflictException({ error: "USER_ALREADY_EXISTS" });
+    }
+
+    // Enforce the tenant's user-count plan limit before creating.
+    const planCheck = await this.planUsage.checkLimit("users", 1, normalizedTenantId);
+    if (!planCheck.allowed) {
+      throw new ForbiddenException({
+        error: "PLAN_USERS_LIMIT_EXCEEDED",
+        limit: planCheck.limit,
+        current: planCheck.current,
+      });
     }
 
     try {

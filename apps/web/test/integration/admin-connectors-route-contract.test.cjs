@@ -24,8 +24,7 @@ function run() {
     "Admin connectors must use the shared page-header pattern and explain the read-only fallback honestly.",
   );
   assert(
-    source.includes("const role = await getServerActorRole();") &&
-      source.includes("const authHeader = await getServerAuthHeader();"),
+    source.includes("const { authHeader, actorRole: role } = await getServerSession();"),
     "Admin connectors must derive shared server auth/session context before loading connector access data.",
   );
   assert(
@@ -34,7 +33,7 @@ function run() {
   );
   assert(
     source.includes("const [definitions, permissions] = await Promise.all([") &&
-      source.includes("getConnectorDefinitions({ role, authHeader })") &&
+      source.includes("getConnectorDefinitions({ role, authHeader") &&
       source.includes("getConnectorPermissions(undefined, { role, authHeader })"),
     "Admin connectors must load connector definitions and current permissions together through the shared auth context.",
   );

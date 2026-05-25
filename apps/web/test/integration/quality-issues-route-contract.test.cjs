@@ -29,8 +29,7 @@ function run() {
     "Issue Inbox must clamp page size into a safe 1-200 range.",
   );
   assert(
-    issuesSource.includes("const authHeader = await getServerAuthHeader();") &&
-      issuesSource.includes("const actorRole = await getServerActorRole();") &&
+      issuesSource.includes("await getServerSession();") &&
       issuesSource.includes("const canResolveWarnings = canResolveIssueInboxWarnings(actorRole);"),
     "Issue Inbox must derive auth context and warning-resolution capability from the shared server session helpers.",
   );
@@ -42,7 +41,7 @@ function run() {
   assert(
     issuesSource.includes("Promise.all([") &&
       issuesSource.includes("getIssueInbox(") &&
-      issuesSource.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })") &&
+      issuesSource.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader") &&
       issuesSource.includes("getInstalledConnectors({ role: actorRole, authHeader })"),
     "Issue Inbox must load inbox items, categories, and installed connectors together from the shared auth context.",
   );

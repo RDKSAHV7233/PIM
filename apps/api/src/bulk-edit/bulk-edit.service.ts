@@ -136,6 +136,7 @@ export class BulkEditService {
       where,
       orderBy: [{ updatedAt: "desc" }],
       select: this.productSelect,
+      take: 10_000, // defensive cap — prevents full-table scan for category-scoped edits
     });
 
     const operation = await this.prisma.tenant().bulkEditOperation.create({
@@ -147,58 +148,68 @@ export class BulkEditService {
       },
     });
 
-    let appliedCount = 0;
-    let failedCount = 0;
-
-    for (const product of products) {
-      const before = this.toSnapshot(product);
-      try {
-        await this.accessPolicy.assertRequestedProductScopeAllowed(
-          actor ?? {},
-          "edit",
-          {
-            resource: "BulkEditOperation",
-            resourceId: product.id,
-            categoryId: product.categoryId,
-            brand: normalizedUpdates.brand ?? product.brand,
-          },
-        );
-        if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
-          throw new BadRequestException(
-            `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
+    // Parallel product updates — each product is independent (distinct productId).
+    // With the compliance cache warm after the first product (same categoryId across
+    // all products in a bulk edit), per-product DB cost is ~3 writes.
+    // Promise.allSettled so one product failure doesn't abort the rest.
+    const outcomes = await Promise.allSettled(
+      products.map(async (product) => {
+        const before = this.toSnapshot(product);
+        try {
+          await this.accessPolicy.assertRequestedProductScopeAllowed(
+            actor ?? {},
+            "edit",
+            {
+              resource: "BulkEditOperation",
+              resourceId: product.id,
+              categoryId: product.categoryId,
+              brand: normalizedUpdates.brand ?? product.brand,
+            },
           );
+          if (normalizedUpdates.status && !isValidStatusTransition(product.status, normalizedUpdates.status)) {
+            throw new BadRequestException(
+              `Invalid workflow transition from ${product.status} to ${normalizedUpdates.status}.`,
+            );
+          }
+          const updated = await this.prisma.tenant().product.update({
+            where: { id: product.id },
+            data: updateData,
+            select: this.productSelect,
+          });
+
+          await this.complianceService.validateAndPersistProduct(updated.id);
+
+          await this.prisma.tenant().bulkEditOperationItem.create({
+            data: {
+              operationId: operation.id,
+              productId: updated.id,
+              status: "success",
+              before: before as Prisma.JsonObject,
+              after: this.toSnapshot(updated) as Prisma.JsonObject,
+            },
+          });
+          return "success" as const;
+        } catch (error: unknown) {
+          await this.prisma.tenant().bulkEditOperationItem.create({
+            data: {
+              operationId: operation.id,
+              productId: product.id,
+              status: "failed",
+              before: before as Prisma.JsonObject,
+              errorMessage: this.extractErrorMessage(error),
+            },
+          });
+          return "failed" as const;
         }
-        const updated = await this.prisma.tenant().product.update({
-          where: { id: product.id },
-          data: updateData,
-          select: this.productSelect,
-        });
+      }),
+    );
 
-        await this.complianceService.validateAndPersistProduct(updated.id);
-
-        await this.prisma.tenant().bulkEditOperationItem.create({
-          data: {
-            operationId: operation.id,
-            productId: updated.id,
-            status: "success",
-            before: before as Prisma.JsonObject,
-            after: this.toSnapshot(updated) as Prisma.JsonObject,
-          },
-        });
-        appliedCount += 1;
-      } catch (error: unknown) {
-        await this.prisma.tenant().bulkEditOperationItem.create({
-          data: {
-            operationId: operation.id,
-            productId: product.id,
-            status: "failed",
-            before: before as Prisma.JsonObject,
-            errorMessage: this.extractErrorMessage(error),
-          },
-        });
-        failedCount += 1;
-      }
-    }
+    const appliedCount = outcomes.filter(
+      (r) => r.status === "fulfilled" && r.value === "success",
+    ).length;
+    const failedCount = outcomes.filter(
+      (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value === "failed"),
+    ).length;
 
     const status = failedCount > 0 && appliedCount === 0 ? "failed" : "completed";
 

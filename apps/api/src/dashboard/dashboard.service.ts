@@ -355,6 +355,7 @@ export class DashboardService implements OnModuleDestroy {
       this.prisma.tenant(tenantKey).connectorDefinition.findMany({
         where: { isActive: true },
         orderBy: [{ displayName: "asc" }],
+        take: 50, // defensive cap — no tenant has > ~20 marketplace connectors
         select: {
           id: true,
           slug: true,
@@ -365,6 +366,7 @@ export class DashboardService implements OnModuleDestroy {
         where: {
           status: { not: "DISABLED" },
         },
+        take: 200, // defensive cap — installations are bounded by definitions × stores
         select: {
           id: true,
           connectorId: true,
@@ -379,6 +381,7 @@ export class DashboardService implements OnModuleDestroy {
           where: {
             installationId: { in: installationIds },
           },
+          take: 10_000, // defensive cap — one submission per product-installation pair
           select: {
             installationId: true,
             status: true,
@@ -461,6 +464,7 @@ export class DashboardService implements OnModuleDestroy {
           required: true,
           appliesTo: "product",
         },
+        take: 1_000, // defensive cap — attribute definitions are admin-configured
         select: {
           categoryId: true,
           key: true,
@@ -470,6 +474,9 @@ export class DashboardService implements OnModuleDestroy {
         where: {
           deletedAt: null,
         },
+        // NOTE: catalog-health metrics are sampled above 50k products.
+        // For accurate full-catalog scoring at scale, replace with aggregated DB queries.
+        take: 50_000,
         select: {
           id: true,
           title: true,
@@ -486,6 +493,7 @@ export class DashboardService implements OnModuleDestroy {
           productId: { not: null },
         },
         distinct: ["productId"],
+        take: 50_000, // defensive cap — one distinct productId per product
         select: {
           productId: true,
         },
@@ -569,12 +577,14 @@ export class DashboardService implements OnModuleDestroy {
     const stubSlugs = resolveStubConnectorSlugs();
     const [definitions, installations, submissions, deadLetterJobs, importJobs] = await Promise.all([
       this.prisma.tenant(tenantKey).connectorDefinition.findMany({
+        take: 50, // defensive cap — marketplace connectors are few per tenant
         select: {
           id: true,
           slug: true,
         },
       }),
       this.prisma.tenant(tenantKey).connectorInstallation.findMany({
+        take: 200, // defensive cap — installations bounded by definitions × store accounts
         select: {
           connectorId: true,
           status: true,

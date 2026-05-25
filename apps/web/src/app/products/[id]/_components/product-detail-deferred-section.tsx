@@ -102,7 +102,7 @@ export async function ProductDetailDeferredSection({
           suggestions: [],
         }) satisfies Awaited<ReturnType<typeof getMarketplaceSimulation>>,
     ),
-    getCategoryAttributes(product.categoryId, { role: actorRole, authHeader }).catch(
+    getCategoryAttributes(product.categoryId, { role: actorRole, authHeader, revalidateSeconds: 60 }).catch(
       () => [] as Awaited<ReturnType<typeof getCategoryAttributes>>,
     ),
     evaluateConnectorPublishReadiness(

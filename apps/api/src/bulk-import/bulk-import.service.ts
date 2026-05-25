@@ -677,9 +677,12 @@ export class BulkImportService {
       take: effectiveChunk,
     });
 
-    for (const row of rows) {
-      await this.processRow(job, row);
-    }
+    // Parallel row processing: each row is independent (distinct productId, distinct
+    // bulkImportRow.id).  With the compliance cache warm after the first row
+    // (all rows in a job share the same categoryId), per-row DB cost is ~4 writes.
+    // Promise.allSettled so one bad row doesn't abort the rest of the chunk.
+    // The existing effectiveChunk cap (max 500) provides the concurrency ceiling.
+    await Promise.allSettled(rows.map((row) => this.processRow(job, row)));
 
     await this.refreshJobCounters(job.id);
     return this.getJob(job.id, actor);
@@ -769,6 +772,7 @@ export class BulkImportService {
         },
       },
       orderBy: [{ rowNumber: "asc" }],
+      take: 10_000, // defensive cap — error-report CSV is bounded by job size
       select: {
         rowNumber: true,
         status: true,
@@ -809,6 +813,7 @@ export class BulkImportService {
     const rows = await this.prisma.tenant().bulkImportRow.findMany({
       where: { jobId },
       orderBy: [{ rowNumber: "asc" }],
+      take: 10_000, // defensive cap — preflight scans entire job; bounded by import size
     });
 
     const skuSeen = new Map<string, number[]>();
@@ -978,14 +983,22 @@ export class BulkImportService {
   }
 
   private async refreshJobCounters(jobId: string) {
-    const current = await this.prisma.tenant().bulkImportJob.findUnique({
-      where: { id: jobId },
-      select: { status: true },
-    });
-    const rows = await this.prisma.tenant().bulkImportRow.findMany({
-      where: { jobId },
-      select: { status: true },
-    });
+    // Run the job status lookup and the counter aggregation in parallel —
+    // they are completely independent queries on different tables.
+    // groupBy replaces the old findMany + in-memory loop: instead of shipping
+    // every row across the wire (potentially tens of thousands in a large import),
+    // the DB does the aggregation and returns at most one row per distinct status.
+    const [current, statusGroups] = await Promise.all([
+      this.prisma.tenant().bulkImportJob.findUnique({
+        where: { id: jobId },
+        select: { status: true },
+      }),
+      this.prisma.tenant().bulkImportRow.groupBy({
+        by: ["status"],
+        where: { jobId },
+        _count: { status: true },
+      }),
+    ]);
 
     const counters = {
       success: 0,
@@ -993,15 +1006,17 @@ export class BulkImportService {
       deadLetter: 0,
       pending: 0,
     };
-    for (const row of rows) {
-      if (row.status === BulkImportRowStatus.success) {
-        counters.success += 1;
-      } else if (row.status === BulkImportRowStatus.failed) {
-        counters.failed += 1;
-      } else if (row.status === BulkImportRowStatus.dead_letter) {
-        counters.deadLetter += 1;
+    for (const group of statusGroups) {
+      const count = group._count.status;
+      if (group.status === BulkImportRowStatus.success) {
+        counters.success = count;
+      } else if (group.status === BulkImportRowStatus.failed) {
+        counters.failed = count;
+      } else if (group.status === BulkImportRowStatus.dead_letter) {
+        counters.deadLetter = count;
       } else {
-        counters.pending += 1;
+        // queued / processing / retrying all count as "pending"
+        counters.pending += count;
       }
     }
 
@@ -1688,6 +1703,7 @@ export class BulkImportService {
           in: categoryIds,
         },
       },
+      take: 5_000, // defensive cap — attributes across all categories in these templates
       select: {
         categoryId: true,
         key: true,
@@ -1721,6 +1737,7 @@ export class BulkImportService {
   private async buildTemplateSchemaSnapshot(categoryId: string): Promise<TemplateSchemaSnapshot> {
     const attributes = await this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
+      take: 500, // defensive cap — attribute definitions per category
       select: {
         key: true,
         dataType: true,

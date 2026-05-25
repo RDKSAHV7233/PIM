@@ -7,8 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getInstalledConnectors } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { getProductLinks, scanCatalogLinks } from "@/lib/api/connectors";
 import { ConfirmLinksButton } from "./ConfirmLinksButton";
 
@@ -22,8 +21,7 @@ interface PageProps {
 export default async function CatalogLinkPage({ params, searchParams }: PageProps) {
   const { installationId } = await params;
   const { scan } = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const role = await getServerActorRole();
+  const { authHeader, actorRole: role } = await getServerSession();
   const options = { role, authHeader };
   const returnPath = `/channels/connectors/${installationId}/catalog-link`;
 

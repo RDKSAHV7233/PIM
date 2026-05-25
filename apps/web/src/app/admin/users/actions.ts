@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  ApiHttpError,
   createAccessScopeAssignment,
   createWorkspaceUser,
   deleteAccessScopeAssignment,
@@ -13,8 +14,7 @@ import {
   normalizeAppRole,
   type AppRole,
 } from "@/lib/api";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 // UI exposes the four first-class roles. Advanced roles (publisher, approver,
 // channel_manager, connector_admin) remain in the API but are not offered in the invite flow.
@@ -22,8 +22,7 @@ const PILOT_VISIBLE_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", 
 const INVITE_ROLES = PILOT_VISIBLE_ROLES;
 
 async function requireAdminRequestOptions() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     throw new Error("Authenticated session is required.");
   }
@@ -55,6 +54,25 @@ function resolveRedirectTarget(formData: FormData, key: string, fallback: string
   return raw.startsWith("/") ? raw : fallback;
 }
 
+function resolveCreateUserErrorMessage(error: unknown): string {
+  if (error instanceof ApiHttpError) {
+    const body = error.body;
+    if (body && typeof body === "object") {
+      const { error: code, limit, current } = body as Record<string, unknown>;
+      if (code === "PLAN_USERS_LIMIT_EXCEEDED") {
+        const limitStr = typeof limit === "number" ? String(limit) : "";
+        const currentStr = typeof current === "number" ? String(current) : "";
+        const suffix = limitStr ? ` (${currentStr}/${limitStr} users)` : "";
+        return `User limit reached${suffix}. Review your plan on the Plan & Usage page to invite more users.`;
+      }
+      if (code === "PLAN_LIMIT_EXCEEDED") {
+        return "Plan limit reached. Review your plan on the Plan & Usage page.";
+      }
+    }
+  }
+  return error instanceof Error ? error.message : "Unable to invite workspace user.";
+}
+
 export async function createWorkspaceUserAction(formData: FormData) {
   const userId = String(formData.get("userId") ?? "").trim();
   const role = normalizeAppRole(formData.get("role"));
@@ -69,7 +87,7 @@ export async function createWorkspaceUserAction(formData: FormData) {
     await createWorkspaceUser({ userId, role }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
   } catch (error) {
-    redirectWithError(error instanceof Error ? error.message : "Unable to invite workspace user.", errorRedirectTo);
+    redirectWithError(resolveCreateUserErrorMessage(error), errorRedirectTo);
   }
   redirectWithStatus("user-created");
 }

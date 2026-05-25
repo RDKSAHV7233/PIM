@@ -3,8 +3,7 @@ import { redirect } from "next/navigation";
 import { updateTenantAuthPolicyAction } from "@/app/admin/auth-policy/actions";
 import { ApiHttpError, getTenantAuthPolicy } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -25,12 +24,10 @@ function StatusBanner({ tone, message }: { tone: "success" | "error"; message: s
 
 export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPolicyPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/auth-policy", 401));
   }
-
-  const actorRole = await getServerActorRole();
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
 
@@ -91,7 +88,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
             <p className="mt-3 text-sm text-slate-600">
               Session timeout and MFA enrollment enforcement are active in database mode. Allowed auth methods (password vs
               OIDC gating) are enforced at login. Configure your OIDC identity provider in{" "}
-              <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
+              <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
             </p>
           </Card>
 
@@ -220,7 +217,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                   <span className="font-medium text-slate-900">OIDC sign-in</span>
                   <span className="mt-1 block text-slate-600">
                     Enables OIDC-based login. Configure your identity provider in{" "}
-                    <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
+                    <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
                   </span>
                 </span>
               </label>
@@ -235,7 +232,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
               </button>
               <span className="text-xs text-slate-500">
                 Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. OIDC sign-in requires an active IdP configuration â€” see{" "}
-                <a href="/admin/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
+                <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin â†’ OIDC / SSO</a>.
               </span>
             </div>
           </form>

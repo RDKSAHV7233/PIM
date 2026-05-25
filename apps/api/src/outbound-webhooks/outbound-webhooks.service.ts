@@ -113,6 +113,7 @@ export class OutboundWebhooksService {
         tenantKey,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 200,
       select: {
         id: true,
         name: true,
@@ -388,6 +389,7 @@ export class OutboundWebhooksService {
         eventType: input.eventType,
         isActive: true,
       },
+      take: 50, // defensive cap — tenants configure few webhook endpoints per event type
       select: {
         id: true,
       },
@@ -398,9 +400,13 @@ export class OutboundWebhooksService {
     }
 
     const payload = this.buildPayload(input);
-    for (const endpoint of endpoints) {
-      await this.createQueuedDelivery(tenantKey, endpoint.id, input.eventType, input.notificationId, payload);
-    }
+    // Each endpoint delivery is independent (separate DB row + separate queue entry) —
+    // run them in parallel. allSettled: a single endpoint failure must not suppress others.
+    await Promise.allSettled(
+      endpoints.map((endpoint) =>
+        this.createQueuedDelivery(tenantKey, endpoint.id, input.eventType, input.notificationId, payload),
+      ),
+    );
   }
 
   private registerWorker() {
@@ -423,21 +429,38 @@ export class OutboundWebhooksService {
 
   private async processDelivery(payload: DeliveryQueuePayload): Promise<void> {
     const tenantKey = normalizeTenantKey(payload.tenantKey);
-    const delivery = await this.prisma.tenant(tenantKey).outboundWebhookDelivery.findUnique({
-      where: { id: payload.deliveryId },
-      select: {
-        id: true,
-        endpointId: true,
-        eventType: true,
-        eventId: true,
-        requestBody: true,
-      },
-    });
+
+    // All three reads are independent (tenantKey, deliveryId, and endpointId are all
+    // known from the payload at this point).  Run them in parallel to save 2 round-trips.
+    const [delivery, commercialProfile, endpoint] = await Promise.all([
+      this.prisma.tenant(tenantKey).outboundWebhookDelivery.findUnique({
+        where: { id: payload.deliveryId },
+        select: {
+          id: true,
+          endpointId: true,
+          eventType: true,
+          eventId: true,
+          requestBody: true,
+        },
+      }),
+      this.planUsageService.getTenantPlanProfile(tenantKey),
+      this.prisma.tenant(tenantKey).outboundWebhookEndpoint.findUnique({
+        where: { id: payload.endpointId },
+        select: {
+          id: true,
+          tenantKey: true,
+          targetUrl: true,
+          signingSecretEncrypted: true,
+          signingSecretKeyVersion: true,
+          isActive: true,
+        },
+      }),
+    ]);
+
     if (!delivery) {
       return;
     }
 
-    const commercialProfile = await this.planUsageService.getTenantPlanProfile(tenantKey);
     if (commercialProfile.accessStatus === "suspended") {
       const attemptedAt = new Date();
       await this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({
@@ -468,18 +491,6 @@ export class OutboundWebhooksService {
       });
       return;
     }
-
-    const endpoint = await this.prisma.tenant(tenantKey).outboundWebhookEndpoint.findUnique({
-      where: { id: payload.endpointId },
-      select: {
-        id: true,
-        tenantKey: true,
-        targetUrl: true,
-        signingSecretEncrypted: true,
-        signingSecretKeyVersion: true,
-        isActive: true,
-      },
-    });
 
     if (!endpoint || (!endpoint.isActive && !payload.forceDelivery)) {
       await this.prisma.tenant(tenantKey).outboundWebhookDelivery.update({

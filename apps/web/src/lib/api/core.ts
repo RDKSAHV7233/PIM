@@ -1365,6 +1365,21 @@ export interface ApiRequestOptions {
   tenantKey?: string;
   authHeader?: string;
   headers?: Record<string, string>;
+  /**
+   * Enable Next.js ISR-style Data Cache for this fetch. The response is stored
+   * in the server-side Data Cache and revalidated after this many seconds.
+   * Only effective when called from a Server Component or Server Action.
+   * Ignored in browser-side code.
+   *
+   * Set to 0 to force immediate revalidation (equivalent to no-store).
+   * Leave unset (default) to use `cachePolicy` or the "no-store" default.
+   */
+  revalidateSeconds?: number;
+  /**
+   * Override the default "no-store" fetch cache policy.
+   * Ignored when `revalidateSeconds` is set.
+   */
+  cachePolicy?: RequestCache;
 }
 
 export class ApiHttpError extends Error {
@@ -1448,8 +1463,23 @@ export async function fetchJson<T>(path: string, init?: RequestInit, options?: A
   const authHeader = explicitAuthHeader;
   const hasBody = init?.body !== undefined && init?.body !== null;
   const signal = init?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS);
+
+  // Resolve cache policy. Priority order:
+  //   1. revalidateSeconds → Next.js ISR Data Cache; forces "force-cache" so "no-store" doesn't win.
+  //   2. cachePolicy option → explicit override.
+  //   3. init.cache → caller-supplied cache directive (e.g. from getServerSideProps wrappers).
+  //   4. "no-store" → safe default; mutations and user-data reads must never be cached.
+  const hasRevalidate = options?.revalidateSeconds !== undefined && options.revalidateSeconds > 0;
+  const resolvedCache: RequestCache = hasRevalidate
+    ? "force-cache"
+    : (options?.cachePolicy ?? init?.cache ?? "no-store");
+  const nextConfig = hasRevalidate
+    ? ({ next: { revalidate: options!.revalidateSeconds } } as RequestInit)
+    : {};
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    ...nextConfig,
     signal,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
@@ -1457,7 +1487,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit, options?: A
       ...(options?.headers ?? {}),
       ...(init?.headers ?? {}),
     },
-    cache: "no-store",
+    cache: resolvedCache,
   });
 
   if (!response.ok) {

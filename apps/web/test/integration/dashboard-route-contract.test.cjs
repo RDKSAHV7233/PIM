@@ -16,8 +16,7 @@ function run() {
   const source = fs.readFileSync(PAGE, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("await getServerSession();") &&
       source.includes("const canViewOperationsSummary = canEditWorkspace(actorRole);") &&
       source.includes("const canViewBillingUsage = canViewOperationsSummary;"),
     "Dashboard must derive shared server auth/session context before loading catalog and reporting data.",

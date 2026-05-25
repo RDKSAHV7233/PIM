@@ -35,8 +35,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { canManageConnectors } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
 
 export const dynamic = "force-dynamic";
@@ -639,8 +638,7 @@ export default async function ChannelConnectorDetailPage({
 }: ChannelConnectorDetailPageProps) {
   const { installationId } = await params;
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const selectedTab = resolveTab(String(query.tab ?? ""));
   const detailReturnPath = buildDetailHref(installationId, selectedTab);
   const statusMessage = connectorDetailStatusMessage(query.status);
@@ -746,6 +744,20 @@ export default async function ChannelConnectorDetailPage({
       focusChannel && focusProductId
         ? `/connectors/${encodeURIComponent(installation.id)}/mapping?productId=${encodeURIComponent(focusProductId)}&channel=${encodeURIComponent(focusChannel)}`
         : `/connectors/${encodeURIComponent(installation.id)}/mapping`;
+
+    // Start the schedule / delta-sync fetch now — it only needs installation.id and selectedTab
+    // (both already resolved from wave 1 + query params). Running it concurrently with wave 3
+    // eliminates one full round-trip latency: by the time we finish wave 3's sync computation
+    // the schedule fetch is already in flight.
+    const scheduleAndDeltaPromise = Promise.allSettled([
+      selectedTab === "schedule"
+        ? getConnectorSchedule(installation.id, { role: actorRole, authHeader })
+        : Promise.resolve(null as ConnectorSyncSchedule | null),
+      selectedTab === "sync"
+        ? getDeltaSyncCandidates(installation.id, { role: actorRole, authHeader })
+        : Promise.resolve([] as Array<{ productId: string; version: number }>),
+    ]);
+
     const [
       focusVariantsResult,
       focusIssuesResult,
@@ -760,7 +772,7 @@ export default async function ChannelConnectorDetailPage({
         ? getProductIssues(focusProductId, { role: actorRole, authHeader })
         : Promise.resolve([]),
       focusCategoryId
-        ? getCategoryAttributes(focusCategoryId, { role: actorRole, authHeader })
+        ? getCategoryAttributes(focusCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 })
         : Promise.resolve([]),
       focusProductId
         ? getMediaAssets(focusProductId, undefined, { role: actorRole, authHeader })
@@ -916,15 +928,8 @@ export default async function ChannelConnectorDetailPage({
           ]
         : [];
 
-    // ─── Sprint G: Load schedule + delta sync candidates per tab ────────────
-    const [connectorScheduleResult, deltaCandidatesResult] = await Promise.allSettled([
-      selectedTab === "schedule"
-        ? getConnectorSchedule(installation.id, { role: actorRole, authHeader })
-        : Promise.resolve(null as ConnectorSyncSchedule | null),
-      selectedTab === "sync"
-        ? getDeltaSyncCandidates(installation.id, { role: actorRole, authHeader })
-        : Promise.resolve([] as Array<{ productId: string; version: number }>),
-    ]);
+    // ─── Sprint G: Resolve schedule + delta sync (started concurrently above) ──
+    const [connectorScheduleResult, deltaCandidatesResult] = await scheduleAndDeltaPromise;
     const connectorSchedule =
       connectorScheduleResult.status === "fulfilled" ? connectorScheduleResult.value : null;
     const deltaCandidates =

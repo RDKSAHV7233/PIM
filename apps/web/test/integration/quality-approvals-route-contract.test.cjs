@@ -42,7 +42,7 @@ function run() {
     "Approval Queue must derive blocking, warning, and clean-for-decision metrics from the real in-review inbox state while honoring restricted approval-queue counts.",
   );
   assert(
-    capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "reviewer";') &&
+    capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "approver";') &&
       approvalsSource.includes("const decisionEnabled = canDecideApproval(actorRole);"),
     "Approval Queue must rely on the shared reviewer-capable decision rule instead of duplicating local role logic.",
   );

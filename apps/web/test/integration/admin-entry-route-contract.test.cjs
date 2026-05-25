@@ -46,13 +46,11 @@ function run() {
   assert(
     adminSource.includes('import { redirect } from "next/navigation";') &&
       adminSource.includes('import { buildLoginRedirect } from "@/lib/auth-redirect";') &&
-      adminSource.includes('import { getServerAuthHeader } from "@/lib/server-auth";') &&
-      adminSource.includes('import { getServerActorRole } from "@/lib/server-session";') &&
+      adminSource.includes('import { getServerSession } from "@/lib/server-session";') &&
       adminSource.includes('import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
-      adminSource.includes("const authHeader = await getServerAuthHeader();") &&
       adminSource.includes("if (!authHeader) {") &&
       adminSource.includes('redirect(buildLoginRedirect("/admin", 401));') &&
-      adminSource.includes("const actorRole = await getServerActorRole();") &&
+      adminSource.includes("await getServerSession();") &&
       adminSource.includes("const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));") &&
       adminSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
       adminSource.includes('description={`Workspace settings and governance controls available for your current ${actorRole} role.`}') &&
@@ -67,13 +65,11 @@ function run() {
   assert(
     workspaceSource.includes('import { redirect } from "next/navigation";') &&
       workspaceSource.includes('import { buildLoginRedirect } from "@/lib/auth-redirect";') &&
-      workspaceSource.includes('import { getServerAuthHeader } from "@/lib/server-auth";') &&
-      workspaceSource.includes('import { getServerActorRole } from "@/lib/server-session";') &&
+      workspaceSource.includes('import { getServerSession } from "@/lib/server-session";') &&
       workspaceSource.includes('import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";') &&
-      workspaceSource.includes("const authHeader = await getServerAuthHeader();") &&
       workspaceSource.includes("if (!authHeader) {") &&
       workspaceSource.includes('redirect(buildLoginRedirect("/admin/workspace", 401));') &&
-      workspaceSource.includes("const actorRole = await getServerActorRole();") &&
+      workspaceSource.includes("await getServerSession();") &&
       workspaceSource.includes("const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>") &&
       workspaceSource.includes("canViewAdminNavigationItem(actorRole, item.visibility)") &&
       workspaceSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
@@ -90,22 +86,20 @@ function run() {
   assert(
     privacySource.includes('import { redirect } from "next/navigation";') &&
       privacySource.includes('import { buildLoginRedirect } from "@/lib/auth-redirect";') &&
-      privacySource.includes('import { getServerAuthHeader } from "@/lib/server-auth";') &&
-      privacySource.includes("const authHeader = await getServerAuthHeader();") &&
       privacySource.includes("if (!authHeader) {") &&
       privacySource.includes('redirect(buildLoginRedirect("/admin/privacy", 401));') &&
-      privacySource.includes("const actorRole = await getServerActorRole();"),
+      privacySource.includes("await getServerSession();"),
     "Admin privacy route must require auth before mounting the privacy client.",
   );
 
   assert(
-    navigationSource.includes('export type AdminNavigationAudience = "all" | "editor_plus" | "admin";') &&
+    navigationSource.includes('export type AdminNavigationAudience = "all" | "editor_plus" | "connector_admin_plus" | "admin";') &&
       navigationSource.includes('if (audience === "editor_plus") {') &&
       navigationSource.includes('return role === "admin" || role === "editor";') &&
       navigationSource.includes('return role === "admin";') &&
       navigationSource.includes('title: "Full admin access"') &&
       navigationSource.includes('title: "Limited admin access"') &&
-      navigationSource.includes('title: "Privacy-only access"'),
+      navigationSource.includes('title: "Connector admin access"'),
     "Admin navigation helpers must distinguish shared, editor-plus, and admin-only surfaces and explain current-role access clearly.",
   );
 

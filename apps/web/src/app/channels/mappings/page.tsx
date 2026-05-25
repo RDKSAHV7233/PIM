@@ -34,8 +34,7 @@ import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-ste
 import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSlug, normalizeChannel, resolveStepUpErrorMessage, type ProtectedMappingActionKind } from "@/lib/channel-mappings";
 import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -202,8 +201,7 @@ function connectorHealthLabel(status: string): string {
 
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canManageChannels(actorRole);
   const stepUpAction = (String(query.stepUpAction ?? "").trim() as ProtectedMappingActionKind | "") || "";
   const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
@@ -220,8 +218,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
   try {
     const [channels, categoriesRaw, connectorDefinitions, installedConnectors] = await Promise.all([
       getMarketplaceChannels({ role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
-      getConnectorDefinitions({ role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
+      getConnectorDefinitions({ role: actorRole, authHeader, revalidateSeconds: 60 }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
     const categories = filterTestData(categoriesRaw, true);
@@ -236,16 +234,21 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     const selectedInstallationId = selectedInstallation?.id ?? "";
     const definition = definitionForConnector(connectorDefinitions, connectorSlug);
     const taxonomyQ = String(query.taxonomyQ ?? "").trim();
-    const [mapping, preflight, readiness, categoryAttributes, shopifyConfig] = await Promise.all([
+    // Waves 2 and 3 are independent — neither uses the other's results.
+    // Merge them into a single Promise.all to eliminate one full network round-trip.
+    const [
+      mapping, preflight, readiness, categoryAttributes, shopifyConfig,
+      versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct, sampleProductsRaw,
+    ] = await Promise.all([
+      // ── Wave 2: mapping resolution ──────────────────────────────────────────
       getMarketplaceChannelMapping(selectedChannel, selectedCategoryId || undefined, undefined, { role: actorRole, authHeader }),
       selectedCategoryId ? evaluateConnectorMappingPreflight(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
       selectedCategoryId ? evaluateConnectorPublishReadiness(connectorSlug, { categoryScope: selectedCategoryId, installationId: selectedInstallationId || undefined, productId: selectedProductId || undefined, fallbackAcknowledged }, { role: actorRole, authHeader }) : Promise.resolve(null),
-      selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader }) : Promise.resolve([]),
+      selectedCategoryId ? getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 }) : Promise.resolve([]),
       connectorSlug === "shopify" && selectedInstallationId
         ? getShopifyConfig(selectedInstallationId, { role: actorRole, authHeader }).catch(() => null as ShopifyStoreConfig | null)
         : Promise.resolve(null as ShopifyStoreConfig | null),
-    ]);
-    const [versions, resolved, taxonomyMatches, unmappedCategories, selectedProduct, sampleProductsRaw] = await Promise.all([
+      // ── Wave 3: history / taxonomy / product context ─────────────────────────
       showHistory
         ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId || undefined, includeArchived: true }, { role: actorRole, authHeader })
         : Promise.resolve([]),

@@ -28,9 +28,8 @@ function run() {
   const sidebar = read(SIDEBAR);
 
   assert(
-    page.includes('const authHeader = await getServerAuthHeader();') &&
+    page.includes("await getServerSession();") &&
       page.includes('redirect(buildLoginRedirect("/admin/auth-policy", 401));') &&
-      page.includes('const actorRole = await getServerActorRole();') &&
       page.includes('const policy = await getTenantAuthPolicy({ role: actorRole, authHeader });'),
     "Admin auth policy page must derive shared server auth/session context and load the tenant auth policy from the API.",
   );
@@ -54,7 +53,7 @@ function run() {
       page.includes("runtimeApplied.mfaEnrollment") &&
       page.includes("runtimeApplied.externalIdentity") &&
       page.includes("Session timeout takes effect now.") &&
-      (page.includes("persisted and audited for follow-on enforcement") || page.includes('href="/admin/oidc"')),
+      (page.includes("persisted and audited for follow-on enforcement") || page.includes('href="/admin/oidc"') || page.includes('href="/admin/auth-policy/oidc"')),
     "Admin auth policy page must keep runtime truth honest by separating active session-timeout enforcement from stored-only MFA and OIDC intent.",
   );
 

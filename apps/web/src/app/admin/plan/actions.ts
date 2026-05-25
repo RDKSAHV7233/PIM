@@ -3,12 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ApiHttpError, createBillingUpgradeRequest, updateBillingContact } from "@/lib/api";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 async function requireAdminRequestOptions() {
-  const authHeader = await getServerAuthHeader();
-  const role = await getServerActorRole();
+  const { authHeader, actorRole: role } = await getServerSession();
   if (role !== "admin" || !authHeader) {
     throw new Error("Admin role is required.");
   }

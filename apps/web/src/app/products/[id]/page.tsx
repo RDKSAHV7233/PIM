@@ -21,8 +21,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { ProductDetailDeferredSection } from "./_components/product-detail-deferred-section";
 import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigation-guard";
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
@@ -44,8 +43,7 @@ export const dynamic = "force-dynamic";
 export default async function ProductPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);

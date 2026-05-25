@@ -16,8 +16,7 @@ function run() {
   const source = fs.readFileSync(JOBS_PAGE, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Operations jobs must derive shared auth/session context from the server helpers.",
   );
   assert(

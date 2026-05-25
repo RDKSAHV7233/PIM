@@ -11,8 +11,7 @@ import {
   mapConnectorSlugToMarketplaceChannel,
   normalizeMarketplaceChannel,
 } from "@/lib/marketplace-channels";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +35,7 @@ export default async function MappingManagerRedirectPage({
 }: MappingManagerRedirectPageProps) {
   const { installationId } = await params;
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   try {
     const installations = await getInstalledConnectors({ role: actorRole, authHeader });

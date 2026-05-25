@@ -221,6 +221,9 @@ model Product {
   @@index([tenantKey, assigneeId])
   @@index([tenantKey, slaDeadlineAt])
   @@index([tenantKey, deletedAt, updatedAt(sort: Desc), id(sort: Desc)], map: "idx_product_tenant_deleted_updated_id")
+  // Delta-sync candidate scan: WHERE tenantKey=X AND status='approved' AND deletedAt IS NULL AND id > cursor ORDER BY id ASC
+  // Without this, fetchDeltaCandidatesPage does a full scan of [tenantKey,status] on every 200-row page.
+  @@index([tenantKey, status, deletedAt, id], map: "idx_product_delta_sync_scan")
 }
 
 model Variant {
@@ -287,6 +290,7 @@ model AttributeDefinition {
   updatedAt     DateTime          @updatedAt
 
   @@unique([categoryId, key, appliesTo])
+  @@index([categoryId, appliesTo])
   @@index([categoryId])
   @@index([appliesTo])
   @@index([tenantKey])
@@ -334,6 +338,9 @@ model ValidationIssue {
   @@index([status])
   @@index([ruleCode])
   @@index([tenantKey])
+  // Composite indexes for the issue inbox query (filter: tenantKey + status, order: severity, createdAt, id)
+  @@index([tenantKey, status, productId])
+  @@index([tenantKey, severity, status])
 }
 
 model ChannelMappingTemplate {
@@ -389,6 +396,14 @@ model MarketplaceExportJob {
   @@index([tenantKey])
   @@index([tenantKey, createdBy, updatedAt])
   @@index([installationId])
+  // Composite indexes for multi-tenant job worker polling (filter: tenantKey + status)
+  @@index([tenantKey, status, channel])
+  @@index([tenantKey, status, updatedAt])
+  // Partial unique index for delta-sync idempotency: one pending/processing job per
+  // product per installation.  installationId IS NOT NULL rows only (enforced in the
+  // raw-SQL migration via a WHERE clause); manual export jobs (installationId=NULL)
+  // are unaffected.  Enables upsert semantics in queueDeltaSync.
+  @@unique([tenantKey, productId, installationId], map: "uq_export_job_product_installation")
 }
 
 model BulkImportJob {
@@ -420,6 +435,7 @@ model BulkImportJob {
   @@index([categoryId])
   @@index([status, updatedAt])
   @@index([tenantKey])
+  @@index([tenantKey, status, updatedAt])
   @@index([tenantKey, runId, status])
 }
 
@@ -493,6 +509,7 @@ model BulkEditOperation {
 
   @@index([status, updatedAt])
   @@index([tenantKey])
+  @@index([tenantKey, status, updatedAt])
 }
 
 model BulkEditOperationItem {
@@ -851,6 +868,7 @@ model ConnectorSubmission {
 
   @@unique([tenantKey, installationId, idempotencyKey], map: "idx_connector_submissions_tenant_installation_idempotency")
   @@index([tenantKey, status, submittedAt(sort: Desc)], map: "idx_connector_submissions_tenant_status")
+  @@index([tenantKey, installationId, status], map: "idx_connector_submissions_tenant_installation_status")
   @@map("connector_submissions")
 }
 

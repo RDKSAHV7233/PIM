@@ -3,8 +3,11 @@ import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity,
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { withSoftDeleteBypass } from "../common/prisma-soft-delete.middleware";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -45,6 +48,31 @@ function mergeWhere<T extends Record<string, unknown>>(left: T | undefined, righ
   return left ?? right;
 }
 
+/**
+ * Minimal select shapes for relation includes on product queries.
+ * All three models carry a `tenantKey` column that is internal and never sent
+ * to the client. Using explicit selects excludes it and reduces wire size.
+ */
+const CATEGORY_SELECT = {
+  id: true, name: true, slug: true, path: true,
+  parentId: true, createdAt: true, updatedAt: true,
+} as const satisfies Prisma.CategorySelect;
+
+const VARIANT_SELECT = {
+  id: true, productId: true, skuCode: true, attributes: true,
+  mrp: true, sellingPrice: true, inventoryQty: true,
+  status: true, createdAt: true, updatedAt: true,
+} as const satisfies Prisma.VariantSelect;
+
+const VALIDATION_ISSUE_SELECT = {
+  id: true, productId: true, variantId: true, ruleId: true,
+  severity: true, ruleCode: true, message: true,
+  fieldPath: true, status: true, createdAt: true, updatedAt: true,
+} as const satisfies Prisma.ValidationIssueSelect;
+
+/** Cache TTL for required-attribute lookups — same source as compliance cache, same TTL. */
+const COMPLETENESS_CACHE_TTL_SECONDS = 5 * 60;
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -54,6 +82,7 @@ export class CatalogService {
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async stats(actor?: ActorContext) {
@@ -111,9 +140,9 @@ export class CatalogService {
           scopeWhere,
         ),
         include: {
-          category: true,
-          variants: true,
-          validationIssues: { where: { status: "open" } },
+          category: { select: CATEGORY_SELECT },
+          variants: { select: VARIANT_SELECT },
+          validationIssues: { select: VALIDATION_ISSUE_SELECT, where: { status: "open" } },
         },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: limit + 1,
@@ -139,14 +168,33 @@ export class CatalogService {
       };
     }
 
+    // Non-cursor path: used only for sample/preview UIs (mapping preview, bulk-edit preview).
+    // Neither caller uses validationIssues; narrow to the minimal field set.
+    // take: 500 is a defensive cap — prevents catastrophic full-table scans on large tenants.
     const products = await this.prisma.tenant().product.findMany({
       where: scopeWhere,
-      include: {
-        category: true,
-        variants: true,
-        validationIssues: { where: { status: "open" } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        brand: true,
+        version: true,
+        categoryId: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        category: {
+          select: { id: true, name: true, path: true },
+        },
+        variants: {
+          select: { skuCode: true },
+        },
       },
       orderBy: [{ updatedAt: "desc" }],
+      take: 500,
     });
     const scored = await this.attachCompletenessScores(products);
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_products_redacted", scored);
@@ -431,9 +479,13 @@ export class CatalogService {
     const product = await this.prisma.tenant().product.findUnique({
       where: { id: productId },
       include: {
-        category: true,
-        variants: { orderBy: [{ updatedAt: "desc" }] },
-        validationIssues: { where: { status: "open" }, orderBy: [{ createdAt: "desc" }] },
+        category: { select: CATEGORY_SELECT },
+        variants: { select: VARIANT_SELECT, orderBy: [{ updatedAt: "desc" }] },
+        validationIssues: {
+          select: VALIDATION_ISSUE_SELECT,
+          where: { status: "open" },
+          orderBy: [{ createdAt: "desc" }],
+        },
       },
     });
     if (!product) {
@@ -496,7 +548,16 @@ export class CatalogService {
     actor?: ActorContext,
   ) {
     const policyActor = this.toPolicyActor(actor);
-    const scopeWhere = await this.accessPolicy.buildProductScopeWhere(policyActor, "view");
+    // scopeWhere and the channel-definition lookup are independent — run them in parallel.
+    const [scopeWhere, channelDefPrefetch] = await Promise.all([
+      this.accessPolicy.buildProductScopeWhere(policyActor, "view"),
+      params.channelSlug
+        ? this.prisma.tenant().connectorDefinition.findFirst({
+            where: { slug: params.channelSlug },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
     const pageLimit = Math.max(1, Math.min(100, Number.isFinite(params.limit) ? Number(params.limit) : 20));
     const sort = params.sort ?? "updatedAt";
     const sortDir: "asc" | "desc" = params.sortDir ?? "desc";
@@ -545,11 +606,9 @@ export class CatalogService {
     }
 
     // Channel/connector submission filter — resolves slug → definition → installations → product IDs
+    // channelDefPrefetch was already fetched in parallel with scopeWhere above.
     if (params.channelSlug) {
-      const channelDef = await this.prisma.tenant().connectorDefinition.findFirst({
-        where: { slug: params.channelSlug },
-        select: { id: true },
-      });
+      const channelDef = channelDefPrefetch;
       if (!channelDef) {
         return {
           items: [],
@@ -561,6 +620,7 @@ export class CatalogService {
       }
       const channelInstallations = await this.prisma.tenant().connectorInstallation.findMany({
         where: { connectorId: channelDef.id },
+        take: 50, // defensive cap — one installation per marketplace store account
         select: { id: true },
       });
       if (channelInstallations.length === 0) {
@@ -576,6 +636,7 @@ export class CatalogService {
         where: { installationId: { in: channelInstallations.map((i) => i.id) } },
         select: { productId: true },
         distinct: ["productId"],
+        take: 50_000, // defensive cap — one distinct productId per submitted product
       });
       const channelProductIds = channelSubmissions.map((s) => s.productId);
       if (channelProductIds.length === 0) {
@@ -710,7 +771,10 @@ export class CatalogService {
         attributes: attributes as Prisma.JsonObject,
         status: RecordStatus.draft,
       },
-      include: { category: true, variants: true },
+      include: {
+        category: { select: CATEGORY_SELECT },
+        variants: { select: VARIANT_SELECT },
+      },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     await this.planUsageService.touchUsageForCurrentTenant();
@@ -718,7 +782,28 @@ export class CatalogService {
   }
 
   async updateProduct(productId: string, dto: UpdateProductDto, actor?: ActorContext) {
-    const current = await this.requireProduct(productId);
+    // updateProduct needs the full field set for mutation guards (assertProductContentMutation,
+    // collectChangedRestrictedProductAttributeFields, collectChangedProductFields).
+    // Direct fetch here; requireProduct is used only for pure existence+access checks.
+    const current = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        categoryId: true,
+        brand: true,
+        vendorScopeKey: true,
+        version: true,
+        status: true,
+        title: true,
+        description: true,
+        hsnCode: true,
+        gstRate: true,
+        attributes: true,
+      },
+    });
+    if (!current) {
+      throw new NotFoundException("Product not found");
+    }
     const requestedVendorScopeKey =
       dto.vendorScopeKey === undefined
         ? this.normalizeVendorScopeKey(current.vendorScopeKey)
@@ -786,7 +871,10 @@ export class CatalogService {
     }
     const product = await this.prisma.tenant().product.findUniqueOrThrow({
       where: { id: productId },
-      include: { category: true, variants: true },
+      include: {
+        category: { select: CATEGORY_SELECT },
+        variants: { select: VARIANT_SELECT },
+      },
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     const changedFields = this.collectChangedProductFields(current, {
@@ -879,7 +967,10 @@ export class CatalogService {
         status: nextStatus,
         version: { increment: 1 },
       },
-      include: { category: true, variants: true },
+      include: {
+        category: { select: CATEGORY_SELECT },
+        variants: { select: VARIANT_SELECT },
+      },
     });
 
     await this.auditService.record({
@@ -1191,6 +1282,7 @@ export class CatalogService {
     const variants = await this.prisma.tenant().variant.findMany({
       where: { productId },
       orderBy: [{ updatedAt: "desc" }],
+      take: 500, // defensive cap — variant list without pagination
     });
     return this.accessPolicy.applyReadResponsePolicy(policyActor, "catalog_variants_redacted", variants);
   }
@@ -1289,7 +1381,19 @@ export class CatalogService {
   }
 
   private async requireProduct(productId: string) {
-    const product = await this.prisma.tenant().product.findUnique({ where: { id: productId } });
+    // Narrow select: avoids shipping `attributes` (JSON, up to ~10 KB) and `description`
+    // on every product mutation path.  All 15+ callers only need these 6 scalar fields.
+    const product = await this.prisma.tenant().product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        categoryId: true,
+        brand: true,
+        vendorScopeKey: true,
+        version: true,
+        status: true,
+      },
+    });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
@@ -1506,17 +1610,25 @@ export class CatalogService {
     }
 
     const categoryIds = Array.from(new Set(products.map((product) => product.categoryId)));
-    const requiredAttributes = await this.prisma.tenant().attributeDefinition.findMany({
-      where: {
-        categoryId: { in: categoryIds },
-        appliesTo: AppliesTo.product,
-        required: true,
-      },
-      select: {
-        categoryId: true,
-        key: true,
-      },
-    });
+    // Cache key: sorted categoryIds joined so order-independent calls share the same entry.
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const sortedIds = [...categoryIds].sort().join(",");
+    const cacheKey = `completeness:required:${tenantKey}:${sortedIds}`;
+    const requiredAttributes = await this.cache.getOrSet(
+      cacheKey,
+      COMPLETENESS_CACHE_TTL_SECONDS,
+      () => this.prisma.tenant().attributeDefinition.findMany({
+        where: {
+          categoryId: { in: categoryIds },
+          appliesTo: AppliesTo.product,
+          required: true,
+        },
+        select: {
+          categoryId: true,
+          key: true,
+        },
+      }),
+    );
 
     const requiredByCategory = new Map<string, string[]>();
     for (const attribute of requiredAttributes) {
@@ -1818,11 +1930,13 @@ export class CatalogService {
         where: { sourceProductId: productId, tenantKey },
         include: { targetProduct: { select: { id: true, title: true, status: true } } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        take: 200, // defensive cap — outgoing relationships per product
       }),
       this.prisma.tenant().productRelationship.findMany({
         where: { targetProductId: productId, tenantKey },
         include: { sourceProduct: { select: { id: true, title: true, status: true } } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        take: 200, // defensive cap — incoming relationships per product
       }),
     ]);
 

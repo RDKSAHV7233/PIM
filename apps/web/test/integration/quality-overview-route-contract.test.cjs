@@ -18,8 +18,7 @@ function run() {
   const roleCapabilitiesSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Quality overview must derive shared auth/session context from the server helpers.",
   );
   assert(
@@ -40,11 +39,11 @@ function run() {
   );
   assert(
       roleCapabilitiesSource.includes('return role === "admin" || role === "editor";') &&
-      roleCapabilitiesSource.includes('return role === "admin" || role === "editor" || role === "reviewer";') &&
+      roleCapabilitiesSource.includes('return role === "admin" || role === "editor" || role === "approver";') &&
       source.includes("const canTriageWarnings = canEditWorkspace(actorRole);") &&
       source.includes("const canRecordReviewDecisions = canDecideApproval(actorRole);") &&
       source.includes("Workspace editors and admins resolve warnings.") &&
-      source.includes("Final approval decisions require reviewer, editor, or admin access.") &&
+      source.includes("Final approval decisions require approver, editor, or admin access.") &&
       source.includes('{canRecordReviewDecisions ? "Open Approval Queue" : "Review Approval Queue"}'),
     "Quality overview must describe issue-triage and approval actions honestly for roles without write or decision capability.",
   );

@@ -16,8 +16,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const attributes = await getCategoryAttributes(categoryId, { authHeader });
-    return NextResponse.json(attributes);
+    // revalidateSeconds: 60 caches the upstream fetch in the Next.js Data Cache.
+    const attributes = await getCategoryAttributes(categoryId, { authHeader, revalidateSeconds: 60 });
+    return NextResponse.json(attributes, {
+      headers: {
+        // private: user-scoped tenant data; max-age=60 lets the browser skip repeated fetches.
+        "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+      },
+    });
   } catch {
     return NextResponse.json({ error: "Unable to load category attributes." }, { status: 500 });
   }

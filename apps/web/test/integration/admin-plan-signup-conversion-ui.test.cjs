@@ -96,7 +96,7 @@ function run() {
       source.includes("Workspace access is suspended") &&
       source.includes("Billing needs attention") &&
       source.includes("Trial is active") &&
-      source.includes("description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString()}`}") &&
+      source.includes("description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString(") &&
       source.includes('Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}') &&
       source.includes("formatAccessStatus"),
     "Plan page must expose commercial status and warning states for billing/access transitions.",

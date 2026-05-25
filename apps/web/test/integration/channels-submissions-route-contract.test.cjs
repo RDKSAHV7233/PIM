@@ -16,8 +16,7 @@ function run() {
   const source = fs.readFileSync(SUBMISSIONS_PAGE, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Channels submissions must derive server auth context from the shared auth/session helpers.",
   );
   assert(

@@ -10,8 +10,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getAuditEvents, type AuditEntityType, type AuditEventRecord } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -158,8 +157,7 @@ function summarizeFilterScope(input: {
 
 export default async function AdminAuditPage({ searchParams }: AdminAuditPageProps) {
   const query = await searchParams;
-  const actorRole = await getServerActorRole();
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
 
   const actorId = String(getFirst(query.actorId) ?? "").trim();
   const action = String(getFirst(query.action) ?? "").trim();

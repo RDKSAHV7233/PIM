@@ -5,7 +5,8 @@ export type PlanResource =
   | "submissions"
   | "storage_gb"
   | "connectors_installations"
-  | "connector_accounts";
+  | "connector_accounts"
+  | "users";
 
 export const PLAN_RESOURCE_KEY = "plan_resource";
 

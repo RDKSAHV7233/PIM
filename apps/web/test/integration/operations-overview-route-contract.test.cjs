@@ -18,8 +18,7 @@ function run() {
   const roleCapabilitiesSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Operations overview must derive shared auth/session context from the server helpers.",
   );
   assert(

@@ -4,8 +4,7 @@ import { ApiKeyCreatePanel } from "./api-key-create-panel";
 import { revokeApiAccessKeyAction } from "./actions";
 import { ApiHttpError, getApiAccessKeys, type ApiAccessKey } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -76,8 +75,7 @@ const API_SCOPE_LEGEND = [
 
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
-  const role = await getServerActorRole();
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole: role } = await getServerSession();
   const status = String(query.status ?? "").trim();
 
   try {

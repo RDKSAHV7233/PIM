@@ -27,8 +27,7 @@ function run() {
     "Operations imports must default hideTestData to true and only opt out on explicit false/0/off values.",
   );
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("await getServerSession();") &&
       source.includes("const canWrite = canEditWorkspace(actorRole);"),
     "Operations imports must derive shared auth/session context and workspace write capability on the server.",
   );
@@ -41,7 +40,7 @@ function run() {
     (source.includes("const [jobs, categories] = await Promise.all([") ||
       source.includes("const [jobsResult, categoriesResult] = await Promise.allSettled([")) &&
       source.includes("getBulkImportJobs({ role: actorRole, authHeader })") &&
-      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader })"),
+      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader"),
     "Operations imports must load import jobs and categories together from the shared auth context.",
   );
   assert(
@@ -85,7 +84,7 @@ function run() {
     "Operations imports must expose sample-file downloads and an inline JSON format example.",
   );
   assert(
-    source.includes('actorRole === "viewer"') &&
+    source.includes('!canEditWorkspace(actorRole)') &&
       source.includes('"No import jobs are visible for this scope."') &&
       source.includes('"No import jobs match this filter."') &&
       source.includes("Select an import job from Stage 3 to open the result summary") &&

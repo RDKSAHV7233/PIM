@@ -22,8 +22,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canResolveIssueInboxWarnings } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -117,8 +116,7 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
 
 export default async function QualityIssuePage({ searchParams }: QualityIssuePageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   if (actorRole === "viewer") {
     redirect(buildLoginRedirect("/quality/issues", { status: 403 }));
@@ -162,7 +160,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
         },
         { role: actorRole, authHeader },
       ),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
 

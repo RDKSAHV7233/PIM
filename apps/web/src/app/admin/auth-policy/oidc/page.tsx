@@ -6,8 +6,7 @@ import {
 } from "@/app/admin/auth-policy/oidc/actions";
 import { ApiHttpError, getOidcConfig, type OidcConfigView } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -30,9 +29,10 @@ function StatusBanner({ tone, message }: { tone: "success" | "error" | "info"; m
 
 async function loadConfig(): Promise<OidcConfigView | null> {
   try {
+    const { authHeader: loadAuthHeader, actorRole: loadRole } = await getServerSession();
     const config = await getOidcConfig({
-      role: await getServerActorRole(),
-      authHeader: await getServerAuthHeader(),
+      role: loadRole,
+      authHeader: loadAuthHeader,
     });
     return config ?? null;
   } catch (error) {
@@ -45,12 +45,10 @@ async function loadConfig(): Promise<OidcConfigView | null> {
 
 export default async function AdminOidcConfigPage({ searchParams }: AdminOidcConfigPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/auth-policy/oidc", 401));
   }
-
-  const actorRole = await getServerActorRole();
   const status = String(query.status ?? "").trim();
   const message = String(query.message ?? "").trim();
 

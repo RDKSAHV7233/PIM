@@ -7,8 +7,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getBulkImportJobs, getDeadLetterSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { translateJobStatus } from "@/lib/errors";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +22,7 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
 }
 
 export default async function OperationsRepairPage() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [importJobs, deadLetterRaw] = await Promise.all([

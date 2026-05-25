@@ -17,8 +17,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { cn } from "@/lib/utils";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -228,8 +227,7 @@ function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<t
 }
 
 export default async function DashboardPage() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canViewOperationsSummary = canEditWorkspace(actorRole);
   const canViewBillingUsage = canViewOperationsSummary;
 

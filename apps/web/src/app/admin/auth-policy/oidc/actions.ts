@@ -14,15 +14,13 @@ import {
   issueStepUp,
   upsertOidcConfig,
 } from "@/lib/api";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 const STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK = "auth_config_high_risk";
 const STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
 
 async function requireAdminRequestOptions() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     throw new Error("Authenticated session is required.");
   }

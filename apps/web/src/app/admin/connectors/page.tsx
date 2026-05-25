@@ -11,8 +11,7 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getConnectorDefinitions, getConnectorPermissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +38,7 @@ function formatPolicyAction(permission: { action: string }) {
 
 export default async function ConnectorSettingsPage({ searchParams }: ConnectorSettingsPageProps) {
   const query = await searchParams;
-  const role = await getServerActorRole();
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole: role } = await getServerSession();
   const status = String(query.status ?? "").trim();
 
   if (role !== "admin" && role !== "connector_admin") {
@@ -49,7 +47,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
 
   try {
     const [definitions, permissions] = await Promise.all([
-      getConnectorDefinitions({ role, authHeader }),
+      getConnectorDefinitions({ role, authHeader, revalidateSeconds: 60 }),
       getConnectorPermissions(undefined, { role, authHeader }).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
           return [] as Awaited<ReturnType<typeof getConnectorPermissions>>;

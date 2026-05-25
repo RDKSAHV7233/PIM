@@ -28,8 +28,7 @@ function run() {
   assert(
     source.includes("const { installationId } = await params;") &&
       source.includes("const query = await searchParams;") &&
-      source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Channel connector detail must derive route params, tab state, and shared server auth/session context.",
   );
 

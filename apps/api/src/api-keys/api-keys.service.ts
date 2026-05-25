@@ -91,6 +91,7 @@ export class ApiKeysService {
         { createdAt: "desc" },
         { id: "desc" },
       ],
+      take: 200, // defensive cap — tenants don't create hundreds of API keys
       select: {
         id: true,
         tenantKey: true,

@@ -27,7 +27,7 @@ function run() {
     "Connector Access page must explain the one-row-per-principal model and surface user-not-found grant errors.",
   );
   assert(
-    formSource.includes('const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"]') &&
+    formSource.includes('const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]') &&
       formSource.includes("Policy sentence") &&
       formSource.includes("Leave blank to apply this policy to all aliases") &&
       formSource.includes("Use role rules for broad access, and reserve user-specific rules for named exceptions") &&

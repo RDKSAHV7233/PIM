@@ -17,8 +17,7 @@ import {
   getInstalledConnectors,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -393,8 +392,7 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
 
 export default async function ConnectorSetupPage({ searchParams }: ConnectorSetupPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const selectedSlug = String(query.slug ?? "").trim().toLowerCase();
   const searchValue = String(query.q ?? "").trim();
   const normalizedSearch = searchValue.toLowerCase();
@@ -406,7 +404,7 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
 
   try {
     const [definitions, installations] = await Promise.all([
-      getConnectorDefinitions({ role: actorRole, authHeader }),
+      getConnectorDefinitions({ role: actorRole, authHeader, revalidateSeconds: 60 }),
       getInstalledConnectors({ role: actorRole, authHeader }),
     ]);
 

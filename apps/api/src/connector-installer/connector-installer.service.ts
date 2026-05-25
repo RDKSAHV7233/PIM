@@ -167,18 +167,24 @@ export class ConnectorInstallerService {
       ORDER BY display_name ASC
     `);
 
-    const definitions: ConnectorDefinitionRecord[] = [];
-    // Resolve install actions sequentially to avoid request-local plan-check fanout
-    // exhausting the DB pool under the current tenant-scoped Prisma client model.
-    for (const row of rows) {
+    // Pre-filter stubs so they don't consume plan-check slots in the batch
+    const activeRows = rows.filter((row) => !stubSlugs.has(String(row.slug).toLowerCase()));
+    const slugs = activeRows.map((row) => String(row.slug));
+
+    // Batch action resolution: 2 shared queries + N parallel account checks + 1 permission fetch
+    // Replaces the prior N×2 sequential per-slug plan check loop.
+    const actionsMap = await this.connectorPermissionService.buildDefinitionActionsForSlugs(actor, slugs);
+
+    return activeRows.map((row) => {
       const slug = String(row.slug);
-      if (stubSlugs.has(slug.toLowerCase())) {
-        continue;
-      }
       const capabilities = parseCapabilities(row.capabilities);
       const launchPolicy = resolveConnectorLaunchPolicy(slug, capabilities);
-      const actions = await this.connectorPermissionService.buildDefinitionActions(actor, slug);
-      definitions.push({
+      const actions = actionsMap.get(slug) ?? {
+        install: { allowed: false, reason: "CONNECTOR_PERMISSION_REQUIRED" },
+        reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      };
+      return {
         id: String(row.id),
         slug,
         displayName: String(row.displayName),
@@ -196,10 +202,8 @@ export class ConnectorInstallerService {
           ...actions,
           install: this.applyInstallLaunchStageRule(slug, capabilities, actions.install),
         },
-      });
-    }
-
-    return definitions;
+      };
+    });
   }
 
   async install(slug: string, dto: InstallConnectorDto, actor: ConnectorActor): Promise<ConnectorInstallationRecord> {

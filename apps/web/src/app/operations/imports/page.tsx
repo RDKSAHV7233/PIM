@@ -21,8 +21,7 @@ export type ImportPreflightClient = typeof validateImportPreflight;
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -155,14 +154,13 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const selectedStatus = String(query.status ?? "").trim().toLowerCase();
   const selectedBulkJobId = String(query.bulkJobId ?? "").trim();
   const selectedBulkRunId = String(query.bulkRunId ?? "").trim();
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
   try {
     const [jobsResult, categoriesResult] = await Promise.allSettled([
       getBulkImportJobs({ role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
     ]);
     if (jobsResult.status === "rejected") {
       const err = jobsResult.reason;

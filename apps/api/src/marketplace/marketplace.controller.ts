@@ -433,6 +433,15 @@ export class MarketplaceController {
     return this.marketplaceService.getDeltaSyncCandidates(installationId);
   }
 
+  /** Live progress breakdown for a running Shopify delta sync.
+   *  Equivalent to the generic /connectors/:id/sync/status endpoint. */
+  @Get("connectors/shopify/:installationId/sync/status")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getShopifyDeltaSyncStatus(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getDeltaSyncStatus(installationId);
+  }
+
   @Post("connectors/shopify/:installationId/sync/delta")
   @AdminBoundaryAccess({ capability: "manage_product_data" })
   @Roles("admin", "editor")
@@ -495,6 +504,15 @@ export class MarketplaceController {
   @Roles("admin", "editor")
   getConnectorDeltaSyncCandidates(@Param("installationId") installationId: string) {
     return this.marketplaceService.getDeltaSyncCandidates(installationId);
+  }
+
+  /** Live progress breakdown — poll this while a delta sync is running.
+   *  Returns per-status job counts, a 0-1 pendingRatio, and lastUpdatedAt. */
+  @Get("connectors/:installationId/sync/status")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor")
+  getConnectorDeltaSyncStatus(@Param("installationId") installationId: string) {
+    return this.marketplaceService.getDeltaSyncStatus(installationId);
   }
 
   @Post("connectors/:installationId/sync/delta")

@@ -1,0 +1,217 @@
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { createClient } from "redis";
+
+/**
+ * Shared cache service — Redis + in-memory fallback.
+ *
+ * Design goals:
+ *  - Non-fatal: any Redis error falls back to a local TTL Map; never throws.
+ *  - Generic: works with any JSON-serializable type (not tied to a closed union).
+ *  - Safe retry: after a Redis error, waits REDIS_RETRY_BACKOFF_MS before retrying.
+ *  - Prefix invalidation: uses Redis SCAN + DEL for pattern-based cache busting.
+ *
+ * Registered globally via CacheModule so all feature modules can inject it
+ * without explicitly importing CacheModule.
+ */
+
+const REDIS_RETRY_BACKOFF_MS = 30_000;
+
+type FallbackEntry = { value: unknown; expiresAt: number };
+
+@Injectable()
+export class CacheService implements OnModuleDestroy {
+  private readonly logger = new Logger(CacheService.name);
+
+  private readonly redisDisabled =
+    String(process.env.CACHE_REDIS_DISABLED ?? "").trim().toLowerCase() === "true";
+  private readonly redisUrl = String(process.env.REDIS_URL ?? "redis://localhost:6379").trim();
+
+  private redisClient: ReturnType<typeof createClient> | null = null;
+  private redisConnecting: Promise<void> | null = null;
+  private redisAvailable = false;
+  private redisRetryAfterMs = 0;
+
+  /** In-memory fallback — active when Redis is unavailable. */
+  private readonly fallback = new Map<string, FallbackEntry>();
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Return the cached value for `key` if still fresh; otherwise call `producer`,
+   * store the result with the given TTL, and return it.
+   *
+   * Errors from Redis are silenced — the cache acts as a best-effort layer.
+   */
+  async getOrSet<T>(key: string, ttlSeconds: number, producer: () => Promise<T>): Promise<T> {
+    const cached = await this.read<T>(key, ttlSeconds);
+    if (cached !== null) {
+      return cached;
+    }
+    const value = await producer();
+    await this.write(key, value, ttlSeconds);
+    return value;
+  }
+
+  /**
+   * Evict a single cache key from Redis and the in-memory fallback.
+   */
+  async invalidate(key: string): Promise<void> {
+    this.fallback.delete(key);
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.del(key);
+    } catch (err) {
+      this.markRedisUnavailable(err);
+    }
+  }
+
+  /**
+   * Evict all keys whose name starts with `prefix + ":"`.
+   * Uses Redis SCAN to avoid blocking; sweeps the in-memory fallback inline.
+   */
+  async invalidateByPrefix(prefix: string): Promise<void> {
+    const pattern = `${prefix}:*`;
+
+    // In-memory sweep
+    for (const key of this.fallback.keys()) {
+      if (key.startsWith(`${prefix}:`)) {
+        this.fallback.delete(key);
+      }
+    }
+
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      const keysToDelete: string[] = [];
+      for await (const keys of this.redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        keysToDelete.push(...keys);
+      }
+      if (keysToDelete.length > 0) {
+        await this.redisClient.del(keysToDelete);
+      }
+    } catch (err) {
+      this.markRedisUnavailable(err);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.redisClient) {
+      await this.redisClient.quit().catch(() => undefined);
+      this.redisClient = null;
+    }
+    this.redisAvailable = false;
+    this.fallback.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internals
+  // ---------------------------------------------------------------------------
+
+  private readFallback<T>(key: string, ttlSeconds: number): T | null {
+    const entry = this.fallback.get(key);
+    if (!entry) return null;
+    if (Date.now() >= entry.expiresAt) {
+      this.fallback.delete(key);
+      return null;
+    }
+    // Reject stale entries whose remaining TTL has collapsed below 0
+    const remaining = entry.expiresAt - Date.now();
+    if (remaining <= 0 || remaining > ttlSeconds * 1000 * 2) {
+      // paranoia: discard entries that look wrong
+      this.fallback.delete(key);
+      return null;
+    }
+    return entry.value as T;
+  }
+
+  private writeFallback(key: string, value: unknown, ttlSeconds: number): void {
+    this.fallback.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+  }
+
+  private async read<T>(key: string, ttlSeconds: number): Promise<T | null> {
+    // Try in-memory first (warm path, zero network round-trip)
+    const local = this.readFallback<T>(key, ttlSeconds);
+    if (local !== null) return local;
+
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return null;
+    }
+    try {
+      const raw = await this.redisClient.get(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(String(raw)) as T;
+      // Warm the in-memory fallback so the next call within the same process is free
+      this.writeFallback(key, parsed, ttlSeconds);
+      return parsed;
+    } catch (err) {
+      this.markRedisUnavailable(err);
+      return null;
+    }
+  }
+
+  private async write(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+    this.writeFallback(key, value, ttlSeconds);
+    if (!(await this.ensureRedisAvailable()) || !this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
+    } catch (err) {
+      this.markRedisUnavailable(err);
+    }
+  }
+
+  private async ensureRedisAvailable(): Promise<boolean> {
+    if (this.redisDisabled) return false;
+    if (this.redisAvailable) return true;
+    if (Date.now() < this.redisRetryAfterMs) return false;
+
+    if (this.redisConnecting) {
+      await this.redisConnecting;
+      return this.redisAvailable;
+    }
+
+    this.redisConnecting = (async () => {
+      try {
+        const client = createClient({
+          url: this.redisUrl,
+          socket: {
+            connectTimeout: 2_000,
+            reconnectStrategy: () => false,
+          },
+        });
+        client.on("error", (err: unknown) => {
+          this.markRedisUnavailable(err);
+        });
+        await client.connect();
+        this.redisClient = client;
+        this.redisAvailable = true;
+        this.redisRetryAfterMs = 0;
+      } catch (err) {
+        this.markRedisUnavailable(err);
+      } finally {
+        this.redisConnecting = null;
+      }
+    })();
+
+    await this.redisConnecting;
+    return this.redisAvailable;
+  }
+
+  private markRedisUnavailable(err?: unknown): void {
+    this.redisAvailable = false;
+    this.redisRetryAfterMs = Date.now() + REDIS_RETRY_BACKOFF_MS;
+    if (err) {
+      this.logger.warn(`Redis unavailable, falling back to in-memory cache: ${String(err)}`);
+    }
+  }
+}

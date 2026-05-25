@@ -14,8 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canDecideApproval } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { ApprovalEvidenceDrawer } from "./approval-evidence-drawer";
 
 /** Maximum characters to display for a diff field value in the "What Changed" section. */
@@ -40,8 +39,7 @@ function summarizeDecisionNote(note: string | null | undefined): string | null {
 
 export default async function QualityApprovalsPage({ searchParams }: QualityApprovalsPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/quality/approvals", 401));
   }

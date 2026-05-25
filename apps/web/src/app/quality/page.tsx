@@ -7,8 +7,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getIssueInbox, getStats } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canDecideApproval, canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +30,7 @@ function formatTrend(trend: string): string {
 }
 
 export default async function QualityPage() {
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canTriageWarnings = canEditWorkspace(actorRole);
   const canRecordReviewDecisions = canDecideApproval(actorRole);
 

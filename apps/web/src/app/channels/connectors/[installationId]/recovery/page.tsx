@@ -11,8 +11,7 @@ import {
   getConnectorRecoveryGroups,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { RecoveryRetryButton } from "./_components/recovery-retry-button";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +24,7 @@ interface RecoveryPageProps {
 export default async function ConnectorRecoveryPage({ params, searchParams }: RecoveryPageProps) {
   const { installationId } = await params;
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [installations, groups] = await Promise.all([

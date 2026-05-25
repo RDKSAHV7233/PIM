@@ -29,8 +29,8 @@ function run() {
 
   assert(
     capabilitiesSource.includes('role === "admin" || role === "editor"') &&
-      capabilitiesSource.includes('role === "admin" || role === "editor" || role === "reviewer"'),
-    "Role capabilities must keep reviewer read-only by default while allowing explicit approval decisions.",
+      capabilitiesSource.includes('role === "admin" || role === "editor" || role === "approver"'),
+    "Role capabilities must keep approver and reviewer roles distinct: approver allows explicit approval decisions, reviewer stays read-only.",
   );
   assert(
     approvalsSource.includes("decideProductReviewAction") &&
@@ -51,11 +51,11 @@ function run() {
     "Catalog surfaces must use shared role capabilities so reviewer users stay read-only outside approval actions.",
   );
   assert(
-    roleBadgeSource.includes('reviewer: { label: "Reviewer"') &&
+    roleBadgeSource.includes('reviewer:') && roleBadgeSource.includes('"Reviewer"') &&
       roleBadgeSource.includes('const manageRolesHref = pathname === "/admin/users" ? "#workspace-users" : "/admin/users#workspace-users";') &&
       roleBadgeSource.includes('href={manageRolesHref}') &&
       adminUsersSource.includes('id="workspace-users"') &&
-      adminUsersSource.includes('{ role: "Reviewer"'),
+      adminUsersSource.includes('persona: "Reviewer"'),
     "Reviewer role must be surfaced consistently in the badge and admin role matrix, and team-role navigation must deep-link to the live users table.",
   );
 

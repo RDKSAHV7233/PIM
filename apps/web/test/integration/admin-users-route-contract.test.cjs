@@ -18,8 +18,7 @@ function run() {
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();") &&
+      source.includes("await getServerSession();") &&
       source.includes("const claims = await getServerSessionClaims();"),
     "Admin users must derive shared auth, actor role, and session claims before loading workspace access data.",
   );
@@ -124,9 +123,10 @@ function run() {
       source.includes('<input type="hidden" name="errorRedirectTo" value="/admin/users?showInvite=true" />') &&
       actionsSource.includes("createAccessScopeAssignmentAction") &&
       actionsSource.includes("deleteAccessScopeAssignmentAction") &&
-      actionsSource.includes("const actorRole = await getServerActorRole();") &&
+      actionsSource.includes("await getServerSession();") &&
       actionsSource.includes('if (actorRole !== "admin") {') &&
-      actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to invite workspace user.", errorRedirectTo);') &&
+      actionsSource.includes('"Unable to invite workspace user."') &&
+      actionsSource.includes("errorRedirectTo") &&
       actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to update workspace user.");') &&
       actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to create scope assignment.");') &&
       actionsSource.includes('redirectWithError(error instanceof Error ? error.message : "Unable to delete scope assignment.");'),

@@ -14,8 +14,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -141,13 +140,12 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const initialSearch = resolveProductSearch(query.search);
   const page = resolvePositiveInteger(query.page, 1, 10_000);
   const limit = resolvePositiveInteger(query.limit, 50, 200);
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [stats, categories, productWindow, installedConnectors] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {

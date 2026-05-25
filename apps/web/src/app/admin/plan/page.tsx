@@ -6,8 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -380,8 +379,7 @@ function Meter({
 
 export default async function PlanPage({ searchParams }: PlanPageProps) {
   const query = await searchParams;
-  const role = await getServerActorRole();
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole: role } = await getServerSession();
   const claims = await getServerSessionClaims();
   const signupTrendDays = resolveSignupTrendDays(query.days);
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
@@ -471,7 +469,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     <div className="space-y-5">
       <PageHeader
         title="Plan & Usage"
-        description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString()}`}
+        description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString("en-IN")}`}
         breadcrumb={
           <>
             <Link href="/dashboard" className="underline">
@@ -831,7 +829,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                   </div>
                 ) : null}
               </div>
-            ) : (
+            ) : usage.planTier === "ENTERPRISE" ? null : (
               <form action={requestPlanUpgradeAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <input type="hidden" name="source" value="admin_plan" />
                 <input type="hidden" name="days" value={String(signupTrendDays)} />

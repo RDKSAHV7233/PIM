@@ -4,8 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +36,7 @@ const adminLinks = [
   {
     title: "OIDC / SSO",
     description: "Configure your external identity provider for single sign-on login.",
-    href: "/admin/oidc",
+    href: "/admin/auth-policy/oidc",
     visibility: "admin" as AdminNavigationAudience,
   },
   {
@@ -67,11 +66,10 @@ const adminLinks = [
 ];
 
 export default async function AdminPage() {
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin", 401));
   }
-  const actorRole = await getServerActorRole();
   const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));
   const accessSummary = describeAdminAccess(actorRole);
 

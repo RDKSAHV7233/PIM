@@ -16,8 +16,7 @@ function run() {
   const source = fs.readFileSync(PAGE, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Operations repair must derive shared server auth/session context.",
   );
   assert(

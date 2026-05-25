@@ -574,6 +574,7 @@ export class AccessPolicyService {
         },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 1_000, // defensive cap — scope assignments per tenant
     });
 
     const connectorIds = rows
@@ -582,6 +583,7 @@ export class AccessPolicyService {
     const connectors = connectorIds.length > 0
       ? await this.prisma.tenant(tenantId).connectorInstallation.findMany({
           where: { id: { in: connectorIds } },
+          take: 200, // bounded by scope assignment results above
           select: {
             id: true,
             accountAlias: true,
@@ -596,6 +598,7 @@ export class AccessPolicyService {
               in: connectors.map((connector) => connector.connectorId),
             },
           },
+          take: 50, // defensive cap — definitions are few per tenant
           select: {
             id: true,
             slug: true,
@@ -2086,6 +2089,7 @@ export class AccessPolicyService {
           },
         ],
       },
+      take: 500, // defensive cap — per-actor scope assignments
     });
 
     return assignments.filter((assignment) => this.assignmentAllowsAction(assignment.actions, action));
@@ -2123,6 +2127,7 @@ export class AccessPolicyService {
         scopeType: true,
       },
       distinct: ["scopeType"],
+      take: 50, // bounded by the number of distinct scope types in the system
     });
     return rows.map((row) => row.scopeType as ScopeAssignmentType);
   }

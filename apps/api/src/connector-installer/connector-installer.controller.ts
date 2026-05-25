@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Query, Redirect, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -36,7 +36,8 @@ export class ConnectorInstallerController {
   }
 
   @Get("definitions")
-  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher", "viewer")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
+  @Header("Cache-Control", "private, max-age=60, stale-while-revalidate=300")
   listDefinitions(@Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listAvailableDefinitions(this.resolveActor(request));
   }
@@ -56,7 +57,7 @@ export class ConnectorInstallerController {
   }
 
   @Get("installed")
-  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher", "viewer")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
   @ApiOperation({ summary: "List installed connectors" })
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {

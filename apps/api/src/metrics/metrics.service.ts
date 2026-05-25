@@ -163,6 +163,7 @@ export class MetricsService {
           connectorId: true,
           installedAt: true,
         },
+        take: 500,
       }),
       tenantClient.validationIssue.findMany({
         where: {
@@ -172,6 +173,7 @@ export class MetricsService {
         select: {
           createdAt: true,
         },
+        take: 10_000,
       }),
       tenantClient.validationIssue.findMany({
         where: {
@@ -183,6 +185,7 @@ export class MetricsService {
           createdAt: true,
           updatedAt: true,
         },
+        take: 10_000,
       }),
     ]);
 

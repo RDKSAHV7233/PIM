@@ -16,8 +16,7 @@ import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { ApiHttpError, getDeadLetterSubmissions, getSubmissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -149,8 +148,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
   const statusFilter = String(query.status ?? "").trim().toUpperCase();
   const connectorSlug = String(query.connectorSlug ?? "").trim().toLowerCase();
   const selectedSubmissionId = String(query.submissionId ?? "").trim();
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
   try {

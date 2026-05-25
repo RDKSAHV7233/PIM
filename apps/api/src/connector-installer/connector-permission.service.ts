@@ -163,6 +163,83 @@ export class ConnectorPermissionService {
     };
   }
 
+  /**
+   * Batch variant of buildDefinitionActions for use in listAvailableDefinitions.
+   * Replaces N per-slug sequential plan checks with:
+   *   - 1× recomputeUsage + getPlanLimits (shared)
+   *   - N parallel getConnectorAccountCount queries
+   *   - 1× bulk ConnectorPermission fetch for non-admin actors
+   */
+  async buildDefinitionActionsForSlugs(
+    actor: ConnectorActor,
+    slugs: string[],
+  ): Promise<Map<string, ConnectorActionMatrix>> {
+    const result = new Map<string, ConnectorActionMatrix>();
+    if (slugs.length === 0) return result;
+
+    const tenantKey = this.getTenantKey();
+    const normalizedSlugs = slugs.map((s) => s.trim().toLowerCase());
+
+    // Single batch plan check: 2 shared queries + N parallel account-count queries
+    const planResults = await this.planUsageService.checkInstallLimitBatch(normalizedSlugs, tenantKey);
+
+    if (actor.actorRole === "admin") {
+      for (let i = 0; i < slugs.length; i++) {
+        const planRule = planResults.get(normalizedSlugs[i]) ?? { allowed: true, reason: null };
+        result.set(slugs[i], {
+          install: planRule,
+          reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+          uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        });
+      }
+      return result;
+    }
+
+    // Non-admin: one batch query for all install permissions across all slugs
+    const permittedSlugs = await this.batchFetchInstallPermittedSlugs(tenantKey, actor, normalizedSlugs);
+
+    for (let i = 0; i < slugs.length; i++) {
+      const planRule = planResults.get(normalizedSlugs[i]) ?? { allowed: true, reason: null };
+      let install: ConnectorActionRule;
+      if (!planRule.allowed) {
+        install = planRule;
+      } else if (permittedSlugs.has(normalizedSlugs[i])) {
+        install = { allowed: true, reason: null };
+      } else {
+        install = { allowed: false, reason: "CONNECTOR_PERMISSION_REQUIRED" };
+      }
+      result.set(slugs[i], {
+        install,
+        reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+        uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
+      });
+    }
+
+    return result;
+  }
+
+  private async batchFetchInstallPermittedSlugs(
+    tenantKey: string,
+    actor: ConnectorActor,
+    normalizedSlugs: string[],
+  ): Promise<Set<string>> {
+    if (normalizedSlugs.length === 0) return new Set();
+
+    const rows = await this.prisma.tenant(tenantKey).$queryRaw<Array<{ connectorSlug: string }>>(Prisma.sql`
+      SELECT DISTINCT "connectorSlug" AS "connectorSlug"
+      FROM "ConnectorPermission"
+      WHERE "tenantKey" = ${tenantKey}
+        AND "action"::text = 'install'
+        AND "connectorSlug" = ANY(${normalizedSlugs}::text[])
+        AND (
+          ("principalType" = 'user' AND "principalId" = ${actor.actorId})
+          OR ("principalType" = 'role' AND "principalId" = ${actor.actorRole})
+        )
+    `);
+
+    return new Set(rows.map((r) => r.connectorSlug));
+  }
+
   async buildInstallationActions(
     actor: ConnectorActor,
     connectorSlug: string,

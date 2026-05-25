@@ -2,8 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ApiHttpError, getOidcConfig } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -25,12 +24,10 @@ function StatusBanner({ tone, message }: { tone: "success" | "error"; message: s
 
 export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/oidc", 401));
   }
-
-  const actorRole = await getServerActorRole();
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
 

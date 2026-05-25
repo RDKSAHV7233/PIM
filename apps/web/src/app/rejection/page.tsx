@@ -23,8 +23,7 @@ import {
   formatMarketplaceChannelLabel,
   normalizeMarketplaceChannel,
 } from "@/lib/marketplace-channels";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -74,8 +73,7 @@ function riskToneForChip(riskBand: string | null): "neutral" | "success" | "warn
 
 export default async function RejectionPage({ searchParams }: RejectionPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const productId = String(query.productId ?? "").trim();
   const channel = normalizeChannel(query.channel);
 

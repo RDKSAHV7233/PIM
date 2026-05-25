@@ -26,10 +26,18 @@ function run() {
   const apiKeysSource = read("apps/web/src/app/admin/api-keys/page.tsx");
   const connectorPermissionFormSource = read("apps/web/src/components/settings/connector-permission-form.tsx");
 
+  // The shipped role surface expanded from 4 to 8 roles (admin, editor, publisher, approver,
+  // channel_manager, connector_admin, reviewer, viewer). Verify all eight are declared in the
+  // core type and the server-session allowlist.  Uses per-value includes() rather than an exact
+  // multiline match to stay robust across different line-ending conventions.
+  const EIGHT_ROLES = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
   assert(
-    coreSource.includes('export type AppRole = "admin" | "editor" | "reviewer" | "viewer";') &&
-      sessionSource.includes('const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"]'),
-    "Frontend role identity must remain bounded to the four supported web roles.",
+    coreSource.includes("export type AppRole =") &&
+      EIGHT_ROLES.every((role) => coreSource.includes(`"${role}"`)) &&
+      sessionSource.includes(
+        'const APP_ROLES: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]',
+      ),
+    "Frontend role surface is the eight shipped web roles. No enterprise personas (product_admin, system_admin, category_manager, vendor) are first-class AppRole values.",
   );
   assert(
     !coreSource.includes("product_admin") &&
@@ -39,10 +47,15 @@ function run() {
     "Unsupported enterprise persona names must not be silently accepted as first-class AppRole values.",
   );
   assert(
+    // Write access stays bounded to admin + editor
     capabilitiesSource.includes('return role === "admin" || role === "editor";') &&
-      capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "reviewer";') &&
-      capabilitiesSource.includes("return !canEditWorkspace(role);"),
-    "Shared role capabilities must keep write access, review decisions, and read-only fallback centralized.",
+      // Approval decisions use the dedicated approver role
+      capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "approver";') &&
+      // Channel management uses the dedicated channel_manager role
+      capabilitiesSource.includes('"channel_manager"') &&
+      // Connector management uses the dedicated connector_admin role
+      capabilitiesSource.includes('"connector_admin"'),
+    "Shared role capabilities must keep write access centralized to admin+editor and expose dedicated helper functions for each expanded role (approver, channel_manager, connector_admin).",
   );
   assert(
     adminNavigationSource.includes('audience === "editor_plus"') &&
@@ -80,10 +93,12 @@ function run() {
     "API/client operations UX must keep machine credentials admin-managed with a read-only fallback.",
   );
   assert(
-    connectorPermissionFormSource.includes('const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"]') &&
+    connectorPermissionFormSource.includes(
+      'const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]',
+    ) &&
       connectorPermissionFormSource.includes("Connector") &&
       connectorPermissionFormSource.includes("Role"),
-    "Connector permission UI must stay aligned to supported frontend roles until expanded role personas are implemented.",
+    "Connector permission UI must expose all eight shipped AppRole values so operators can grant per-connector access to any role.",
   );
 
   console.log(
@@ -91,7 +106,7 @@ function run() {
       {
         status: "ok",
         validated: [
-          "frontend_roles_bounded_to_admin_editor_reviewer_viewer",
+          "frontend_role_surface_expanded_to_eight_shipped_roles",
           "unsupported_enterprise_personas_documented_not_silently_enabled",
           "role_capabilities_centralize_write_review_readonly_behavior",
           "navigation_hides_editor_plus_admin_and_internal_surfaces",

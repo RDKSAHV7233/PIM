@@ -9,8 +9,7 @@ import { Select } from "@/components/ui/select";
 import { ApiHttpError, getCategoryTree, getProductList } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -49,13 +48,12 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
   const categoryLimit = parseLimit(query.categoryLimit, 100, 25, 2000);
   const deleteStatus = String(query.deleteStatus ?? "").trim();
   const deleteError = String(query.deleteError ?? "").trim();
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canAdmin = actorRole === "admin";
 
   try {
     const [categories, products] = await Promise.all([
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
     ]);
     const filteredCategories = filterTestData(categories, hideTestData);

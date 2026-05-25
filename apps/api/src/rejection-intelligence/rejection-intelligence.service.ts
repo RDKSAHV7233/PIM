@@ -45,6 +45,7 @@ export class RejectionIntelligenceService {
       orderBy: {
         createdAt: "desc",
       },
+      take: 100, // defensive cap — images per product
       select: {
         id: true,
         width: true,

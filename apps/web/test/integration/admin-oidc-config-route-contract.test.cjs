@@ -35,9 +35,8 @@ function run() {
 
   // ── Page derives shared server auth/session context ────────────────────────
   assert(
-    page.includes("const authHeader = await getServerAuthHeader();") &&
       page.includes('redirect(buildLoginRedirect("/admin/auth-policy/oidc", 401));') &&
-      page.includes("const actorRole = await getServerActorRole();"),
+      page.includes("await getServerSession();"),
     "OIDC admin page must derive shared server auth/session context and redirect anonymous visitors to login.",
   );
 
@@ -80,7 +79,8 @@ function run() {
   // ── Page discloses the pilot-period boundary on enforcement ────────────────
   assert(
     page.includes("Pilot note") &&
-      page.includes("requires step-up password\n        confirmation on every mutation") &&
+      page.includes("requires step-up password") &&
+      page.includes("confirmation on every mutation") &&
       page.includes("Full OIDC enforcement claims remain gated until Gate C is complete"),
     "OIDC admin page must disclose both the step-up requirement and the Gate-C enforcement boundary so admins understand what is now safe and what remains gated.",
   );

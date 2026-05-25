@@ -23,8 +23,7 @@ import {
   getWorkspaceUsers,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -117,8 +116,7 @@ function resolveInviteFieldErrors(message: string) {
 
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const status = String(query.status ?? "").trim();
@@ -142,6 +140,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     const activeUsers = workspaceUsers.filter((user) => user.isActive).length;
     const lockedUsers = workspaceUsers.filter((user) => user.isLocked && user.isActive).length;
     const adminUsers = workspaceUsers.filter((user) => user.role === "admin" && user.isActive).length;
+    const atUserLimit = usage.users.current >= usage.users.limit;
 
     return (
       <div className="space-y-5">
@@ -156,12 +155,21 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           actions={
             <>
               {canManageUsers ? (
-                <Link
-                  href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                >
-                  {showInvite ? "Close Invite" : "Invite User"}
-                </Link>
+                atUserLimit && !showInvite ? (
+                  <span
+                    title={`User limit reached (${usage.users.current}/${usage.users.limit}). Review your plan to invite more users.`}
+                    className="cursor-not-allowed rounded-md bg-slate-300 px-3 py-2 text-sm font-medium text-slate-500 select-none"
+                  >
+                    Invite User
+                  </span>
+                ) : (
+                  <Link
+                    href={showInvite ? "/admin/users" : "/admin/users?showInvite=true"}
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  >
+                    {showInvite ? "Close Invite" : "Invite User"}
+                  </Link>
+                )
               ) : null}
               <Link
                 href="/admin/connectors"
@@ -173,6 +181,17 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           }
         />
 
+        {atUserLimit && !showInvite ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <span className="font-semibold">User limit reached</span> — your plan allows{" "}
+            {usage.users.limit} user{usage.users.limit === 1 ? "" : "s"} and {usage.users.current}{" "}
+            {usage.users.current === 1 ? "is" : "are"} currently active.{" "}
+            <Link href="/admin/plan" className="underline hover:no-underline">
+              Review your plan
+            </Link>{" "}
+            to invite more users.
+          </div>
+        ) : null}
         {status === "user-error" ? (
           <InlineAlert tone="error" message={errorMessage || "Unable to update workspace user."} />
         ) : null}

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -8,6 +9,8 @@ import {
   isCursorPagination,
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
 import { type AppRole } from "../common/rbac/roles";
 import { CreateAttributeDefinitionDto } from "./dto/create-attribute-definition.dto";
@@ -27,6 +30,7 @@ export class TaxonomyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async listCategories(
@@ -41,6 +45,7 @@ export class TaxonomyService {
       return this.prisma.tenant().category.findMany({
         where: scopeWhere,
         orderBy: [{ path: "asc" }],
+        take: 5_000, // defensive cap — category trees in any real PIM won't exceed this
       });
     }
 
@@ -135,6 +140,7 @@ export class TaxonomyService {
         },
       },
       orderBy: [{ path: "asc" }, { id: "asc" }],
+      take: 5_000, // defensive cap — bounded by total category count
     });
     const affectedIds = [id, ...descendants.map((child) => child.id)];
     const existingSlugs = new Set(
@@ -145,6 +151,7 @@ export class TaxonomyService {
               notIn: affectedIds,
             },
           },
+          take: 5_000, // defensive cap — slug collision check across all categories
           select: {
             slug: true,
           },
@@ -213,6 +220,7 @@ export class TaxonomyService {
     return this.prisma.tenant().attributeDefinition.findMany({
       where: { categoryId },
       orderBy: [{ appliesTo: "asc" }, { key: "asc" }],
+      take: 500, // defensive cap — attribute definitions per category
     });
   }
 
@@ -220,7 +228,7 @@ export class TaxonomyService {
     await this.getCategory(categoryId, actor);
     await this.accessPolicy.assertCategoryAccess(this.toPolicyActor(actor), "edit", categoryId, "AttributeDefinition");
     try {
-      return await this.prisma.tenant().attributeDefinition.create({
+      const definition = await this.prisma.tenant().attributeDefinition.create({
         data: {
           categoryId,
           key: this.normalizeKey(dto.key),
@@ -231,6 +239,8 @@ export class TaxonomyService {
           allowedValues: (dto.allowedValues ?? undefined) as Prisma.JsonObject | undefined,
         },
       });
+      await this.invalidateAttributeCaches();
+      return definition;
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new BadRequestException("Attribute key already exists for this category and target.");
@@ -249,7 +259,7 @@ export class TaxonomyService {
       attributeId,
     );
     try {
-      return await this.prisma.tenant().attributeDefinition.update({
+      const definition = await this.prisma.tenant().attributeDefinition.update({
         where: { id: attributeId },
         data: {
           key: this.normalizeKey(dto.key),
@@ -260,6 +270,8 @@ export class TaxonomyService {
           allowedValues: (dto.allowedValues ?? undefined) as Prisma.JsonObject | undefined,
         },
       });
+      await this.invalidateAttributeCaches();
+      return definition;
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new BadRequestException("Attribute key already exists for this category and target.");
@@ -278,6 +290,20 @@ export class TaxonomyService {
       attributeId,
     );
     await this.prisma.tenant().attributeDefinition.delete({ where: { id: attributeId } });
+    await this.invalidateAttributeCaches();
+  }
+
+  /**
+   * Bust compliance-attr and completeness-required caches for the current tenant.
+   * Called after any AttributeDefinition write — both cache namespaces read from
+   * the same underlying table.
+   */
+  private async invalidateAttributeCaches(): Promise<void> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    await Promise.all([
+      this.cache.invalidateByPrefix(`compliance:attrs:${tenantKey}`),
+      this.cache.invalidateByPrefix(`completeness:required:${tenantKey}`),
+    ]);
   }
 
   private makeSlug(value: string) {

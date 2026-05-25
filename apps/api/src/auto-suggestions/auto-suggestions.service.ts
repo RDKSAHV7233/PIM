@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AccessPolicyService, type PolicyActor, type ScopeAction } from "../common/access-policy/access-policy.service";
+import { CacheService } from "../common/cache/cache.service";
+import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+
+const AUTO_SUGGEST_CATEGORY_CACHE_TTL_SECONDS = 5 * 60;
 
 type ProductShape = {
   id: string;
@@ -19,6 +24,7 @@ export class AutoSuggestionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessPolicyService: AccessPolicyService,
+    private readonly cache: CacheService,
   ) {}
 
   async getTitleSuggestion(productId: string, actor: PolicyActor) {
@@ -129,10 +135,16 @@ export class AutoSuggestionsService {
   }
 
   private async buildCategorySuggestion(product: ProductShape) {
-    const categories = await this.prisma.tenant().category.findMany({
-      select: { id: true, name: true, path: true },
-      take: 200,
-    });
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `auto-suggest:categories:${tenantKey}`;
+    const categories = await this.cache.getOrSet(
+      cacheKey,
+      AUTO_SUGGEST_CATEGORY_CACHE_TTL_SECONDS,
+      () => this.prisma.tenant().category.findMany({
+        select: { id: true, name: true, path: true },
+        take: 200,
+      }),
+    );
     const bag = `${product.title} ${product.description}`.toLowerCase();
 
     const ranked = categories

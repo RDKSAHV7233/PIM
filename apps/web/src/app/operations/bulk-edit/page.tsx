@@ -18,8 +18,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -130,8 +129,7 @@ function parseList(value: string): string[] {
 export default async function OperationsBulkEditPage({ searchParams }: OperationsBulkEditPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canWrite = canEditWorkspace(actorRole);
 
   const bulkEditCategoryId = String(query.bulkEditCategoryId ?? "").trim();
@@ -163,7 +161,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   try {
     const [operations, categories, products] = await Promise.all([
       getBulkEditOperations(100, { role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       getProducts({ role: actorRole, authHeader }),
     ]);
 

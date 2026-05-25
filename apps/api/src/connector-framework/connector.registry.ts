@@ -58,6 +58,7 @@ export class ConnectorRegistry implements OnModuleInit {
         where: {
           isActive: true,
         },
+        take: 100, // defensive cap — connector definitions are a small fixed catalogue
         select: {
           slug: true,
         },

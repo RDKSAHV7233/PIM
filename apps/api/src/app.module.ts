@@ -14,6 +14,7 @@ import { BulkImportModule } from "./bulk-import/bulk-import.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { AuditLogInterceptor } from "./common/audit/audit-log.interceptor";
 import { AccessPolicyModule } from "./common/access-policy/access-policy.module";
+import { CacheModule } from "./common/cache/cache.module";
 import { LoggingModule } from "./common/logging/logging.module";
 import { ComplianceModule } from "./compliance/compliance.module";
 import { AppController } from "./common/app.controller";
@@ -46,6 +47,7 @@ const FEATURE_ONDC_ENABLED =
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
+    CacheModule,
     LoggingModule,
     ObservabilityModule,
     QueueModule,

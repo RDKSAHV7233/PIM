@@ -4,8 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { canViewAdminNavigationItem, describeAdminAccess, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -61,11 +60,10 @@ const workspaceAdminModules = [
 ];
 
 export default async function AdminWorkspacePage() {
-  const authHeader = await getServerAuthHeader();
+  const { authHeader, actorRole } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/workspace", 401));
   }
-  const actorRole = await getServerActorRole();
   const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>
     canViewAdminNavigationItem(actorRole, item.visibility),
   );

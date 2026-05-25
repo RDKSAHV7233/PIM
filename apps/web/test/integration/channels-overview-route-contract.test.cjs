@@ -18,8 +18,7 @@ function run() {
   const roleCapabilitiesSource = fs.readFileSync(ROLE_CAPABILITIES, "utf8");
 
   assert(
-    source.includes("const authHeader = await getServerAuthHeader();") &&
-      source.includes("const actorRole = await getServerActorRole();"),
+      source.includes("await getServerSession();"),
     "Connections overview must derive its server auth context from the shared auth/session helpers.",
   );
   assert(
@@ -57,8 +56,8 @@ function run() {
     "Connections overview must deep-link operators into connections, mappings, issues, submissions, and governance workspaces.",
   );
   assert(
-    roleCapabilitiesSource.includes('return role === "admin" || role === "editor";') &&
-      source.includes("const canEditChannelSetup = canEditWorkspace(actorRole);") &&
+    roleCapabilitiesSource.includes('return role === "admin" || role === "editor" || role === "channel_manager";') &&
+      source.includes("const canEditChannelSetup = canManageChannels(actorRole);") &&
       source.includes('const canManageConnectorAccess = actorRole === "admin";') &&
       source.includes("Workspace editors and admins apply mapping changes.") &&
       source.includes("Workspace admins manage connector permissions and plan-based access.") &&

@@ -384,6 +384,7 @@ export class ConnectorMappingService {
         ...(input.includeArchived ? {} : { lifecycleState: { not: "archived" } }),
       },
       orderBy: { createdAt: "desc" },
+      take: 1_000, // defensive cap — mapping versions per connector/category scope
     });
     const versions = rows.map((row) => toVersion(row as unknown as Record<string, unknown>));
     if (versions.length === 0) {
@@ -395,6 +396,7 @@ export class ConnectorMappingService {
         mappingVersionId: { in: versions.map((version) => version.id) },
       },
       orderBy: { createdAt: "asc" },
+      take: 10_000, // defensive cap — audit events across all versions above
     });
     const historyByVersion = new Map<string, ConnectorMappingHistory>();
     for (const eventRow of eventRows) {
@@ -1107,6 +1109,7 @@ export class ConnectorMappingService {
         categoryScope: true,
       },
       distinct: ["categoryScope"],
+      take: 5_000, // defensive cap — one distinct scope per category
     });
     const publishedScopes = new Set(
       publishedScopesRows
@@ -1115,6 +1118,7 @@ export class ConnectorMappingService {
     );
     const categories = await this.prisma.tenant(tenantKey).category.findMany({
       orderBy: [{ path: "asc" }],
+      take: 5_000, // defensive cap — all categories for unmapped-category detection
       include: {
         attributeDefinitions: {
           where: { required: true, appliesTo: "product" },
@@ -1191,6 +1195,7 @@ export class ConnectorMappingService {
         required: true,
         appliesTo: "product",
       },
+      take: 500, // defensive cap — required attribute definitions per category
       select: { key: true },
     });
     const missingRequiredMappings = requiredDefs
@@ -1433,6 +1438,7 @@ export class ConnectorMappingService {
             categoryScope: true,
           },
           distinct: ["categoryScope"],
+          take: 5_000, // defensive cap — one distinct scope per category
         }),
       ]);
       const mappedCategories = mappedCategoryRows.filter((row) => String(row.categoryScope ?? "").trim() !== "*").length;

@@ -207,7 +207,9 @@ export class BulkImportController {
     @Body() dto: ProcessBulkImportJobDto,
     @Req() request?: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
   ) {
-    return this.bulkImportService.processJob(jobId, dto.chunkSize, {
+    // Enqueues processing work to BullMQ and returns immediately — avoids
+    // blocking the HTTP worker for the full row-processing duration.
+    return this.bulkImportRunService.enqueueProcessJob(jobId, dto.chunkSize, {
       actorId: request?.pimUserId,
       actorRole: request?.pimRole,
       tenantId: request?.pimTenant,

@@ -9,7 +9,7 @@ import { QueueService } from "../queue/queue.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { BulkImportStorageService } from "./bulk-import-storage.service";
 import { BulkImportService } from "./bulk-import.service";
-import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
+import { getTenantKeyFromContext, runWithTenantContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import {
   CursorPaginationQuery,
@@ -32,6 +32,15 @@ type LargeRunBatchPayload = {
   jobId: string;
   tenantKey: string;
   batchIndex: number;
+};
+
+type BulkImportJobPayload = {
+  kind: "bulk_import_job";
+  jobId: string;
+  chunkSize: number | undefined;
+  actorId: string | undefined;
+  actorRole: string | undefined;
+  tenantKey: string;
 };
 
 type CanonicalRowPayload = {
@@ -57,18 +66,60 @@ export class BulkImportRunService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.queueService.processWithBackpressure<LargeRunBatchPayload>(
+    this.queueService.processWithBackpressure<LargeRunBatchPayload | BulkImportJobPayload>(
       QUEUE_NAMES.BULK_IMPORT,
       {
         laneResolver: (p) => p.tenantKey,
       },
       async (payload) => {
+        if (payload.kind === "bulk_import_job") {
+          await runWithTenantContext(payload.tenantKey, () =>
+            this.bulkImportService.processJob(payload.jobId, payload.chunkSize, {
+              actorId: payload.actorId,
+              actorRole: payload.actorRole as never,
+              tenantId: payload.tenantKey,
+            }),
+          );
+          return;
+        }
         if (payload.kind !== "large_run_batch") {
           return;
         }
         await this.processLargeRunBatch(payload);
       },
     );
+  }
+
+  /**
+   * Non-blocking alternative to `BulkImportService.processJob`.
+   * Validates the job exists and the actor has access, enqueues the processing
+   * work to the BULK_IMPORT BullMQ lane, then returns the current job state
+   * immediately — the HTTP worker is never blocked by row-processing time.
+   */
+  async enqueueProcessJob(
+    jobId: string,
+    chunkSize: number | undefined,
+    actor: PolicyActor,
+  ) {
+    // Validates existence + access + returns current job state in one call.
+    const job = await this.bulkImportService.getJob(jobId, actor);
+
+    if (job.status === BulkImportJobStatus.completed) {
+      return job;
+    }
+
+    const tenantKey = this.resolveTenantKey();
+
+    await this.queueService.enqueue<BulkImportJobPayload>(QUEUE_NAMES.BULK_IMPORT, {
+      kind: "bulk_import_job",
+      jobId,
+      chunkSize,
+      actorId: actor.actorId ?? undefined,
+      actorRole: actor.actorRole ?? undefined,
+      tenantKey,
+    });
+
+    return job;
   }
 
   async uploadRun(
@@ -457,6 +508,7 @@ export class BulkImportRunService implements OnModuleInit {
     const existingJobs = await this.prisma.tenant().bulkImportJob.findMany({
       where: { runId },
       select: { id: true },
+      take: 500, // defensive cap — batch count is bounded by totalRows / LARGE_IMPORT_BATCH_SIZE
     });
     if (existingJobs.length > 0) {
       return this.getRun(runId, actor);
@@ -714,20 +766,25 @@ export class BulkImportRunService implements OnModuleInit {
   }
 
   private async refreshJobCounters(jobId: string) {
-    const rows = await this.prisma.tenant().bulkImportRow.findMany({
+    // groupBy replaces the prior findMany + in-memory loop: the DB aggregates
+    // by status and returns at most one row per distinct status value instead of
+    // shipping every row across the wire (potentially thousands per large batch job).
+    const statusGroups = await this.prisma.tenant().bulkImportRow.groupBy({
+      by: ["status"],
       where: { jobId },
-      select: { status: true },
+      _count: { status: true },
     });
 
     let success = 0;
     let failed = 0;
     let deadLetter = 0;
     let pending = 0;
-    for (const row of rows) {
-      if (row.status === BulkImportRowStatus.success) success++;
-      else if (row.status === BulkImportRowStatus.failed) failed++;
-      else if (row.status === BulkImportRowStatus.dead_letter) deadLetter++;
-      else pending++;
+    for (const group of statusGroups) {
+      const count = group._count.status;
+      if (group.status === BulkImportRowStatus.success) success = count;
+      else if (group.status === BulkImportRowStatus.failed) failed = count;
+      else if (group.status === BulkImportRowStatus.dead_letter) deadLetter = count;
+      else pending += count; // queued / processing / retrying
     }
 
     const status =

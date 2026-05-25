@@ -29,6 +29,10 @@ describe("ConnectorInstallerService", () => {
     const credentialEncryptionService = {
       storeCredential: jest.fn().mockResolvedValue({ id: "cred_1", keyVersion: "v1" }),
     };
+    const planUsageService = {
+      checkLimit: jest.fn().mockResolvedValue({ allowed: true }),
+      touchUsageForCurrentTenant: jest.fn().mockResolvedValue(undefined),
+    };
     const connectorPermissionService = {
       assertActionAllowed: jest.fn().mockResolvedValue(undefined),
       buildDefinitionActions: jest.fn().mockResolvedValue({
@@ -36,6 +40,7 @@ describe("ConnectorInstallerService", () => {
         reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" },
         uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" },
       }),
+      buildDefinitionActionsForSlugs: jest.fn().mockResolvedValue(new Map()),
       buildInstallationActions: jest.fn().mockResolvedValue({
         install: { allowed: false, reason: "ALREADY_INSTALLED" },
         reconnect: { allowed: true, reason: null },
@@ -45,13 +50,20 @@ describe("ConnectorInstallerService", () => {
       grantPermission: jest.fn(),
       revokePermission: jest.fn(),
     };
+    const accessPolicy = {
+      assertProductAccess: jest.fn().mockResolvedValue(undefined),
+      buildProductScopeWhere: jest.fn().mockResolvedValue({}),
+      assertConnectorInstallationAccess: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new ConnectorInstallerService(
       prisma as never,
       auditService,
+      planUsageService as never,
       marketplaceService as never,
       connectorRegistry as never,
       credentialEncryptionService as never,
       connectorPermissionService as never,
+      accessPolicy as never,
     );
     return {
       service,
@@ -91,6 +103,33 @@ describe("ConnectorInstallerService", () => {
       }),
     );
     expect(executeMock).toHaveBeenCalled();
+  });
+
+  it("listAvailableDefinitions delegates to buildDefinitionActionsForSlugs (batch path)", async () => {
+    const { service, queryMock, connectorPermissionService } = createService();
+    // Two active definitions returned by the raw query
+    queryMock.mockResolvedValue([
+      { id: "def_1", slug: "amazon-in", displayName: "Amazon IN", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "def_2", slug: "flipkart", displayName: "Flipkart", authType: "api_key", capabilities: "[]", marketplaceId: null, connectorVersion: "1", isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ]);
+    const actionsMap = new Map([
+      ["amazon-in", { install: { allowed: true, reason: null }, reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" }, uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" } }],
+      ["flipkart",  { install: { allowed: true, reason: null }, reconnect: { allowed: false, reason: "INSTALLATION_REQUIRED" }, uninstall: { allowed: false, reason: "INSTALLATION_REQUIRED" } }],
+    ]);
+    (connectorPermissionService.buildDefinitionActionsForSlugs as jest.Mock).mockResolvedValue(actionsMap);
+
+    const result = await service.listAvailableDefinitions({ actorId: "user_1", actorRole: "admin" });
+
+    expect(connectorPermissionService.buildDefinitionActionsForSlugs).toHaveBeenCalledTimes(1);
+    expect(connectorPermissionService.buildDefinitionActionsForSlugs).toHaveBeenCalledWith(
+      { actorId: "user_1", actorRole: "admin" },
+      expect.arrayContaining(["amazon-in", "flipkart"]),
+    );
+    // Both definitions should be in the result
+    expect(result).toHaveLength(2);
+    expect(result.map((d) => d.slug)).toEqual(expect.arrayContaining(["amazon-in", "flipkart"]));
+    // buildDefinitionActions (old per-slug method) must NOT be called
+    expect(connectorPermissionService.buildDefinitionActions).not.toHaveBeenCalled();
   });
 
   it("throws NotFoundException when installation is missing", async () => {

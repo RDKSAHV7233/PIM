@@ -4,6 +4,7 @@ import { applyProductSoftDeleteScope } from "../../common/prisma-soft-delete.mid
 const TENANT_FIELD = "tenantKey";
 
 const TENANT_SCOPED_MODELS = new Set<string>([
+  "AuthIdentity",
   "Category",
   "Product",
   "Variant",

@@ -16,8 +16,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
-import { getServerAuthHeader } from "@/lib/server-auth";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
@@ -59,19 +58,18 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
 export default async function CatalogAttributesPage({ searchParams }: CatalogAttributesPageProps) {
   const query = await searchParams;
   const hideTestData = resolveHideTestData(query.hideTestData);
-  const authHeader = await getServerAuthHeader();
-  const actorRole = await getServerActorRole();
+  const { authHeader, actorRole } = await getServerSession();
   const canManageTaxonomy = actorRole === "admin";
 
   try {
     const categories = filterTestData(
-      await getCategoryTree({ all: true }, { role: actorRole, authHeader }),
+      await getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
       hideTestData,
     );
     const selectedCategoryId = String(query.categoryId ?? "").trim() || categories[0]?.id || "";
     const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
     const definitions = selectedCategoryId
-      ? await getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader })
+      ? await getCategoryAttributes(selectedCategoryId, { role: actorRole, authHeader, revalidateSeconds: 60 })
       : [];
 
     const toggleHref = hideTestData

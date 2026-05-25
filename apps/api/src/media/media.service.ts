@@ -380,6 +380,7 @@ export class MediaService {
       const assets = await this.prisma.tenant().mediaAsset.findMany({
         where: mergeWhere({ variantId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 500, // defensive cap — media assets per variant
       });
       return assets.map((asset) => this.presentAsset(asset));
     }
@@ -387,6 +388,7 @@ export class MediaService {
       const assets = await this.prisma.tenant().mediaAsset.findMany({
         where: mergeWhere({ productId }, scopeWhere),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 500, // defensive cap — media assets per product
       });
       return assets.map((asset) => this.presentAsset(asset));
     }
@@ -784,15 +786,18 @@ export class MediaService {
         id: true,
         metadata: true,
       },
+      take: 50, // defensive cap — sibling assets per product/variant (isMain clear loop)
     });
-    for (const sibling of siblings) {
-      await this.prisma.tenant().mediaAsset.update({
-        where: { id: sibling.id },
-        data: {
-          metadata: this.mergeGovernanceMetadata(sibling.metadata, { isMain: false }),
-        },
-      });
-    }
+    await Promise.allSettled(
+      siblings.map((sibling) =>
+        this.prisma.tenant().mediaAsset.update({
+          where: { id: sibling.id },
+          data: {
+            metadata: this.mergeGovernanceMetadata(sibling.metadata, { isMain: false }),
+          },
+        }),
+      ),
+    );
   }
 
   private async resolveBulkRows(dto: BulkMediaAssociationDto): Promise<BulkMediaAssociationRowDto[]> {
