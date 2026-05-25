@@ -1,4 +1,3 @@
--- no transaction
 -- Composite indexes for BulkImportJob, BulkEditOperation, and AttributeDefinition.
 --
 -- BulkImportJob — query patterns served:
@@ -21,16 +20,12 @@
 --   (categoryId, appliesTo) alone without covering key.
 --   [categoryId, appliesTo] gives the planner a tight index scan for the two
 --   equality predicates in the compliance attribute lookup.
---
--- CONCURRENTLY: safe to apply against a live database without blocking writes.
--- Prisma migrate-deploy runs this file outside a transaction (required when
--- CONCURRENTLY is present; the file must contain no other statements).
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "BulkImportJob_tenantKey_status_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "BulkImportJob_tenantKey_status_updatedAt_idx"
     ON "BulkImportJob" ("tenantKey", "status", "updatedAt");
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "BulkEditOperation_tenantKey_status_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "BulkEditOperation_tenantKey_status_updatedAt_idx"
     ON "BulkEditOperation" ("tenantKey", "status", "updatedAt");
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "AttributeDefinition_categoryId_appliesTo_idx"
+CREATE INDEX IF NOT EXISTS "AttributeDefinition_categoryId_appliesTo_idx"
     ON "AttributeDefinition" ("categoryId", "appliesTo");

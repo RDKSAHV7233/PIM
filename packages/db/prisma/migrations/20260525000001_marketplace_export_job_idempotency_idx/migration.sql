@@ -1,4 +1,3 @@
--- no transaction
 -- Partial unique index for delta-sync idempotency.
 --
 -- Enforces: at most one MarketplaceExportJob row per (tenantKey, productId, installationId)
@@ -16,11 +15,7 @@
 -- WHERE "installation_id" IS NOT NULL — the partial predicate keeps the index lean
 -- (only delta-sync rows) and lets manual export jobs (NULL installationId) remain
 -- unconstrained.
---
--- CONCURRENTLY: safe to apply against a live database without blocking writes.
--- Prisma migrate-deploy runs this file outside a transaction (required when
--- CONCURRENTLY is present; the file must contain no other statements).
 
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "uq_export_job_product_installation"
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_export_job_product_installation"
     ON "MarketplaceExportJob" ("tenantKey", "productId", "installation_id")
     WHERE "installation_id" IS NOT NULL;

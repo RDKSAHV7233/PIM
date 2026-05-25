@@ -1,4 +1,3 @@
--- no transaction
 -- Composite indexes for ValidationIssue and MarketplaceExportJob.
 --
 -- ValidationIssue — query patterns served:
@@ -19,19 +18,15 @@
 --   a compound WHERE tenantKey + status cannot use either efficiently.
 --   [tenantKey, status, updatedAt] supersedes [status, updatedAt] for all
 --   multi-tenant queries and keeps single-tenant queries equally fast.
---
--- CONCURRENTLY: safe to apply against a live database without blocking writes.
--- Prisma migrate-deploy runs this file outside a transaction (required when
--- CONCURRENTLY is present; the file must contain no other statements).
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "ValidationIssue_tenantKey_status_productId_idx"
+CREATE INDEX IF NOT EXISTS "ValidationIssue_tenantKey_status_productId_idx"
     ON "ValidationIssue" ("tenantKey", "status", "productId");
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "ValidationIssue_tenantKey_severity_status_idx"
+CREATE INDEX IF NOT EXISTS "ValidationIssue_tenantKey_severity_status_idx"
     ON "ValidationIssue" ("tenantKey", "severity", "status");
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "MarketplaceExportJob_tenantKey_status_channel_idx"
+CREATE INDEX IF NOT EXISTS "MarketplaceExportJob_tenantKey_status_channel_idx"
     ON "MarketplaceExportJob" ("tenantKey", "status", "channel");
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "MarketplaceExportJob_tenantKey_status_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "MarketplaceExportJob_tenantKey_status_updatedAt_idx"
     ON "MarketplaceExportJob" ("tenantKey", "status", "updatedAt");

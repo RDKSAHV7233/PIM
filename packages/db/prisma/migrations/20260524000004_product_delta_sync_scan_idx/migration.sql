@@ -1,4 +1,3 @@
--- no transaction
 -- Index to support fetchDeltaCandidatesPage — the cursor-paginated LEFT JOIN query
 -- that powers enterprise-scale delta sync candidate detection.
 --
@@ -19,10 +18,6 @@
 -- With (tenantKey, status, deletedAt, id) the planner can do a tight keyset scan:
 --   Index range: tenantKey = X  AND  status = 'approved'  AND  deletedAt IS NULL  AND  id > cursor
 --   Each 200-row page costs O(log N + 200) regardless of catalog size.
---
--- CONCURRENTLY: safe to apply against a live database without blocking writes.
--- Prisma migrate-deploy runs this file outside a transaction (required when
--- CONCURRENTLY is present; the file must contain no other statements).
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_product_delta_sync_scan"
+CREATE INDEX IF NOT EXISTS "idx_product_delta_sync_scan"
     ON "Product" ("tenantKey", "status", "deletedAt", "id");
