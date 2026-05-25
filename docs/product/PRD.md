@@ -1,11 +1,11 @@
 # Vexa PIM Product Requirements Document (PRD)
 
 - Product: Vexa PIM
-- Version: 1.0 (March 2026 consolidation)
+- Version: 1.1 (2026-05-26 — roles, release readiness, increment status updated)
 - Owner: Product + Engineering
 - Status: Active baseline
 - Current implementation snapshot: `docs/execution/CURRENT_STATE.md`
-- Current repo head at last PRD alignment: `d5dbc2d`
+- Current repo head at last PRD alignment: `048598d`
 
 ## 1. Product Summary
 Vexa PIM is an India-first, multi-tenant Product Information Management platform with a connector-first integration architecture. Core catalog and compliance live in Vexa PIM; marketplace-specific execution lives in connectors (Amazon, Flipkart, Meesho, ONDC later).
@@ -42,11 +42,25 @@ Source: `apps/web/src/components/nav/app-sidebar.tsx`
 Note: this reflects the current implemented shell, not earlier target IA proposals that used `Admin` as the primary governance label.
 
 ## 4. Users and Roles
-- Admin: taxonomy, compliance, and platform controls.
-- Editor: day-to-day catalog operations and workflow updates.
-- Reviewer: product workflow approval decisions (approve/reject in_review products).
-- Viewer: read-only visibility and monitoring.
-- Marketplace Ops: connector setup, readiness checks, publish/export management.
+
+Eight roles are defined in `apps/api/src/common/rbac/roles.ts` (`APP_ROLES`). Capabilities below are sourced from `ENTERPRISE_ROLE_CAPABILITIES` in the same file.
+
+| Role | Permitted surfaces |
+|------|--------------------|
+| `admin` | Full access to all product, channel, connector, and workspace operations |
+| `editor` | Edit catalog, import products, manage categories and attributes, publish to channels |
+| `publisher` | Publish approved products to channels; cannot edit catalog content |
+| `approver` | Approve or reject products in review; cannot edit catalog content |
+| `channel_manager` | Manage channel mappings, connector configurations, and readiness gates |
+| `connector_admin` | Install, configure, and manage connector credentials and installations |
+| `reviewer` | Read catalog and submission data, add comments |
+| `viewer` | Read-only access to catalog and reporting |
+
+Default write roles (undecorated mutations): `admin`, `editor`.
+Read access: all authenticated roles.
+Admin-only routes (e.g. `/admin/api-keys`, `/admin/workspace/users`): `admin` only, machine API keys disallowed.
+
+Note: earlier drafts of this PRD listed "Marketplace Ops" as a single role. The live implementation splits that surface into three distinct roles: `publisher`, `channel_manager`, `connector_admin`. "Reviewer" in earlier drafts referred to approval decisions — that capability now lives in `approver`. The `reviewer` role in the live system is read-only quality review.
 
 ## 5. Scope
 ### In scope
@@ -74,7 +88,7 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 - FR-002: Triage status must combine compliance issues and per-channel blocking/warning outcomes.
 - FR-003: Create Product flow uses explicit labels and category-driven structured attributes.
 - FR-004: Seller-facing forms never expose raw JSON attribute entry.
-- FR-005: Bulk Import supports CSV/XLSX/JSON, mapping templates, retries, row repair, and error export.
+- FR-005: Bulk Import supports CSV/XLSX/JSON up to 10,000 rows (standard mode); large CSV mode supports 10,001–30,000 rows; imports above 30,000 rows are blocked in the current cycle. XLSX and JSON are standard-mode only.
 - FR-006: Bulk Edit supports scoped filtering, preview, apply, and immutable operation history.
 - FR-007: Categories are visible to all authorized roles; category creation is admin-only.
 - FR-008: Internal developer/internal links are isolated from seller-first workflows.
@@ -115,9 +129,9 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 - INC-06 + INC-07: Rejection intelligence confidence modeling and workflow maturation.
 - INC-08+: ONDC architecture and adapter path after connector baseline stabilizes.
 
-### Current execution status snapshot (2026-03-19)
-- Completed: INC-01 through INC-07, INC-09 through INC-21
-- In progress: INC-08 (14-day rollout window in progress)
+### Current execution status snapshot (2026-05-26)
+- Completed: INC-01 through INC-07, INC-09 through INC-21, INC-08 (14-day rollout window closed 2026-05-26)
+- In progress: none — all increments complete
 - Source of truth: `docs/execution/INCREMENT_STATE.json`
 
 ## 12. Gate Criteria (Execution-Control)
@@ -145,13 +159,14 @@ Note: this reflects the current implemented shell, not earlier target IA proposa
 ## 15. Release Readiness
 Vexa PIM is ready for controlled progression when increment gates pass on staging with documented evidence. Broad production rollout requires closure of remaining security/ops/compliance blockers and connector operational readiness.
 
-Current state on 2026-03-19:
-- Per-user bcrypt authentication is live; shared-password fallback retained for legacy identities during migration.
+Current state on 2026-05-26:
+- All five release readiness gates closed. See `docs/execution/PROD_READINESS_RISK_REGISTER.md`.
+- Per-user bcrypt (cost 12) authentication live; JWT HS256 with 4-hour expiry and 5-attempt account lock.
 - Legal document set exists under `docs/legal/`: ToS, privacy policy, data retention policy, DPA.
 - Connector honesty: amazon-in and meesho labeled with `implementationStatus` field; sellers see accurate capability descriptions.
-- E2E smoke gate (30 checks, ~65s) runs on every deploy; full suite (121 checks) runs nightly.
-- Controlled rollout observation window in progress: 5 of 14 required days as of 2026-03-19.
-- Release closure not yet declared; RISK-P0-001 remains open pending evidence window completion.
+- E2E smoke gate (30 checks, ~65s) runs on every deploy; full suite runs nightly.
+- 14-day controlled rollout observation window closed 2026-05-26 with 14/14 observation days and 14/14 SLO trend days; `consecutiveE10SignoffRuns = 2`.
+- RISK-P0-001 closed. Broad production rollout declared.
 
 ## 16. Source Inputs Used
 This PRD is consolidated from imported March 2026 architecture/execution documents, redesign notes, UI review, and in-repo product scope/backlog artifacts.
