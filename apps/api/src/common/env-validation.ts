@@ -47,6 +47,12 @@ export interface ValidatedEnv {
   FEATURE_ONDC_ENABLED: BoolText;
   FEATURE_PUBLIC_SIGNUP_ENABLED: BoolText;
   FEATURE_REAL_SPAPI_VALIDATION: BoolText;
+  FEATURE_STRIPE_BILLING_ENABLED: BoolText;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_ID_STARTER?: string;
+  STRIPE_PRICE_ID_GROWTH?: string;
+  STRIPE_PRICE_ID_ENTERPRISE?: string;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
   SENTRY_DSN?: string;
@@ -124,6 +130,12 @@ const EnvSchema = z.object({
   FEATURE_ONDC_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_PUBLIC_SIGNUP_ENABLED: z.enum(["true", "false"] as const).default("false"),
   FEATURE_REAL_SPAPI_VALIDATION: z.enum(["true", "false"] as const).default("false"),
+  FEATURE_STRIPE_BILLING_ENABLED: z.enum(["true", "false"] as const).default("false"),
+  STRIPE_SECRET_KEY: OptionalTrimmedText,
+  STRIPE_WEBHOOK_SECRET: OptionalTrimmedText,
+  STRIPE_PRICE_ID_STARTER: OptionalTrimmedText,
+  STRIPE_PRICE_ID_GROWTH: OptionalTrimmedText,
+  STRIPE_PRICE_ID_ENTERPRISE: OptionalTrimmedText,
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),
   SENTRY_DSN: z.string().url().optional(),

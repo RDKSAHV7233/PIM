@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "redis";
+import { StripeService } from "../billing/stripe.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AuthEmailService } from "../auth/auth-email.service";
 import { MetricsService } from "../metrics/metrics.service";
@@ -57,6 +58,7 @@ export class SignupService implements OnModuleDestroy {
     private readonly authEmailService: AuthEmailService,
     private readonly planUsageService: PlanUsageService,
     private readonly metricsService: MetricsService,
+    private readonly stripeService: StripeService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -361,6 +363,13 @@ export class SignupService implements OnModuleDestroy {
     });
 
     await this.planUsageService.getTenantPlanProfile(workspace.tenantId);
+
+    await this.stripeService.createCustomerAndSubscription({
+      tenantKey: workspace.tenantId,
+      adminEmail: request.adminEmail,
+      displayName: request.displayName,
+      planTier: "STARTER",
+    });
 
     const hoursToVerify = Math.max(0, (Date.now() - new Date(request.createdAt).getTime()) / (60 * 60 * 1000));
     await Promise.all([

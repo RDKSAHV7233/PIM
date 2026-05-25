@@ -2,7 +2,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import { json, urlencoded } from "express";
+import { json, raw, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { validateEnv } from "./common/env-validation";
@@ -33,6 +33,7 @@ async function bootstrap() {
     bodyParser: false,
   });
 
+  app.use("/api/v1/billing/stripe/webhook", raw({ type: "*/*" }));
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));
   app.use(

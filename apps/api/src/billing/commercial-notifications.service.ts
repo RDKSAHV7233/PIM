@@ -79,6 +79,96 @@ export class CommercialNotificationsService {
     return { recipientCount: recipients.length };
   }
 
+  async notifyPaymentFailed(input: { tenantKey: string; profile: PlanProfileSummary }): Promise<{ recipientCount: number }> {
+    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+      where: { tenantKey: input.tenantKey },
+      select: { workspaceSlug: true, displayName: true },
+    });
+    const recipients = await this.resolveRecipients(input.tenantKey, input.profile.billingContactEmail);
+    if (recipients.length === 0) {
+      return { recipientCount: 0 };
+    }
+    const workspaceSlug = String(workspace?.workspaceSlug ?? input.tenantKey).trim();
+    const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
+    const subject = `Payment failed: ${displayName}`;
+    const grace = input.profile.graceEndsAt ? new Date(input.profile.graceEndsAt).toDateString() : null;
+    const graceLine = grace ? `Access will be suspended if payment is not resolved by ${grace}.` : "Please update your payment method to avoid service interruption.";
+    const text = [
+      `A payment for your Vexa PIM workspace ${displayName} has failed.`,
+      "",
+      graceLine,
+      "",
+      this.resolveCommercialContactLine(),
+    ].join("\n");
+    const html = [
+      `<p>${this.escapeHtml(`A payment for your Vexa PIM workspace ${displayName} has failed.`)}</p>`,
+      `<p>${this.escapeHtml(graceLine)}</p>`,
+      `<p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
+    ].join("");
+    await Promise.all(
+      recipients.map((recipient) =>
+        this.authEmailService.send({
+          to: recipient,
+          subject,
+          text,
+          html,
+          category: "commercial_status_notice",
+          metadata: { event: "payment_failed", tenantKey: input.tenantKey, workspaceSlug },
+        }),
+      ),
+    );
+    return { recipientCount: recipients.length };
+  }
+
+  async notifyTrialEnding(input: {
+    tenantKey: string;
+    profile: PlanProfileSummary;
+    daysRemaining: number;
+  }): Promise<{ recipientCount: number }> {
+    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+      where: { tenantKey: input.tenantKey },
+      select: { workspaceSlug: true, displayName: true },
+    });
+    const recipients = await this.resolveRecipients(input.tenantKey, input.profile.billingContactEmail);
+    if (recipients.length === 0) {
+      return { recipientCount: 0 };
+    }
+    const workspaceSlug = String(workspace?.workspaceSlug ?? input.tenantKey).trim();
+    const displayName = String(workspace?.displayName ?? workspaceSlug).trim() || workspaceSlug;
+    const dayWord = input.daysRemaining === 1 ? "day" : "days";
+    const subject = `Your Vexa PIM trial ends in ${input.daysRemaining} ${dayWord}: ${displayName}`;
+    const text = [
+      `Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`,
+      "",
+      "To continue using Vexa PIM after the trial, please upgrade your plan.",
+      "",
+      this.resolveCommercialContactLine(),
+    ].join("\n");
+    const html = [
+      `<p>${this.escapeHtml(`Your Vexa PIM trial for ${displayName} ends in ${input.daysRemaining} ${dayWord}.`)}</p>`,
+      `<p>To continue using Vexa PIM after the trial, please upgrade your plan.</p>`,
+      `<p>${this.escapeHtml(this.resolveCommercialContactLine())}</p>`,
+    ].join("");
+    await Promise.all(
+      recipients.map((recipient) =>
+        this.authEmailService.send({
+          to: recipient,
+          subject,
+          text,
+          html,
+          category: "commercial_status_notice",
+          metadata: {
+            event: `trial_ending_${input.daysRemaining}d`,
+            tenantKey: input.tenantKey,
+            workspaceSlug,
+            daysRemaining: String(input.daysRemaining),
+          },
+        }),
+      ),
+    );
+    return { recipientCount: recipients.length };
+  }
+
   async notifyCommercialOpsUpgradeRequest(input: {
     tenantKey: string;
     request: CommercialRequestSummary;

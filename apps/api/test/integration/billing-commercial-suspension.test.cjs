@@ -174,6 +174,7 @@ async function run() {
     const apiKeyCreate = await apiRequest(baseUrl, "POST", "/admin/api-keys", adminToken, {
       label: `suspension-${runId}`,
       role: "viewer",
+      scopes: ["taxonomy.read"],
     });
     assertStatus(apiKeyCreate, 201, "api key creation before suspension");
     const plainTextApiKey = String(apiKeyCreate.payload?.plainTextKey ?? "");

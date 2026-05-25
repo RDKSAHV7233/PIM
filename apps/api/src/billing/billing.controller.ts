@@ -12,6 +12,7 @@ import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { CommercialRequestsService } from "./commercial-requests.service";
 import { CommercialNotificationsService } from "./commercial-notifications.service";
 import { PlanUsageService } from "./plan-usage.service";
+import { StripeService } from "./stripe.service";
 import { CreatePlanUpgradeRequestDto } from "./dto/create-plan-upgrade-request.dto";
 import {
   PlanProfileSummaryDto,
@@ -44,6 +45,7 @@ export class BillingController {
     private readonly auditService: AuditService,
     private readonly commercialRequestsService: CommercialRequestsService,
     private readonly commercialNotificationsService: CommercialNotificationsService,
+    private readonly stripeService: StripeService,
   ) {}
 
   @Get("usage")
@@ -161,6 +163,39 @@ export class BillingController {
       });
     }
     return result;
+  }
+
+  @Post("checkout-session")
+  @AdminBoundaryAccess({ allowedRoles: ["system_admin", "super_admin"] })
+  @Roles("admin")
+  @HttpCode(200)
+  @ApiExcludeEndpoint()
+  @ApiOperation({ summary: "Create a Stripe checkout session for plan upgrade" })
+  @ApiResponse({ status: 200, description: "Checkout session URL returned" })
+  async createCheckoutSession(
+    @Body() body: { planTier?: string; successUrl?: string; cancelUrl?: string },
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!this.stripeService.isEnabled()) {
+      throw new BadRequestException({ error: "STRIPE_BILLING_NOT_ENABLED" });
+    }
+    const usage = await this.planUsageService.getUsageSummary();
+    const tenantKey = usage.profile.tenantKey;
+    const planTier = String(body.planTier ?? "GROWTH").toUpperCase();
+    const webBaseUrl = String(process.env.PIM_WEB_BASE_URL ?? "").trim().replace(/\/+$/, "") || "http://localhost:3000";
+    const successUrl = String(body.successUrl ?? "").trim() || `${webBaseUrl}/admin/plan?checkout=success`;
+    const cancelUrl = String(body.cancelUrl ?? "").trim() || `${webBaseUrl}/admin/plan?checkout=cancelled`;
+    const { url } = await this.stripeService.createCheckoutSession({ tenantKey, planTier, successUrl, cancelUrl });
+    await this.auditService.record({
+      actorId: String(request.pimUserId ?? "system"),
+      actorRole: String(request.pimRole ?? "admin"),
+      action: "BILLING_CHECKOUT_SESSION_CREATED",
+      resource: "TENANT_PLAN_PROFILE",
+      resourceId: tenantKey,
+      tenantKey,
+      metadata: { planTier },
+    });
+    return { url };
   }
 
   @Post("plan-tier")

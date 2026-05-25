@@ -20,7 +20,6 @@ export class CreatePublicSignupDto {
 
   @Transform(({ value }) => String(value ?? ""))
   @IsString()
-  @MinLength(8)
   @MaxLength(72)
   password!: string;
 
