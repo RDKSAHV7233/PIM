@@ -95,6 +95,7 @@ const SUITES = {
   journeys: [
     { label: "E2E: critical browser journeys", command: "npm", args: ["run", "test:e2e:critical"] },
     { label: "E2E: public signup browser journey", command: "npm", args: ["run", "test:e2e:public-signup"] },
+    { label: "E2E: Shopify connector managed-install browser journey", command: "npm", args: ["run", "test:e2e:shopify-connector-journey"] },
     { label: "E2E: dashboard signup drilldown browser journey", command: "npm", args: ["run", "test:e2e:dashboard-signup-drilldown"] },
     { label: "E2E: admin plan signup export browser journey", command: "npm", args: ["run", "test:e2e:admin-plan-signup-export"] },
     { label: "E2E: pending feedback browser journey", command: "npm", args: ["run", "test:e2e:pending-feedback"] },

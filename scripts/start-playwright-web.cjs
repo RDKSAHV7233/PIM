@@ -40,27 +40,30 @@ function loadEnvFile(filePath) {
 }
 
 const fileEnv = loadEnvFile(envFile);
+const skipWebBuild = String(process.env.PLAYWRIGHT_SKIP_WEB_BUILD || "").trim() === "1";
 
-try {
-  fs.rmSync(nextDir, { recursive: true, force: true });
-} catch (error) {
-  console.error("Failed to clear apps/web/.next before Playwright build:", error);
-  process.exit(1);
-}
+if (!skipWebBuild) {
+  try {
+    fs.rmSync(nextDir, { recursive: true, force: true });
+  } catch (error) {
+    console.error("Failed to clear apps/web/.next before Playwright build:", error);
+    process.exit(1);
+  }
 
-const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/web"], {
-  cwd: root,
-  shell: true,
-  stdio: "inherit",
-  env: {
-    ...fileEnv,
-    ...process.env,
-    PIM_API_BASE_URL: process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1",
-  },
-});
+  const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/web"], {
+    cwd: root,
+    shell: true,
+    stdio: "inherit",
+    env: {
+      ...fileEnv,
+      ...process.env,
+      PIM_API_BASE_URL: process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001/api/v1",
+    },
+  });
 
-if (build.status !== 0) {
-  process.exit(build.status ?? 1);
+  if (build.status !== 0) {
+    process.exit(build.status ?? 1);
+  }
 }
 
 const env = {

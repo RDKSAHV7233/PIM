@@ -37,14 +37,14 @@ const config = defineConfig({
     {
       command: "node scripts/start-playwright-api.cjs",
       url: `${apiURL}/health`,
-      timeout: 300_000,
+      timeout: 600_000,
       reuseExistingServer: true,
       cwd: __dirname,
     },
     {
       command: "node scripts/start-playwright-web.cjs",
       url: `${baseURL}/login`,
-      timeout: 300_000,
+      timeout: 600_000,
       reuseExistingServer: true,
       cwd: __dirname,
     },

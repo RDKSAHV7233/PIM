@@ -1,10 +1,12 @@
 /* eslint-disable no-console */
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const http = require("node:http");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
+const apiEntryShim = path.join(root, "scripts", "playwright-api-entry.cjs");
 
 function resolveDatabaseUrl(fileEnv) {
   const localDatabaseUrl =
@@ -65,9 +67,151 @@ function loadEnvFile(filePath) {
   return values;
 }
 
+function createShopifyStubServer() {
+  const publicationName = String(process.env.PLAYWRIGHT_SHOPIFY_PUBLICATION_NAME || "Online Store").trim();
+  const shopName = String(process.env.PLAYWRIGHT_SHOPIFY_STORE_NAME || "Demo Store").trim();
+  const shopDomain = String(process.env.PLAYWRIGHT_SHOPIFY_STORE_DOMAIN || "demo-store.myshopify.com").trim();
+  const shopId = String(process.env.PLAYWRIGHT_SHOPIFY_STORE_ID || "gid://shopify/Shop/9001").trim();
+  const requests = [];
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(async (req, res) => {
+      const requestUrl = new URL(req.url || "/", "http://127.0.0.1");
+      const pathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
+      const chunks = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method || "GET",
+        pathname,
+        body,
+      });
+
+      if (req.method === "POST" && pathname === "/admin/oauth/access_token") {
+        const params = new URLSearchParams(body);
+        const grantType = params.get("grant_type") || "";
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+
+        if (grantType === "urn:ietf:params:oauth:grant-type:token-exchange") {
+          res.end(
+            JSON.stringify({
+              access_token: "shopify-access-token-1",
+              expires_in: 3600,
+              refresh_token: "shopify-refresh-token-1",
+              refresh_token_expires_in: 7776000,
+              scope: "read_products,write_products,read_publications,write_publications",
+            }),
+          );
+          return;
+        }
+
+        if (grantType === "refresh_token") {
+          res.end(
+            JSON.stringify({
+              access_token: "shopify-access-token-refresh-1",
+              expires_in: 3600,
+              refresh_token: "shopify-refresh-token-refresh-1",
+              refresh_token_expires_in: 7776000,
+              scope: "read_products,write_products,read_publications,write_publications",
+            }),
+          );
+          return;
+        }
+
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "unsupported_grant_type" }));
+        return;
+      }
+
+      if (req.method === "POST" && /^\/admin\/api\/[^/]+\/graphql\.json$/.test(pathname)) {
+        const parsed = body ? JSON.parse(body) : {};
+        const query = String(parsed.query || "");
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+
+        if (query.includes("shop {")) {
+          res.end(
+            JSON.stringify({
+              data: {
+                shop: {
+                  id: shopId,
+                  name: shopName,
+                  myshopifyDomain: shopDomain,
+                },
+              },
+            }),
+          );
+          return;
+        }
+
+        if (query.includes("publications(first: 50)")) {
+          res.end(
+            JSON.stringify({
+              data: {
+                publications: {
+                  nodes: [
+                    {
+                      id: "gid://shopify/Publication/1",
+                      name: publicationName,
+                      catalog: {
+                        __typename: "AppCatalog",
+                        id: "gid://shopify/AppCatalog/1",
+                        title: publicationName,
+                        status: "ACTIVE",
+                      },
+                    },
+                    {
+                      id: "gid://shopify/Publication/2",
+                      name: "Point of Sale",
+                      catalog: {
+                        __typename: "AppCatalog",
+                        id: "gid://shopify/AppCatalog/2",
+                        title: "Point of Sale",
+                        status: "ACTIVE",
+                      },
+                    },
+                  ],
+                },
+              },
+            }),
+          );
+          return;
+        }
+
+        res.end(JSON.stringify({ data: {} }));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Unable to resolve Shopify stub address."));
+        return;
+      }
+      resolve({
+        server,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        requests,
+      });
+    });
+  });
+}
+
 const fileEnv = loadEnvFile(envFile);
 const databaseUrl = withConnectionLimit(resolveDatabaseUrl(fileEnv), 1);
 const usingPlaywrightFallbackDatabase = /schema=playwright_e2e/i.test(databaseUrl);
+const skipPrismaGenerate = String(process.env.PLAYWRIGHT_SKIP_PRISMA_GENERATE || "").trim() === "1";
+const skipApiBuild = String(process.env.PLAYWRIGHT_SKIP_API_BUILD || "").trim() === "1";
+const skipSchemaSync = String(process.env.PLAYWRIGHT_SKIP_SCHEMA_SYNC || "").trim() === "1";
 const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
 const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001";
 const identityDirectory =
@@ -88,55 +232,61 @@ const workspaceDirectory =
       ? ""
       : process.env.PIM_AUTH_WORKSPACES_JSON;
 
-const prismaGenerate = spawnSync("npm", ["run", "prisma:generate"], {
-  cwd: root,
-  shell: true,
-  stdio: "inherit",
-  env: {
-    ...fileEnv,
-    ...process.env,
-  },
-});
-
-if (prismaGenerate.status !== 0) {
-  process.exit(prismaGenerate.status ?? 1);
-}
-
-const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/api"], {
-  cwd: root,
-  shell: true,
-  stdio: "inherit",
-  env: {
-    ...fileEnv,
-    ...process.env,
-  },
-});
-
-if (build.status !== 0) {
-  process.exit(build.status ?? 1);
-}
-
-const schemaSync = spawnSync(
-  "npx",
-  usingPlaywrightFallbackDatabase
-    ? ["prisma", "db", "push", "--schema", "packages/db/prisma/schema.prisma", "--skip-generate", "--accept-data-loss"]
-    : ["prisma", "migrate", "deploy", "--schema", "packages/db/prisma/schema.prisma"],
-  {
+if (!skipPrismaGenerate) {
+  const prismaGenerate = spawnSync("npm", ["run", "prisma:generate"], {
     cwd: root,
     shell: true,
     stdio: "inherit",
     env: {
       ...fileEnv,
       ...process.env,
-      DATABASE_URL: databaseUrl,
-      DATABASE_URL_POOLED: databaseUrl,
-      DATABASE_URL_DIRECT: databaseUrl,
     },
-  },
-);
+  });
 
-if (schemaSync.status !== 0) {
-  process.exit(schemaSync.status ?? 1);
+  if (prismaGenerate.status !== 0) {
+    process.exit(prismaGenerate.status ?? 1);
+  }
+}
+
+if (!skipApiBuild) {
+  const build = spawnSync("npm", ["run", "build", "--workspace", "@pim1/api"], {
+    cwd: root,
+    shell: true,
+    stdio: "inherit",
+    env: {
+      ...fileEnv,
+      ...process.env,
+    },
+  });
+
+  if (build.status !== 0) {
+    process.exit(build.status ?? 1);
+  }
+}
+
+if (!skipSchemaSync) {
+  const schemaSync = spawnSync(
+    "npx",
+    usingPlaywrightFallbackDatabase
+      ? ["prisma", "db", "push", "--schema", "packages/db/prisma/schema.prisma", "--skip-generate", "--accept-data-loss"]
+      : ["prisma", "migrate", "deploy", "--schema", "packages/db/prisma/schema.prisma"],
+    {
+      cwd: root,
+      shell: true,
+      stdio: "inherit",
+      env: {
+        ...fileEnv,
+        ...process.env,
+        DATABASE_URL: databaseUrl,
+        DATABASE_URL_POOLED: databaseUrl,
+        DATABASE_URL_DIRECT: databaseUrl,
+      },
+    },
+  );
+
+  if (schemaSync.status !== 0) {
+    process.exit(schemaSync.status ?? 1);
+  }
 }
 
 const env = {
@@ -178,26 +328,49 @@ if (workspaceDirectory !== undefined) {
   env.PIM_AUTH_WORKSPACES_JSON = workspaceDirectory;
 }
 
-const child = spawn("npm", ["run", "start", "--workspace", "@pim1/api"], {
-  cwd: root,
-  shell: true,
-  stdio: "inherit",
-  env,
-});
+async function main() {
+  const enableShopifyStub = String(process.env.PLAYWRIGHT_ENABLE_SHOPIFY_STUB || "").trim() === "1";
+  const shopifyStub = enableShopifyStub ? await createShopifyStubServer() : null;
 
-function shutdown(signal) {
-  if (!child.killed) {
-    child.kill(signal);
+  if (shopifyStub) {
+    env.PIM_SHOPIFY_TOKEN_BASE_URL = shopifyStub.baseUrl;
+    env.PIM_SHOPIFY_ADMIN_API_BASE_URL = shopifyStub.baseUrl;
+    env.PIM_SHOPIFY_ADMIN_API_VERSION = env.PIM_SHOPIFY_ADMIN_API_VERSION || "2026-04";
   }
+
+  const child = spawn("node", [apiEntryShim], {
+    cwd: root,
+    shell: false,
+    stdio: "inherit",
+    env,
+  });
+
+  function shutdown(signal) {
+    if (!child.killed) {
+      child.kill(signal);
+    }
+  }
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  child.on("exit", async (code, signal) => {
+    if (shopifyStub) {
+      if ((code ?? 0) !== 0 || signal) {
+        console.error("[shopify-stub] requests");
+        console.error(JSON.stringify(shopifyStub.requests, null, 2));
+      }
+      await new Promise((resolve) => shopifyStub.server.close(() => resolve()));
+    }
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+    process.exit(code ?? 0);
+  });
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-  process.exit(code ?? 0);
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
 });
