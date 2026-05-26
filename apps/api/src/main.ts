@@ -29,6 +29,24 @@ async function bootstrap() {
     }
   }
 
+  if (env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+      const { NodeSDK } = require("@opentelemetry/sdk-node");
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+      const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+      const sdk = new NodeSDK({
+        traceExporter: new OTLPTraceExporter({ url: env.OTEL_EXPORTER_OTLP_ENDPOINT }),
+        serviceName: "vexa-pim-api",
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      sdk.start();
+    } catch {
+      // @opentelemetry packages not installed - tracing unavailable
+    }
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });

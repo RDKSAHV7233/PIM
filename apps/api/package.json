@@ -11,6 +11,10 @@
     "credentials:rotate:script": "node -r ts-node/register ../../scripts/rotate-credentials.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@sentry/node": "^9.0.0",
     "@aws-sdk/client-s3": "^3.1012.0",
     "@aws-sdk/s3-request-presigner": "^3.1012.0",
     "@nestjs/common": "^11.1.6",
