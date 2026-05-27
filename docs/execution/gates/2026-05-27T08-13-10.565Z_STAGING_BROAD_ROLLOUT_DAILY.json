@@ -1,0 +1,8 @@
+{
+  "environment": "staging",
+  "tenantId": "default",
+  "date": "2026-05-27T08:13:10.565Z",
+  "gitTag": "sha-aa42664",
+  "runUrl": "https://github.com/Vexapim/PIM/actions/runs/26499306746",
+  "suite": "STAGING_BROAD_ROLLOUT_DAILY"
+}
