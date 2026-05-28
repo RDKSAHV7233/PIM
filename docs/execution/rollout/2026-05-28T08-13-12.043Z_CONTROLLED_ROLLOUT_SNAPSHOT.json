@@ -1,0 +1,215 @@
+{
+  "capturedAt": "2026-05-28T08:13:12.043Z",
+  "environment": "staging",
+  "tenantId": "default",
+  "apiBase": "https://pim1-staging.up.railway.app/api/v1",
+  "windowDays": 14,
+  "health": {
+    "ok": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "env": "staging",
+      "queues": {
+        "webhook-event": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "auth-email": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {
+            "default": {
+              "waiting": 0,
+              "active": 0,
+              "failed": 0,
+              "pausedUntil": null
+            }
+          }
+        },
+        "account-export": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 9,
+          "pausedLanes": 0,
+          "lanes": {
+            "default": {
+              "waiting": 0,
+              "active": 0,
+              "failed": 9,
+              "pausedUntil": null
+            }
+          }
+        },
+        "connector-webhook": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "account-deletion-execution": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "connector-submission": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        },
+        "bulk-import": {
+          "waiting": 0,
+          "active": 0,
+          "failed": 0,
+          "pausedLanes": 0,
+          "lanes": {}
+        }
+      },
+      "queueRuntime": {
+        "backend": "bullmq",
+        "workerEnabled": true
+      }
+    }
+  },
+  "accountExportStorage": {
+    "attempted": true,
+    "authenticated": true,
+    "ok": false,
+    "code": "account_export_storage_config_invalid",
+    "mode": "object_storage",
+    "reason": null
+  },
+  "queueFailureDiagnostics": {
+    "attempted": true,
+    "captured": true,
+    "authenticated": true,
+    "queueCount": 1,
+    "laneCount": 1,
+    "reason": null
+  },
+  "gates": {
+    "artifactsInWindow": 12,
+    "allEvidenceArtifactsInWindow": 12,
+    "consecutiveE10SignoffRuns": 2,
+    "recentArtifacts": [
+      {
+        "file": "2026-05-28T08-13-11.999Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-28T08:13:11.999Z",
+        "runUrl": "https://github.com/Vexapim/PIM/actions/runs/26563013697",
+        "gitTag": "sha-278bba7"
+      },
+      {
+        "file": "2026-05-27T08-13-10.565Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-27T08:13:10.565Z",
+        "runUrl": "https://github.com/Vexapim/PIM/actions/runs/26499306746",
+        "gitTag": "sha-aa42664"
+      },
+      {
+        "file": "2026-05-25T08-41-08.093Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-25T08:41:08.093Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26391693249",
+        "gitTag": "sha-c7b6567"
+      },
+      {
+        "file": "2026-05-24T07-31-31.812Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-24T07:31:31.812Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26355217301",
+        "gitTag": "sha-980b8d6"
+      },
+      {
+        "file": "2026-05-23T07-09-22.992Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-23T07:09:22.992Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26326565550",
+        "gitTag": "sha-128d09b"
+      },
+      {
+        "file": "2026-05-22T07-54-51.137Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-22T07:54:51.137Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26275665991",
+        "gitTag": "sha-b5e8cee"
+      },
+      {
+        "file": "2026-05-21T08-05-08.854Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-21T08:05:08.854Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26213606722",
+        "gitTag": "sha-3a043de"
+      },
+      {
+        "file": "2026-05-20T07-57-36.619Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-20T07:57:36.619Z",
+        "runUrl": "https://github.com/bhoivishal216-ai/PIM1/actions/runs/26149379994",
+        "gitTag": "sha-00f65f2"
+      },
+      {
+        "file": "2026-05-18T08-16-34.147Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-18T08:16:34.147Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/26021701070",
+        "gitTag": "sha-2fd87c8"
+      },
+      {
+        "file": "2026-05-17T07-17-15.709Z_STAGING_BROAD_ROLLOUT_DAILY.json",
+        "suite": "STAGING_BROAD_ROLLOUT_DAILY",
+        "tenantId": "default",
+        "date": "2026-05-17T07:17:15.709Z",
+        "runUrl": "https://github.com/RDKSAHV7233/PIM1/actions/runs/25984430721",
+        "gitTag": "sha-a8bc070"
+      }
+    ]
+  },
+  "controlledRollout": {
+    "criteria": {
+      "twoConsecutiveGates": true,
+      "pilotWorkflowEvidencePresent": true,
+      "governanceEvidencePresent": true,
+      "healthEndpointHealthy": true,
+      "accountExportStorageHealthy": false,
+      "queueFailuresClear": false
+    },
+    "pending": [
+      "Queue failures remain in health snapshot: account-export=9.",
+      "Account export storage probe failed: account_export_storage_config_invalid."
+    ]
+  },
+  "broadRollout": {
+    "criteria": {
+      "observationWindowDaysCovered": 12,
+      "observationWindowDaysRequired": 14,
+      "observationWindowComplete": false,
+      "sloTrendDaysCovered": 12,
+      "sloTrendDaysRequired": 14,
+      "sloTrendWindowComplete": false
+    },
+    "pending": [
+      "Controlled rollout observation window covers 12 of 14 required days.",
+      "Production SLO trend evidence covers 12 of 14 required days."
+    ]
+  }
+}
