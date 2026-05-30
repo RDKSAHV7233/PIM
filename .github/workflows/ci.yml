@@ -31,6 +31,7 @@ jobs:
       FEATURE_REAL_SPAPI_VALIDATION: "false"
       QUEUE_BACKEND: memory
       QUEUE_WORKER_ENABLED: "true"
+      PIM_AUTH_PASSWORD: vexa-pim-demo-password
     services:
       postgres:
         image: postgres:16

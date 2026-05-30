@@ -189,7 +189,8 @@
     "infra:logs": "docker compose logs -f"
   },
   "overrides": {
-    "postcss": ">=8.5.10"
+    "postcss": ">=8.5.10",
+    "tmp": ">=0.2.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
