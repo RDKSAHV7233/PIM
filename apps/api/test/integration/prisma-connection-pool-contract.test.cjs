@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+//
+// STATUS: retained as a structural contract test (not superseded)
+//
+// The invariants here — DATABASE_URL_POOLED preference, per-tenant Map
+// caching, application_name injection, RLS tenant key, onModuleDestroy
+// disconnect — are infrastructure concerns that require a real PostgreSQL
+// connection to exercise behaviorally.  Source-text scanning is an acceptable
+// trade-off for these structural checks because:
+//   1. The patterns verified are load-bearing (changing them silently would
+//      break connection pooling or RLS in production).
+//   2. Bringing up a real DB in unit-test scope is disproportionate cost.
+//
+// If a test environment with a real PG is ever available, this file should
+// be replaced with a proper integration test that exercises PrismaService
+// directly and observes pg_stat_activity.
+//
 const fs = require("node:fs");
 const path = require("node:path");
 

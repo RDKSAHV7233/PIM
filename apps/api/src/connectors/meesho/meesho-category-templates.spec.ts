@@ -433,3 +433,51 @@ describe('MeeshoConnector.normaliseError', () => {
     expect(issue.sellerMessage).toContain('MYSTERY_ERROR');
   });
 });
+
+// ─── MeeshoConnector class-level invariants ───────────────────────────────────
+// Replaces the brittle string-scan assertions in
+//   apps/api/test/integration/meesho-export-contract.test.cjs
+// by importing and inspecting the live connector class directly.
+
+describe('MeeshoConnector class-level invariants', () => {
+  const connector = new MeeshoConnector();
+
+  it('declares VALIDATE capability', () => {
+    expect(connector.capabilities).toContain('VALIDATE');
+  });
+
+  it('declares EXCEL_EXPORT capability', () => {
+    expect(connector.capabilities).toContain('EXCEL_EXPORT');
+  });
+
+  it('does NOT declare PUBLISH capability — Meesho is Excel-upload-only', () => {
+    // Meesho M-1 is an export-only connector.  publishProduct() must never be
+    // called on it.  If PUBLISH is accidentally added here it means an API
+    // integration exists that hasn't been reviewed yet.
+    expect(connector.capabilities).not.toContain('PUBLISH');
+  });
+
+  it('reports implementationStatus "partial" until M-2 (API access) ships', () => {
+    expect(connector.implementationStatus).toBe('partial');
+  });
+
+  it('slug is "meesho"', () => {
+    expect(connector.slug).toBe('meesho');
+  });
+
+  it('generateExportFile produces filename matching meesho_<category>_<YYYYMMDD>.xlsx', async () => {
+    const ctx = { tenantId: 't1', installationId: 'i1', connectorId: 'c1', getAccessToken: async () => 'tok' };
+    const result = await connector.generateExportFile(ctx, [
+      { sku: 'S1', title: 'T', brand: 'B', hsnCode: '12345', gstRate: 5, mrp: 100, sellingPrice: 90,
+        mainImageUrl: 'https://x.com/img.jpg', productType: 'kurtis', description: 'desc',
+        attributes: { colour: 'Blue', size: 'M', fabric: 'Cotton' } },
+    ]);
+    // Category-specific pattern — NOT the stale "meesho_upload_" the old .cjs was asserting
+    expect(result.filename).toMatch(/^meesho_kurtis_\d{8}\.xlsx$/);
+    expect(result.mimeType).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(result.buffer).toBeInstanceOf(Buffer);
+    expect((result.buffer as Buffer).length).toBeGreaterThan(0);
+  });
+});

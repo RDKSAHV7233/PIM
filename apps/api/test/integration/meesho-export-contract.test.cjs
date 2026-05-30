@@ -1,5 +1,20 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+//
+// ⚠️  SUPERSEDED — kept for historical reference only
+//
+// The behavioral invariants this file checked via source-text scanning have
+// been migrated to a real TypeScript unit test:
+//   apps/api/src/connectors/meesho/meesho-category-templates.spec.ts
+//   (suite: "MeeshoConnector class-level invariants")
+//
+// Known staleness: this file still asserts "meesho_upload_" in the export
+// filename, but the live connector generates "meesho_<category>_<date>.xlsx"
+// (e.g. "meesho_kurtis_20260530.xlsx").  The real spec uses a regex match
+// that captures the actual pattern.  Do not rely on the assertion here.
+//
+// TODO: delete this file once the CI pipeline has switched to the .spec.ts.
+//
 const fs = require("node:fs");
 const path = require("node:path");
 

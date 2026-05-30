@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+//
+// ⚠️  SUPERSEDED — kept for historical reference only
+//
+// The behavioral invariants this file checked via source-text scanning have
+// been migrated to a real TypeScript unit test with jest fake-timers:
+//   apps/api/src/billing/commercial-reminders.service.spec.ts
+//
+// TODO: delete this file once the CI pipeline has switched to the .spec.ts.
+//
 const fs = require("node:fs");
 const path = require("node:path");
 
