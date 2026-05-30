@@ -95,6 +95,13 @@ function formatCommercialDate(value: string | null | undefined): string | null {
   return parsed.toLocaleDateString("en-IN");
 }
 
+function trialDaysRemaining(trialEndsAtIso: string | null): number | null {
+  if (!trialEndsAtIso) return null;
+  const end = new Date(trialEndsAtIso);
+  if (Number.isNaN(end.getTime())) return null;
+  return Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
 function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBillingUsage>>["profile"]) {
   const trialEndsAt = formatCommercialDate(profile.trialEndsAt);
   const graceEndsAt = formatCommercialDate(profile.graceEndsAt);
@@ -108,8 +115,8 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       body: profile.suspensionReason
         ? `${profile.suspensionReason}${suspendedAt ? ` Since ${suspendedAt}.` : ""}`
         : suspendedAt
-          ? `This workspace has been suspended since ${suspendedAt}. Contact Vexa commercial ops to restore access.`
-          : "This workspace is suspended. Contact Vexa commercial ops to restore access.",
+          ? `This workspace has been suspended since ${suspendedAt}. Contact the Vexa team to restore access.`
+          : "This workspace is suspended. Contact the Vexa team to restore access.",
     };
   }
 
@@ -118,8 +125,8 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       tone: "border-amber-200 bg-amber-50 text-amber-900",
       title: "Billing needs attention",
       body: graceEndsAt
-        ? `Payment is past due. Resolve commercial terms before ${graceEndsAt} to avoid interruption.`
-        : "Payment is past due. Contact Vexa commercial ops to avoid interruption.",
+        ? `Payment is past due. Resolve billing before ${graceEndsAt} to avoid service interruption.`
+        : "Payment is past due. Contact the Vexa team to resolve billing.",
     };
   }
 
@@ -128,18 +135,24 @@ function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBill
       tone: "border-slate-300 bg-slate-50 text-slate-800",
       title: "Workspace is scheduled to end",
       body: paidThroughAt
-        ? `Current access is scheduled to continue through ${paidThroughAt} unless Vexa updates the commercial profile.`
-        : "This workspace is marked as cancelled. Contact Vexa commercial ops if continued access is required.",
+        ? `Current access continues through ${paidThroughAt}. Contact the Vexa team if you need to extend or change your plan.`
+        : "This workspace is marked as cancelled. Contact the Vexa team if you need continued access.",
     };
   }
 
   if (profile.billingStatus === "trial") {
+    const daysLeft = trialDaysRemaining(profile.trialEndsAt);
+    const daysLabel = daysLeft !== null
+      ? daysLeft <= 0 ? "Trial has ended." : daysLeft === 1 ? "1 day remaining." : `${daysLeft} days remaining.`
+      : null;
     return {
-      tone: "border-blue-200 bg-blue-50 text-blue-900",
-      title: "Trial is active",
+      tone: daysLeft !== null && daysLeft <= 3
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-blue-200 bg-blue-50 text-blue-900",
+      title: "Free trial is active",
       body: trialEndsAt
-        ? `Your current trial runs through ${trialEndsAt}. Review commercial terms before then to avoid interruption.`
-        : "Your workspace is currently in trial. Vexa will confirm commercial terms before any access change.",
+        ? `Trial ends ${trialEndsAt}.${daysLabel ? ` ${daysLabel}` : ""} Activate a plan before then to keep uninterrupted access.`
+        : "Your workspace is on a free trial. Activate a plan to keep access when the trial ends.",
     };
   }
 
@@ -152,21 +165,21 @@ function resolveUpgradeRequestStatusAlert(statusInput: string | undefined) {
     return {
       tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
       title: "Upgrade request submitted",
-      body: "Vexa commercial ops has your request. We will review your current plan and follow up on next steps.",
+      body: "Your request has been received. Our team will review your plan and follow up with next steps.",
     };
   }
   if (status === "already-open") {
     return {
       tone: "border-sky-200 bg-sky-50 text-sky-900",
       title: "Upgrade request already open",
-      body: "An open upgrade request already exists for this workspace. Vexa commercial ops will continue from the existing request.",
+      body: "An open upgrade request already exists for this workspace. Our team will continue from the existing request.",
     };
   }
   if (status === "forbidden") {
     return {
       tone: "border-amber-200 bg-amber-50 text-amber-900",
       title: "Upgrade request needs an admin session",
-      body: "Sign in again with an active admin session to submit a commercial change request.",
+      body: "Sign in again with an active admin session to submit a plan change request.",
     };
   }
   return null;
@@ -213,13 +226,13 @@ function describeUpgradeRequest(
   if (request.status === "acknowledged") {
     return {
       title: "Upgrade request acknowledged",
-      body: "Vexa commercial ops has picked this up and is reviewing the next plan change with your workspace context.",
+      body: "Our team has picked this up and is reviewing the next plan change for your workspace.",
       tone: "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950",
     };
   }
   return {
     title: "Upgrade request pending",
-    body: "Vexa commercial ops is reviewing this request.",
+    body: "Our team is reviewing this request.",
     tone: "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950",
   };
 }
@@ -358,29 +371,44 @@ function Meter({
   limit: number;
 }) {
   const p = percent(current, limit);
+  const remaining = Math.max(0, limit - current);
+  const barColor = p >= 100 ? "bg-red-500" : p >= 80 ? "bg-amber-500" : "bg-emerald-500";
+  const remainColor = p >= 100 ? "text-red-600 font-medium" : p >= 80 ? "text-amber-600 font-medium" : "text-slate-500";
   return (
-    <div className="space-y-1 rounded-md border border-slate-200 p-3">
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-slate-800">{label}</span>
-        <span className="text-slate-600">
-          {current} / {limit}
+        <span className="font-semibold text-slate-800">{label}</span>
+        <span className="font-medium text-slate-700">
+          {current} <span className="text-slate-400">/</span> {limit}
         </span>
       </div>
-      <div className="h-2 rounded bg-slate-100">
+      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
         <div
-          className={`h-2 rounded ${p >= 100 ? "bg-red-500" : p >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+          className={`h-3 rounded-full transition-all ${barColor}`}
           style={{ width: `${Math.min(100, p)}%` }}
         />
       </div>
-      <div className="text-xs text-slate-500">{p}% used</div>
+      <div className="flex items-center justify-between text-xs">
+        <span className={remainColor}>{remaining} remaining</span>
+        <span className="text-slate-400">{p}% used</span>
+      </div>
     </div>
   );
+}
+
+function planTierBadge(tier: string) {
+  const t = String(tier ?? "").toUpperCase();
+  if (t === "ENTERPRISE") return "border-emerald-200 bg-emerald-100 text-emerald-800";
+  if (t === "GROWTH") return "border-indigo-200 bg-indigo-100 text-indigo-800";
+  return "border-slate-200 bg-slate-100 text-slate-700";
 }
 
 export default async function PlanPage({ searchParams }: PlanPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole: role } = await getServerSession();
   const claims = await getServerSessionClaims();
+  const assignedRoles = (claims?.assignedRoles ?? []) as string[];
+  const isBoundaryRole = assignedRoles.includes("product_admin") || assignedRoles.includes("system_admin");
   const signupTrendDays = resolveSignupTrendDays(query.days);
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
   let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
@@ -469,7 +497,11 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     <div className="space-y-5">
       <PageHeader
         title="Plan & Usage"
-        description={`Plan: ${usage.planTier} | Billing: ${formatCommercialStatus(usage.billingStatus)} | Access: ${formatAccessStatus(usage.accessStatus)} | Billing month: ${usage.month} | Resets on ${new Date(usage.billingCycleResetAt).toLocaleDateString("en-IN")}`}
+        description={
+          isBoundaryRole
+            ? "Unlimited access — boundary role active"
+            : `${usage.planTier} · ${formatCommercialStatus(usage.billingStatus)} · Resets: ${new Date(usage.billingCycleResetAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+        }
         breadcrumb={
           <>
             <Link href="/dashboard" className="underline">
@@ -484,42 +516,194 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           </>
         }
       />
-      {commercialStatusAlert ? (
+      {commercialStatusAlert && !isBoundaryRole ? (
         <div className={`rounded-md border px-3 py-3 text-sm ${commercialStatusAlert.tone}`}>
           <div className="font-semibold">{commercialStatusAlert.title}</div>
           <div className="mt-1">{commercialStatusAlert.body}</div>
         </div>
       ) : null}
-      <Card>
-        <CardTitle>Usage meters</CardTitle>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Meter label="SKUs" current={usage.skus.current} limit={usage.skus.limit} />
-          <Meter label="Submissions" current={usage.submissions.current} limit={usage.submissions.limit} />
-          <Meter
-            label="Storage (GB)"
-            current={Number(usage.storageGb.current.toFixed(2))}
-            limit={usage.storageGb.limit}
-          />
-          <Meter label="Users" current={usage.users.current} limit={usage.users.limit} />
-          <Meter
-            label="Connector Installations"
-            current={usage.connectorsInstallations.current}
-            limit={usage.connectorsInstallations.limit}
-          />
-          <Meter
-            label="Accounts Per Connector"
-            current={usage.connectorAccounts.current}
-            limit={usage.connectorAccounts.limit}
-          />
-        </div>
-      </Card>
+      {isBoundaryRole ? (
+        <Card>
+          <CardTitle>Unlimited Access</CardTitle>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {["SKUs", "Submissions", "Storage", "Users", "Connector Installations", "Accounts Per Connector"].map((label) => (
+              <div key={label} className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <span className="text-sm font-medium text-emerald-900">{label}</span>
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">Unlimited</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Plan limits are not enforced for your role. Usage data below reflects the tenant&apos;s actual consumption.</p>
+        </Card>
+      ) : (
+        <Card>
+          <CardTitle>Usage meters</CardTitle>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Meter label="SKUs" current={usage.skus.current} limit={usage.skus.limit} />
+            <Meter label="Submissions" current={usage.submissions.current} limit={usage.submissions.limit} />
+            <Meter
+              label="Storage (GB)"
+              current={Number(usage.storageGb.current.toFixed(2))}
+              limit={usage.storageGb.limit}
+            />
+            <Meter label="Users" current={usage.users.current} limit={usage.users.limit} />
+            <Meter
+              label="Connector Installations"
+              current={usage.connectorsInstallations.current}
+              limit={usage.connectorsInstallations.limit}
+            />
+            <Meter
+              label="Accounts Per Connector"
+              current={usage.connectorAccounts.current}
+              limit={usage.connectorAccounts.limit}
+            />
+          </div>
+        </Card>
+      )}
       {role !== "admin" ? (
         <Card>
-          <CardTitle>Commercial Controls</CardTitle>
+          <CardTitle>Plan Management</CardTitle>
           <p className="mt-2 text-sm text-slate-600">
             Workspace admins can manage billing contacts, request plan changes, and review signup conversion from this
             page. You can still review current usage and commercial status above.
           </p>
+        </Card>
+      ) : null}
+      {role === "admin" && !isBoundaryRole ? (
+        <Card>
+          <CardTitle>Plan management</CardTitle>
+          <div className="mt-3 space-y-4 text-sm text-slate-700">
+            <p>
+              Plan changes are applied by the Vexa team. Review your current usage above, then request a plan change below if you need more capacity.
+            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{usage.planTier}</p>
+                </div>
+                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold ${planTierBadge(usage.planTier)}`}>
+                  {formatCommercialStatus(usage.profile.billingStatus)}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-1 text-xs text-slate-500">
+                <p>Access: {formatAccessStatus(usage.profile.accessStatus)}</p>
+                <p>Tenant: {usage.profile.tenantKey}</p>
+                <p>Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}</p>
+              </div>
+            </div>
+            {billingContactStatusAlert ? (
+              <div className={`rounded-md border px-3 py-3 text-sm ${billingContactStatusAlert.tone}`}>
+                <div className="font-semibold">{billingContactStatusAlert.title}</div>
+                <div className="mt-1">{billingContactStatusAlert.body}</div>
+              </div>
+            ) : null}
+            <form action={updateBillingContactAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <input type="hidden" name="days" value={String(signupTrendDays)} />
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="billing-contact-email">
+                  Billing contact email
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Commercial notices go to this email first. If you leave it empty, we fall back to active workspace admins.
+                </p>
+                <input
+                  id="billing-contact-email"
+                  type="email"
+                  name="billingContactEmail"
+                  defaultValue={usage.profile.billingContactEmail ?? ""}
+                  maxLength={200}
+                  placeholder="billing@example.com"
+                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                >
+                  Save billing contact
+                </button>
+                {usage.profile.billingContactEmail ? (
+                  <button
+                    type="submit"
+                    name="clear"
+                    value="true"
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Use admin fallback
+                  </button>
+                ) : null}
+                <p className="text-xs text-slate-500">
+                  Current recipient: {usage.profile.billingContactEmail ?? "active workspace admins"}.
+                </p>
+              </div>
+            </form>
+            {upgradeRequestStatusAlert ? (
+              <div className={`rounded-md border px-3 py-3 text-sm ${upgradeRequestStatusAlert.tone}`}>
+                <div className="font-semibold">{upgradeRequestStatusAlert.title}</div>
+                <div className="mt-1">{upgradeRequestStatusAlert.body}</div>
+              </div>
+            ) : null}
+            {upgradeRequest ? (
+              <div className={upgradeRequestDescriptor?.tone ?? "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"}>
+                <div className="font-semibold">{upgradeRequestDescriptor?.title ?? "Upgrade request pending"}</div>
+                <div className="mt-1">
+                  Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
+                  {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "Our team is reviewing this request."}
+                </div>
+                {upgradeRequest.notes ? (
+                  <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">
+                    <div className="font-semibold uppercase tracking-wide text-sky-700">Request notes</div>
+                    <div className="mt-1 whitespace-pre-wrap">{upgradeRequest.notes}</div>
+                  </div>
+                ) : null}
+              </div>
+            ) : usage.planTier === "ENTERPRISE" ? null : (
+              <form action={requestPlanUpgradeAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <input type="hidden" name="source" value="admin_plan" />
+                <input type="hidden" name="days" value={String(signupTrendDays)} />
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="upgrade-request-notes">
+                    Request notes
+                  </label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Share what changed so our team can review the right plan and timeline.
+                  </p>
+                  <textarea
+                    id="upgrade-request-notes"
+                    name="notes"
+                    rows={4}
+                    maxLength={1000}
+                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    placeholder="Example: We need more users, more submission volume, and a paid plan review before the trial ends."
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="submit"
+                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                  >
+                    Request plan upgrade
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    Our team will review your request and follow up with next steps.
+                  </p>
+                </div>
+              </form>
+            )}
+            {commercialContact ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={commercialContact.href}
+                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  {commercialContact.label}
+                </a>
+                <p className="text-xs text-slate-500">{commercialContact.helperText}</p>
+              </div>
+            ) : null}
+          </div>
         </Card>
       ) : null}
       {role === "admin" && signupTrends ? (
@@ -552,28 +736,30 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     : `Every signup request in the last ${signupTrends.rangeDays} days has verified.`}
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {SIGNUP_TREND_WINDOWS.map((days) => {
-                const active = signupTrends.rangeDays === days;
-                return (
-                  <Link
-                    key={days}
-                    href={`/admin/plan?days=${days}`}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium ${
-                      active
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    Last {days} days
-                  </Link>
-                );
-              })}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {SIGNUP_TREND_WINDOWS.map((days) => {
+                  const active = signupTrends.rangeDays === days;
+                  return (
+                    <Link
+                      key={days}
+                      href={`/admin/plan?days=${days}`}
+                      className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                        active
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      Last {days} days
+                    </Link>
+                  );
+                })}
+              </div>
               <a
                 href={signupExportHref}
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Export CSV
+                <span aria-hidden="true">↓</span> Export CSV
               </a>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -730,151 +916,10 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 No signup activity recorded for this window yet.
               </div>
             ) : (
-              <>
-                {/* Contract test reference:
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Pending</th>
-                    pendingBacklog
-                */}
-                <DataGrid className="mt-4" columns={signupTrendColumns} rows={signupTrendRows} getRowKey={(row) => row.date} />
-              </>
+              <DataGrid className="mt-4" columns={signupTrendColumns} rows={signupTrendRows} getRowKey={(row) => row.date} />
             )}
           </Card>
         </div>
-      ) : null}
-      {role === "admin" ? (
-        <Card>
-          <CardTitle>Plan management</CardTitle>
-          <div className="mt-3 space-y-4 text-sm text-slate-700">
-            <p>
-              Plan changes are managed by Vexa commercial ops. Customer admins can review plan usage
-              here, but paid-plan changes are applied through Vexa&apos;s commercial workflow.
-            </p>
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</div>
-              <div className="mt-2 text-lg font-semibold text-slate-900">{usage.planTier}</div>
-              <div className="mt-1 text-xs text-slate-500">
-                Billing: {formatCommercialStatus(usage.profile.billingStatus)} | Access:{" "}
-                {formatAccessStatus(usage.profile.accessStatus)}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">Tenant key: {usage.profile.tenantKey}</div>
-              <div className="mt-1 text-xs text-slate-500">
-                Billing notices: {usage.profile.billingContactEmail ?? "active workspace admins"}
-              </div>
-            </div>
-            {billingContactStatusAlert ? (
-              <div className={`rounded-md border px-3 py-3 text-sm ${billingContactStatusAlert.tone}`}>
-                <div className="font-semibold">{billingContactStatusAlert.title}</div>
-                <div className="mt-1">{billingContactStatusAlert.body}</div>
-              </div>
-            ) : null}
-            <form action={updateBillingContactAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <input type="hidden" name="days" value={String(signupTrendDays)} />
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="billing-contact-email">
-                  Billing contact email
-                </label>
-                <p className="mt-1 text-xs text-slate-500">
-                  Commercial notices go to this email first. If you leave it empty, Vexa falls back to active workspace admins.
-                </p>
-                <input
-                  id="billing-contact-email"
-                  type="email"
-                  name="billingContactEmail"
-                  defaultValue={usage.profile.billingContactEmail ?? ""}
-                  maxLength={200}
-                  placeholder="billing@example.com"
-                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="submit"
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-                >
-                  Save billing contact
-                </button>
-                {usage.profile.billingContactEmail ? (
-                  <button
-                    type="submit"
-                    name="clear"
-                    value="true"
-                    className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Use admin fallback
-                  </button>
-                ) : null}
-                <p className="text-xs text-slate-500">
-                  Current recipient path: {usage.profile.billingContactEmail ?? "active workspace admins"}.
-                </p>
-              </div>
-            </form>
-            {upgradeRequestStatusAlert ? (
-              <div className={`rounded-md border px-3 py-3 text-sm ${upgradeRequestStatusAlert.tone}`}>
-                <div className="font-semibold">{upgradeRequestStatusAlert.title}</div>
-                <div className="mt-1">{upgradeRequestStatusAlert.body}</div>
-              </div>
-            ) : null}
-            {upgradeRequest ? (
-              <div className={upgradeRequestDescriptor?.tone ?? "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"}>
-                <div className="font-semibold">{upgradeRequestDescriptor?.title ?? "Upgrade request pending"}</div>
-                <div className="mt-1">
-                  Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
-                  {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "Vexa commercial ops is reviewing this request."}
-                </div>
-                {upgradeRequest.notes ? (
-                  <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">
-                    <div className="font-semibold uppercase tracking-wide text-sky-700">Request notes</div>
-                    <div className="mt-1 whitespace-pre-wrap">{upgradeRequest.notes}</div>
-                  </div>
-                ) : null}
-              </div>
-            ) : usage.planTier === "ENTERPRISE" ? null : (
-              <form action={requestPlanUpgradeAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <input type="hidden" name="source" value="admin_plan" />
-                <input type="hidden" name="days" value={String(signupTrendDays)} />
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="upgrade-request-notes">
-                    Request notes
-                  </label>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Share what changed so Vexa commercial ops can review the right plan and timeline.
-                  </p>
-                  <textarea
-                    id="upgrade-request-notes"
-                    name="notes"
-                    rows={4}
-                    maxLength={1000}
-                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                    placeholder="Example: We need more users, more submission volume, and a paid plan review before the trial ends."
-                  />
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="submit"
-                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-                  >
-                    Request upgrade
-                  </button>
-                  <p className="text-xs text-slate-500">
-                    Vexa commercial ops will review your request and follow up with the right plan change.
-                  </p>
-                </div>
-              </form>
-            )}
-            {commercialContact ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <a
-                  href={commercialContact.href}
-                  className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  {commercialContact.label}
-                </a>
-                <p className="text-xs text-slate-500">{commercialContact.helperText}</p>
-              </div>
-            ) : null}
-          </div>
-        </Card>
       ) : null}
     </div>
   );
