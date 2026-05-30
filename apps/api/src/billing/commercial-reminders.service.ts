@@ -108,7 +108,13 @@ export class CommercialRemindersService implements OnModuleInit, OnModuleDestroy
   }
 
   private isEnabled(): boolean {
-    const workerEnabled = String(process.env.QUEUE_WORKER_ENABLED ?? "false").trim().toLowerCase();
-    return workerEnabled !== "true";
+    // Gated by QUEUE_WORKER_ENABLED: the timer should run on the process that
+    // executes background work. QUEUE_WORKER_ENABLED=true means "this process
+    // IS a worker," so reminders run when it's true and stay off when it's
+    // explicitly false (e.g. a future read-only/web-only deployment). Default
+    // matches QueueService — true when unset — so single-process deployments
+    // (current Railway setup) and local dev get reminders by default.
+    const workerEnabled = String(process.env.QUEUE_WORKER_ENABLED ?? "true").trim().toLowerCase();
+    return workerEnabled === "true";
   }
 }

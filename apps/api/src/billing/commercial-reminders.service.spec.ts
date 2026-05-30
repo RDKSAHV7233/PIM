@@ -10,7 +10,7 @@
 //   (b) Timer cleanup — onModuleDestroy clears both handles and nulls them
 //       so a second call is a safe no-op (double-clear protection).
 //   (c) QUEUE_WORKER_ENABLED gate — no timers are scheduled when the env
-//       var equals "true" (dedicated worker dyno scenario).
+//       var equals "false" (worker explicitly disabled). Timers run when "true" — when this process is configured as a worker.
 //   (d) Per-tenant error isolation — a failure inside sendTrialEndingReminders
 //       for one tenant is logged but does not abort the overall run.
 
@@ -51,7 +51,7 @@ describe("CommercialRemindersService — timer scheduling", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     // Default: run in the non-dedicated-worker environment so timers schedule.
-    process.env.QUEUE_WORKER_ENABLED = "false";
+    process.env.QUEUE_WORKER_ENABLED = "true";
   });
 
   afterEach(() => {
@@ -81,8 +81,8 @@ describe("CommercialRemindersService — timer scheduling", () => {
     expect(jest.getTimerCount()).toBe(1);
   });
 
-  it("does NOT schedule timers when QUEUE_WORKER_ENABLED=true", () => {
-    process.env.QUEUE_WORKER_ENABLED = "true";
+  it("does NOT schedule timers when QUEUE_WORKER_ENABLED=false", () => {
+    process.env.QUEUE_WORKER_ENABLED = "false";
     const { prisma, planUsage, notifications } = makeStubs();
     const svc = new CommercialRemindersService(prisma, planUsage, notifications);
     svc.onModuleInit();
@@ -98,7 +98,7 @@ describe("CommercialRemindersService — timer cleanup", () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
-    process.env.QUEUE_WORKER_ENABLED = "false";
+    process.env.QUEUE_WORKER_ENABLED = "true";
   });
 
   afterEach(() => {
