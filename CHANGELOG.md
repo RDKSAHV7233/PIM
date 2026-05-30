@@ -4,6 +4,39 @@ All notable changes to Vexa PIM. Legacy technical codename: `PIM1`. Format: [dat
 
 ---
 
+## [2026-05-30] — Phase 3 enterprise delivery + security fixes
+
+### Security
+- **Fixed cross-tenant identity leak in login** (`fix(auth)` — PR #156, commit `d5e2258`): `prisma.tenant()` was called without `tenantId` during unauthenticated identity lookup, causing the RLS extension to fall back to `DEFAULT_TENANT_KEY`. In multi-tenant deployments this could resolve an auth identity row from the wrong tenant. Fix passes `tenantId` explicitly to scope the lookup. Companion write-path fix was PR #147.
+
+### ⚠️ Breaking Changes
+- **`editor` role removed from `POST /products/:id/review-decision`** (PR #152 — shipping with Phase 3 merge): The endpoint that applies approve/reject decisions on in-review products previously accepted `admin`, `editor`, and `approver` roles. The `editor` role has been removed — editors should not self-approve drafts they authored. **Impact:** any API key or service account with `editor` role that calls this endpoint will receive `403 Forbidden` after this change ships. Rotate those keys to `approver` role before upgrading.
+
+### Added
+- `lastSignInAt` column on `authIdentity`: new migration `20260529000001_auth_identity_last_sign_in_at`, recorded on successful login, surfaced in workspace-users admin table.
+- Shopify connector managed-install e2e Playwright suite (`test(e2e)` — PR #152).
+- Meesho Phase M-1: 6-category Excel export templates (Kurtis, T-shirts, Sarees, Casual Shoes, Leggings, Home Décor), `MeeshoExportPanel` UI, `POST /marketplace/connectors/:id/export` endpoint, `EXCEL_EXPORT` capability (PR #153). Phase M-2 — live API publish — blocked on `RD-MEESHO-1` (external vendor credential access).
+- `product_admin` and `system_admin` boundary roles bypass plan-limit enforcement and are granted unlimited usage display in the admin UI.
+- RLS-BYPASS audit annotations on `tenantRaw` / `tenantExecRaw` wrappers to flag intentional raw query paths for security reviewers (PR #159).
+- 3 new API contract tests: `prisma-connection-pool-contract`, `commercial-reminders-contract`, `meesho-export-contract` (PR #159).
+- Startup env gate via `instrumentation.ts`: blocks web app startup when `AUTH_MODE`, `JWT_SECRET`, or `PIM_API_BASE_URL` are missing (PR #154).
+- Global IST timezone (`en-IN` + `Asia/Kolkata`) across ~33 datetime display sites (PR #154).
+- Responsive `mobileHide` sweep across DataGrid secondary columns on Products, Approvals, Jobs, and Audit pages (PR #154).
+- Async bulk-import job poll in integration test — fixes race against BullMQ worker drain (PR #160).
+
+### Changed
+- `reviewer` role added to `POST /products/:id/review-decision` (alongside `admin` and `approver`). See Breaking Changes above re: `editor` removal.
+- Meesho connector launch stage promoted from `planned` → `manual` (export-only, not self-serve).
+- `CURRENT_STATE.md` V11 addendum: Gate 3 closed, enterprise signoff unblocked, pricing approved, web test suite at 117.
+- `docs/product/pricing.md` updated with PO-approved price points: STARTER ₹4,499/mo, GROWTH ₹11,999/mo, ENTERPRISE custom (sign-off 2026-05-27, Atharva). Remaining sign-offs before public publish: CTO (infra cost), CFO (LTV/CAC), GTM (annual discount), Legal.
+
+### Fixed
+- Production bugfixes: roles surface, approval flow, Meesho tile, notifications retargeting.
+- `tmp` dependency bumped `0.2.5 → 0.2.7` to patch HIGH CVE [GHSA-ph9p-34f9-6g65](https://github.com/advisories/GHSA-ph9p-34f9-6g65) (PR #151).
+- `vexa-pim-website-handover/` excluded from git tracking via `.gitignore` (PR #151).
+
+---
+
 ## [2026-05-26] - 6f57e4c - v0.9.1-release
 ### Added
 - 5 composite DB index migrations (2026-05-24/25): `ValidationIssue` status/severity, `MarketplaceExportJob` status/channel/updatedAt, `BulkImportJob`, `BulkEditOperation`, `AttributeDefinition`, `ConnectorSubmission` installation+status, `Product` delta-sync scan `(tenantKey, status, deletedAt, id)`.
