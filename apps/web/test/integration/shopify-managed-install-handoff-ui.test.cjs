@@ -48,6 +48,11 @@ function run() {
       detailSource.includes("Refresh credential state"),
     "Shopify handoff copy must stay honest about live launch stage and give operators a concrete refresh action.",
   );
+  assert(
+    detailSource.includes("Complete Shopify authorization before configuring publication channels.") &&
+      detailSource.includes("Complete Shopify authorization before refreshing channels."),
+    "Shopify handoff must keep publication controls in guidance mode until managed install finishes.",
+  );
 
   console.log(
     JSON.stringify(
@@ -57,6 +62,7 @@ function run() {
           "setup_page_surfaces_shopify_managed_install_handoff",
           "detail_page_surfaces_shopify_install_status_ladder",
           "shopify_handoff_copy_stays_launch_honest",
+          "shopify_handoff_keeps_publication_controls_in_pre_auth_guidance_mode",
         ],
         checkedAt: new Date().toISOString(),
       },

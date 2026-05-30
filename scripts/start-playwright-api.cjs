@@ -6,7 +6,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
-const apiEntryShim = path.join(root, "scripts", "playwright-api-entry.cjs");
+const apiEntryPath = path.join(root, "apps", "api", "dist", "main.js");
 
 function resolveDatabaseUrl(fileEnv) {
   const localDatabaseUrl =
@@ -338,7 +338,7 @@ async function main() {
     env.PIM_SHOPIFY_ADMIN_API_VERSION = env.PIM_SHOPIFY_ADMIN_API_VERSION || "2026-04";
   }
 
-  const child = spawn("node", [apiEntryShim], {
+  const child = spawn("node", [apiEntryPath], {
     cwd: root,
     shell: false,
     stdio: "inherit",

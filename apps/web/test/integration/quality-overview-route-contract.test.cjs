@@ -39,11 +39,11 @@ function run() {
   );
   assert(
       roleCapabilitiesSource.includes('return role === "admin" || role === "editor";') &&
-      roleCapabilitiesSource.includes('return role === "admin" || role === "editor" || role === "approver";') &&
+      roleCapabilitiesSource.includes('return role === "admin" || role === "approver" || role === "reviewer";') &&
       source.includes("const canTriageWarnings = canEditWorkspace(actorRole);") &&
       source.includes("const canRecordReviewDecisions = canDecideApproval(actorRole);") &&
       source.includes("Workspace editors and admins resolve warnings.") &&
-      source.includes("Final approval decisions require approver, editor, or admin access.") &&
+      source.includes("Final approval decisions require reviewer, approver, or admin access.") &&
       source.includes('{canRecordReviewDecisions ? "Open Approval Queue" : "Review Approval Queue"}'),
     "Quality overview must describe issue-triage and approval actions honestly for roles without write or decision capability.",
   );

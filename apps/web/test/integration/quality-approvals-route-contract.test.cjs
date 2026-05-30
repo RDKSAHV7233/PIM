@@ -28,8 +28,8 @@ function run() {
       approvalsSource.includes("getIssueInbox(") &&
       approvalsSource.includes('productStatus: "in_review",') &&
       approvalsSource.includes("limit: 50,") &&
-      approvalsSource.includes("getProductList({ slim: true }, { role: actorRole, authHeader })"),
-    "Approval Queue must load stats, in-review issue inbox data, and slim product projections together from the shared auth context.",
+      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })"),
+    "Approval Queue must load stats, in-review issue inbox data, and the full slim product catalog together from the shared auth context.",
   );
   assert(
     approvalsSource.includes("const blockingProducts = new Set(") &&
@@ -42,7 +42,7 @@ function run() {
     "Approval Queue must derive blocking, warning, and clean-for-decision metrics from the real in-review inbox state while honoring restricted approval-queue counts.",
   );
   assert(
-    capabilitiesSource.includes('return role === "admin" || role === "editor" || role === "approver";') &&
+    capabilitiesSource.includes('return role === "admin" || role === "approver" || role === "reviewer";') &&
       approvalsSource.includes("const decisionEnabled = canDecideApproval(actorRole);"),
     "Approval Queue must rely on the shared reviewer-capable decision rule instead of duplicating local role logic.",
   );
@@ -60,12 +60,20 @@ function run() {
   assert(
     approvalsSource.includes("getProductRevisions(product.id, { role: actorRole, authHeader })") &&
       approvalsSource.includes("const revisionsByProduct = new Map(") &&
+      approvalsSource.includes("revisionsByProduct.set(product.id, revisions.items as unknown as ProductRevision[]);") &&
       approvalsSource.includes("Revision Evidence Coverage") &&
       approvalsSource.includes("with revision evidence") &&
       approvalsSource.includes("ApprovalEvidenceDrawer") &&
       approvalsSource.includes("productQualityHref") &&
       approvalsSource.includes("productHref"),
     "Approval Queue must fetch product revisions and hand them into an in-workspace evidence drawer instead of forcing reviewers to infer what changed.",
+  );
+  assert(
+    approvalsSource.includes('import { PendingSubmitButton } from "@/components/ui/pending-submit-button";') &&
+      approvalsSource.includes("<PendingSubmitButton") &&
+      approvalsSource.includes('idleLabel="Post Comment"') &&
+      approvalsSource.includes('pendingLabel="Posting..."'),
+    "Approval Queue must import and render the shared pending-submit comment action so review-comment posting does not crash at render time.",
   );
   assert(
     approvalsSource.includes("approvalQueueRedacted") &&
@@ -76,13 +84,15 @@ function run() {
   );
   assert(
     approvalsSource.includes('const canApprove = summary.blocking === 0;') &&
+      approvalsSource.includes('<form action={decideProductReviewAction} className="space-y-2">') &&
       approvalsSource.includes('name="status"') &&
       approvalsSource.includes('value="approved"') &&
       approvalsSource.includes('value="rejected"') &&
+      approvalsSource.includes('buttonVariants({ variant: "secondary" })') &&
       approvalsSource.includes("Reviewer note") &&
       approvalsSource.includes('disabled={!canApprove}') &&
       approvalsSource.includes("Clear blocking issues before approving."),
-    "Approval Queue must keep reviewer note capture inside the decision form, disable approval when blockers remain, and explain that constraint inline.",
+    "Approval Queue must submit explicit approved/rejected status values through the shared decision form, disable approval when blockers remain, and explain that constraint inline.",
   );
   assert(
     approvalsSource.includes('query.decisionStatus ? (') &&

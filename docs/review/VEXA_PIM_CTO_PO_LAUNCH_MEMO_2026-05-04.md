@@ -79,7 +79,7 @@ Recommended demo path:
 Demo caveats:
 
 - Keep the story on named supported connectors only.
-- Position Meesho honestly as partial/manual export.
+- Position Meesho as export-only: sellers download a category-specific Excel and upload to Supplier Panel. Live publish is not supported and is not implied.
 - Avoid implying WooCommerce exists.
 - Do not describe admin-only analytics, such as signup-funnel reporting, as baseline operator functionality.
 
@@ -113,7 +113,7 @@ Do not position Vexa as fully launch-polished for broad paid acquisition until t
 
 ## Risks Leadership Should Not Ignore
 
-- Connector breadth is uneven. Shopify, Amazon India, and Flipkart have evidence. Meesho is partial. WooCommerce has no evidence in this repo.
+- Connector breadth is uneven. Shopify, Amazon India, and Flipkart have live publish evidence. Meesho Phase M-1 shipped 2026-05-28: export-only, category-specific Excel, manual launch stage. Phase M-2 (live credentials) is blocked on RD-MEESHO-1. WooCommerce has no evidence in this repo.
 - Connector launch honesty still depends on explicit per-connector classification; future connector entries could be overstated if metadata drifts.
 - Some important surfaces still rely on wide data tables with horizontal scroll.
 - New-user activation is good, but distributed. It should become a single guided path.
@@ -146,7 +146,7 @@ Do not go broad paid if:
 ## Priority Decisions For CTO + PO
 
 1. Decide whether WooCommerce is removed from near-term expectations or actively scheduled.
-2. Decide the commercial positioning of Meesho: pilot-only, export-only, or hidden.
+2. ✅ DECIDED (2026-05-28): Meesho is export-only, manual launch stage, accessible to operators who install. Phase M-1 shipped. Phase M-2 (live credentials + direct publish) blocked on RD-MEESHO-1.
 3. Decide whether admin-only signup analytics should stay on dashboard or move into a more explicitly commercial/admin reporting surface.
 4. Approve one canonical new-user activation path centered on dashboard and products.
 5. Approve a responsive UX sprint for the highest-density operator pages.

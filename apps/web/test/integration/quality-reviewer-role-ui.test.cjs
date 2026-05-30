@@ -29,12 +29,12 @@ function run() {
 
   assert(
     capabilitiesSource.includes('role === "admin" || role === "editor"') &&
-      capabilitiesSource.includes('role === "admin" || role === "editor" || role === "approver"'),
-    "Role capabilities must keep approver and reviewer roles distinct: approver allows explicit approval decisions, reviewer stays read-only.",
+      capabilitiesSource.includes('role === "admin" || role === "approver" || role === "reviewer"'),
+    "Role capabilities must keep approval authority distinct from workspace editing: reviewers and approvers can record decisions, while editors stay focused on catalog edits.",
   );
   assert(
     approvalsSource.includes("decideProductReviewAction") &&
-      approvalsSource.includes("getProductList({ slim: true }, { role: actorRole, authHeader })") &&
+      approvalsSource.includes("getAllProductsSlim({ role: actorRole, authHeader })") &&
       approvalsSource.includes("canDecideApproval(actorRole)") &&
       approvalsSource.includes("Approve") &&
       approvalsSource.includes("Reject"),
