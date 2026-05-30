@@ -326,6 +326,22 @@ async function waitForWebhook(state, timeoutMs) {
   throw new Error(`Timed out waiting for outbound webhook after ${timeoutMs}ms`);
 }
 
+async function waitForBulkImportJobStatus(baseUrl, token, jobId, expectedStatus, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "";
+  while (Date.now() < deadline) {
+    const response = await apiRequest(baseUrl, "GET", `/bulk-import/jobs/${jobId}`, token);
+    if (response.status === 200) {
+      lastStatus = String(response.payload?.status ?? "");
+      if (lastStatus === expectedStatus) {
+        return response.payload;
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error(`Timed out waiting for bulk import job ${jobId} to reach status ${expectedStatus} (last seen: ${lastStatus})`);
+}
+
 async function waitForDeliveredRows(baseUrl, token, expectedChecks, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -623,10 +639,10 @@ async function run() {
       chunkSize: 10,
     });
     assertStatus(processedCompletedImport, 201, "process completed bulk import job");
-    assert(
-      String(processedCompletedImport.payload?.status ?? "") === "completed",
-      `expected completed import job, got ${String(processedCompletedImport.payload?.status ?? "")}`,
-    );
+    // /process now enqueues work to BullMQ and returns the job's current state (typically
+    // "queued"). Poll the job endpoint until the in-memory worker drains the queue and the
+    // job reaches "completed".
+    await waitForBulkImportJobStatus(baseUrl, editorToken, completedImportJob.payload.id, "completed", 15_000);
 
     const importCompletedReceived = await waitForWebhook(webhookState, 15_000);
     assert(importCompletedReceived.method === "POST", `expected POST import_completed webhook delivery, got ${importCompletedReceived.method}`);

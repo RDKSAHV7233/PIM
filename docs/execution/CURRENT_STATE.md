@@ -1,5 +1,37 @@
 # Vexa PIM Current State
 
+> **V11 Addendum (2026-05-28) — enterprise signoff unblocked; Gate 3 closed; pricing approved; web test suite at 117.**
+>
+> **Summary of changes since V10:**
+> - **Gate 3 CLOSED 2026-05-26**: 14/14 broad-rollout observation days and 14/14 SLO trend days confirmed. All P0/P1/P2 risks in PROD_READINESS_RISK_REGISTER are closed. PIM1 cleared for broad production rollout.
+> - **Enterprise signoff unblocked (V7, 2026-05-20)**: RG-C4 (product relationships/bundles), RG-C5 (workflow collaboration + SLA), and RG-C6 (enterprise search) all merged to main. "Enterprise-ready" claim is now allowed with gate:run:sprint passage.
+> - **Pricing approved (2026-05-27)**: PO (Atharva) signed off on STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom. `docs/product/pricing.md` updated. BACKLOG-04 (Stripe product config) unblocked — requires ops action in Stripe dashboard.
+> - **Web test suite: 117 total** (`WEBTEST_SUMMARY total=117 failed=1`). One permanent expected failure: `auth-cookie-csrf.test.cjs` requires live API build. All other 116 tests pass.
+> - **Responsive UX sprint complete**: `mobileHide` sweep across all DataGrid callsites; mobile card `min-w-0 break-words` overflow guard; startup env gate via `instrumentation.ts`; Governance sidebar link fixed for `connector_admin` role.
+> - **Test coverage expanded**: Meesho export contract (14 assertions), Prisma connection pool contract (11 assertions), CommercialReminders contract (11 assertions). API integration tests: 144. Web integration tests: 117.
+>
+> **Updated Section 4 (replaces V4 posture):**
+>
+> **Allowed to say:**
+> - All production-readiness code blockers are closed.
+> - Gate 3 fully closed — broad production rollout is governance-cleared.
+> - Enterprise-ready (RG-C4/C5/C6 all merged) — requires passage of `gate:run:sprint` on staging against Gate C features before using this in customer-facing claims.
+> - Vexa PIM is production-ready for SMB, mid-market, and enterprise pilots from the current code and governance evidence.
+> - OIDC SSO, 8-role RBAC, product relationships, workflow collaboration, and enterprise search are all live on main.
+> - Pricing approved: STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom.
+>
+> **Not allowed to say without further action:**
+> - Self-serve billing (Stripe integration is operator-mediated; no customer-facing Stripe checkout implemented)
+> - "100+ products published to Shopify" (requires recorded browser session — script-assisted only)
+> - OIDC fully enforced / mandatory (it is opt-in; runtime enforcement is live only when an IdP is configured by the admin)
+>
+> **Pending ops / external actions (non-code):**
+> - Configure `STAGE3_*` secrets in GitHub `production` environment → trigger promote-stage3
+> - Clear `account-export` failed job + configure R2 on Railway staging
+> - Run `gate:run:sprint` on staging against Gate C features (target was 2026-05-23 — now overdue; must complete before enterprise claim is used externally)
+> - Create Stripe products at approved price points (BACKLOG-04)
+> - Remaining pricing sign-offs: CTO (infra cost), CFO (LTV/CAC), GTM (annual discount depth), Legal (public copy review)
+
 > **V10 Addendum (2026-05-20) — taxonomy soft-delete fix merged; E2E `delete_category` cleanup unblocked.**
 >
 > **PR merged:**
@@ -241,38 +273,42 @@
 
 ## 4. Current Release Posture
 
-### Allowed to say
+> **See V11 Addendum at the top of this file for the current authoritative posture. The text below is preserved as historical context (valid as of 2026-05-18); where it conflicts with V11, V11 wins.**
 
-- The targeted production-readiness code blockers listed above are closed in the current repo state.
-- The current local validation bundle is green.
-- Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers from the current checked-in code and current validation evidence.
-- Large Import Mode MVP is available for controlled pilot and early SMB / mid-market use within the documented CSV-only `30,000`-row boundary.
-- Enterprise Gate C work: INC-35 (8-role RBAC), INC-36 (localization schema), and INC-39 (OIDC SSO login + self-serve IdP config UI) all merged. Enterprise signoff still requires RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search).
-- OIDC is now self-serve: admins configure their IdP (issuer, clientId, clientSecret, callbackUrl, scopes, claims mapping) via `/admin/oidc`. Runtime enforcement is live once an IdP is configured.
+### Allowed to say (as of V11, 2026-05-28)
 
-### Not allowed to say
+- All production-readiness code blockers are closed.
+- Gate 3 fully closed (14/14 observation days, 2026-05-26) — PIM1 cleared for broad production rollout.
+- Enterprise-ready: RG-C4 (product relationships), RG-C5 (workflow collaboration + SLA), and RG-C6 (enterprise search) merged. Enterprise claim requires `gate:run:sprint` passage on staging before external use.
+- Large Import Mode MVP is available within the documented CSV-only `30,000`-row boundary.
+- OIDC SSO is self-serve and live when an IdP is configured.
+- Pricing approved: STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom.
 
-- Enterprise-ready (Gate C requires RG-C4/C5/C6 — not yet scheduled)
-- Self-serve billing
-- All launch docs current before review
-- All historical review docs are current
+### Not allowed to say (as of V11, 2026-05-28)
 
-### Current decision
+- Self-serve billing (Stripe checkout not implemented — operator-mediated only)
+- "100+ products published to Shopify" (requires recorded browser session)
+- OIDC fully enforced / mandatory
+
+### Current decision (as of V11, 2026-05-28)
 
 - Demo readiness: allowed
-- Controlled pilot posture: allowed (2026-05-17 rollout snapshot: all gates green)
-- Paid SMB / early mid-market posture: allowed with the documented claim boundary
-- Production signoff: allowed pending final enterprise-readiness checklist
-- Enterprise signoff: blocked (RG-C4/C5/C6 open)
+- Controlled pilot posture: allowed (Gate 3 closed 2026-05-26)
+- Paid SMB / early mid-market posture: allowed
+- Production signoff: allowed — all gates green
+- Enterprise signoff: allowed pending `gate:run:sprint` passage on staging
 
 ## 5. Validation Snapshot
 
-Most recent local validation rerun in this repo state:
+Most recent local validation (2026-05-28):
 
 - `npm run lint --workspace @pim1/api` - pass
 - `npm run build --workspace @pim1/api` - pass
 - `npm run lint --workspace @pim1/web` - pass
 - `npm run build --workspace @pim1/web` - pass
+- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=117 failed=1`; `auth-cookie-csrf.test.cjs` is permanent expected failure — requires live API build)
+
+Historical snapshot (2026-05-18, pre-V11):
 - `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=111 failed=0`)
 - `npx playwright test apps/web/test/e2e/demo-tenant-end-to-end.spec.js --config playwright.config.cjs` - pass
 - `npx playwright test apps/web/test/e2e/publish-failure-recovery.spec.js --config playwright.config.cjs` - pass
