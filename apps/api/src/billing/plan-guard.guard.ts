@@ -13,6 +13,7 @@ import { PlanUsageService } from "./plan-usage.service";
 
 type GuardRequest = Request & {
   pimTenant?: string;
+  pimAdminBoundaryRoles?: string[];
   body?: Record<string, unknown>;
   params?: Record<string, unknown>;
 };
@@ -54,6 +55,30 @@ export class PlanGuard implements CanActivate {
     const resources = Array.isArray(resourceOrList) ? resourceOrList : [resourceOrList];
 
     const request = context.switchToHttp().getRequest<GuardRequest>();
+
+    // ── Boundary role bypass ─────────────────────────────────────────────────
+    // product_admin and system_admin have unlimited access — they operate across
+    // tenants and must not be blocked by per-tenant plan limits.
+    // We log every bypass so capacity-planning dashboards can track over-limit
+    // operations performed by internal roles.
+    const boundaryRoles = Array.isArray(request.pimAdminBoundaryRoles)
+      ? request.pimAdminBoundaryRoles
+      : [];
+    if (boundaryRoles.includes("product_admin") || boundaryRoles.includes("system_admin")) {
+      this.logger.log(
+        JSON.stringify({
+          event: "PLAN_GUARD_BOUNDARY_BYPASS",
+          tenant: request.pimTenant ?? "unknown",
+          boundaryRoles,
+          resources: resources.map((r) => r),
+          path: request.url ?? "unknown",
+          method: request.method ?? "unknown",
+        }),
+      );
+      return true;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     for (const resource of resources) {
       const delta = this.estimateDelta(resource, request.body);
       const connectorSlug =
