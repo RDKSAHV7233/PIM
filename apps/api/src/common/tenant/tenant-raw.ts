@@ -30,6 +30,7 @@ export async function tenantRaw<T = unknown>(
   params: unknown[] = [],
 ): Promise<T> {
   assertTenantKeyPresent(sql);
+  // RLS-BYPASS: manual tenant filter — enforced above via assertTenantKeyPresent
   return client.$queryRawUnsafe<T>(sql, ...params);
 }
 
@@ -43,6 +44,7 @@ export async function tenantExecRaw(
   params: unknown[] = [],
 ): Promise<number> {
   assertTenantKeyPresent(sql);
+  // RLS-BYPASS: manual tenant filter — enforced above via assertTenantKeyPresent
   return client.$executeRawUnsafe(sql, ...params);
 }
 

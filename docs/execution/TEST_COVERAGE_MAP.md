@@ -2,15 +2,15 @@
 title: Integration Test Coverage Map
 audience: internal-eng
 status: active
-last_updated: 2026-05-25
+last_updated: 2026-05-28
 owner: Engineering
 ---
 
 Use this document to understand which integration tests cover which product features and to identify coverage gaps.
 
 Test locations:
-- API integration tests: `apps/api/test/integration/` (141 files)
-- Web integration tests: `apps/web/test/integration/` (116 files)
+- API integration tests: `apps/api/test/integration/` (142 files)
+- Web integration tests: `apps/web/test/integration/` (117 files)
 
 All tests are static contract tests (source analysis) or in-process unit-style tests. Tests requiring a live database or live API are noted.
 
@@ -83,6 +83,12 @@ All tests are static contract tests (source analysis) or in-process unit-style t
 | `bulk-import-tenant-boundary.test.cjs` | Import isolation between tenants |
 | `bulk-import-spreadsheet-disabled.test.cjs` | XLSX import correctly disabled |
 | `import-preflight.test.cjs` | Pre-flight response shape |
+
+### Meesho
+
+| Test file | What it covers |
+|-----------|---------------|
+| `meesho-export-contract.test.cjs` | ExcelJS import, 18-column template, filename pattern, MIME type, no-PUBLISH contract |
 
 ### Connectors & Channels
 
@@ -203,7 +209,7 @@ All tests are static contract tests (source analysis) or in-process unit-style t
 |------|-----|---------|
 | Stripe webhooks — live | Contract test only; no live Stripe event replay test | Medium |
 | Signup flow — login after verify | `public-signup.test.cjs` login step fails in CI (pre-existing; requires seeded DB) | Medium |
-| Meesho export | Export generation not yet implemented | Low (feature not shipped) |
+| Meesho export — live API | M-1 (ExcelJS export) shipped and contract-tested; M-2 live API blocked on `meesholink-integration@meesho.com` access | Low (awaiting vendor access) |
 | ONDC | Feature-gated; no end-to-end test | Low (feature not shipped) |
 | CommercialRemindersService | No test for interval-based reminder scheduling | Low |
 | Phase 3 connection pooling | Not yet tested under concurrent load | Medium (Phase 3 item) |
