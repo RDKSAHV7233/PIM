@@ -1637,6 +1637,19 @@ paths:
         "200":
           description: ""
       tags: *a14
+  /api/v1/marketplace/connectors/shopify/{installationId}/sync/status:
+    get:
+      operationId: MarketplaceController_getShopifyDeltaSyncStatus
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
   /api/v1/marketplace/connectors/shopify/{installationId}/sync/delta:
     post:
       operationId: MarketplaceController_queueDeltaSync
@@ -1709,6 +1722,19 @@ paths:
   /api/v1/marketplace/connectors/{installationId}/sync/delta-candidates:
     get:
       operationId: MarketplaceController_getConnectorDeltaSyncCandidates
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/sync/status:
+    get:
+      operationId: MarketplaceController_getConnectorDeltaSyncStatus
       parameters:
         - name: installationId
           required: true
@@ -1806,6 +1832,26 @@ paths:
       responses:
         "200":
           description: ""
+      tags: *a14
+  /api/v1/marketplace/connectors/{installationId}/export:
+    post:
+      operationId: MarketplaceController_triggerConnectorExport
+      parameters:
+        - name: installationId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerBulkPublishDto"
+      responses:
+        "200":
+          description: Excel file returned as binary stream
+      summary: Generate and download Meesho Excel export file
       tags: *a14
   /api/v1/marketplace/connectors/shopify/{installationId}/shopify-config:
     get:
