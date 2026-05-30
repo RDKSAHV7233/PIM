@@ -189,13 +189,13 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     title: "Settings",
     items: [
       { label: "Plan & Usage", href: "/admin/plan", icon: "gauge", visibility: "editor_plus" },
-      { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "editor_plus" },
-      { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "admin" },
-      { label: "Auth Policy", href: "/admin/auth-policy", icon: "shield", visibility: "admin" },
-      { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "admin" },
+      { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "system_admin_gated" },
+      { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "system_admin_gated" },
+      { label: "Auth Policy", href: "/admin/auth-policy", icon: "shield", visibility: "system_admin_gated" },
+      { label: "Outbound Webhooks", href: "/admin/webhooks", icon: "webhook", visibility: "system_admin_gated" },
       { label: "Account Security", href: "/settings/security", icon: "shield" },
       { label: "Privacy", href: "/admin/privacy", icon: "lock" },
-      { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "admin" },
+      { label: "Audit Logs", href: "/admin/audit", icon: "receipt", visibility: "system_admin_gated" },
     ],
   },
 ];
@@ -219,16 +219,17 @@ function isItemActive(pathname: string, item: SidebarItem): boolean {
 
 interface AppSidebarProps {
   actorRole: AppRole;
+  adminBoundaryRoles?: string[];
   showInternal?: boolean;
 }
 
-export function AppSidebar({ actorRole, showInternal = false }: AppSidebarProps) {
+export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = false }: AppSidebarProps) {
   const pathname = usePathname();
   const [badges, setBadges] = useState<SidebarBadgeSummary>({ quality: 0, operations: 0 });
   const sections = (showInternal ? [...SIDEBAR_SECTIONS, INTERNAL_SECTION] : SIDEBAR_SECTIONS)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility)),
+      items: section.items.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility, adminBoundaryRoles)),
     }))
     .filter((section) => section.items.length > 0);
 

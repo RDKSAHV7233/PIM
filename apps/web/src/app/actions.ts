@@ -37,7 +37,7 @@ const STEP_UP_ERROR_CODES = new Set([
   "STEP_UP_SCOPE_MISMATCH",
   "STEP_UP_PASSWORD_REQUIRED",
 ]);
-const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "reviewer", "viewer"]);
+const CONNECTOR_PERMISSION_ROLE_IDS = new Set(["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"]);
 
 function rethrowRedirectError(error: unknown): void {
   if (isRedirectError(error)) {
@@ -505,9 +505,18 @@ async function resolveProductDeleteTokens(
   return { productId: product?.id ?? productId, tokens: Array.from(tokenSet) };
 }
 
-export async function decideProductReviewAction(formData: FormData) {
+export async function decideProductReviewAction(
+  statusOrFormData: "approved" | "rejected" | FormData,
+  maybeFormData?: FormData,
+) {
+  const formData = statusOrFormData instanceof FormData ? statusOrFormData : maybeFormData;
+  if (!formData) {
+    throw new Error("Product review decision requires form data.");
+  }
+  const status = statusOrFormData instanceof FormData
+    ? String(formData.get("status") ?? "").trim()
+    : statusOrFormData;
   const productId = String(formData.get("productId") ?? "").trim();
-  const status = String(formData.get("status") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
   if (!productId || (status !== "approved" && status !== "rejected")) {
     throw new Error("Product review decision requires productId and approved/rejected status.");

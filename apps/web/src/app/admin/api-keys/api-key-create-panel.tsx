@@ -15,6 +15,10 @@ const INITIAL_STATE: ApiKeyCreateActionState = {
 const ROLE_OPTIONS: ReadonlyArray<{ value: AppRole; label: string }> = [
   { value: "admin",           label: "Admin" },
   { value: "editor",          label: "Editor" },
+  { value: "publisher",       label: "Publisher" },
+  { value: "approver",        label: "Approver" },
+  { value: "channel_manager", label: "Channel manager" },
+  { value: "connector_admin", label: "Connector admin" },
   { value: "reviewer",        label: "Reviewer" },
   { value: "viewer",          label: "Viewer" },
 ];
@@ -27,6 +31,10 @@ const SCOPES: ReadonlyArray<{ value: ApiClientScope; label: string; description:
 const DEFAULT_SCOPES_BY_ROLE: Record<AppRole, ApiClientScope[]> = {
   admin:           ["catalog.read", "catalog.write"],
   editor:          ["catalog.read", "catalog.write"],
+  publisher:       ["catalog.read"],
+  approver:        ["catalog.read"],
+  channel_manager: ["catalog.read"],
+  connector_admin: ["catalog.read"],
   reviewer:        ["catalog.read"],
   viewer:          ["catalog.read"],
 };

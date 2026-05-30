@@ -13,7 +13,7 @@ const workspaceAdminModules = [
     title: "Users & Roles",
     description: "Invite workspace users, update roles, and manage account access.",
     href: "/admin/users",
-    visibility: "editor_plus" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Plan & Usage",
@@ -31,19 +31,19 @@ const workspaceAdminModules = [
     title: "API Keys",
     description: "Issue and revoke tenant-scoped machine credentials for the public API.",
     href: "/admin/api-keys",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Auth Policy",
     description: "Store tenant MFA, session timeout, and OIDC posture ahead of enterprise identity rollout.",
     href: "/admin/auth-policy",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Outbound Webhooks",
     description: "Configure outbound event deliveries for imports, approvals, and publishing.",
     href: "/admin/webhooks",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Privacy",
@@ -55,19 +55,19 @@ const workspaceAdminModules = [
     title: "Audit Logs",
     description: "Review security and governance activity with actor and resource traceability.",
     href: "/admin/audit",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
 ];
 
 export default async function AdminWorkspacePage() {
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/workspace", 401));
   }
   const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>
-    canViewAdminNavigationItem(actorRole, item.visibility),
+    canViewAdminNavigationItem(actorRole, item.visibility, adminBoundaryRoles),
   );
-  const accessSummary = describeAdminAccess(actorRole);
+  const accessSummary = describeAdminAccess(actorRole, adminBoundaryRoles);
 
   return (
     <div className="space-y-5">

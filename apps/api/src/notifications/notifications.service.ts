@@ -54,7 +54,9 @@ const NOTIFICATION_SELECT = {
 } satisfies Prisma.UserNotificationSelect;
 
 const NOTIFICATION_ORDER_BY: Prisma.UserNotificationOrderByWithRelationInput[] = [
-  { readAt: { sort: "asc", nulls: "first" } },
+  // Keep unread items first, but surface the most recently read items next so
+  // a fresh "mark all read" action does not bury the current context.
+  { readAt: { sort: "desc", nulls: "first" } },
   { createdAt: "desc" },
   { id: "desc" },
 ];
@@ -581,7 +583,7 @@ export class NotificationsService {
   private buildNotificationPageWhere(
     baseWhere: Prisma.UserNotificationWhereInput,
     tokenId: string,
-    cursor: { readRank: number; createdAt: Date } | null,
+    cursor: { readRank: number; readAt: Date | null; createdAt: Date } | null,
   ): Prisma.UserNotificationWhereInput {
     if (!cursor || !tokenId) {
       return baseWhere;
@@ -596,9 +598,9 @@ export class NotificationsService {
 
   private buildNotificationCursorWhere(
     tokenId: string,
-    cursor: { readRank: number; createdAt: Date },
+    cursor: { readRank: number; readAt: Date | null; createdAt: Date },
   ): Prisma.UserNotificationWhereInput {
-    if (cursor.readRank <= 0) {
+    if (cursor.readRank <= 0 || !cursor.readAt) {
       return {
         OR: [
           {
@@ -615,10 +617,17 @@ export class NotificationsService {
     }
 
     return {
-      readAt: {
-        not: null,
-      },
-      ...this.buildNotificationOlderThanWhere(tokenId, cursor.createdAt),
+      OR: [
+        {
+          readAt: {
+            lt: cursor.readAt,
+          },
+        },
+        {
+          readAt: cursor.readAt,
+          ...this.buildNotificationOlderThanWhere(tokenId, cursor.createdAt),
+        },
+      ],
     };
   }
 
@@ -645,13 +654,21 @@ export class NotificationsService {
     if (!raw) {
       return null;
     }
-    const [rankPart, timestampPart] = raw.split("|");
+    const [rankPart, readAtPart, createdAtPart] = raw.split("|");
     const readRank = Number(rankPart);
-    const createdAt = new Date(timestampPart ?? "");
-    if (!Number.isFinite(readRank) || Number.isNaN(createdAt.getTime())) {
+    const readAt = readAtPart ? new Date(readAtPart) : null;
+    const createdAt = new Date(createdAtPart ?? "");
+    const readAtIsValid = !readAtPart || (readAt && !Number.isNaN(readAt.getTime()));
+    const hasReadTimestamp = !!readAtPart;
+    if (
+      !Number.isFinite(readRank) ||
+      Number.isNaN(createdAt.getTime()) ||
+      !readAtIsValid ||
+      (readRank > 0 && !hasReadTimestamp)
+    ) {
       return null;
     }
-    return { readRank, createdAt };
+    return { readRank, readAt, createdAt };
   }
 
   private encodeNotificationCursor(row: Record<string, unknown> | undefined) {
@@ -663,12 +680,17 @@ export class NotificationsService {
       : row.createdAt
         ? new Date(String(row.createdAt))
         : null;
+    const readAt = row.readAt instanceof Date
+      ? row.readAt
+      : row.readAt
+        ? new Date(String(row.readAt))
+        : null;
     const readRank = Number(row.readRank ?? (row.readAt ? 1 : 0));
     if (!createdAt || Number.isNaN(createdAt.getTime()) || !Number.isFinite(readRank)) {
       return null;
     }
     return encodeCursorToken({
-      sort: `${readRank}|${createdAt.toISOString()}`,
+      sort: `${readRank}|${readAt ? readAt.toISOString() : ""}|${createdAt.toISOString()}`,
       id: String(row.id),
     });
   }

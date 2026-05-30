@@ -16,6 +16,7 @@ import {
   ConnectorCap,
   ConnectorContext,
   ConnectorImplementationStatus,
+  ExportFile,
   ProductPayload,
   SubmissionRef,
   SubmissionStatusUpdate,
@@ -224,6 +225,20 @@ export class ConnectorFrameworkService {
       throw new CapabilityNotSupportedError(installation.slug, "BULK_PUBLISH");
     }
     return connector.publishBulkProducts(this.buildContext(installation), products);
+  }
+
+  async exportProducts(
+    installation: ConnectorInstallationRecord,
+    products: ProductPayload[],
+  ): Promise<ExportFile> {
+    const connector = this.registry.getConnector(installation.slug);
+    if (!installation.capabilities.includes("EXCEL_EXPORT")) {
+      throw new CapabilityNotSupportedError(installation.slug, "EXCEL_EXPORT");
+    }
+    if (!connector.generateExportFile) {
+      throw new CapabilityNotSupportedError(installation.slug, "EXCEL_EXPORT");
+    }
+    return connector.generateExportFile(this.buildContext(installation), products);
   }
 
   async submitOrExport(

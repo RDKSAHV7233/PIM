@@ -1,20 +1,22 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
-import { ApiHttpError, getApprovalComments, getIssueInbox, getProductList, getStats } from "@/lib/api";
+import { ApiHttpError, getAllProductsSlim, getApprovalComments, getIssueInbox, getStats } from "@/lib/api";
 import type { ProductRevision } from "@/lib/api";
 import { getProductRevisions } from "@/lib/api/revisions";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { KpiCard } from "@/components/ui/kpi-card";
-import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { PageHeader } from "@/components/ui/page-header";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canDecideApproval } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { cn } from "@/lib/utils";
 import { ApprovalEvidenceDrawer } from "./approval-evidence-drawer";
 
 /** Maximum characters to display for a diff field value in the "What Changed" section. */
@@ -54,7 +56,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         },
         { role: actorRole, authHeader },
       ),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+      getAllProductsSlim({ role: actorRole, authHeader }),
     ]);
 
     const blockingProducts = new Set(
@@ -443,6 +445,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                             name="status"
                             value="approved"
                             disabled={!canApprove}
+                            variant="dark"
+                            className="bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900"
                             idleLabel="Approve"
                             pendingLabel="Approving..."
                           />
@@ -450,7 +454,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                             type="submit"
                             name="status"
                             value="rejected"
-                            variant="secondary"
+                            className={buttonVariants({ variant: "secondary" })}
                             idleLabel="Reject"
                             pendingLabel="Rejecting..."
                           />

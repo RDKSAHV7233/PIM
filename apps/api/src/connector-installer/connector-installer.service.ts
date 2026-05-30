@@ -348,6 +348,17 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "meesho") {
+        try {
+          await this.captureAndStoreMeeshoCredentials({
+            tenantKey,
+            installationId,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1218,6 +1229,62 @@ export class ConnectorInstallerService {
       metadataPatch.defaultProductType = defaultProductType;
     }
     await this.patchInstallationMetadata(input.tenantKey, input.installationId, metadataPatch);
+  }
+
+  /**
+   * Store Meesho Merchant ID and Secret Key without live credential validation.
+   *
+   * Validation requires a Meesho API ping endpoint that is not yet available
+   * (pending RD-MEESHO-1 — credential package from meesholink-integration@meesho.com).
+   * Credentials are stored encrypted so they are available when Phase M-2 upgrades
+   * validateCredentials() with a real ping.
+   *
+   * Credential fields in the install form:
+   *   clientId     → Meesho Merchant ID (stored as "merchant_id")
+   *   clientSecret → Meesho Secret Key  (stored as "secret_key")
+   *
+   * Both are optional for Phase M-1 (Excel export requires no API credentials).
+   * If neither is supplied the method returns silently.
+   * If only one is supplied an error is thrown — partial credentials are never stored.
+   */
+  private async captureAndStoreMeeshoCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const merchantId = String(input.dto.clientId ?? "").trim();
+    const secretKey  = String(input.dto.clientSecret ?? "").trim();
+
+    // Both absent — credentials deferred to Phase M-2. Export still works.
+    if (!merchantId && !secretKey) {
+      return;
+    }
+
+    // Partial credentials are a data-entry mistake; require all-or-nothing.
+    if (!merchantId || !secretKey) {
+      throw new BadRequestException({
+        error: "MEESHO_CREDENTIALS_INCOMPLETE",
+        message:
+          "Meesho installation requires both Merchant ID and Secret Key. " +
+          "Leave both fields empty to skip credential setup — Excel export works without credentials.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "merchant_id",
+      plainValue: merchantId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "secret_key",
+      plainValue: secretKey,
+      metadata: { source: "install_form" },
+    });
+    // Live validation deferred to Phase M-2 (RD-MEESHO-1).
   }
 
   /**

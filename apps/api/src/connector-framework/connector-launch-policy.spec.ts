@@ -29,24 +29,25 @@ describe("resolveConnectorLaunchPolicy", () => {
   });
 
   describe("meesho", () => {
-    it("is planned (hidden from operator UI)", () => {
+    it("is manual (export-only; not self-serve)", () => {
       const policy = resolveConnectorLaunchPolicy("meesho", allCaps);
-      expect(policy.launchStage).toBe("planned");
+      expect(policy.launchStage).toBe("manual");
     });
 
-    it("surfaces no capabilities while planned", () => {
+    it("surfaces all capabilities in manual stage", () => {
       const policy = resolveConnectorLaunchPolicy("meesho", allCaps);
-      expect(policy.surfacedCapabilities).toHaveLength(0);
+      expect(policy.surfacedCapabilities).toEqual(allCaps);
     });
 
-    it("launchNote references P5-S4 completion gate", () => {
+    it("launchNote describes export-only model and RD-MEESHO-1 blocker", () => {
       const policy = resolveConnectorLaunchPolicy("meesho", allCaps);
-      expect(policy.launchNote).toMatch(/P5-S4/);
+      expect(policy.launchNote).toMatch(/export/i);
+      expect(policy.launchNote).toMatch(/RD-MEESHO-1/);
     });
 
     it("is case-insensitive for slug", () => {
       const policy = resolveConnectorLaunchPolicy("MEESHO", allCaps);
-      expect(policy.launchStage).toBe("planned");
+      expect(policy.launchStage).toBe("manual");
     });
   });
 

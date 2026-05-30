@@ -125,6 +125,16 @@ function run() {
     "Channel connector detail must preserve the selected tab when redirecting auth failures through the shared login helper.",
   );
 
+  assert(
+    // Phase M-1 (2026-05-28): Meesho export panel wired into the overview tab.
+    // The panel is rendered when installation.slug === "meesho" and provides the
+    // "Download Excel" trigger + 4-step Supplier Panel upload walkthrough.
+    source.includes('installation.slug === "meesho"') &&
+      source.includes("MeeshoExportPanel") &&
+      source.includes("Meesho Excel Export"),
+    "Channel connector detail must render the MeeshoExportPanel card in the overview tab when the connector slug is meesho.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -140,6 +150,7 @@ function run() {
           "channel_connector_detail_route_links_to_mapping_and_access_workflows",
           "channel_connector_detail_route_surfaces_timestamp_fields",
           "channel_connector_detail_route_redirects_auth_failures_with_tab_context",
+          "channel_connector_detail_route_surfaces_meesho_export_panel",
         ],
         checkedAt: new Date().toISOString(),
       },

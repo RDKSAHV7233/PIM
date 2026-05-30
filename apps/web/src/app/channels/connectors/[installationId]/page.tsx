@@ -37,6 +37,7 @@ import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels
 import { canManageConnectors } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { StoreSwitcher } from "@/components/ui/store-switcher";
+import { MeeshoExportPanel } from "@/components/ui/meesho-export-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -656,9 +657,12 @@ export default async function ChannelConnectorDetailPage({
         id: item.id,
         label: readMetadataValue(item.metadata, "shopName") || readMetadataValue(item.metadata, "shopDomain") || item.accountAlias,
       }));
+    const metadataConnectionStage = readMetadataValue(installation.metadata, "connectionStage");
+    const shopifyAwaitingManagedInstall =
+      installation.slug === "shopify" && metadataConnectionStage === "awaiting_managed_install";
 
     const shopifyPublicationStatePromise =
-      selectedTab === "credentials" && installation.slug === "shopify"
+      selectedTab === "credentials" && installation.slug === "shopify" && !shopifyAwaitingManagedInstall
         ? getConnectorPublications(installation.id, { role: actorRole, authHeader })
             .then((targets) => ({ targets, error: null as string | null }))
             .catch((error: unknown) => {
@@ -814,7 +818,6 @@ export default async function ChannelConnectorDetailPage({
           fetchedAt?: string;
         }
       : null;
-    const metadataConnectionStage = readMetadataValue(installation.metadata, "connectionStage");
     const shopifyConnectionComplete =
       installation.slug !== "shopify"
         ? true
@@ -1296,6 +1299,22 @@ export default async function ChannelConnectorDetailPage({
               </Card>
             </section>
 
+            {installation.slug === "meesho" ? (
+              <Card>
+                <CardTitle>Meesho Excel Export</CardTitle>
+                <p className="mt-1 text-sm text-slate-600">
+                  Generate a ready-to-upload Excel file for Meesho Supplier Panel.
+                  Each product variant becomes its own row. Columns match the Meesho category template.
+                </p>
+                <div className="mt-4">
+                  <MeeshoExportPanel
+                    installationId={installation.id}
+                    productIds={products.map((p) => p.id)}
+                  />
+                </div>
+              </Card>
+            ) : null}
+
             {installation.slug === "shopify" ? (
               <>
                 <Card>
@@ -1684,6 +1703,15 @@ export default async function ChannelConnectorDetailPage({
                     <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                       {shopifyPublicationState.error}
                     </div>
+                  ) : !shopifyConnectionComplete ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-sm text-slate-600">
+                        Complete Shopify authorization before configuring publication channels. See the Managed Install Handoff checklist above.
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        Complete Shopify authorization before refreshing channels.
+                      </p>
+                    </div>
                   ) : availableShopifyTargets.length === 0 ? (
                     publicationTargets.length === 0 ? (
                       <div className="mt-2 space-y-3">
@@ -1712,15 +1740,6 @@ export default async function ChannelConnectorDetailPage({
                         ))}
                       </ul>
                     )
-                  ) : !shopifyConnectionComplete ? (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-sm text-slate-600">
-                        Complete Shopify authorization before configuring publication channels. See the Managed Install Handoff checklist above.
-                      </p>
-                      <p className="text-xs text-amber-700">
-                        Complete Shopify authorization before refreshing channels.
-                      </p>
-                    </div>
                   ) : (
                     <form action={updateConnectorPublicationTargetsAction} className="mt-2 space-y-3">
                       <input type="hidden" name="installationId" value={installation.id} />

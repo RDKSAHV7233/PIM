@@ -9,7 +9,11 @@ import { canViewAdminNavigationItem } from "@/lib/admin-navigation";
 const roleConfig: Record<AppRole, { label: string; bg: string; text: string; border: string }> = {
   admin:           { label: "Admin",           bg: "#f0fdf4", text: "#166534", border: "#bbf7d0" },
   editor:          { label: "Editor",          bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
-  reviewer: { label: "Reviewer", bg: "#fff7ed", text: "#9a3412", border: "#fdba74" },
+  publisher:       { label: "Publisher",       bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe" },
+  approver:        { label: "Approver",        bg: "#fef3c7", text: "#92400e", border: "#fcd34d" },
+  channel_manager: { label: "Channel Manager", bg: "#ecfeff", text: "#155e75", border: "#a5f3fc" },
+  connector_admin: { label: "Connector Admin", bg: "#fce7f3", text: "#9d174d", border: "#f9a8d4" },
+  reviewer:        { label: "Reviewer",        bg: "#fff7ed", text: "#9a3412", border: "#fdba74" },
   viewer:          { label: "Viewer",          bg: "#fafafa", text: "#6b7280", border: "#e5e7eb" },
 };
 
@@ -38,6 +42,14 @@ export function RoleBadge({ role }: RoleBadgeProps) {
       ? "Full access to all product, channel, connector, and workspace operations"
       : role === "editor"
         ? "Edit catalog, import products, manage categories and attributes"
+        : role === "publisher"
+          ? "Coordinate publish-ready catalog changes and monitor channel delivery outcomes"
+          : role === "approver"
+            ? "Review workflow submissions and make final approval decisions"
+            : role === "channel_manager"
+              ? "Manage channel readiness, mapping, and publication operations"
+              : role === "connector_admin"
+                ? "Own connector account health, credentials, and recovery workflows"
         : role === "reviewer"
           ? "Read catalog and submission data, add comments"
           : "Read-only access to catalog and reporting";

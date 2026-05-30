@@ -2,17 +2,21 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { AppRole } from "@/lib/api";
 
+type AdminBoundaryRole = "product_admin" | "system_admin" | "super_admin";
+
 interface PimJwtClaims {
   sub: string;
   tenantId: string;
   jti: string;
   role?: AppRole;
   assignedRoles?: string[];
+  adminBoundaryRoles?: AdminBoundaryRole[];
   iat: number;
   exp: number;
 }
 
-const APP_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
+const APP_ROLES: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
+const ADMIN_BOUNDARY_ROLES: readonly AdminBoundaryRole[] = ["product_admin", "system_admin", "super_admin"];
 
 function toBase64Url(value: Buffer | string): string {
   const source = Buffer.isBuffer(value) ? value : Buffer.from(value);
@@ -57,7 +61,11 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     if (!sub || !tenantId || !jti || !Number.isFinite(iat) || !Number.isFinite(exp)) {
       return null;
     }
-    return { sub, tenantId, jti, role, iat, exp };
+    const rawAssignedRoles = Array.isArray(payload.assignedRoles) ? payload.assignedRoles : [];
+    const adminBoundaryRoles = rawAssignedRoles
+      .map((r) => String(r).trim().toLowerCase())
+      .filter((r): r is AdminBoundaryRole => ADMIN_BOUNDARY_ROLES.includes(r as AdminBoundaryRole));
+    return { sub, tenantId, jti, role, assignedRoles: rawAssignedRoles.map(String), adminBoundaryRoles, iat, exp };
   } catch {
     return null;
   }
@@ -122,6 +130,11 @@ export async function getServerActorRole(): Promise<AppRole> {
   return "viewer";
 }
 
+export async function getServerActorAdminBoundaryRoles(): Promise<AdminBoundaryRole[]> {
+  const claims = await getServerSessionClaims();
+  return claims?.adminBoundaryRoles ?? [];
+}
+
 /**
  * Combined helper — reads cookies ONCE, verifies the JWT ONCE, and returns
  * both values that almost every page needs.  Calling getServerAuthHeader()
@@ -135,13 +148,14 @@ export async function getServerActorRole(): Promise<AppRole> {
 export async function getServerSession(): Promise<{
   authHeader: string | undefined;
   actorRole: AppRole;
+  adminBoundaryRoles: AdminBoundaryRole[];
 }> {
   const cookieStore = await cookies();
   const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
   const authHeader = token ? `Bearer ${token}` : undefined;
 
   if (!token) {
-    return { authHeader: undefined, actorRole: "viewer" };
+    return { authHeader: undefined, actorRole: "viewer", adminBoundaryRoles: [] };
   }
 
   const secret = getJwtSecret();
@@ -149,11 +163,12 @@ export async function getServerSession(): Promise<{
     if (requiresVerifiedSessions()) {
       throw new Error("JWT_SECRET or PIM_JWT_SECRET is required for verified web sessions.");
     }
-    return { authHeader, actorRole: "viewer" };
+    return { authHeader, actorRole: "viewer", adminBoundaryRoles: [] };
   }
 
   const claims = verifyToken(token);
   const actorRole: AppRole =
     claims?.role && APP_ROLES.includes(claims.role) ? claims.role : "viewer";
-  return { authHeader, actorRole };
+  const adminBoundaryRoles: AdminBoundaryRole[] = claims?.adminBoundaryRoles ?? [];
+  return { authHeader, actorRole, adminBoundaryRoles };
 }

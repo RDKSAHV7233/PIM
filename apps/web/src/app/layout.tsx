@@ -7,7 +7,7 @@ import { BillingStatusBanner } from "@/components/nav/billing-status-banner";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { hasServerAuthToken } from "@/lib/server-auth";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerActorAdminBoundaryRoles, getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,6 +29,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const sessionClaims = await getServerSessionClaims();
   const hasAuthToken = await hasServerAuthToken();
   const actorRole = await getServerActorRole();
+  const adminBoundaryRoles = await getServerActorAdminBoundaryRoles();
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
@@ -39,7 +40,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           Skip to main content
         </a>
         {hasAuthToken ? (
-          <AuthenticatedShell actorRole={actorRole} locale={locale} showRoleBadge={Boolean(sessionClaims)}>
+          <AuthenticatedShell actorRole={actorRole} adminBoundaryRoles={adminBoundaryRoles} locale={locale} showRoleBadge={Boolean(sessionClaims)}>
             <BillingStatusBanner />
             {children}
           </AuthenticatedShell>

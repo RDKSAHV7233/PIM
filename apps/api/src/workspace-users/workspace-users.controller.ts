@@ -29,6 +29,7 @@ type AuthenticatedRequest = Request & {
   pimRole?: AppRole;
   pimTenant?: string;
   pimUserId?: string;
+  pimAdminBoundaryRoles?: string[];
 };
 
 @Controller("admin/workspace/users")
@@ -51,7 +52,7 @@ export class WorkspaceUsersController {
     @Req() request: AuthenticatedRequest,
   ) {
     const actor = this.requireActor(request);
-    return this.workspaceUsersService.createUser(actor.tenantId, actor.userId, actor.role, dto);
+    return this.workspaceUsersService.createUser(actor.tenantId, actor.userId, actor.role, dto, actor.adminBoundaryRoles);
   }
 
   @Patch(":userId/role")
@@ -68,6 +69,7 @@ export class WorkspaceUsersController {
       actor.role,
       decodeURIComponent(userId),
       dto,
+      actor.adminBoundaryRoles,
     );
   }
 
@@ -129,13 +131,14 @@ export class WorkspaceUsersController {
     );
   }
 
-  private requireActor(request: AuthenticatedRequest): { userId: string; tenantId: string; role: AppRole } {
+  private requireActor(request: AuthenticatedRequest): { userId: string; tenantId: string; role: AppRole; adminBoundaryRoles: string[] } {
     const userId = request.pimUserId ?? request.pimJwtClaims?.sub;
     const tenantId = request.pimTenant ?? request.pimJwtClaims?.tenantId;
     const role = request.pimRole ?? request.pimJwtClaims?.role;
+    const adminBoundaryRoles = Array.isArray(request.pimAdminBoundaryRoles) ? request.pimAdminBoundaryRoles : [];
     if (!userId || !tenantId || !role) {
       throw new UnauthorizedException("Bearer token is required.");
     }
-    return { userId, tenantId, role };
+    return { userId, tenantId, role, adminBoundaryRoles };
   }
 }

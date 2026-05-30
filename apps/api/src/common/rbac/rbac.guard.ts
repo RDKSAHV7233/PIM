@@ -148,6 +148,7 @@ export class RbacGuard implements CanActivate {
       });
     }
 
+    let boundaryGrantedByExplicitRole = false;
     if (adminBoundaryAccess) {
       const deniedReason = this.resolveAdminBoundaryDenialReason(request, adminBoundaryAccess);
       if (deniedReason) {
@@ -173,10 +174,28 @@ export class RbacGuard implements CanActivate {
           resource: request.url ?? "unknown",
         });
       }
+      const explicitBoundaryRoles = Array.isArray(request.pimAdminBoundaryRoles)
+        ? request.pimAdminBoundaryRoles
+        : [];
+      boundaryGrantedByExplicitRole = explicitBoundaryRoles.length > 0;
     }
 
     if (handlerRoles && handlerRoles.length > 0) {
       if (!handlerRoles.includes(actorRole)) {
+        if (boundaryGrantedByExplicitRole) {
+          await this.recordShadowDecision(request, true, "ADMIN_BOUNDARY_ROLE_BYPASS", {
+            requiredRoles: handlerRoles,
+            requiredAdminCapability: adminBoundaryAccess?.capability ?? null,
+            requiredAdminBoundaryRoles: adminBoundaryAccess?.allowedRoles ?? null,
+            allowLegacyAdminFallback: adminBoundaryAccess?.allowLegacyAdminFallback !== false,
+            effectiveRoles: request.pimEffectiveRoles ?? [],
+            allowedFoundationRoles: foundationRoleAccess?.allowedRoles ?? [],
+            apiClientPolicy,
+            requiredApiClientScopes,
+            readClassification: readRouteConfig?.classification ?? null,
+          });
+          return true;
+        }
         await this.recordShadowDecision(request, false, "ROLE_FORBIDDEN", {
           requiredRoles: handlerRoles,
           requiredAdminCapability: adminBoundaryAccess?.capability ?? null,

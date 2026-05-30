@@ -523,7 +523,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           </p>
           {visibleJobs.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">
-              {actorRole === "viewer"
+              {!canEditWorkspace(actorRole)
                 ? "No import jobs are visible for this scope."
                 : "No import jobs match this filter."}
             </p>

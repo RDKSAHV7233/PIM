@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { RequireStepUp } from "../auth/step-up.decorator";
 import { StepUpGuard } from "../auth/step-up.guard";
@@ -582,6 +583,34 @@ export class MarketplaceController {
     @Body() dto: TriggerBulkPublishDto,
   ) {
     return this.marketplaceService.triggerBulkPublish(installationId, dto.productIds);
+  }
+
+  // ─── Meesho Excel export ─────────────────────────────────────────────────
+  // POST because we accept productIds in the body; GET would require URL-encoding
+  // potentially large product ID lists. Returns the .xlsx file as a binary stream.
+
+  @Post("connectors/:installationId/export")
+  @AdminBoundaryAccess({ capability: "manage_product_data" })
+  @Roles("admin", "editor", "channel_manager")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Generate and download Meesho Excel export file" })
+  @ApiResponse({ status: 200, description: "Excel file returned as binary stream" })
+  async triggerConnectorExport(
+    @Param("installationId") installationId: string,
+    @Body() dto: TriggerBulkPublishDto,
+    @Res() res: Response,
+  ) {
+    const exportFile = await this.marketplaceService.triggerConnectorExport(
+      installationId,
+      dto.productIds,
+    );
+    res.setHeader("Content-Type", exportFile.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${exportFile.filename}"`,
+    );
+    res.setHeader("Content-Length", exportFile.buffer.length);
+    res.end(exportFile.buffer);
   }
 
   // ─── Sprint 10: Catalog linking ──────────────────────────────────────────

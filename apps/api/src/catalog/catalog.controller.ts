@@ -164,7 +164,7 @@ export class CatalogController {
 
   @Post("products/:id/review-decision")
   @ApiClientScopes("catalog.write")
-  @Roles("admin", "editor", "approver")
+  @Roles("admin", "approver", "reviewer")
   @ApiOperation({ summary: "Approve or reject an in-review product" })
   @ApiResponse({ status: 201, description: "Review decision applied" })
   decideProductReview(

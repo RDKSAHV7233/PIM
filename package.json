@@ -88,7 +88,6 @@
     "test:integration:queue-durability": "dotenv -o -e .env -- node apps/api/test/integration/queue-durability.test.cjs",
     "test:integration:connector-capability-orchestration": "dotenv -o -e .env -- node apps/api/test/integration/connector-capability-orchestration.test.cjs",
     "test:integration:flipkart-token-expiry-alerting": "dotenv -o -e .env -- node apps/api/test/integration/flipkart-token-expiry-alerting.test.cjs",
-    "test:integration:meesho-runtime-foundation": "dotenv -o -e .env -- node apps/api/test/integration/meesho-runtime-foundation.test.cjs",
     "test:integration:marketplace-capability-gating": "dotenv -o -e .env -- node apps/api/test/integration/marketplace-capability-gating.test.cjs",
     "test:integration:marketplace-readiness-batch": "dotenv -o -e .env -- node apps/api/test/integration/marketplace-readiness-batch.test.cjs",
     "test:integration:connector-idempotency-semantics": "dotenv -o -e .env -- node apps/api/test/integration/connector-idempotency-semantics.test.cjs",
@@ -197,5 +196,8 @@
     "dotenv-cli": "^11.0.0",
     "redis-memory-server": "^0.16.0",
     "yaml": "^2.8.2"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1"
   }
 }

@@ -974,11 +974,12 @@ model AuthIdentity {
   role      String   @default("viewer")
   assignedRoles String[] @default([]) @map("assigned_roles")
   isActive  Boolean  @default(true)
-  lockedUntil DateTime?
+  lockedUntil  DateTime?
   passwordHash String?
-  createdBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lastSignInAt DateTime? @map("last_sign_in_at")
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([tenantKey, role, isActive])
   @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_auth_identity_tenant_created_id")

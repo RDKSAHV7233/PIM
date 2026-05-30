@@ -135,7 +135,7 @@ function connectorStatusNote(
   }
   if (implementationStatus === "partial") {
     if (slug === "meesho") {
-      return "Meesho connector is in development. Excel export is not yet available — the template is not yet built. Direct publish is not supported by Meesho.";
+      return "Meesho is an export-only connector. Download a category-specific Excel file and upload it to Meesho Supplier Panel. Credential validation is pending API access. Direct publish is not supported by Meesho.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }

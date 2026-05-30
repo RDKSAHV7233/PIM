@@ -25,10 +25,10 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === "meesho") {
     return {
-      launchStage: "planned",
+      launchStage: "manual",
       launchNote:
-        "Meesho managed export (Excel/ExcelJS) is not yet complete. Hidden from operator UI until P5-S4 is shipped.",
-      surfacedCapabilities: [],
+        "Meesho is an export-only connector. Generate a category-specific Excel file and upload it to Meesho Supplier Panel. Credential validation is pending Meesho API access (RD-MEESHO-1).",
+      surfacedCapabilities: capabilities,
     };
   }
 

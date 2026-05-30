@@ -18,13 +18,14 @@ function run() {
   const launchMemoSource = fs.readFileSync(LAUNCH_MEMO, "utf8");
 
   assert(
-    // Meesho copy was updated 2026-05-17 to honestly disclose that the Excel export is not
-    // yet available (generateExportFile() throws Not Implemented). The "Direct publish is
-    // not supported by Meesho" guarantee is retained. (CTO Execution Memo Pass 1, ENG-P0-2.)
-    connectorsSource.includes("Meesho connector is in development.") &&
-      connectorsSource.includes("Excel export is not yet available") &&
+    // Meesho copy updated 2026-05-28 (Phase M-1 shipped): category-specific Excel export is
+    // now available. Copy updated to remove the stale "not yet available" claim and accurately
+    // describe the export-only model. "Direct publish is not supported" guarantee is retained.
+    // Credential validation is honestly disclosed as pending RD-MEESHO-1.
+    connectorsSource.includes("Meesho is an export-only connector.") &&
+      connectorsSource.includes("category-specific Excel file") &&
       connectorsSource.includes("Direct publish is not supported by Meesho."),
-    "Connector UI must keep Meesho marked as in-development with the export-not-yet-available disclosure and the no-direct-publish guarantee.",
+    "Connector UI must describe Meesho as export-only with the category-specific Excel disclosure and the no-direct-publish guarantee.",
   );
   assert(
     connectorsSource.includes('"Live publish"') &&

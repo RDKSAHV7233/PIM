@@ -166,3 +166,101 @@ describe("MarketplaceService.listChannels", () => {
     }
   });
 });
+
+// ─── MarketplaceService.triggerConnectorExport ────────────────────────────────
+
+describe("MarketplaceService.triggerConnectorExport", () => {
+  const MOCK_EXPORT_FILE = {
+    buffer: Buffer.from("xlsx"),
+    filename: "meesho_kurtis_20260528.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+
+  const MOCK_INSTALLATION_ROW = { id: "inst_1", connectorId: "conn_1", tenantKey: "tenant1" };
+
+  function makeExportService(installationRow: unknown = MOCK_INSTALLATION_ROW) {
+    const tenantDb = {
+      connectorInstallation: {
+        findFirst: jest.fn().mockResolvedValue(installationRow),
+      },
+      connectorDefinition: {
+        findUnique: jest.fn().mockResolvedValue({ slug: "meesho" }),
+      },
+      product: {
+        // product.findUnique used by buildConnectorProductPayload — spied away in happy-path tests
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const prisma = {
+      tenant: jest.fn().mockReturnValue(tenantDb),
+    };
+
+    const connectorFramework = {
+      getCurrentTenantKey: jest.fn().mockReturnValue("tenant1"),
+      requireInstallation: jest.fn().mockResolvedValue({
+        id: "inst_1",
+        slug: "meesho",
+        capabilities: ["VALIDATE", "EXCEL_EXPORT"],
+      }),
+      exportProducts: jest.fn().mockResolvedValue(MOCK_EXPORT_FILE),
+    };
+
+    const svc = new MarketplaceService(
+      prisma as never,
+      connectorFramework as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    return { svc, prisma, connectorFramework, tenantDb };
+  }
+
+  it("throws BadRequestException when productIds is empty", async () => {
+    const { svc } = makeExportService();
+    await expect(svc.triggerConnectorExport("inst_1", [])).rejects.toThrow(BadRequestException);
+  });
+
+  it("error message mentions productIds when empty", async () => {
+    const { svc } = makeExportService();
+    await expect(svc.triggerConnectorExport("inst_1", [])).rejects.toThrow(/productIds/);
+  });
+
+  it("throws NotFoundException when installation row is not found", async () => {
+    const { svc } = makeExportService(null /* no installation row */);
+    await expect(svc.triggerConnectorExport("missing_inst", ["p1"])).rejects.toThrow(NotFoundException);
+  });
+
+  it("returns buffer, filename, and mimeType from connectorFramework.exportProducts", async () => {
+    const { svc, connectorFramework } = makeExportService();
+    // Bypass the complex buildConnectorProductPayload internal DB chain
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
+      .mockResolvedValue({ sku: "SKU-001", title: "Test Kurti", mrp: 999, sellingPrice: 799, productType: "kurtis" });
+
+    const result = await svc.triggerConnectorExport("inst_1", ["prod_1"]);
+    expect(result.buffer).toEqual(MOCK_EXPORT_FILE.buffer);
+    expect(result.filename).toBe(MOCK_EXPORT_FILE.filename);
+    expect(result.mimeType).toBe(MOCK_EXPORT_FILE.mimeType);
+    expect(connectorFramework.exportProducts).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes resolved installation record and mapped products to exportProducts", async () => {
+    const { svc, connectorFramework } = makeExportService();
+    const fakePayload = { sku: "SKU-001", title: "Test Kurti", mrp: 999, sellingPrice: 799, productType: "kurtis" };
+    jest.spyOn(svc as unknown as Record<string, jest.Mock>, "buildConnectorProductPayload")
+      .mockResolvedValue(fakePayload);
+
+    await svc.triggerConnectorExport("inst_1", ["p1", "p2"]);
+
+    expect(connectorFramework.exportProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: "meesho", capabilities: expect.arrayContaining(["EXCEL_EXPORT"]) }),
+      [fakePayload, fakePayload],
+    );
+  });
+});

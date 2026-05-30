@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { AppRole, ConnectorDefinition } from "@/lib/api";
 
-const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
+const ROLE_OPTIONS: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
 
 interface ConnectorPermissionFormProps {
   definitions: ConnectorDefinition[];

@@ -1,6 +1,7 @@
-﻿import { NotFoundException } from "@nestjs/common";
+﻿import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service";
 import { ConnectorInstallerService } from "./connector-installer.service";
+import type { InstallConnectorDto } from "./dto/install-connector.dto";
 
 describe("ConnectorInstallerService", () => {
   function createService() {
@@ -72,6 +73,7 @@ describe("ConnectorInstallerService", () => {
       executeMock,
       auditService,
       connectorPermissionService,
+      credentialEncryptionService,
     };
   }
 
@@ -142,5 +144,98 @@ describe("ConnectorInstallerService", () => {
         actorRole: "admin",
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // ─── captureAndStoreMeeshoCredentials ────────────────────────────────────────
+  // Tested via private-method cast because the public installConnector() path
+  // requires full DB/OAuth scaffold. The three behaviour branches are:
+  //   1. Both absent → silent return, no credential writes
+  //   2. Partial     → BadRequestException(MEESHO_CREDENTIALS_INCOMPLETE)
+  //   3. Both present → two storeCredential calls
+
+  describe("captureAndStoreMeeshoCredentials", () => {
+    type PrivateCapture = {
+      captureAndStoreMeeshoCredentials: (input: {
+        tenantKey: string;
+        installationId: string;
+        dto: InstallConnectorDto;
+      }) => Promise<void>;
+    };
+
+    function getCapture(service: ConnectorInstallerService) {
+      return (service as unknown as PrivateCapture).captureAndStoreMeeshoCredentials.bind(service);
+    }
+
+    it("returns silently when both clientId and clientSecret are absent", async () => {
+      const { service, credentialEncryptionService } = createService();
+      await getCapture(service)({ tenantKey: "t1", installationId: "i1", dto: {} as InstallConnectorDto });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("returns silently when both clientId and clientSecret are empty strings", async () => {
+      const { service, credentialEncryptionService } = createService();
+      await getCapture(service)({
+        tenantKey: "t1",
+        installationId: "i1",
+        dto: { clientId: "  ", clientSecret: "" } as InstallConnectorDto,
+      });
+      expect(credentialEncryptionService.storeCredential).not.toHaveBeenCalled();
+    });
+
+    it("throws BadRequestException(MEESHO_CREDENTIALS_INCOMPLETE) when only merchantId is present", async () => {
+      const { service } = createService();
+      await expect(
+        getCapture(service)({
+          tenantKey: "t1",
+          installationId: "i1",
+          dto: { clientId: "merchant_abc", clientSecret: "" } as InstallConnectorDto,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("throws BadRequestException(MEESHO_CREDENTIALS_INCOMPLETE) when only secretKey is present", async () => {
+      const { service } = createService();
+      let thrown: unknown;
+      try {
+        await getCapture(service)({
+          tenantKey: "t1",
+          installationId: "i1",
+          dto: { clientId: "", clientSecret: "secret_xyz" } as InstallConnectorDto,
+        });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(BadRequestException);
+      expect((thrown as BadRequestException).getResponse()).toMatchObject({
+        error: "MEESHO_CREDENTIALS_INCOMPLETE",
+      });
+    });
+
+    it("stores merchant_id and secret_key when both are provided", async () => {
+      const { service, credentialEncryptionService } = createService();
+      await getCapture(service)({
+        tenantKey: "tenant_meesho",
+        installationId: "inst_meesho_1",
+        dto: { clientId: "MID_123", clientSecret: "SK_abc" } as InstallConnectorDto,
+      });
+
+      expect(credentialEncryptionService.storeCredential).toHaveBeenCalledTimes(2);
+      expect(credentialEncryptionService.storeCredential).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantKey: "tenant_meesho",
+          installationId: "inst_meesho_1",
+          credentialType: "merchant_id",
+          plainValue: "MID_123",
+        }),
+      );
+      expect(credentialEncryptionService.storeCredential).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantKey: "tenant_meesho",
+          installationId: "inst_meesho_1",
+          credentialType: "secret_key",
+          plainValue: "SK_abc",
+        }),
+      );
+    });
   });
 });

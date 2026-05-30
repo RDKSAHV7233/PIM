@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
-  getAllProductsSlim,
+  getAllProductsSlim as getProducts,
   getInstalledConnectors,
   getProduct,
   type ConnectorInstallation,
@@ -269,7 +269,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             throw error;
           })
         : Promise.resolve(null),
-      selectedProductId ? Promise.resolve([]) : getAllProductsSlim({ role: actorRole, authHeader }).catch(() => []),
+      selectedProductId ? Promise.resolve([]) : getProducts({ role: actorRole, authHeader }).catch(() => []),
     ]);
     const sampleProducts = filterTestData(sampleProductsRaw, true);
     const categorySampleProduct =

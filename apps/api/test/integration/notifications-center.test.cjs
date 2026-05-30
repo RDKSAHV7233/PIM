@@ -299,6 +299,46 @@ async function run() {
     const unreadAfter = Number(afterRead.payload.unreadCount ?? 0);
     assert(unreadAfter === Math.max(0, unreadBefore - 1), "unread count must decrement after marking a notification read");
 
+    for (let index = 0; index < 25; index += 1) {
+      const createdAt = new Date(Date.now() - ((index + 1) * 60_000));
+      const readAt = new Date(createdAt.getTime() + 15_000);
+      await prisma.$executeRawUnsafe(
+        `
+        INSERT INTO user_notifications (
+          id, tenant_key, user_id, event_type, title, message, action_url, action_label, metadata, read_at, created_at
+        ) VALUES
+          ($1, $2, $3, 'publish_failed', $4, $5, '/channels/submissions', 'View job', '{"debug":"read-history"}'::jsonb, $6, $7)
+        `,
+        randomUUID(),
+        tenantId,
+        editorUserId,
+        `Historical notification ${index + 1}`,
+        "Pre-existing read notification",
+        readAt,
+        createdAt,
+      );
+    }
+
+    const beforeMarkAll = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
+    assertStatus(beforeMarkAll, 200, "list notifications before mark all read");
+    const pendingApprovalNotification = Array.isArray(beforeMarkAll.payload?.items)
+      ? beforeMarkAll.payload.items.find((item) => item.id === approvalNotification.id)
+      : null;
+    assert(pendingApprovalNotification, "expected pending approval notification before mark all read");
+    assert(!pendingApprovalNotification.readAt, "approval notification should remain unread before mark all read");
+
+    const markAllRead = await apiRequest(baseUrl, "PATCH", "/notifications/read-all", editorToken, {});
+    assertStatus(markAllRead, 200, "mark all notifications read");
+    const afterMarkAll = await apiRequest(baseUrl, "GET", "/notifications?limit=20", editorToken);
+    assertStatus(afterMarkAll, 200, "list notifications after mark all read");
+    const markedApprovalNotification = Array.isArray(afterMarkAll.payload?.items)
+      ? afterMarkAll.payload.items.find((item) => item.id === approvalNotification.id)
+      : null;
+    assert(
+      markedApprovalNotification?.readAt,
+      `recently read approval notification should remain visible after mark all read; payload=${JSON.stringify(afterMarkAll.payload)}`,
+    );
+
     await prisma.$executeRawUnsafe(
       `
       INSERT INTO user_notifications (
@@ -337,6 +377,7 @@ async function run() {
         "approval_decision_notifies_submitting_editor",
         "publish_failure_notifies_export_job_creator",
         "notification_unread_count_decrements_on_read",
+        "mark_all_read_keeps_recent_notification_visible",
         "reviewer_view_filters_to_approval_notifications",
         "reviewer_notification_metadata_is_centrally_redacted",
       ],

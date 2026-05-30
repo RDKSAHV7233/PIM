@@ -19,6 +19,7 @@ import type { PimLocale } from "@/lib/locale";
 interface AuthenticatedShellProps {
   children: ReactNode;
   actorRole: AppRole;
+  adminBoundaryRoles?: string[];
   locale: PimLocale;
   showRoleBadge: boolean;
 }
@@ -26,6 +27,7 @@ interface AuthenticatedShellProps {
 export function AuthenticatedShell({
   children,
   actorRole,
+  adminBoundaryRoles = [],
   locale,
   showRoleBadge,
 }: AuthenticatedShellProps) {
@@ -68,14 +70,14 @@ export function AuthenticatedShell({
       {mobileNavOpen ? (
         <div className="lg:hidden">
           <AppDrawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} title="Navigation" width="sm" side="left">
-            <AppSidebar actorRole={actorRole} showInternal={false} />
+            <AppSidebar actorRole={actorRole} adminBoundaryRoles={adminBoundaryRoles} showInternal={false} />
           </AppDrawer>
         </div>
       ) : null}
 
       <div className="grid w-full grid-cols-1 gap-6 p-5 md:p-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="hidden lg:block">
-          <AppSidebar actorRole={actorRole} showInternal={false} />
+          <AppSidebar actorRole={actorRole} adminBoundaryRoles={adminBoundaryRoles} showInternal={false} />
         </div>
         <main id="main-content" className="min-w-0">
           {children}

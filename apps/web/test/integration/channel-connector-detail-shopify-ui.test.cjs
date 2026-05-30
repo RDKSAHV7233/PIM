@@ -41,6 +41,17 @@ function run() {
     "Connector detail page must fetch available Shopify publication targets and surface a save action.",
   );
   assert(
+    detailSource.includes('metadataConnectionStage === "awaiting_managed_install"') &&
+      detailSource.includes("shopifyAwaitingManagedInstall") &&
+      detailSource.includes('selectedTab === "credentials" && installation.slug === "shopify" && !shopifyAwaitingManagedInstall'),
+    "Connector detail page must skip Shopify publication loading while managed install is still awaiting OAuth completion.",
+  );
+  assert(
+    detailSource.includes("Complete Shopify authorization before configuring publication channels.") &&
+      detailSource.includes("Complete Shopify authorization before refreshing channels."),
+    "Connector detail page must show pre-auth Shopify publication guidance instead of treating the empty state like a live store fetch.",
+  );
+  assert(
     detailSource.includes('name="publicationId"') &&
       detailSource.includes('name="returnTo"') &&
       detailSource.includes('name="tenantKey"'),
@@ -60,6 +71,8 @@ function run() {
         validated: [
           "shopify_connector_detail_surfaces_connection_context",
           "shopify_connector_detail_fetches_publication_targets",
+          "shopify_connector_detail_skips_publication_fetch_during_managed_install_handoff",
+          "shopify_connector_detail_surfaces_pre_auth_publication_guidance",
           "shopify_publication_target_form_posts_selected_ids",
           "shopify_publication_target_action_redirects_with_status",
         ],

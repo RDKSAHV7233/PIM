@@ -19,25 +19,25 @@ const adminLinks = [
     title: "Users & Roles",
     description: "Access model and role visibility for operations teams.",
     href: "/admin/users",
-    visibility: "editor_plus" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "API Keys",
     description: "Issue tenant-scoped machine credentials for the public API.",
     href: "/admin/api-keys",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Auth Policy",
     description: "Store tenant MFA, session timeout, and OIDC posture with audit visibility.",
     href: "/admin/auth-policy",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "OIDC / SSO",
     description: "Configure your external identity provider for single sign-on login.",
     href: "/admin/auth-policy/oidc",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Connector Access",
@@ -49,7 +49,7 @@ const adminLinks = [
     title: "Outbound Webhooks",
     description: "Deliver import, publish, and approval events to external HTTP endpoints.",
     href: "/admin/webhooks",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
   {
     title: "Privacy",
@@ -61,17 +61,17 @@ const adminLinks = [
     title: "Audit Logs",
     description: "Review security and governance actions with traceability.",
     href: "/admin/audit",
-    visibility: "admin" as AdminNavigationAudience,
+    visibility: "system_admin_gated" as AdminNavigationAudience,
   },
 ];
 
 export default async function AdminPage() {
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin", 401));
   }
-  const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));
-  const accessSummary = describeAdminAccess(actorRole);
+  const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility, adminBoundaryRoles));
+  const accessSummary = describeAdminAccess(actorRole, adminBoundaryRoles);
 
   return (
     <div className="space-y-5">

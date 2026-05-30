@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Roles } from "../common/rbac/roles";
+import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { JwtAuthGuard } from "./jwt-auth.guard";
@@ -45,6 +46,7 @@ export class OidcController {
   // ── Admin config endpoints ───────────────────────────────────────────────
 
   @Post("oidc-config")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   @UseGuards(StepUpGuard)
   @RequireStepUp(STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK, "auth.oidc_config.upsert")
@@ -55,6 +57,7 @@ export class OidcController {
   }
 
   @Get("oidc-config")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
   async getConfig(@Req() req: AuthenticatedRequest) {
@@ -63,6 +66,7 @@ export class OidcController {
   }
 
   @Delete("oidc-config")
+  @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
   @UseGuards(StepUpGuard)
   @RequireStepUp(STEP_UP_SCOPE_AUTH_CONFIG_HIGH_RISK, "auth.oidc_config.delete")

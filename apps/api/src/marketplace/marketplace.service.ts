@@ -3532,4 +3532,46 @@ export class MarketplaceService implements OnModuleInit {
       submissionIds,
     };
   }
+
+  // ─── Meesho Excel export ─────────────────────────────────────────────────
+
+  async triggerConnectorExport(
+    installationId: string,
+    productIds: string[],
+  ): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
+    if (!productIds || productIds.length === 0) {
+      throw new BadRequestException("productIds must contain at least one product ID.");
+    }
+
+    const db = this.prisma.tenant();
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+
+    const installationRow = await db.connectorInstallation.findFirst({
+      where: { id: installationId },
+      select: { id: true, connectorId: true, tenantKey: true },
+    });
+    if (!installationRow) {
+      throw new NotFoundException("Connector installation not found.");
+    }
+
+    const connectorDef = await db.connectorDefinition.findUnique({
+      where: { id: installationRow.connectorId },
+      select: { slug: true },
+    });
+    const connectorSlug = connectorDef?.slug ?? "";
+
+    const installation = await this.connectorFramework.requireInstallation(
+      tenantKey,
+      connectorSlug,
+      installationId,
+    );
+
+    const products = await Promise.all(
+      productIds.map((id) => this.buildConnectorProductPayload(id)),
+    );
+
+    const exportFile = await this.connectorFramework.exportProducts(installation, products);
+
+    return exportFile;
+  }
 }

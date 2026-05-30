@@ -29,7 +29,7 @@ async function run() {
 
   // ── validateCredentials ──────────────────────────────────────────────────
   const credOk = await connector.validateCredentials(ctx);
-  assert(credOk === true, "Expected validateCredentials to return true (credential ping pending Meesho onboarding).");
+  assert(credOk === false, "Expected validateCredentials to return false (Meesho credential ping blocked on RD-MEESHO-1; stub returns false so installer shows informational notice).");
 
   // ── validateProduct: invalid product (missing required fields) ───────────
   const invalidProduct = {
@@ -98,9 +98,11 @@ async function run() {
     exportResult.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     `Unexpected mimeType: ${exportResult.mimeType}`,
   );
+  // Format: meesho_${categorySlug}_${YYYYMMDD}.xlsx  (e.g. meesho_general_20260528.xlsx)
+  // "apparel" productType → falls through to MEESHO_GENERIC_TEMPLATE (slug="general")
   assert(
-    exportResult.filename.startsWith("meesho_upload_") && exportResult.filename.endsWith(".xlsx"),
-    `Unexpected filename: ${exportResult.filename}`,
+    /^meesho_[a-z_]+_\d{8}\.xlsx$/.test(exportResult.filename),
+    `Unexpected filename format: ${exportResult.filename}`,
   );
   // Excel files start with PK (zip header 0x50 0x4B)
   assert(
@@ -131,7 +133,7 @@ async function run() {
       {
         status: "ok",
         validated: [
-          "meesho_credentials_always_true",
+          "meesho_credentials_return_false_pending_rd_meesho_1",
           "meesho_local_validation_errors_on_invalid_product",
           "meesho_local_validation_passes_valid_product",
           "meesho_excel_export_produces_xlsx_buffer",

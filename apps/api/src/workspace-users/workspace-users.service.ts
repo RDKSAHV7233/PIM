@@ -102,6 +102,7 @@ export class WorkspaceUsersService {
     actorId: string,
     actorRole: AppRole,
     dto: CreateWorkspaceUserDto,
+    actorAdminBoundaryRoles: string[] = [],
   ): Promise<WorkspaceUserRow> {
     const normalizedTenantId = normalizeTenantKey(tenantId);
     const normalizedActorId = this.normalizeUserId(actorId);
@@ -112,7 +113,10 @@ export class WorkspaceUsersService {
     if (!userId) {
       throw new BadRequestException({ error: "USER_ID_REQUIRED" });
     }
-    if (role === "admin" && actorRole !== "admin") {
+    const actorCanAssignAdmin = actorRole === "admin"
+      || actorAdminBoundaryRoles.includes("system_admin")
+      || actorAdminBoundaryRoles.includes("super_admin");
+    if (role === "admin" && !actorCanAssignAdmin) {
       throw new ForbiddenException({ error: "ADMIN_ROLE_REQUIRES_ADMIN" });
     }
 
@@ -188,13 +192,17 @@ export class WorkspaceUsersService {
     actorRole: AppRole,
     targetUserId: string,
     dto: UpdateWorkspaceUserRoleDto,
+    actorAdminBoundaryRoles: string[] = [],
   ): Promise<WorkspaceUserRow> {
     const normalizedTenantId = normalizeTenantKey(tenantId);
     const normalizedActorId = this.normalizeUserId(actorId);
     const normalizedTargetUserId = this.normalizeUserId(targetUserId);
     const nextRole = this.normalizeRoleOrThrow(dto.role);
 
-    if (nextRole === "admin" && actorRole !== "admin") {
+    const actorCanAssignAdmin = actorRole === "admin"
+      || actorAdminBoundaryRoles.includes("system_admin")
+      || actorAdminBoundaryRoles.includes("super_admin");
+    if (nextRole === "admin" && !actorCanAssignAdmin) {
       throw new ForbiddenException({ error: "ADMIN_ROLE_REQUIRES_ADMIN" });
     }
     if (normalizedTargetUserId === normalizedActorId) {
