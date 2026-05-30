@@ -1,17 +1,57 @@
-const IST: Intl.DateTimeFormatOptions = { timeZone: "Asia/Kolkata" };
+// ── Display locale / timezone ─────────────────────────────────────────────────
+// These two env vars are the single source of truth for date/time presentation.
+// Set NEXT_PUBLIC_DISPLAY_LOCALE and NEXT_PUBLIC_DISPLAY_TIMEZONE in your
+// Railway / .env.local to override. Defaults keep existing IST behaviour so
+// no current tenant is affected. When per-tenant timezone lands (BACKLOG-TZ),
+// pass overrides directly to the format* helpers instead of relying on these
+// module-level defaults.
+const DEFAULT_LOCALE =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DISPLAY_LOCALE) || "en-IN";
+const DEFAULT_TZ =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DISPLAY_TIMEZONE) || "Asia/Kolkata";
 
-export function formatDateTime(value: string | Date | null | undefined): string {
+const defaultTZOpts: Intl.DateTimeFormatOptions = { timeZone: DEFAULT_TZ };
+
+type FmtOpts = { locale?: string; timeZone?: string };
+
+export function formatDateTime(
+  value: string | Date | null | undefined,
+  opts?: FmtOpts,
+): string {
   if (!value) return "-";
   const d = value instanceof Date ? value : new Date(value as string);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("en-IN", IST);
+  return d.toLocaleString(opts?.locale ?? DEFAULT_LOCALE, {
+    timeZone: opts?.timeZone ?? DEFAULT_TZ,
+  });
 }
 
-export function formatDate(value: string | Date | null | undefined): string {
+export function formatDate(
+  value: string | Date | null | undefined,
+  opts?: FmtOpts,
+): string {
   if (!value) return "-";
   const d = value instanceof Date ? value : new Date(value as string);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("en-IN", { ...IST, day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString(opts?.locale ?? DEFAULT_LOCALE, {
+    ...defaultTZOpts,
+    timeZone: opts?.timeZone ?? DEFAULT_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export function formatTime(
+  value: string | Date | null | undefined,
+  opts?: FmtOpts,
+): string {
+  if (!value) return "-";
+  const d = value instanceof Date ? value : new Date(value as string);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleTimeString(opts?.locale ?? DEFAULT_LOCALE, {
+    timeZone: opts?.timeZone ?? DEFAULT_TZ,
+  });
 }
 
 export function formatINR(value: number | null | undefined): string {

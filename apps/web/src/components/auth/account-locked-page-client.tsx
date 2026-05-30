@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PimLocale } from "@/lib/locale";
+import { formatTime } from "@/lib/format";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
 
@@ -31,7 +32,7 @@ export function AccountLockedPageClient({
       return "";
     }
     const minutesLeft = Math.max(0, Math.ceil((unlockAt.getTime() - Date.now()) / 60_000));
-    const timeStr = unlockAt.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" });
+    const timeStr = formatTime(unlockAt);
     return minutesLeft > 0 ? `${timeStr} (${minutesLeft} min remaining)` : timeStr;
   }, [unlockAtIso]);
 

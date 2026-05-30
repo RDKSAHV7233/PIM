@@ -1,4 +1,5 @@
 import type { AppRole, MarketplaceChannel } from "@/lib/api";
+import { formatDateTime as fmtDT } from "@/lib/format";
 import { READINESS_CHANNELS } from "@/lib/channel-readiness";
 import {
   DEFAULT_MARKETPLACE_CHANNEL,
@@ -94,11 +95,7 @@ export function getAllowedValues(value: unknown): string[] {
 }
 
 export function formatDateTime(value: string): string {
-  const timestamp = new Date(value);
-  if (Number.isNaN(timestamp.getTime())) {
-    return "-";
-  }
-  return timestamp.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return fmtDT(value);
 }
 
 export function RoleHiddenInput({ role }: { role: AppRole }) {

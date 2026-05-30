@@ -27,6 +27,7 @@ import {
 } from "@/lib/marketplace-channels";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ function formatDateTime(value: string | null): string {
   if (Number.isNaN(parsed.getTime())) {
     return "Not checked";
   }
-  return parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return formatDateTime(parsed);
 }
 
 interface MediaPageProps {

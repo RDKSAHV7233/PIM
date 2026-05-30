@@ -7,6 +7,7 @@ import {
 import { ApiHttpError, getOidcConfig, type OidcConfigView } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -128,7 +129,7 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
             </div>
             <div className="md:col-span-2">
               <dt className="text-slate-500">Last updated</dt>
-              <dd className="text-slate-800">{new Date(config.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
+              <dd className="text-slate-800">{formatDateTime(config.updatedAt)}</dd>
             </div>
           </dl>
         ) : (

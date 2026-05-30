@@ -16,6 +16,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canDecideApproval } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ApprovalEvidenceDrawer } from "./approval-evidence-drawer";
 
@@ -330,7 +331,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                       {": "}
                                       {comment.body}
                                       <span className="ml-1 text-slate-400">
-                                        — {new Date(comment.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                                        — {formatDateTime(comment.createdAt)}
                                       </span>
                                     </li>
                                   ))}
@@ -420,7 +421,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 header: "Updated",
                 cellClassName: "text-xs text-slate-500",
                 mobileHide: true,
-                render: (product) => new Date(product.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+                render: (product) => formatDateTime(product.updatedAt),
               },
               {
                 key: "decision",

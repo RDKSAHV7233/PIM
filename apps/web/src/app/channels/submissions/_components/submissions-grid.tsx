@@ -7,6 +7,7 @@ import { AppDrawer } from "@/components/ui/app-drawer";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { ConnectorSubmission } from "@/lib/api";
 import { retrySubmission } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 function normalizeStatus(status: string): string {
   return String(status ?? "").trim().toUpperCase() || "UNKNOWN";
@@ -118,7 +119,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
                     </div>
                   </td>
                   <td className="py-2 pr-3">{submission.attemptNumber}</td>
-                  <td className="py-2 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                  <td className="py-2 text-xs text-slate-600">{formatDateTime(submission.submittedAt)}</td>
                 </tr>
               );
             })
@@ -136,7 +137,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
               <StatusChip label={normalizeStatus(selected.status)} tone={statusTone(selected.status)} />
               <span>{selected.connectorDisplayName}</span>
               {selected.resolvedAt ? (
-                <span className="text-slate-400">· resolved {new Date(selected.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                <span className="text-slate-400">· resolved {formatDateTime(selected.resolvedAt)}</span>
               ) : null}
             </span>
           }
@@ -159,7 +160,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
                 <dt className="text-slate-500">Attempt</dt>
                 <dd className="text-slate-700">{selected.attemptNumber}</dd>
                 <dt className="text-slate-500">Submitted at</dt>
-                <dd className="text-slate-700">{new Date(selected.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
+                <dd className="text-slate-700">{formatDateTime(selected.submittedAt)}</dd>
                 {selected.externalRef ? (
                   <>
                     <dt className="text-slate-500">External ref</dt>

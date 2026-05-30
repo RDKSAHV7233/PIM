@@ -8,6 +8,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getInstalledConnectors } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDate } from "@/lib/format";
 import { getProductLinks, scanCatalogLinks } from "@/lib/api/connectors";
 import { ConfirmLinksButton } from "./ConfirmLinksButton";
 
@@ -198,7 +199,7 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
                     header: "Confirmed",
                     cellClassName: "text-xs text-slate-600",
                     mobileHide: true,
-                    render: (link) => (link.confirmedAt ? new Date(link.confirmedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }) : "Auto"),
+                    render: (link) => (link.confirmedAt ? formatDate(link.confirmedAt) : "Auto"),
                   },
                 ] as Column<(typeof existingLinks)[number]>[]}
                 rows={existingLinks}

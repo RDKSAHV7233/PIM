@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { AppRole } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 type ExportFormat = "json" | "csv";
 
@@ -236,16 +237,16 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
             <p>
               Latest consent:{" "}
               {status?.latestConsent
-                ? `${status.latestConsent.policyVersion} at ${new Date(status.latestConsent.consentRecordedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                ? `${status.latestConsent.policyVersion} at ${formatDateTime(status.latestConsent.consentRecordedAt)}`
                 : "No consent recorded yet."}
             </p>
             <p>
               Latest export:{" "}
               {status?.latestExport ? (
                 <>
-                  {`${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) requested at ${new Date(status.latestExport.requestedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`}
+                  {`${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) requested at ${formatDateTime(status.latestExport.requestedAt)}`}
                   {status.latestExport.completedAt
-                    ? `, ready at ${new Date(status.latestExport.completedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                    ? `, ready at ${formatDateTime(status.latestExport.completedAt)}`
                     : ""}
                   {status.latestExport.downloadAvailable ? (
                     <>
@@ -267,7 +268,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
             <p>
               Latest deletion:{" "}
               {status?.latestDeletion
-                ? `${status.latestDeletion.status} for ${new Date(status.latestDeletion.scheduledFor).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                ? `${status.latestDeletion.status} for ${formatDateTime(status.latestDeletion.scheduledFor)}`
                 : "No deletion request yet."}
             </p>
           </div>

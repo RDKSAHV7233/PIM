@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import type { MfaStatus } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 interface AccountSecurityClientProps {
   mfaStatus: MfaStatus | null;
@@ -164,7 +165,7 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
               <div className="flex justify-between">
                 <dt className="text-slate-500">Last used</dt>
                 <dd className="font-medium text-slate-900">
-                  {new Date(mfaStatus.lastUsedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  {formatDateTime(mfaStatus.lastUsedAt)}
                 </dd>
               </div>
             )}

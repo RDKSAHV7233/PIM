@@ -10,6 +10,7 @@ import { DataGrid } from "@/components/ui/data-grid";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ interface ApiKeysPageProps {
 }
 
 function formatTimestamp(value: string | null) {
-  return value ? new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-";
+  return formatDateTime(value);
 }
 
 function resolveStatus(key: ApiAccessKey) {

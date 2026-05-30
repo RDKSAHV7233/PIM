@@ -7,6 +7,7 @@ import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends }
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -49,11 +50,9 @@ function formatHours(value: number): string {
 }
 
 function formatTrendDayLabel(value: string): string {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  // UTC date pill — always show in UTC so the label matches the billing-cycle
+  // reset day regardless of the viewer's timezone.
+  return formatDate(`${value}T00:00:00Z`, { timeZone: "UTC" });
 }
 
 function resolveSignupTrendDays(input: string | undefined): (typeof SIGNUP_TREND_WINDOWS)[number] {
@@ -92,7 +91,7 @@ function formatCommercialDate(value: string | null | undefined): string | null {
   if (Number.isNaN(parsed.getTime())) {
     return null;
   }
-  return parsed.toLocaleDateString("en-IN");
+  return formatDate(parsed);
 }
 
 function trialDaysRemaining(trialEndsAtIso: string | null): number | null {
@@ -500,7 +499,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
         description={
           isBoundaryRole
             ? "Unlimited access — boundary role active"
-            : `${usage.planTier} · ${formatCommercialStatus(usage.billingStatus)} · Resets: ${new Date(usage.billingCycleResetAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+            : `${usage.planTier} · ${formatCommercialStatus(usage.billingStatus)} · Resets: ${formatDate(usage.billingCycleResetAt)}`
         }
         breadcrumb={
           <>
@@ -649,7 +648,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
               <div className={upgradeRequestDescriptor?.tone ?? "rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"}>
                 <div className="font-semibold">{upgradeRequestDescriptor?.title ?? "Upgrade request pending"}</div>
                 <div className="mt-1">
-                  Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by{" "}
+                  Submitted on {formatDateTime(upgradeRequest.createdAt)} by{" "}
                   {upgradeRequest.requestedBy}. {upgradeRequestDescriptor?.body ?? "Our team is reviewing this request."}
                 </div>
                 {upgradeRequest.notes ? (

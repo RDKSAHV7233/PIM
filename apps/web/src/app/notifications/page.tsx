@@ -7,6 +7,7 @@ import type { NotificationItem, NotificationListResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 
 // ── Severity helpers (mirrors notification-center.tsx) ────────────────────────
 
@@ -59,7 +60,7 @@ function severityActionClasses(severity: "info" | "warning" | "blocker") {
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+  return formatDateTime(date);
 }
 
 function readCookie(name: string): string {

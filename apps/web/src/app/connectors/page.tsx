@@ -25,6 +25,7 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { filterTestData } from "@/lib/test-data-filter";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -261,7 +262,7 @@ function formatDateTime(value: string | null | undefined): string {
     return "Not recorded";
   }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return Number.isNaN(parsed.getTime()) ? String(value) : formatDateTime(parsed);
 }
 
 function formatRelativeTime(value: string | null | undefined): string {

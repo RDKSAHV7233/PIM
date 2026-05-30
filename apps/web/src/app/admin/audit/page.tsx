@@ -11,6 +11,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getAuditEvents, type AuditEntityType, type AuditEventRecord } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -360,7 +361,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
                   key: "createdAt",
                   header: "Timestamp",
                   cellClassName: "text-xs text-slate-600",
-                  render: (row) => new Date(row.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+                  render: (row) => formatDateTime(row.createdAt),
                 },
                 {
                   key: "actorId",

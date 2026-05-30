@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ApiHttpError, getOidcConfig } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -120,11 +121,11 @@ export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
             <dl className="mt-3 space-y-2 text-sm text-slate-600">
               <div className="flex items-center justify-between gap-4">
                 <dt>Created</dt>
-                <dd className="font-medium text-slate-900">{new Date(existingConfig.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
+                <dd className="font-medium text-slate-900">{formatDateTime(existingConfig.createdAt)}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Last updated</dt>
-                <dd className="font-medium text-slate-900">{new Date(existingConfig.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
+                <dd className="font-medium text-slate-900">{formatDateTime(existingConfig.updatedAt)}</dd>
               </div>
             </dl>
           </Card>

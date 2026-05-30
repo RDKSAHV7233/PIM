@@ -13,6 +13,7 @@ import { ApiHttpError, getSubmissions } from "@/lib/api";
 import { getInstalledConnectors } from "@/lib/api/connectors";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { SubmissionsGrid } from "./_components/submissions-grid";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +71,7 @@ function submissionTimelineItems(submission: {
       id: `${submission.id}-submitted`,
       title: "Submitted to channel",
       description: "The latest product payload entered the outbound channel queue.",
-      meta: new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      meta: formatDateTime(submission.submittedAt),
       tone: "info",
     },
   ];
@@ -93,7 +94,7 @@ function submissionTimelineItems(submission: {
       (normalized === "SUCCESS"
         ? "The latest submission completed successfully."
         : "Use Jobs when this submission needs recovery action."),
-    meta: submission.resolvedAt ? new Date(submission.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Awaiting connector resolution",
+    meta: submission.resolvedAt ? formatDateTime(submission.resolvedAt) : "Awaiting connector resolution",
     tone: statusTone(submission.status),
   });
 
@@ -323,7 +324,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
                   header: "Submitted",
                   mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (submission) => new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+                  render: (submission) => formatDateTime(submission.submittedAt),
                 },
               ]}
               rows={submissions}

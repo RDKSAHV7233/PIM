@@ -18,6 +18,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { cn } from "@/lib/utils";
 import { getServerSession } from "@/lib/server-session";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +109,7 @@ function formatUpdatedAt(value: string): string {
   if (Number.isNaN(timestamp.getTime())) {
     return "-";
   }
-  return timestamp.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return formatDateTime(timestamp);
 }
 
 function sumTrendValues(points: Array<{ value: number }>): number {
@@ -136,11 +137,7 @@ function formatHours(value: number): string {
 }
 
 function formatTrendDayLabel(value: string): string {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  return formatDate(`${value}T00:00:00Z`, { timeZone: "UTC" });
 }
 
 function resolveSignupHealthAlert({

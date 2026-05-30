@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -322,7 +323,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                   header: "Last triggered",
                   mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (endpoint) => (endpoint.lastTriggeredAt ? new Date(endpoint.lastTriggeredAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"),
+                  render: (endpoint) => (endpoint.lastTriggeredAt ? formatDateTime(endpoint.lastTriggeredAt) : "-"),
                 },
                 {
                   key: "actions",
@@ -409,7 +410,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                   header: "Last attempt",
                   mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (delivery) => (delivery.attemptedAt ? new Date(delivery.attemptedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"),
+                  render: (delivery) => (delivery.attemptedAt ? formatDateTime(delivery.attemptedAt) : "-"),
                 },
               ]}
               rows={deliveries}

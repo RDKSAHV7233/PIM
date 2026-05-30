@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { ApiHttpError, getDashboardHealth, getInstalledConnectors } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -129,7 +130,7 @@ export default async function ChannelsHealthPage() {
 
         <Card>
           <CardTitle>Per Channel</CardTitle>
-          <p className="mt-2 text-xs text-slate-500">As of {new Date(health.asOf).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</p>
+          <p className="mt-2 text-xs text-slate-500">As of {formatDateTime(health.asOf)}</p>
           {connectorBreakdownRedacted ? (
             <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Per-channel connector breakdown is limited to editor and admin roles. The aggregate readiness and blocking

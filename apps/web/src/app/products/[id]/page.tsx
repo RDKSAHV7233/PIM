@@ -22,6 +22,7 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { ProductDetailDeferredSection } from "./_components/product-detail-deferred-section";
 import { ProductDirtyNavigationGuard } from "./_components/product-dirty-navigation-guard";
 import { ProductDetailStatusAlerts } from "./_components/product-detail-status-alerts";
@@ -267,7 +268,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               : latestExportJob.status === "queued" || latestExportJob.status === "processing" || latestExportJob.status === "retrying"
                 ? ("warning" as const)
                 : ("neutral" as const),
-        detail: `${selectedChannelConfig?.displayName ?? latestExportJob.channel} updated ${new Date(latestExportJob.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
+        detail: `${selectedChannelConfig?.displayName ?? latestExportJob.channel} updated ${formatDateTime(latestExportJob.updatedAt)}.`,
       }
     : {
         label: "Not queued",

@@ -4,6 +4,7 @@ import { updateTenantAuthPolicyAction } from "@/app/admin/auth-policy/actions";
 import { ApiHttpError, getTenantAuthPolicy } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -119,7 +120,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Updated at</dt>
-                <dd className="font-medium text-slate-900">{policy.updatedAt ? new Date(policy.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"}</dd>
+                <dd className="font-medium text-slate-900">{formatDateTime(policy.updatedAt)}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Created by</dt>

@@ -14,6 +14,7 @@ import { SkeletonBlock } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/status-chip";
 import { usePlanUsage } from "@/hooks/use-plan-usage";
 import type { AppRole, CatalogStats, Category, MarketplaceChannel, ProductListItem } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 import {
   aggregateReadinessStatus,
   buildLoadingReadiness,
@@ -112,7 +113,7 @@ function formatUpdatedAt(value: string): string {
   if (Number.isNaN(timestamp.getTime())) {
     return "-";
   }
-  return timestamp.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return formatDateTime(timestamp);
 }
 
 function classifyProduct(product: ProductWithCompliance, channelStatus: ReadinessStatus): TriageBucket {

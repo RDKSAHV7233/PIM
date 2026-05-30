@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getConnectorDefinitions, getConnectorPermissions } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,7 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
         key: "updatedAt",
         header: "Updated",
         mobileHide: true,
-        render: (permission) => <span className="text-xs">{new Date(permission.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>,
+        render: (permission) => <span className="text-xs">{formatDateTime(permission.updatedAt)}</span>,
       },
       {
         key: "actions",

@@ -35,6 +35,7 @@ import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSl
 import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -487,7 +488,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                   <>
                     <p className="mt-1 text-xs text-slate-500">
                       {shopifyConfig.metafields.length} product metafield definition{shopifyConfig.metafields.length === 1 ? "" : "s"} imported ·{" "}
-                      last refreshed {new Date(shopifyConfig.fetchedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+                      last refreshed {formatDate(shopifyConfig.fetchedAt)}
                     </p>
                     {shopifyConfig.metafields.length === 0 ? (
                       <p className="mt-3 text-sm text-slate-600">No metafield definitions found in this Shopify store.</p>

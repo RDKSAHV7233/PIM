@@ -20,6 +20,7 @@ import {
   RoleHiddenInput,
   translateReadinessBlocker,
 } from "./product-detail-shared";
+import { formatDateTime } from "@/lib/format";
 import type { ProductDetailPageData } from "./product-detail-types";
 import { ExportWithPreviewForm } from "./export-with-preview-form";
 
@@ -142,7 +143,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
       key: "updatedAt",
       header: "Updated",
       cellClassName: "text-slate-600",
-      render: (template) => new Date(template.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      render: (template) => formatDateTime(template.updatedAt),
     },
   ];
   const exportJobColumns: Column<ExportJobRow>[] = [
@@ -602,14 +603,14 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 key: "submittedAt",
                 header: "Submitted",
                 cellClassName: "text-xs text-slate-600",
-                render: (s: ConnectorSubmission) => new Date(s.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+                render: (s: ConnectorSubmission) => formatDateTime(s.submittedAt),
               },
               {
                 key: "resolvedAt",
                 header: "Resolved",
                 cellClassName: "text-xs text-slate-600",
                 render: (s: ConnectorSubmission) =>
-                  s.resolvedAt ? new Date(s.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—",
+                  s.resolvedAt ? formatDateTime(s.resolvedAt) : "—",
               },
             ] as Column<ConnectorSubmission>[]
           }

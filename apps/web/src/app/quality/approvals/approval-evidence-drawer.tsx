@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import type { ProductRevision } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 interface ApprovalEvidenceDrawerProps {
   productTitle: string;
@@ -39,7 +40,7 @@ function summarizeDecisionNote(note: string | null | undefined): string | null {
 
 function formatRevisionTimestamp(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown timestamp" : date.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  return Number.isNaN(date.getTime()) ? "Unknown timestamp" : formatDateTime(date);
 }
 
 export function ApprovalEvidenceDrawer({

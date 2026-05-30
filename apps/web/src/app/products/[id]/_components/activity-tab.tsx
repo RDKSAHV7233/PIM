@@ -1,5 +1,6 @@
 import { Card, CardTitle } from "@/components/ui/card";
 import { translateExportStatus } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function ActivityTab({ data }: { data: ProductDetailPageData }) {
@@ -14,7 +15,7 @@ export function ActivityTab({ data }: { data: ProductDetailPageData }) {
             <li key={job.id} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
               <p className="font-mono text-xs text-slate-700">{job.id}</p>
               <p className="text-slate-600">
-                {job.channel} | {translateExportStatus(job.status)} | {new Date(job.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                {job.channel} | {translateExportStatus(job.status)} | {formatDateTime(job.updatedAt)}
               </p>
             </li>
           ))}

@@ -17,6 +17,7 @@ import { ApiHttpError, getDeadLetterSubmissions, getSubmissions } from "@/lib/ap
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { canEditWorkspace } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -109,7 +110,7 @@ function submissionTimelineItems(submission: {
       id: `${submission.id}-submitted`,
       title: "Submitted to connector",
       description: "The payload entered the connector queue for processing.",
-      meta: new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      meta: formatDateTime(submission.submittedAt),
       tone: "info",
     },
   ];
@@ -134,7 +135,7 @@ function submissionTimelineItems(submission: {
     id: `${submission.id}-resolved`,
     title: normalized === "SUCCESS" ? "Resolved successfully" : `Latest status ${normalized}`,
     description: resolvedDescription,
-    meta: submission.resolvedAt ? new Date(submission.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Awaiting connector resolution",
+    meta: submission.resolvedAt ? formatDateTime(submission.resolvedAt) : "Awaiting connector resolution",
     tone: statusTone(submission.status),
   });
 
@@ -262,7 +263,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         header: "Submitted",
         mobileHide: true,
         render: (submission) => (
-          <span className="text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+          <span className="text-xs text-slate-600">{formatDateTime(submission.submittedAt)}</span>
         ),
       },
       {
@@ -318,7 +319,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
         key: "submitted",
         header: "Updated",
         mobileHide: true,
-        render: (job) => <span className="text-xs text-slate-600">{new Date(job.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>,
+        render: (job) => <span className="text-xs text-slate-600">{formatDateTime(job.updatedAt)}</span>,
       },
     ];
 

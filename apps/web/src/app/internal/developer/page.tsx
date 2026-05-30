@@ -13,6 +13,7 @@ import {
   type CommercialTenantSearchResult,
 } from "@/lib/api/internal-billing";
 import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { updateUpgradeRequestStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -258,7 +259,7 @@ function formatDateValue(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) {
     return "Not set";
   }
-  return date.toLocaleDateString("en-IN");
+  return formatDate(date);
 }
 
 function formatDateTimeValue(value: string | null | undefined) {
@@ -269,13 +270,7 @@ function formatDateTimeValue(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) {
     return "None right now";
   }
-  return date.toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatDateTime(date);
 }
 
 function describeRequestAge(value: string) {
@@ -797,11 +792,11 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 </div>
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lifecycle</div>
-                  <div className="mt-1">Created: {new Date(selectedRequest.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
+                  <div className="mt-1">Created: {formatDateTime(selectedRequest.createdAt)}</div>
                   <div className="text-xs text-slate-500">
                     {selectedRequest.resolvedAt
-                      ? `Resolved: ${new Date(selectedRequest.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
-                      : `Updated: ${new Date(selectedRequest.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`}
+                      ? `Resolved: ${formatDateTime(selectedRequest.resolvedAt)}`
+                      : `Updated: ${formatDateTime(selectedRequest.updatedAt)}`}
                   </div>
                 </div>
               </div>
@@ -881,12 +876,12 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   </div>
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Created</div>
-                    <div className="mt-1">{new Date(request.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
+                    <div className="mt-1">{formatDateTime(request.createdAt)}</div>
                     <div className="text-xs text-slate-500">Source: {request.source}</div>
                   </div>
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resolution</div>
-                    <div className="mt-1">{request.resolvedAt ? new Date(request.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Still active"}</div>
+                    <div className="mt-1">{request.resolvedAt ? formatDateTime(request.resolvedAt) : "Still active"}</div>
                     <div className="text-xs text-slate-500">{request.resolvedBy ?? "No resolver yet"}</div>
                   </div>
                 </div>

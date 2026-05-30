@@ -8,6 +8,7 @@ import { AppDrawer } from "@/components/ui/app-drawer";
 import { Button } from "@/components/ui/button";
 import type { NotificationItem, NotificationListResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -76,11 +77,7 @@ function formatTimestamp(value: string) {
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return date.toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Kolkata",
-  });
+  return formatDateTime(date);
 }
 
 export function NotificationCenter() {
