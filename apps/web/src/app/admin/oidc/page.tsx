@@ -120,11 +120,11 @@ export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
             <dl className="mt-3 space-y-2 text-sm text-slate-600">
               <div className="flex items-center justify-between gap-4">
                 <dt>Created</dt>
-                <dd className="font-medium text-slate-900">{new Date(existingConfig.createdAt).toLocaleString()}</dd>
+                <dd className="font-medium text-slate-900">{new Date(existingConfig.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Last updated</dt>
-                <dd className="font-medium text-slate-900">{new Date(existingConfig.updatedAt).toLocaleString()}</dd>
+                <dd className="font-medium text-slate-900">{new Date(existingConfig.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
               </div>
             </dl>
           </Card>

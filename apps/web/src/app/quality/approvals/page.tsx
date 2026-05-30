@@ -330,7 +330,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                       {": "}
                                       {comment.body}
                                       <span className="ml-1 text-slate-400">
-                                        — {new Date(comment.createdAt).toLocaleString()}
+                                        — {new Date(comment.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
                                       </span>
                                     </li>
                                   ))}
@@ -370,6 +370,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 key: "completenessScore",
                 header: "Completeness",
                 cellClassName: "text-slate-700",
+                mobileHide: true,
                 render: (product) => `${product.completenessScore ?? 0}%`,
               },
               {
@@ -395,6 +396,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 key: "revisionEvidence",
                 header: "Revision Evidence",
                 cellClassName: "align-top",
+                mobileHide: true,
                 render: (product) => {
                   const revisions = revisionsByProduct.get(product.id) ?? [];
                   const summary = issuesByProduct.get(product.id) ?? { blocking: 0, warning: 0 };
@@ -417,7 +419,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 key: "updatedAt",
                 header: "Updated",
                 cellClassName: "text-xs text-slate-500",
-                render: (product) => new Date(product.updatedAt).toLocaleString(),
+                mobileHide: true,
+                render: (product) => new Date(product.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
               },
               {
                 key: "decision",
@@ -549,6 +552,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                 {
                   key: "fieldPath",
                   header: "Field",
+                  mobileHide: true,
                   cellClassName: "text-slate-600",
                   render: (item) => item.fieldPath ?? "-",
                 },

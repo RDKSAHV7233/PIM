@@ -142,7 +142,7 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
       key: "updatedAt",
       header: "Updated",
       cellClassName: "text-slate-600",
-      render: (template) => new Date(template.updatedAt).toLocaleString(),
+      render: (template) => new Date(template.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     },
   ];
   const exportJobColumns: Column<ExportJobRow>[] = [
@@ -602,14 +602,14 @@ export function ChannelsTab({ data }: { data: ProductDetailPageData }) {
                 key: "submittedAt",
                 header: "Submitted",
                 cellClassName: "text-xs text-slate-600",
-                render: (s: ConnectorSubmission) => new Date(s.submittedAt).toLocaleString(),
+                render: (s: ConnectorSubmission) => new Date(s.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
               },
               {
                 key: "resolvedAt",
                 header: "Resolved",
                 cellClassName: "text-xs text-slate-600",
                 render: (s: ConnectorSubmission) =>
-                  s.resolvedAt ? new Date(s.resolvedAt).toLocaleString() : "—",
+                  s.resolvedAt ? new Date(s.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—",
               },
             ] as Column<ConnectorSubmission>[]
           }

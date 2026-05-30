@@ -18,7 +18,7 @@ interface ApiKeysPageProps {
 }
 
 function formatTimestamp(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "-";
+  return value ? new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-";
 }
 
 function resolveStatus(key: ApiAccessKey) {
@@ -189,6 +189,7 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
                 {
                   key: "keyPrefix",
                   header: "Prefix",
+                  mobileHide: true,
                   cellClassName: "font-mono text-xs text-slate-600",
                 },
                 {
@@ -202,12 +203,14 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
                 {
                   key: "lastUsedAt",
                   header: "Last used",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
                   render: (key) => formatTimestamp(key.lastUsedAt),
                 },
                 {
                   key: "expiresAt",
                   header: "Expires",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
                   render: (key) => formatTimestamp(key.expiresAt),
                 },

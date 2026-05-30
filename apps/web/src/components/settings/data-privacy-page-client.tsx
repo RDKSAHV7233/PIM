@@ -236,16 +236,16 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
             <p>
               Latest consent:{" "}
               {status?.latestConsent
-                ? `${status.latestConsent.policyVersion} at ${new Date(status.latestConsent.consentRecordedAt).toLocaleString()}`
+                ? `${status.latestConsent.policyVersion} at ${new Date(status.latestConsent.consentRecordedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
                 : "No consent recorded yet."}
             </p>
             <p>
               Latest export:{" "}
               {status?.latestExport ? (
                 <>
-                  {`${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) requested at ${new Date(status.latestExport.requestedAt).toLocaleString()}`}
+                  {`${status.latestExport.status} (${status.latestExport.format.toUpperCase()}) requested at ${new Date(status.latestExport.requestedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`}
                   {status.latestExport.completedAt
-                    ? `, ready at ${new Date(status.latestExport.completedAt).toLocaleString()}`
+                    ? `, ready at ${new Date(status.latestExport.completedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
                     : ""}
                   {status.latestExport.downloadAvailable ? (
                     <>
@@ -267,7 +267,7 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
             <p>
               Latest deletion:{" "}
               {status?.latestDeletion
-                ? `${status.latestDeletion.status} for ${new Date(status.latestDeletion.scheduledFor).toLocaleString()}`
+                ? `${status.latestDeletion.status} for ${new Date(status.latestDeletion.scheduledFor).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
                 : "No deletion request yet."}
             </p>
           </div>

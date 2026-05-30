@@ -206,6 +206,8 @@ async function run() {
     PIM_API_BASE_URL: apiBaseUrl,
     APP_ENV: "staging",
     NODE_ENV: "production",
+    // Required by instrumentation.ts env gate when APP_ENV=staging
+    AUTH_MODE: "db",
   };
 
   const apiStdout = [];

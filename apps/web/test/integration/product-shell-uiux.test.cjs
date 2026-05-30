@@ -38,9 +38,9 @@ function run() {
   );
   assert(
     sidebar.includes("actorRole: AppRole;") &&
-      sidebar.includes("canViewAdminNavigationItem(actorRole, item.visibility)") &&
+      sidebar.includes("canViewAdminNavigationItem(actorRole, item.visibility") &&
       sidebar.includes('visibility: "editor_plus"') &&
-      sidebar.includes('visibility: "admin"'),
+      sidebar.includes('visibility: "system_admin_gated"'),
     "Settings navigation must filter admin surfaces by role instead of showing every admin tool to every signed-in user.",
   );
   assert(

@@ -39,7 +39,7 @@ function summarizeDecisionNote(note: string | null | undefined): string | null {
 
 function formatRevisionTimestamp(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown timestamp" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Unknown timestamp" : date.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 export function ApprovalEvidenceDrawer({

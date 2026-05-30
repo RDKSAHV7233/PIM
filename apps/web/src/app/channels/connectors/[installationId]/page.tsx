@@ -341,7 +341,7 @@ function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "Not recorded";
   }
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function connectorDetailStatusMessage(status: string | undefined): {
@@ -627,7 +627,7 @@ function renderSubmissionRows(
           <p className="mt-1 text-xs text-slate-500">{nextOperatorStep(submission)}</p>
         </td>
         <td className="px-3 py-2.5">{submission.attemptNumber}</td>
-        <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</td>
+        <td className="px-3 py-2.5 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
       </tr>
     );
   });
@@ -1056,7 +1056,7 @@ export default async function ChannelConnectorDetailPage({
       },
       { key: "outcome", header: "Outcome", render: (submission) => summarizeSubmissionOutcome(submission) },
       { key: "attempt", header: "Attempt", render: (submission) => submission.attemptNumber },
-      { key: "submitted", header: "Submitted", render: (submission) => <span className="text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</span> },
+      { key: "submitted", header: "Submitted", render: (submission) => <span className="text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span> },
     ];
     return (
       <div className="space-y-5">
@@ -1115,7 +1115,7 @@ export default async function ChannelConnectorDetailPage({
           <KpiCard
             label="Account health"
             value={formatStatusSummary(installation.status)}
-            helper={installation.lastSyncAt ? `Last sync ${new Date(installation.lastSyncAt).toLocaleString()}` : "No sync recorded yet"}
+            helper={installation.lastSyncAt ? `Last sync ${new Date(installation.lastSyncAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}` : "No sync recorded yet"}
             tone={
               installationStatusTone(installation.status) === "danger"
                 ? "danger"
@@ -1189,9 +1189,9 @@ export default async function ChannelConnectorDetailPage({
                   <dt className="text-slate-500">External Ref</dt>
                   <dd>{installation.externalAccountRef || "-"}</dd>
                   <dt className="text-slate-500">Installed At</dt>
-                  <dd>{new Date(installation.installedAt).toLocaleString()}</dd>
+                  <dd>{new Date(installation.installedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
                   <dt className="text-slate-500">Last Sync</dt>
-                  <dd>{installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString() : "-"}</dd>
+                  <dd>{installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"}</dd>
                 </dl>
               </Card>
 
@@ -1323,7 +1323,7 @@ export default async function ChannelConnectorDetailPage({
                       <CardTitle>Shopify Store Configuration</CardTitle>
                       {shopifyConfig ? (
                         <p className="mt-1 text-xs text-slate-500">
-                          Last imported {shopifyConfig.fetchedAt ? new Date(shopifyConfig.fetchedAt).toLocaleString() : "—"} ·{" "}
+                          Last imported {shopifyConfig.fetchedAt ? new Date(shopifyConfig.fetchedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—"} ·{" "}
                           {Array.isArray(shopifyConfig.metafields) ? shopifyConfig.metafields.length : 0} metafield definitions ·{" "}
                           {Array.isArray(shopifyConfig.collections) ? shopifyConfig.collections.length : 0} collections ·{" "}
                           {Array.isArray(shopifyConfig.taxonomy) ? shopifyConfig.taxonomy.length : 0} taxonomy nodes
@@ -2227,7 +2227,7 @@ export default async function ChannelConnectorDetailPage({
                   <li key={permission.id} className="rounded-md border border-slate-200 px-3 py-2">
                     <p className="font-medium text-slate-800">{describePermissionRule(permission)}</p>
                     <p className="text-xs text-slate-500">
-                      Created by {permission.createdBy || "system"} | updated {new Date(permission.updatedAt).toLocaleString()}
+                      Created by {permission.createdBy || "system"} | updated {new Date(permission.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
                     </p>
                   </li>
                 ))}

@@ -98,7 +98,7 @@ export function formatDateTime(value: string): string {
   if (Number.isNaN(timestamp.getTime())) {
     return "-";
   }
-  return timestamp.toLocaleString();
+  return timestamp.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 export function RoleHiddenInput({ role }: { role: AppRole }) {

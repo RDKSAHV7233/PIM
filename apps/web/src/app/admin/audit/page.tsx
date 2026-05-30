@@ -360,7 +360,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
                   key: "createdAt",
                   header: "Timestamp",
                   cellClassName: "text-xs text-slate-600",
-                  render: (row) => new Date(row.createdAt).toLocaleString(),
+                  render: (row) => new Date(row.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
                 },
                 {
                   key: "actorId",
@@ -370,11 +370,13 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
                 {
                   key: "actorRole",
                   header: "Role",
+                  mobileHide: true,
                   render: (row) => <StatusChip label={row.actorRole} tone="neutral" />,
                 },
                 {
                   key: "entityType",
                   header: "Entity",
+                  mobileHide: true,
                   render: (row) => <StatusChip label={row.entityType} tone={toneForEntity(row.entityType)} />,
                 },
                 {
@@ -406,6 +408,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
                 {
                   key: "change",
                   header: "Change",
+                  mobileHide: true,
                   cellClassName: "text-slate-700",
                   render: (row) => summarizeMetadata(row),
                 },

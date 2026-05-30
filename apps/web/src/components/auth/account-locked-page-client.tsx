@@ -31,7 +31,7 @@ export function AccountLockedPageClient({
       return "";
     }
     const minutesLeft = Math.max(0, Math.ceil((unlockAt.getTime() - Date.now()) / 60_000));
-    const timeStr = unlockAt.toLocaleTimeString();
+    const timeStr = unlockAt.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" });
     return minutesLeft > 0 ? `${timeStr} (${minutesLeft} min remaining)` : timeStr;
   }, [unlockAtIso]);
 

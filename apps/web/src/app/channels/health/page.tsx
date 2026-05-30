@@ -129,7 +129,7 @@ export default async function ChannelsHealthPage() {
 
         <Card>
           <CardTitle>Per Channel</CardTitle>
-          <p className="mt-2 text-xs text-slate-500">As of {new Date(health.asOf).toLocaleString()}</p>
+          <p className="mt-2 text-xs text-slate-500">As of {new Date(health.asOf).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</p>
           {connectorBreakdownRedacted ? (
             <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Per-channel connector breakdown is limited to editor and admin roles. The aggregate readiness and blocking

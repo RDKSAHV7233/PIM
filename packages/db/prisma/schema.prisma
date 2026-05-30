@@ -976,10 +976,10 @@ model AuthIdentity {
   isActive  Boolean  @default(true)
   lockedUntil  DateTime?
   passwordHash String?
-  lastSignInAt DateTime? @map("last_sign_in_at")
   createdBy    String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  lastSignInAt DateTime? @map("last_sign_in_at")
 
   @@index([tenantKey, role, isActive])
   @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_auth_identity_tenant_created_id")

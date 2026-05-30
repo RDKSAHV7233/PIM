@@ -113,9 +113,9 @@ function run() {
   );
 
   assert(
-    source.includes("new Date(installation.installedAt).toLocaleString()") &&
-      source.includes("installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString() : \"-\"") &&
-      source.includes("new Date(submission.submittedAt).toLocaleString()"),
+    source.includes("new Date(installation.installedAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })") &&
+      source.includes("installation.lastSyncAt ? new Date(installation.lastSyncAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })") &&
+      source.includes("new Date(submission.submittedAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })"),
     "Channel connector detail must surface installation and submission timing data from backend timestamps.",
   );
 

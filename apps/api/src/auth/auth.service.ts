@@ -557,6 +557,13 @@ export class AuthService implements OnModuleDestroy {
 
     await this.clearUserFailures(userKey);
 
+    if (this.isDbAuthMode()) {
+      void this.prisma.tenant(identity.tenantId).authIdentity.updateMany({
+        where: { tenantKey: identity.tenantId, userId: identity.userId },
+        data: { lastSignInAt: new Date() },
+      });
+    }
+
     await this.auditService.record({
       actorId: identity.userId,
       actorRole: identity.role,
@@ -702,6 +709,13 @@ export class AuthService implements OnModuleDestroy {
       expiresInSeconds,
       minimumExpiresInSeconds: 60,
     });
+    if (this.isDbAuthMode()) {
+      void this.prisma.tenant(claims.tenantId).authIdentity.updateMany({
+        where: { tenantKey: claims.tenantId, userId: claims.sub },
+        data: { lastSignInAt: new Date() },
+      });
+    }
+
     await this.auditService.record({
       actorId: claims.sub,
       actorRole: claims.role ?? "viewer",

@@ -77,7 +77,7 @@ function run() {
       source.includes("formatPolicyScope(permission)") &&
       source.includes("formatPolicyAction(permission)") &&
       source.includes("{permission.createdBy || \"-\"}") &&
-      source.includes("new Date(permission.updatedAt).toLocaleString()"),
+      source.includes("new Date(permission.updatedAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })"),
     "Admin connectors must surface wildcard alias coverage plus audit-friendly creator and update metadata.",
   );
   assert(

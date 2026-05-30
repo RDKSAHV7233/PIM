@@ -275,6 +275,7 @@ export interface WorkspaceUser {
   lockedUntil: string | null;
   isLocked: boolean;
   mfaEnrolled: boolean;
+  lastSignInAt: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;

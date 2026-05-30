@@ -797,11 +797,11 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                 </div>
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lifecycle</div>
-                  <div className="mt-1">Created: {new Date(selectedRequest.createdAt).toLocaleString("en-IN")}</div>
+                  <div className="mt-1">Created: {new Date(selectedRequest.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
                   <div className="text-xs text-slate-500">
                     {selectedRequest.resolvedAt
-                      ? `Resolved: ${new Date(selectedRequest.resolvedAt).toLocaleString("en-IN")}`
-                      : `Updated: ${new Date(selectedRequest.updatedAt).toLocaleString("en-IN")}`}
+                      ? `Resolved: ${new Date(selectedRequest.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                      : `Updated: ${new Date(selectedRequest.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`}
                   </div>
                 </div>
               </div>
@@ -881,12 +881,12 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   </div>
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Created</div>
-                    <div className="mt-1">{new Date(request.createdAt).toLocaleString("en-IN")}</div>
+                    <div className="mt-1">{new Date(request.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
                     <div className="text-xs text-slate-500">Source: {request.source}</div>
                   </div>
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resolution</div>
-                    <div className="mt-1">{request.resolvedAt ? new Date(request.resolvedAt).toLocaleString("en-IN") : "Still active"}</div>
+                    <div className="mt-1">{request.resolvedAt ? new Date(request.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Still active"}</div>
                     <div className="text-xs text-slate-500">{request.resolvedBy ?? "No resolver yet"}</div>
                   </div>
                 </div>

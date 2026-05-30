@@ -267,7 +267,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
               : latestExportJob.status === "queued" || latestExportJob.status === "processing" || latestExportJob.status === "retrying"
                 ? ("warning" as const)
                 : ("neutral" as const),
-        detail: `${selectedChannelConfig?.displayName ?? latestExportJob.channel} updated ${new Date(latestExportJob.updatedAt).toLocaleString()}.`,
+        detail: `${selectedChannelConfig?.displayName ?? latestExportJob.channel} updated ${new Date(latestExportJob.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
       }
     : {
         label: "Not queued",

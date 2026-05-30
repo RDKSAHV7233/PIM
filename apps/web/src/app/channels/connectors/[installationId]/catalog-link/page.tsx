@@ -198,7 +198,7 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
                     header: "Confirmed",
                     cellClassName: "text-xs text-slate-600",
                     mobileHide: true,
-                    render: (link) => (link.confirmedAt ? new Date(link.confirmedAt).toLocaleDateString() : "Auto"),
+                    render: (link) => (link.confirmedAt ? new Date(link.confirmedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }) : "Auto"),
                   },
                 ] as Column<(typeof existingLinks)[number]>[]}
                 rows={existingLinks}

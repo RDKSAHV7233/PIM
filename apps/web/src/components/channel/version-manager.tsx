@@ -40,7 +40,7 @@ function describePublishedVersion(version: ConnectorMappingVersion): string {
 
 function presentPublishedAt(value: string | null, fallbackValue: string): string {
   const source = value ?? fallbackValue;
-  return new Date(source).toLocaleString();
+  return new Date(source).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function presentActor(actorId: string | null | undefined): string {
@@ -55,22 +55,22 @@ function describeRollbackSource(version: ConnectorMappingVersion): string | null
 
 function VersionHistoryMetadata({ version }: { version: ConnectorMappingVersion }) {
   const entries: string[] = [];
-  entries.push(`Saved by ${presentActor(version.history?.created?.actorId ?? version.createdBy)} on ${new Date(version.createdAt).toLocaleString()}`);
+  entries.push(`Saved by ${presentActor(version.history?.created?.actorId ?? version.createdBy)} on ${new Date(version.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
   if (version.history?.validated) {
-    entries.push(`Validated by ${presentActor(version.history.validated.actorId)} on ${new Date(version.history.validated.createdAt).toLocaleString()}`);
+    entries.push(`Validated by ${presentActor(version.history.validated.actorId)} on ${new Date(version.history.validated.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
   }
   if (version.history?.published) {
-    entries.push(`Published by ${presentActor(version.history.published.actorId)} on ${new Date(version.history.published.createdAt).toLocaleString()}`);
+    entries.push(`Published by ${presentActor(version.history.published.actorId)} on ${new Date(version.history.published.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
   }
   if (version.history?.archived) {
-    entries.push(`Archived by ${presentActor(version.history.archived.actorId)} on ${new Date(version.history.archived.createdAt).toLocaleString()}`);
+    entries.push(`Archived by ${presentActor(version.history.archived.actorId)} on ${new Date(version.history.archived.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
   }
   if (version.history?.rollback) {
     const rollbackSource = describeRollbackSource(version);
     entries.push(
       rollbackSource
-        ? `Rolled back from ${rollbackSource} by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString()}`
-        : `Published via rollback by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString()}`,
+        ? `Rolled back from ${rollbackSource} by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+        : `Published via rollback by ${presentActor(version.history.rollback.actorId)} on ${new Date(version.history.rollback.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
     );
   }
 
@@ -191,7 +191,7 @@ export function VersionManagerCard({
           <p className="font-medium text-slate-900">{version.connectorDefinitionVersion}</p>
           <p className="text-xs text-slate-500">{version.id}</p>
           <p className="text-xs text-slate-500">{presentMappingLevel(version.mappingLevel)}</p>
-          <p className="text-xs text-slate-500 md:hidden">Updated {new Date(version.updatedAt).toLocaleString()}</p>
+          <p className="text-xs text-slate-500 md:hidden">Updated {new Date(version.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</p>
           <div className="mt-2 flex flex-wrap gap-2 md:hidden">
             <StatusChip
               label={presentLifecycleState(version.lifecycleState)}
@@ -265,7 +265,7 @@ export function VersionManagerCard({
       header: "Updated",
       cellClassName: "align-top text-slate-600",
       mobileHide: true,
-      render: (version) => new Date(version.updatedAt).toLocaleString(),
+      render: (version) => new Date(version.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     },
     {
       key: "actions",
@@ -486,7 +486,7 @@ export function VersionManagerCard({
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500">Scope: {version.categoryScope}</p>
-              <p className="text-xs text-slate-500">Updated: {new Date(version.updatedAt).toLocaleString()}</p>
+              <p className="text-xs text-slate-500">Updated: {new Date(version.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</p>
               <VersionHistoryMetadata version={version} />
             </div>
           ))

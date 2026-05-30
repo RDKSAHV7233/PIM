@@ -1,3 +1,19 @@
+const IST: Intl.DateTimeFormatOptions = { timeZone: "Asia/Kolkata" };
+
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = value instanceof Date ? value : new Date(value as string);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("en-IN", IST);
+}
+
+export function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = value instanceof Date ? value : new Date(value as string);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("en-IN", { ...IST, day: "numeric", month: "short", year: "numeric" });
+}
+
 export function formatINR(value: number | null | undefined): string {
   if (value == null) {
     return "-";

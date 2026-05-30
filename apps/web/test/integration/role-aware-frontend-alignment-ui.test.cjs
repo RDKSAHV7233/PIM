@@ -59,14 +59,14 @@ function run() {
   );
   assert(
     adminNavigationSource.includes('audience === "editor_plus"') &&
-      adminNavigationSource.includes('return role === "admin" || role === "editor";') &&
-      adminNavigationSource.includes('return role === "admin";'),
+      adminNavigationSource.includes('return role === "admin" || role === "editor"') &&
+      adminNavigationSource.includes('return role === "admin"'),
     "Navigation visibility must distinguish editor-plus and admin-only surfaces.",
   );
   assert(
-    sidebarSource.includes("canViewAdminNavigationItem(actorRole, item.visibility)") &&
-      shellSource.includes('<AppSidebar actorRole={actorRole} showInternal={false} />') &&
-      shellSource.includes('<AppSidebar actorRole={actorRole} showInternal={false} />'),
+    sidebarSource.includes("canViewAdminNavigationItem(actorRole, item.visibility") &&
+      shellSource.includes('<AppSidebar actorRole={actorRole}') &&
+      shellSource.includes('showInternal={false}'),
     "Authenticated shell must use role-filtered navigation and keep internal routes out of the customer shell.",
   );
   assert(

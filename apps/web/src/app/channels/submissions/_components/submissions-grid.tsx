@@ -118,7 +118,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
                     </div>
                   </td>
                   <td className="py-2 pr-3">{submission.attemptNumber}</td>
-                  <td className="py-2 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString()}</td>
+                  <td className="py-2 text-xs text-slate-600">{new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
                 </tr>
               );
             })
@@ -136,7 +136,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
               <StatusChip label={normalizeStatus(selected.status)} tone={statusTone(selected.status)} />
               <span>{selected.connectorDisplayName}</span>
               {selected.resolvedAt ? (
-                <span className="text-slate-400">· resolved {new Date(selected.resolvedAt).toLocaleString()}</span>
+                <span className="text-slate-400">· resolved {new Date(selected.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
               ) : null}
             </span>
           }
@@ -159,7 +159,7 @@ export function SubmissionsGrid({ submissions }: SubmissionsGridProps) {
                 <dt className="text-slate-500">Attempt</dt>
                 <dd className="text-slate-700">{selected.attemptNumber}</dd>
                 <dt className="text-slate-500">Submitted at</dt>
-                <dd className="text-slate-700">{new Date(selected.submittedAt).toLocaleString()}</dd>
+                <dd className="text-slate-700">{new Date(selected.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
                 {selected.externalRef ? (
                   <>
                     <dt className="text-slate-500">External ref</dt>

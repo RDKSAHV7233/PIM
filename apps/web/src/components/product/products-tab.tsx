@@ -112,7 +112,7 @@ function formatUpdatedAt(value: string): string {
   if (Number.isNaN(timestamp.getTime())) {
     return "-";
   }
-  return timestamp.toLocaleString();
+  return timestamp.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function classifyProduct(product: ProductWithCompliance, channelStatus: ReadinessStatus): TriageBucket {

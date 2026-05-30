@@ -51,7 +51,7 @@ function formatDateTime(value: string | null): string {
   if (Number.isNaN(parsed.getTime())) {
     return "Not checked";
   }
-  return parsed.toLocaleString();
+  return parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 interface MediaPageProps {
@@ -167,6 +167,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     {
       key: "variant",
       header: "Variant",
+      mobileHide: true,
       render: (asset) => asset.variantId ?? "-",
     },
     {
@@ -228,6 +229,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
     {
       key: "health",
       header: "Health",
+      mobileHide: true,
       render: (asset) => (
         <div>
           <p className="font-medium text-slate-900">{asset.assetHealthStatus}</p>

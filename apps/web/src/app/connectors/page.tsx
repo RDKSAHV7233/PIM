@@ -261,7 +261,7 @@ function formatDateTime(value: string | null | undefined): string {
     return "Not recorded";
   }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function formatRelativeTime(value: string | null | undefined): string {

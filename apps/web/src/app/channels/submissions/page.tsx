@@ -70,7 +70,7 @@ function submissionTimelineItems(submission: {
       id: `${submission.id}-submitted`,
       title: "Submitted to channel",
       description: "The latest product payload entered the outbound channel queue.",
-      meta: new Date(submission.submittedAt).toLocaleString(),
+      meta: new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
       tone: "info",
     },
   ];
@@ -93,7 +93,7 @@ function submissionTimelineItems(submission: {
       (normalized === "SUCCESS"
         ? "The latest submission completed successfully."
         : "Use Jobs when this submission needs recovery action."),
-    meta: submission.resolvedAt ? new Date(submission.resolvedAt).toLocaleString() : "Awaiting connector resolution",
+    meta: submission.resolvedAt ? new Date(submission.resolvedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Awaiting connector resolution",
     tone: statusTone(submission.status),
   });
 
@@ -301,6 +301,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
                 {
                   key: "externalRef",
                   header: "External Ref",
+                  mobileHide: true,
                   cellClassName: "font-mono text-xs text-slate-700",
                   render: (submission) => {
                     if (!submission.externalRef) return <span className="text-slate-400">—</span>;
@@ -314,13 +315,15 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
                 {
                   key: "attemptNumber",
                   header: "Attempts",
+                  mobileHide: true,
                   render: (submission) => submission.attemptNumber,
                 },
                 {
                   key: "submittedAt",
                   header: "Submitted",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (submission) => new Date(submission.submittedAt).toLocaleString(),
+                  render: (submission) => new Date(submission.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
                 },
               ]}
               rows={submissions}

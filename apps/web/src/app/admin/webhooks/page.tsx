@@ -307,6 +307,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                 {
                   key: "targetUrl",
                   header: "Target",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600 break-all",
                 },
                 {
@@ -319,8 +320,9 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                 {
                   key: "lastTriggeredAt",
                   header: "Last triggered",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (endpoint) => (endpoint.lastTriggeredAt ? new Date(endpoint.lastTriggeredAt).toLocaleString() : "-"),
+                  render: (endpoint) => (endpoint.lastTriggeredAt ? new Date(endpoint.lastTriggeredAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"),
                 },
                 {
                   key: "actions",
@@ -388,10 +390,12 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                 {
                   key: "attemptCount",
                   header: "Attempts",
+                  mobileHide: true,
                 },
                 {
                   key: "response",
                   header: "Response",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
                   render: (delivery) => (
                     <>
@@ -403,8 +407,9 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                 {
                   key: "attemptedAt",
                   header: "Last attempt",
+                  mobileHide: true,
                   cellClassName: "text-xs text-slate-600",
-                  render: (delivery) => (delivery.attemptedAt ? new Date(delivery.attemptedAt).toLocaleString() : "-"),
+                  render: (delivery) => (delivery.attemptedAt ? new Date(delivery.attemptedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"),
                 },
               ]}
               rows={deliveries}

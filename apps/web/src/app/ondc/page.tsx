@@ -87,10 +87,10 @@ export default async function OndcPage({ searchParams }: OndcPageProps) {
   const mappingColumns: Column<(typeof mappings)[number]>[] = [
     { key: "name", header: "Name", render: (mapping) => mapping.name },
     { key: "node", header: "Node", render: (mapping) => mapping.nodeType },
-    { key: "version", header: "Version", render: (mapping) => mapping.version },
+    { key: "version", header: "Version", mobileHide: true, render: (mapping) => mapping.version },
     { key: "category", header: "Category", render: (mapping) => mapping.categoryId },
-    { key: "required", header: "Required", render: (mapping) => mapping.requiredFields.length },
-    { key: "default", header: "Default", render: (mapping) => (mapping.isDefault ? "Yes" : "No") },
+    { key: "required", header: "Required", mobileHide: true, render: (mapping) => mapping.requiredFields.length },
+    { key: "default", header: "Default", mobileHide: true, render: (mapping) => (mapping.isDefault ? "Yes" : "No") },
   ];
 
   return (

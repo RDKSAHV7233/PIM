@@ -59,7 +59,7 @@ function severityActionClasses(severity: "info" | "warning" | "blocker") {
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+  return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
 }
 
 function readCookie(name: string): string {

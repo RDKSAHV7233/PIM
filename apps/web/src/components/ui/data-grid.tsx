@@ -90,7 +90,7 @@ export function DataGrid<T extends object>({
                 .map((col) => (
                   <div key={col.key} className="flex justify-between gap-4 py-2 first:pt-0 last:pb-0">
                     <dt className="shrink-0 text-xs font-medium text-slate-500">{col.header}</dt>
-                    <dd className={cn("text-right text-sm text-slate-900", col.cellClassName)}>
+                    <dd className={cn("min-w-0 break-words text-right text-sm text-slate-900", col.cellClassName)}>
                       {col.render ? col.render(row) : getCellValue(row, col.key)}
                     </dd>
                   </div>
@@ -128,7 +128,7 @@ export function DataCardList<T extends object>({
               .map((col) => (
                 <div key={col.key} className="flex justify-between gap-4 py-2 first:pt-0 last:pb-0">
                   <dt className="shrink-0 text-xs font-medium text-slate-500">{col.header}</dt>
-                  <dd className={cn("text-right text-sm text-slate-900", col.cellClassName)}>
+                  <dd className={cn("min-w-0 break-words text-right text-sm text-slate-900", col.cellClassName)}>
                     {col.render ? col.render(row) : getCellValue(row, col.key)}
                   </dd>
                 </div>

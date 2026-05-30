@@ -65,13 +65,14 @@ export default async function ConnectorSettingsPage({ searchParams }: ConnectorS
         render: (permission) => <span className="font-medium text-slate-900">{permission.connectorSlug}</span>,
       },
       { key: "subject", header: "Who gets access", render: (permission) => formatPolicySubject(permission) },
-      { key: "scope", header: "Which accounts", render: (permission) => formatPolicyScope(permission) },
+      { key: "scope", header: "Which accounts", mobileHide: true, render: (permission) => formatPolicyScope(permission) },
       { key: "action", header: "Allowed action", render: (permission) => formatPolicyAction(permission) },
-      { key: "changedBy", header: "Changed by", render: (permission) => <span>{permission.createdBy || "-"}</span> },
+      { key: "changedBy", header: "Changed by", mobileHide: true, render: (permission) => <span>{permission.createdBy || "-"}</span> },
       {
         key: "updatedAt",
         header: "Updated",
-        render: (permission) => <span className="text-xs">{new Date(permission.updatedAt).toLocaleString()}</span>,
+        mobileHide: true,
+        render: (permission) => <span className="text-xs">{new Date(permission.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>,
       },
       {
         key: "actions",

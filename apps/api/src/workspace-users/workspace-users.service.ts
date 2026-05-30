@@ -24,6 +24,7 @@ type AuthIdentityRecord = {
   assignedRoles?: string[] | null;
   isActive: boolean;
   lockedUntil: Date | null;
+  lastSignInAt?: Date | null;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +39,7 @@ export interface WorkspaceUserRow {
   lockedUntil: string | null;
   isLocked: boolean;
   mfaEnrolled: boolean;
+  lastSignInAt: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -73,6 +75,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -158,6 +161,7 @@ export class WorkspaceUsersService {
           assignedRoles: true,
           isActive: true,
           lockedUntil: true,
+          lastSignInAt: true,
           createdBy: true,
           createdAt: true,
           updatedAt: true,
@@ -228,6 +232,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -285,6 +290,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -333,6 +339,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -382,6 +389,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -457,6 +465,7 @@ export class WorkspaceUsersService {
         assignedRoles: true,
         isActive: true,
         lockedUntil: true,
+        lastSignInAt: true,
         createdBy: true,
         createdAt: true,
         updatedAt: true,
@@ -573,6 +582,7 @@ export class WorkspaceUsersService {
       lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
       isLocked: Boolean(lockedUntil && lockedUntil.getTime() > Date.now()),
       mfaEnrolled,
+      lastSignInAt: row.lastSignInAt ? new Date(row.lastSignInAt).toISOString() : null,
       createdBy: row.createdBy,
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),

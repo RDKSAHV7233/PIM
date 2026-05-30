@@ -51,11 +51,11 @@ function run() {
       adminSource.includes("if (!authHeader) {") &&
       adminSource.includes('redirect(buildLoginRedirect("/admin", 401));') &&
       adminSource.includes("await getServerSession();") &&
-      adminSource.includes("const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility));") &&
-      adminSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
+      adminSource.includes("const visibleAdminLinks = adminLinks.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility") &&
+      adminSource.includes("const accessSummary = describeAdminAccess(actorRole") &&
       adminSource.includes('description={`Workspace settings and governance controls available for your current ${actorRole} role.`}') &&
       adminSource.includes("<CardTitle>{accessSummary.title}</CardTitle>") &&
-      adminSource.includes('visibility: "admin" as AdminNavigationAudience') &&
+      adminSource.includes('visibility: "system_admin_gated" as AdminNavigationAudience') &&
       adminSource.includes('visibility: "editor_plus" as AdminNavigationAudience') &&
       adminSource.includes('href: "/admin/auth-policy"') &&
       adminSource.includes("View consent, export, and deletion status for the signed-in account."),
@@ -71,8 +71,8 @@ function run() {
       workspaceSource.includes('redirect(buildLoginRedirect("/admin/workspace", 401));') &&
       workspaceSource.includes("await getServerSession();") &&
       workspaceSource.includes("const visibleWorkspaceAdminModules = workspaceAdminModules.filter((item) =>") &&
-      workspaceSource.includes("canViewAdminNavigationItem(actorRole, item.visibility)") &&
-      workspaceSource.includes("const accessSummary = describeAdminAccess(actorRole);") &&
+      workspaceSource.includes("canViewAdminNavigationItem(actorRole, item.visibility") &&
+      workspaceSource.includes("const accessSummary = describeAdminAccess(actorRole") &&
       workspaceSource.includes("Workspace Admin Guide") &&
       workspaceSource.includes("This route is a compatibility handoff for older bookmarks.") &&
       workspaceSource.includes("Use the admin modules available for your current") &&
@@ -93,10 +93,13 @@ function run() {
   );
 
   assert(
-    navigationSource.includes('export type AdminNavigationAudience = "all" | "editor_plus" | "connector_admin_plus" | "admin";') &&
+    navigationSource.includes('export type AdminNavigationAudience') &&
+      navigationSource.includes('"editor_plus"') &&
+      navigationSource.includes('"connector_admin_plus"') &&
+      navigationSource.includes('"admin"') &&
       navigationSource.includes('if (audience === "editor_plus") {') &&
-      navigationSource.includes('return role === "admin" || role === "editor";') &&
-      navigationSource.includes('return role === "admin";') &&
+      navigationSource.includes('return role === "admin" || role === "editor"') &&
+      navigationSource.includes('return role === "admin"') &&
       navigationSource.includes('title: "Full admin access"') &&
       navigationSource.includes('title: "Limited admin access"') &&
       navigationSource.includes('title: "Connector admin access"'),

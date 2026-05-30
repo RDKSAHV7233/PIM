@@ -119,7 +119,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Updated at</dt>
-                <dd className="font-medium text-slate-900">{policy.updatedAt ? new Date(policy.updatedAt).toLocaleString() : "-"}</dd>
+                <dd className="font-medium text-slate-900">{policy.updatedAt ? new Date(policy.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "-"}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <dt>Created by</dt>

@@ -408,8 +408,19 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   ),
                 },
                 {
+                  key: "lastSignInAt",
+                  header: "Last seen",
+                  mobileHide: true,
+                  render: (user) => (
+                    <span className="text-xs text-slate-600">
+                      {user.lastSignInAt ? formatDateTime(user.lastSignInAt) : "—"}
+                    </span>
+                  ),
+                },
+                {
                   key: "lockedUntil",
                   header: "Locked Until",
+                  mobileHide: true,
                   cellClassName: "text-slate-600",
                   render: (user) => formatDateTime(user.lockedUntil),
                 },
@@ -659,13 +670,14 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             <DataGrid
               columns={[
                 { key: "principalId", header: "Principal", cellClassName: "font-medium text-slate-900" },
-                { key: "principalType", header: "Type" },
+                { key: "principalType", header: "Type", mobileHide: true },
                 { key: "connectorSlug", header: "Connector" },
                 { key: "action", header: "Action" },
-                { key: "accountAlias", header: "Alias" },
+                { key: "accountAlias", header: "Alias", mobileHide: true },
                 {
                   key: "updatedAt",
                   header: "Updated",
+                  mobileHide: true,
                   cellClassName: "text-xs",
                   render: (permission) => new Date(permission.updatedAt).toLocaleString(),
                 },

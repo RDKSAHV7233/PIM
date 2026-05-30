@@ -128,7 +128,7 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
             </div>
             <div className="md:col-span-2">
               <dt className="text-slate-500">Last updated</dt>
-              <dd className="text-slate-800">{new Date(config.updatedAt).toLocaleString()}</dd>
+              <dd className="text-slate-800">{new Date(config.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</dd>
             </div>
           </dl>
         ) : (

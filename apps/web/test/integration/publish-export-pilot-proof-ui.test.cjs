@@ -99,7 +99,7 @@ function run() {
   assert(
     submissionsSource.includes("StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)}") &&
       submissionsSource.includes('href={`/products/${encodeURIComponent(submission.productId)}`}') &&
-      submissionsSource.includes("new Date(submission.submittedAt).toLocaleString()"),
+      submissionsSource.includes("new Date(submission.submittedAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })"),
     "Submissions workspace must preserve operator status, product drilldown, and submitted timestamp review.",
   );
   assert(
