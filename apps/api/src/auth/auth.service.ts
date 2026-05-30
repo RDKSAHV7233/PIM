@@ -1495,7 +1495,10 @@ export class AuthService implements OnModuleDestroy {
   }
 
   private async resolveIdentityFromDatabase(normalizedUserId: string, tenantId: string): Promise<ResolvedLoginIdentity | null> {
-    const row = await this.prisma.tenant().authIdentity.findFirst({
+    // Login is unauthenticated, so there is no tenant context. Pass tenantId explicitly so
+    // the tenant-scope extension does not fall back to DEFAULT_TENANT_KEY and contradict
+    // the where clause for cross-tenant workspaces (see PR #147 for the write-path fix).
+    const row = await this.prisma.tenant(tenantId).authIdentity.findFirst({
       where: {
         tenantKey: tenantId,
         userId: normalizedUserId,
