@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "nest build --builder tsc --path tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "tsc -p tsconfig.build.json --noEmit",
     "test:unit": "jest --config jest.config.js",
@@ -23,7 +23,7 @@
     "@nestjs/platform-express": "^11.1.19",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
-    "@prisma/client": "^6.16.3",
+    "@prisma/client": "6.19.3",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.70.4",
     "class-transformer": "^0.5.1",
