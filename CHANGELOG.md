@@ -34,6 +34,13 @@ All notable changes to Vexa PIM. Legacy technical codename: `PIM1`. Format: [dat
 - Production bugfixes: roles surface, approval flow, Meesho tile, notifications retargeting.
 - `tmp` dependency bumped `0.2.5 → 0.2.7` to patch HIGH CVE [GHSA-ph9p-34f9-6g65](https://github.com/advisories/GHSA-ph9p-34f9-6g65) (PR #151).
 - `vexa-pim-website-handover/` excluded from git tracking via `.gitignore` (PR #151).
+- **PlanGuard boundary-role bypass** (PR #167): `PlanGuard` (NestJS `CanActivate`) now reads `request.pimAdminBoundaryRoles` and short-circuits per-tenant plan-limit checks for `product_admin` / `system_admin`, matching the bypass `RbacGuard` already had. Emits a structured `PLAN_GUARD_BOUNDARY_BYPASS` log entry per bypass so capacity-planning dashboards can track internal-role over-limit operations.
+
+### Refactor
+- **Centralised display timezone / locale** (PR #168): ~65 inline `.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })` callsites across 33 files now route through `formatDateTime` / `formatDate` / `formatTime` in `@/lib/format.ts`. Helpers are driven by `NEXT_PUBLIC_DISPLAY_LOCALE` and `NEXT_PUBLIC_DISPLAY_TIMEZONE` env vars (defaults preserve IST behaviour). Pre-requisite for BACKLOG-TZ (per-tenant timezone setting) — when that lands, the helpers will accept an optional `{ locale, timeZone }` override without touching call sites again.
+
+### Tests
+- **Migrated `.cjs` contract tests → real TypeScript unit tests** (PR #169): The `meesho-export` and `commercial-reminders` `.cjs` contract tests asserted invariants via `fs.readFileSync` + `String.includes()` — fragile, and one had already silently drifted (asserted `meesho_upload_` while live connector emits `meesho_<category>_`). Replaced with: new "MeeshoConnector class-level invariants" suite in `meesho-category-templates.spec.ts` (capabilities, implementationStatus, real filename via `generateExportFile()`), and new `commercial-reminders.service.spec.ts` covering timer scheduling, double-clear safety, and per-tenant error isolation via `jest.useFakeTimers()`. `prisma-connection-pool-contract.test.cjs` retained as the right form for structural DB-config invariants.
 
 ---
 
