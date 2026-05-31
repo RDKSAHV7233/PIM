@@ -32,7 +32,10 @@ RUN npm ci --omit=dev
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Copy installed node_modules from deps stage
+# Copy installed node_modules from deps stage.
+# packages/db/node_modules may not exist if npm hoisted all db deps to root node_modules;
+# ensure the directory exists before copying to avoid "not found" build failures.
+RUN mkdir -p packages/db/node_modules
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
