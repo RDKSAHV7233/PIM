@@ -290,7 +290,7 @@ export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = 
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition",
                         active
-                          ? "bg-slate-900 text-white"
+                          ? "bg-accent text-white"
                           : "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
                       )}
                     >

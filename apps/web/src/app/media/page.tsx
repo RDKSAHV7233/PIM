@@ -44,17 +44,6 @@ function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) {
-    return "Not checked";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "Not checked";
-  }
-  return formatDateTime(parsed);
-}
-
 interface MediaPageProps {
   searchParams: Promise<{
     productId?: string;

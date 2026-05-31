@@ -14,6 +14,9 @@ const config: Config = {
         ink: "#0f172a",
         accent: "#2563eb",
       },
+      fontFamily: {
+        brand: ['Sora', 'system-ui', 'sans-serif'],
+      },
     },
   },
   plugins: [],

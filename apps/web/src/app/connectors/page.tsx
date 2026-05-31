@@ -257,14 +257,6 @@ function formatInstallFootprint(installations: ConnectorInstallation[]): string 
   return "0 accounts installed";
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return "Not recorded";
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : formatDateTime(parsed);
-}
-
 function formatRelativeTime(value: string | null | undefined): string {
   if (!value) {
     return "Sync not recorded yet";

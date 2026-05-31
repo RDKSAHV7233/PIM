@@ -3,14 +3,14 @@ import type { MarketplaceChannel } from "./marketplace-channels";
 export const colors = {
   ink: "#0f172a",
   inkMid: "#334155",
-  inkSoft: "#6b7280",
+  inkSoft: "#64748b",
   inkGhost: "#9ca3af",
   paper: "#f8fafc",
   paperWarm: "#f1f5f9",
   paperMid: "#e2e8f0",
   surface: "#ffffff",
 
-  accent: "#0f172a",
+  accent: "#2563eb",
   accentSoft: "#eff6ff",
   info: "#2563eb",
   infoSoft: "#eff6ff",
