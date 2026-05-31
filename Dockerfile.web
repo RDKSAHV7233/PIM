@@ -8,7 +8,12 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/db/package.json ./packages/db/
 
-# Install all workspace dependencies
+# Install all workspace dependencies.
+# REDISMS_DISABLE_POSTINSTALL=1 skips redis-memory-server's postinstall hook,
+# which tries to compile native Redis binaries with `make` (not present in
+# the Alpine image). The package is only used in tests; production never
+# loads it. See: https://github.com/mhassan1/redis-memory-server#configuration
+ENV REDISMS_DISABLE_POSTINSTALL=1
 RUN npm ci
 
 # ── Stage 1b: production-only dependencies ────────────────────────────────────
@@ -20,6 +25,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/db/package.json ./packages/db/
 
+ENV REDISMS_DISABLE_POSTINSTALL=1
 RUN npm ci --omit=dev
 
 # ── Stage 2: build ────────────────────────────────────────────────────────────
