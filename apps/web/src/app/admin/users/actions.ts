@@ -147,13 +147,23 @@ export async function unlockWorkspaceUserAction(formData: FormData) {
 
 export async function deactivateWorkspaceUserAction(formData: FormData) {
   const userId = String(formData.get("userId") ?? "").trim();
+  const confirmUserId = String(formData.get("confirmUserId") ?? "").trim();
   try {
     if (!userId) {
       throw new Error("User ID is required.");
     }
+    if (confirmUserId !== userId) {
+      throw new Error("User ID does not match. Type the exact User ID to confirm deactivation.");
+    }
     await deactivateWorkspaceUser(userId, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
   } catch (error) {
+    if (error instanceof ApiHttpError) {
+      const body = error.body as Record<string, unknown> | null;
+      if (body?.error === "LAST_ADMIN_GUARD") {
+        redirectWithError("Cannot deactivate the last active admin. Promote another user to admin first.");
+      }
+    }
     redirectWithError(error instanceof Error ? error.message : "Unable to deactivate workspace user.");
   }
   redirectWithStatus("user-deactivated");

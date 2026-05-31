@@ -123,6 +123,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
   const showInvite = String(query.showInvite ?? "").trim() === "true";
+  const confirmDeactivateUserId = String(query.confirmDeactivate ?? "").trim();
   const canManageUsers = actorRole === "admin";
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
 
@@ -454,16 +455,42 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                             </button>
                           </form>
                         )}
-                        <form action={deactivateWorkspaceUserAction}>
-                          <input type="hidden" name="userId" value={user.userId} />
-                          <button
-                            type="submit"
-                            className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isSelf || !user.isActive}
+                        {confirmDeactivateUserId === user.userId ? (
+                          <form action={deactivateWorkspaceUserAction} className="flex flex-col gap-2">
+                            <input type="hidden" name="userId" value={user.userId} />
+                            <p className="text-xs text-rose-700">Type user ID to confirm:</p>
+                            <input
+                              type="text"
+                              name="confirmUserId"
+                              placeholder={user.userId}
+                              className="rounded-md border border-rose-300 px-2 py-1 text-xs"
+                              required
+                              aria-label="Confirm User ID"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                              >
+                                Confirm
+                              </button>
+                              <Link
+                                href="/admin/users"
+                                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                              >
+                                Cancel
+                              </Link>
+                            </div>
+                          </form>
+                        ) : (
+                          <Link
+                            href={isSelf || !user.isActive ? "#" : `/admin/users?confirmDeactivate=${encodeURIComponent(user.userId)}`}
+                            aria-disabled={isSelf || !user.isActive}
+                            className="rounded-md border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
                           >
                             Deactivate
-                          </button>
-                        </form>
+                          </Link>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-slate-500">Read-only</span>

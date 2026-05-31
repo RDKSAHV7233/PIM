@@ -375,6 +375,21 @@ export class WorkspaceUsersService {
     }
 
     const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
+
+    // U-02: last-admin guard — prevent deactivating the final active admin.
+    // Without this, a single-admin workspace can be permanently locked out.
+    if (existing.role === "admin") {
+      const activeAdminCount = await this.prisma.tenant(normalizedTenantId).authIdentity.count({
+        where: { role: "admin", isActive: true },
+      });
+      if (activeAdminCount <= 1) {
+        throw new BadRequestException({
+          error: "LAST_ADMIN_GUARD",
+          message: "Cannot deactivate the last active admin. Promote another user to admin first.",
+        });
+      }
+    }
+
     const updated = await this.prisma.tenant(normalizedTenantId).authIdentity.update({
       where: {
         id: existing.id,
