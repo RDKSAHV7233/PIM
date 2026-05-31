@@ -38,6 +38,11 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "AccountExportRequest",
   "AccountDeletionRequest",
   "ApprovalComment",
+  // Sprint 2 additions — these models have no manual tenantKey injection
+  // and rely entirely on this extension for tenant isolation.
+  "ChangeRequest",      // requestChanges / listChangeRequests / resolveChangeRequest
+  "ProductRelationship", // createRelationship / listRelationships / deleteRelationship (defense in depth)
+  "WorkflowSla",        // upsertWorkflowSla / getWorkflowSla (defense in depth)
 ]);
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([
