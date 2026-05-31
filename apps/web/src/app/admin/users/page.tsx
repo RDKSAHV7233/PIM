@@ -9,6 +9,8 @@ import {
   unlockWorkspaceUserAction,
   updateWorkspaceUserRoleAction,
 } from "@/app/admin/users/actions";
+import { AccessScopeForm } from "./_components/access-scope-form";
+import { UserSearchFilter } from "./_components/user-search-filter";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -346,7 +348,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             Review tenant access, role ownership, and account state in one queue before making lifecycle changes.
           </p>
           <div className="mt-2">
-            <DataGrid
+            <UserSearchFilter
+              users={workspaceUsers}
+              currentUserId={currentUserId}
               columns={[
                 {
                   key: "userId",
@@ -498,10 +502,6 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   },
                 },
               ]}
-              rows={workspaceUsers}
-              getRowKey={(user) => user.id}
-              caption="Workspace Users"
-              emptyState={<p className="text-sm text-slate-600">No users yet. Invite the first user above.</p>}
             />
           </div>
         </Card>
@@ -511,56 +511,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
           <p className="mt-2 text-sm text-slate-600">
             Admin-only delegated scope assignments constrain non-admin access by category, brand, channel, and connector account.
           </p>
-          {canManageUsers ? (
-            <form action={createAccessScopeAssignmentAction} className="mt-4 grid gap-3 md:grid-cols-6">
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Subject Type</span>
-                <select name="subjectType" defaultValue="user" className="rounded-md border border-slate-300 px-3 py-2">
-                  <option value="user">User</option>
-                  <option value="role">Role</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Subject ID</span>
-                <input type="text" name="subjectId" placeholder="user@example.com or editor" className="rounded-md border border-slate-300 px-3 py-2" required />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Scope Type</span>
-                <select name="scopeType" defaultValue="category" className="rounded-md border border-slate-300 px-3 py-2">
-                  <option value="category">Category</option>
-                  <option value="brand">Brand</option>
-                  <option value="channel">Channel</option>
-                  <option value="connector_account">Connector Account</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Category ID</span>
-                <input type="text" name="categoryId" placeholder="Category scope" className="rounded-md border border-slate-300 px-3 py-2" />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Scope Value</span>
-                <input type="text" name="scopeValue" placeholder="Brand or channel" className="rounded-md border border-slate-300 px-3 py-2" />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-slate-700">Connector Installation</span>
-                <input type="text" name="connectorInstallationId" placeholder="Connector account scope" className="rounded-md border border-slate-300 px-3 py-2" />
-              </label>
-              <label className="grid gap-1 text-sm md:col-span-5">
-                <span className="font-medium text-slate-700">Actions</span>
-                <input
-                  type="text"
-                  name="actions"
-                  placeholder="Comma-separated action list, or leave blank for all scoped actions"
-                  className="rounded-md border border-slate-300 px-3 py-2"
-                />
-              </label>
-              <div className="md:col-span-1 md:flex md:items-end">
-                <button type="submit" className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
-                  Assign Scope
-                </button>
-              </div>
-            </form>
-          ) : null}
+          {canManageUsers ? <AccessScopeForm /> : null}
           <div className="mt-3">
             <DataGrid
               columns={[
