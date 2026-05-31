@@ -9,7 +9,7 @@ import {
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
 import { getServerSession } from "@/lib/server-session";
-import { WEBHOOK_EVENT_TYPES as WEBHOOK_EVENTS } from "@/lib/constants/webhook-events";
+import { WEBHOOK_EVENT_TYPES } from "@/lib/constants/webhook-events";
 
 async function requireAdminRequestOptions() {
   const { authHeader, actorRole: role } = await getServerSession();
@@ -23,13 +23,10 @@ function redirectWithStatus(status: string) {
   redirect(`/admin/webhooks?status=${encodeURIComponent(status)}`);
 }
 
-function buildWebhookRedirect(status: string, message?: string, redirectTo = "/admin/webhooks") {
-  const url = new URL(redirectTo, "http://localhost");
-  url.searchParams.set("status", status);
-  if (message) {
-    url.searchParams.set("message", message);
-  }
-  return `${url.pathname}${url.search}`;
+function buildWebhookRedirect(status: string, message?: string, path = "/admin/webhooks") {
+  const params = new URLSearchParams({ status });
+  if (message) params.set("message", message);
+  return `${path}?${params.toString()}`;
 }
 
 function redirectWithError(message: string, redirectTo = "/admin/webhooks") {
@@ -45,7 +42,7 @@ export async function createOutboundWebhookAction(formData: FormData) {
     if (!name || !targetUrl || !signingSecret) {
       throw new Error("Name, target URL, and signing secret are required.");
     }
-    if (!WEBHOOK_EVENTS.has(eventType)) {
+    if (!WEBHOOK_EVENT_TYPES.has(eventType)) {
       throw new Error("Choose a valid webhook event type.");
     }
     await createOutboundWebhookEndpoint(

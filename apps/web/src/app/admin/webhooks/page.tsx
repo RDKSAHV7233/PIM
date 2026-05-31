@@ -66,6 +66,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
   const { authHeader, actorRole: role } = await getServerSession();
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
+  const confirmDeleteEndpointId = String(query.confirmDelete ?? "").trim();
   const webhookFieldErrors = resolveWebhookFieldErrors(errorMessage);
 
   try {
@@ -336,12 +337,25 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
                             {endpoint.isActive ? "Pause" : "Resume"}
                           </button>
                         </form>
-                        <form action={deleteOutboundWebhookAction}>
-                          <input type="hidden" name="endpointId" value={endpoint.id} />
-                          <button type="submit" className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700">
+                        {confirmDeleteEndpointId === endpoint.id ? (
+                          <form action={deleteOutboundWebhookAction} className="flex items-center gap-2">
+                            <input type="hidden" name="endpointId" value={endpoint.id} />
+                            <span className="text-xs text-rose-700">Confirm delete?</span>
+                            <button type="submit" className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100">
+                              Delete
+                            </button>
+                            <Link href="/admin/webhooks" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                              Cancel
+                            </Link>
+                          </form>
+                        ) : (
+                          <Link
+                            href={`/admin/webhooks?confirmDelete=${encodeURIComponent(endpoint.id)}`}
+                            className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
+                          >
                             Delete
-                          </button>
-                        </form>
+                          </Link>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-slate-500">Read-only</span>

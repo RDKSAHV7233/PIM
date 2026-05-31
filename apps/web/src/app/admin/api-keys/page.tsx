@@ -23,12 +23,20 @@ function formatTimestamp(value: string | null) {
   return formatDateTime(value);
 }
 
+const EXPIRY_WARNING_MS = 7 * 24 * 60 * 60 * 1000;
+
 function resolveStatus(key: ApiAccessKey) {
   if (key.revokedAt) {
     return { label: "revoked", tone: "danger" as const };
   }
   if (!key.isActive && key.expiresAt) {
     return { label: "expired", tone: "warning" as const };
+  }
+  if (key.isActive && key.expiresAt) {
+    const ms = new Date(key.expiresAt).getTime() - Date.now();
+    if (Number.isFinite(ms) && ms > 0 && ms < EXPIRY_WARNING_MS) {
+      return { label: "expires soon", tone: "warning" as const };
+    }
   }
   return { label: "active", tone: "success" as const };
 }
@@ -45,6 +53,7 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole: role } = await getServerSession();
   const status = String(query.status ?? "").trim();
+  const confirmRevokeKeyId = String(query.confirmRevoke ?? "").trim();
 
   try {
     const keys = await getApiAccessKeys({ role, authHeader });
@@ -187,15 +196,25 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
                   header: "Actions",
                   render: (key) =>
                     role === "admin" && !key.revokedAt ? (
-                      <form action={revokeApiAccessKeyAction}>
-                        <input type="hidden" name="keyId" value={key.id} />
-                        <button
-                          type="submit"
-                          className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700"
+                      confirmRevokeKeyId === key.id ? (
+                        <form action={revokeApiAccessKeyAction} className="flex items-center gap-2">
+                          <input type="hidden" name="keyId" value={key.id} />
+                          <span className="text-xs text-rose-700">Confirm revoke?</span>
+                          <button type="submit" className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100">
+                            Revoke
+                          </button>
+                          <Link href="/admin/api-keys" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                            Cancel
+                          </Link>
+                        </form>
+                      ) : (
+                        <Link
+                          href={`/admin/api-keys?confirmRevoke=${encodeURIComponent(key.id)}`}
+                          className="rounded-md border border-rose-200 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
                         >
                           Revoke
-                        </button>
-                      </form>
+                        </Link>
+                      )
                     ) : (
                       <span className="text-xs text-slate-500">{key.revokedAt ? "Revoked" : "Read-only"}</span>
                     ),
