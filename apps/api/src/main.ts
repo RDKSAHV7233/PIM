@@ -60,6 +60,7 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false,   // not serving cross-origin resources
     }),
   );
+  // Root info endpoint (registered before setGlobalPrefix so it stays at /).
   app.getHttpAdapter().getInstance().get("/", (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
     response.status(200).json({
       service: "Vexa PIM API",
@@ -69,6 +70,12 @@ async function bootstrap() {
       health: "/api/v1/health",
       docs: env.APP_ENV !== "production" ? "/api/v1/docs" : null,
     });
+  });
+  // Railway healthcheck alias — Railway's service dashboard may have the healthcheck path
+  // configured as /health (without the /api/v1 prefix). Register a raw Express alias so
+  // Railway's proxy confirms the app is alive regardless of the dashboard setting.
+  app.getHttpAdapter().getInstance().get("/health", (_request: unknown, response: { status: (code: number) => { json: (body: unknown) => void } }) => {
+    response.status(200).json({ status: "ok", env: env.APP_ENV });
   });
   app.setGlobalPrefix("api/v1");
   const corsOrigin =
