@@ -4,6 +4,7 @@ import { ApiKeyCreatePanel } from "./api-key-create-panel";
 import { revokeApiAccessKeyAction } from "./actions";
 import { ApiHttpError, getApiAccessKeys, type ApiAccessKey } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { API_SCOPE_LEGEND } from "@/lib/constants/api-scopes";
 import { getServerSession } from "@/lib/server-session";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid } from "@/components/ui/data-grid";
@@ -39,40 +40,6 @@ function formatScopes(scopes: ApiAccessKey["scopes"]) {
   return scopes.join(", ");
 }
 
-const API_SCOPE_LEGEND = [
-  {
-    scope: "catalog:read",
-    description: "Read product, category, and attribute data without changing catalog records.",
-  },
-  {
-    scope: "catalog:write",
-    description: "Create or update catalog content such as products, taxonomy, and product fields.",
-  },
-  {
-    scope: "channels:read",
-    description: "Read channel mappings, submissions, and connection health for automation monitoring.",
-  },
-  {
-    scope: "channels:write",
-    description: "Trigger or manage channel publishing workflows and outbound sync activity.",
-  },
-  {
-    scope: "media:read",
-    description: "Inspect media assets, validation results, and governance settings.",
-  },
-  {
-    scope: "media:write",
-    description: "Upload media assets and update media governance for products and variants.",
-  },
-  {
-    scope: "quality:read",
-    description: "Read issue inbox, approvals, and quality health signals for integrations.",
-  },
-  {
-    scope: "quality:write",
-    description: "Resolve warnings or perform quality workflow actions through API automation.",
-  },
-] as const;
 
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;

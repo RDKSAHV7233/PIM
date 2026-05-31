@@ -200,3 +200,222 @@ export async function getProductActivity(productId: string, limit = 50, options?
     options,
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 2 additions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdvancedSearchQuery {
+  q?: string;
+  status?: string;
+  categoryId?: string;
+  brand?: string;
+  channelSlug?: string;
+  cursor?: string;
+  limit?: number;
+  sort?: string;
+  sortDir?: "asc" | "desc";
+}
+
+export interface AdvancedSearchPage {
+  items: ProductListItem[];
+  nextCursor: string | null;
+  limit: number;
+}
+
+export interface WorkflowSlaConfig {
+  reviewTargetDays: number;
+  tenantKey: string;
+}
+
+export interface OverdueCountResponse {
+  count: number;
+}
+
+export type ProductRelationshipType = "bundle_component" | "accessory" | "substitute" | "upsell";
+
+export interface ProductRelationshipProduct {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export interface ProductRelationship {
+  id: string;
+  tenantKey: string;
+  sourceProductId: string;
+  targetProductId: string;
+  type: ProductRelationshipType;
+  quantityInParent: number | null;
+  sortOrder: number;
+  createdAt: string;
+  targetProduct?: ProductRelationshipProduct;
+  sourceProduct?: ProductRelationshipProduct;
+}
+
+export interface ProductRelationshipsResponse {
+  outgoing: ProductRelationship[];
+  incoming: ProductRelationship[];
+}
+
+export interface CreateRelationshipInput {
+  targetProductId: string;
+  type: ProductRelationshipType;
+  quantityInParent?: number;
+  sortOrder?: number;
+}
+
+export interface ChangeRequest {
+  id: string;
+  productId: string;
+  requesterId: string;
+  reason: string;
+  status: "open" | "resolved";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssigneeUpdateResponse {
+  id: string;
+  assigneeId: string | null;
+  updatedAt: string;
+}
+
+export async function getAdvancedSearchProducts(
+  query: AdvancedSearchQuery,
+  options?: ApiRequestOptions,
+): Promise<AdvancedSearchPage> {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.status) params.set("status", query.status);
+  if (query.categoryId) params.set("categoryId", query.categoryId);
+  if (query.brand) params.set("brand", query.brand);
+  if (query.channelSlug) params.set("channelSlug", query.channelSlug);
+  if (query.cursor) params.set("cursor", query.cursor);
+  if (typeof query.limit === "number") params.set("limit", String(query.limit));
+  if (query.sort) params.set("sort", query.sort);
+  if (query.sortDir) params.set("sortDir", query.sortDir);
+  const qs = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetchJson<AdvancedSearchPage | ProductListItem[]>(
+    `/catalog/products/advanced-search${qs}`,
+    undefined,
+    options,
+  );
+  if (Array.isArray(response)) {
+    return { items: response, nextCursor: null, limit: query.limit ?? response.length };
+  }
+  return response;
+}
+
+export async function getWorkflowSla(options?: ApiRequestOptions): Promise<WorkflowSlaConfig> {
+  return fetchJson<WorkflowSlaConfig>("/catalog/workflow/sla", undefined, options);
+}
+
+export async function upsertWorkflowSla(
+  reviewTargetDays: number,
+  options?: ApiRequestOptions,
+): Promise<WorkflowSlaConfig> {
+  return fetchJson<WorkflowSlaConfig>("/catalog/workflow/sla", {
+    method: "PUT",
+    body: JSON.stringify({ reviewTargetDays }),
+    headers: { "Content-Type": "application/json" },
+  }, options);
+}
+
+export async function getOverdueCount(options?: ApiRequestOptions): Promise<OverdueCountResponse> {
+  return fetchJson<OverdueCountResponse>("/catalog/workflow/sla/overdue", undefined, options);
+}
+
+export async function assignProduct(
+  productId: string,
+  assigneeId: string | null,
+  options?: ApiRequestOptions,
+): Promise<AssigneeUpdateResponse> {
+  return fetchJson<AssigneeUpdateResponse>(
+    `/catalog/products/${encodeURIComponent(productId)}/assignee`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ assigneeId }),
+      headers: { "Content-Type": "application/json" },
+    },
+    options,
+  );
+}
+
+export async function getChangeRequests(
+  productId: string,
+  options?: ApiRequestOptions,
+): Promise<ChangeRequest[]> {
+  const response = await fetchJson<ChangeRequest[] | { items: ChangeRequest[] }>(
+    `/catalog/products/${encodeURIComponent(productId)}/change-requests`,
+    undefined,
+    options,
+  );
+  return Array.isArray(response) ? response : (response.items ?? []);
+}
+
+export async function createChangeRequest(
+  productId: string,
+  reason: string,
+  options?: ApiRequestOptions,
+): Promise<ChangeRequest> {
+  return fetchJson<ChangeRequest>(
+    `/catalog/products/${encodeURIComponent(productId)}/change-requests`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+      headers: { "Content-Type": "application/json" },
+    },
+    options,
+  );
+}
+
+export async function resolveChangeRequest(
+  productId: string,
+  requestId: string,
+  options?: ApiRequestOptions,
+): Promise<ChangeRequest> {
+  return fetchJson<ChangeRequest>(
+    `/catalog/products/${encodeURIComponent(productId)}/change-requests/${encodeURIComponent(requestId)}/resolve`,
+    { method: "POST" },
+    options,
+  );
+}
+
+export async function getProductRelationships(
+  productId: string,
+  options?: ApiRequestOptions,
+): Promise<ProductRelationshipsResponse> {
+  return fetchJson<ProductRelationshipsResponse>(
+    `/catalog/products/${encodeURIComponent(productId)}/relationships`,
+    undefined,
+    options,
+  );
+}
+
+export async function createProductRelationship(
+  sourceProductId: string,
+  input: CreateRelationshipInput,
+  options?: ApiRequestOptions,
+): Promise<ProductRelationship> {
+  return fetchJson<ProductRelationship>(
+    `/catalog/products/${encodeURIComponent(sourceProductId)}/relationships`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+    },
+    options,
+  );
+}
+
+export async function deleteProductRelationship(
+  relationshipId: string,
+  options?: ApiRequestOptions,
+): Promise<{ deleted: boolean }> {
+  return fetchJson<{ deleted: boolean }>(
+    `/catalog/relationships/${encodeURIComponent(relationshipId)}`,
+    { method: "DELETE" },
+    options,
+  );
+}

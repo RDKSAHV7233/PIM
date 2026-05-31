@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
+import { createChangeRequestAction, resolveChangeRequestAction } from "@/app/quality-actions";
 import { ApiHttpError, getAllProductsSlim, getApprovalComments, getIssueInbox, getStats } from "@/lib/api";
+import { getChangeRequests, getWorkflowSla, getOverdueCount } from "@/lib/api/catalog";
+import { SlaBadge } from "@/components/ui/sla-badge";
 import type { ProductRevision } from "@/lib/api";
 import { getProductRevisions } from "@/lib/api/revisions";
 import { buttonVariants } from "@/components/ui/button";
@@ -48,7 +51,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   }
 
   try {
-    const [stats, inbox, products] = await Promise.all([
+    const [stats, inbox, products, slaConfig, overdueCount] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(
         {
@@ -58,6 +61,8 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         { role: actorRole, authHeader },
       ),
       getAllProductsSlim({ role: actorRole, authHeader }),
+      getWorkflowSla({ role: actorRole, authHeader }).catch(() => ({ reviewTargetDays: 3, tenantKey: "" })),
+      getOverdueCount({ role: actorRole, authHeader }).catch(() => ({ count: 0 })),
     ]);
 
     const blockingProducts = new Set(
@@ -84,6 +89,17 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         } catch {
           // Graceful degradation — revision fetch failure does not block approval flow
         }
+      }),
+    );
+
+    // Sprint 2: fetch change requests per in-review product (direct API call — no HTTP self-loop)
+    const changeRequestsByProduct = new Map<string, { id: string; reason: string; status: string }[]>();
+    await Promise.all(
+      inReviewProducts.map(async (product) => {
+        try {
+          const crs = await getChangeRequests(product.id, { role: actorRole, authHeader });
+          changeRequestsByProduct.set(product.id, crs as { id: string; reason: string; status: string }[]);
+        } catch { /* graceful degradation */ }
       }),
     );
 
@@ -144,7 +160,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           />
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard
             label="Products In Review"
             value={approvalQueueRedacted ? "-" : stats.pendingApprovals}
@@ -164,6 +180,11 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
             label="Clean For Decision"
             value={approvalQueueRedacted ? "-" : cleanForDecision}
             tone={approvalQueueRedacted ? "default" : cleanForDecision > 0 ? "success" : "default"}
+          />
+          <KpiCard
+            label="SLA At Risk"
+            value={overdueCount.count}
+            tone={overdueCount.count > 0 ? "danger" : "success"}
           />
         </section>
 
@@ -266,6 +287,17 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           </Card>
         </section>
 
+        {/* SLA configuration banner — PUT /catalog/workflow/sla (admin only) */}
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 shadow-sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-slate-400" aria-hidden><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span>Review SLA: <strong className="text-slate-800">{slaConfig.reviewTargetDays} days</strong> from <code className="rounded bg-slate-200 px-1 py-0.5 font-mono text-xs">in_review</code> transition.</span>
+          {overdueCount.count > 0 && (
+            <span className="ml-auto rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
+              {overdueCount.count} overdue
+            </span>
+          )}
+        </div>
+
         <Card>
           <CardTitle>Review Decisions</CardTitle>
           <DataGrid
@@ -359,6 +391,42 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
                                   pendingLabel="Posting..."
                                 />
                               </form>
+                            </div>
+                          </details>
+                        </section>
+                      );
+                    })()}
+                    {/* Sprint 2: Change Requests */}
+                    {(() => {
+                      const crs = changeRequestsByProduct.get(product.id) ?? [];
+                      if (crs.length === 0) return null;
+                      return (
+                        <section aria-label="Change requests" className="mt-2">
+                          <details className="rounded-md border border-amber-200 bg-amber-50">
+                            <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100">
+                              Change Requests ({crs.length})
+                            </summary>
+                            <div className="border-t border-amber-200 px-3 py-2 space-y-2">
+                              {crs.map((cr) => (
+                                <div key={cr.id} className="flex items-start justify-between gap-2 text-xs">
+                                  <p className="text-slate-700">{cr.reason}</p>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${cr.status === "open" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{cr.status}</span>
+                                  {cr.status === "open" && decisionEnabled ? (
+                                    <form action={resolveChangeRequestAction}>
+                                      <input type="hidden" name="productId" value={product.id} />
+                                      <input type="hidden" name="requestId" value={cr.id} />
+                                      <button type="submit" className="rounded px-2 py-0.5 text-[10px] font-semibold bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50">Resolve</button>
+                                    </form>
+                                  ) : null}
+                                </div>
+                              ))}
+                              {decisionEnabled ? (
+                                <form action={createChangeRequestAction} className="mt-2 space-y-1">
+                                  <input type="hidden" name="productId" value={product.id} />
+                                  <textarea name="reason" required rows={2} placeholder="Describe required change…" className="w-full rounded border border-amber-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                                  <button type="submit" className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50">Request change</button>
+                                </form>
+                              ) : null}
                             </div>
                           </details>
                         </section>

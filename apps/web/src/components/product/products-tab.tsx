@@ -1,5 +1,9 @@
 "use client";
 
+// Sprint 1: faceted search
+import { FacetedFilterToggle, FacetedFilterPanel } from "@/components/ui/faceted-filter-panel";
+import type { AdvancedSearchQuery } from "@/lib/api/catalog";
+
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useMemo, useState } from "react";
@@ -243,6 +247,10 @@ export function ProductsTab({
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
   const [pendingArchive, setPendingArchive] = useState<{ productId: string; title: string } | null>(null);
+  // Sprint 1: faceted search
+  const [facetOpen, setFacetOpen] = useState(false);
+  const [facets, setFacets] = useState<AdvancedSearchQuery>({});
+  const activeFacetCount = Object.entries(facets).filter(([k, v]) => k !== "q" && v).length;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -262,6 +270,19 @@ export function ProductsTab({
   useEffect(() => {
     setSearchQuery(initialSearch);
   }, [initialSearch]);
+
+  // Sprint 1: push facet params to URL for server re-fetch via getAdvancedSearchProducts
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (facets.categoryId) params.set("categoryId", facets.categoryId); else params.delete("categoryId");
+    if (facets.brand) params.set("brand", facets.brand); else params.delete("brand");
+    if (facets.status) params.set("status", facets.status); else params.delete("status");
+    const query = params.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+    if (`${window.location.pathname}${window.location.search}` !== next) {
+      router.push(next);
+    }
+  }, [facets, pathname, router]);
 
   const filteredCategories = useMemo(() => filterTestData(categories, hideTestData), [categories, hideTestData]);
 
@@ -657,6 +678,12 @@ export function ProductsTab({
                 </button>
               ) : null}
             </div>
+            {/* Sprint 1: Faceted search toggle */}
+            <FacetedFilterToggle
+              open={facetOpen}
+              onToggle={() => setFacetOpen((v) => !v)}
+              activeCount={activeFacetCount}
+            />
             <Link
               href={`/quality/issues${hideTestData ? "" : "?hideTestData=false"}`}
               className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
@@ -709,6 +736,16 @@ export function ProductsTab({
           </span>
         </div>
       </section>
+
+      {/* Sprint 1: Faceted filter panel — renders below the sticky filter bar */}
+      {facetOpen && (
+        <FacetedFilterPanel
+          categories={filteredCategories}
+          value={facets}
+          onChange={(next) => setFacets(next)}
+          open={facetOpen}
+        />
+      )}
 
       <section className="space-y-3">
 

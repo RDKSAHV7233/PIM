@@ -179,6 +179,10 @@ export interface ProductListItem {
   openValidationWarningCount: number;
   createdAt: string;
   updatedAt: string;
+  /** Set when product transitions to in_review — null until first review cycle */
+  slaDeadlineAt?: string | null;
+  /** Assigned reviewer user ID — null if unassigned */
+  assigneeId?: string | null;
 }
 
 export interface CatalogStats {

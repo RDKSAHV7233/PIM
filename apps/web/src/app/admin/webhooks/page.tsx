@@ -19,21 +19,13 @@ import {
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
+import { WEBHOOK_EVENT_LABELS as EVENT_LABELS } from "@/lib/constants/webhook-events";
 
 export const dynamic = "force-dynamic";
 
 interface WebhookAdminPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
-
-const EVENT_LABELS: Record<string, string> = {
-  import_completed: "Import completed",
-  import_failed: "Import failed",
-  import_repair_required: "Import repair required",
-  publish_succeeded: "Publish succeeded",
-  publish_failed: "Publish failed",
-  approval_decision: "Approval decision",
-};
 
 function DeliveryTone(status: string) {
   if (status === "delivered") {

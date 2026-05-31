@@ -167,7 +167,10 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
   const dateFrom = String(getFirst(query.dateFrom) ?? "").trim();
   const dateTo = String(getFirst(query.dateTo) ?? "").trim();
   const cursor = String(getFirst(query.cursor) ?? "").trim();
-  const limit = Number(getFirst(query.limit) ?? "50");
+  // AL-02: whitelist valid page sizes
+  const VALID_LIMITS = new Set([25, 50, 100, 150, 200]);
+  const limitRaw = Number(getFirst(query.limit) ?? "50");
+  const limit = VALID_LIMITS.has(limitRaw) ? limitRaw : 50;
 
   try {
     const events = await getAuditEvents(
@@ -245,7 +248,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
         />
 
         <FilterBar>
-          <form method="get" className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <form method="get" action="/admin/audit" className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <div className="space-y-1">
               <label htmlFor="audit-actor" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Actor
@@ -309,7 +312,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
               </Select>
             </div>
             <div className="xl:col-span-6 flex items-center gap-2">
-              <button type="submit" className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800">
+              <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
                 Apply filters
               </button>
               <span className="text-sm text-slate-500">

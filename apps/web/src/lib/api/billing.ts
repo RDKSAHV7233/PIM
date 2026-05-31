@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type {
   ApiRequestOptions,
   PlanUpgradeRequestCreateResponse,
@@ -31,3 +32,15 @@ export async function updateBillingContact(
 ) {
   return postJson<PlanUsageResponse["profile"]>("/billing/billing-contact", body, options);
 }
+
+/**
+ * React-request-scoped cached version of getBillingUsage.
+ * Use in Server Components that co-render /admin/plan and /admin/users
+ * in the same request — deduplicated to a single API call.
+ *
+ * React cache() is per-request; this is NOT a persistent server cache.
+ */
+export const getCachedBillingUsage = cache(async (
+  role: string,
+  authHeader: string | undefined,
+) => getBillingUsage({ role: role as import("./core").AppRole, authHeader }));

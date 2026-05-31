@@ -9,15 +9,7 @@ import {
   updateOutboundWebhookEndpoint,
 } from "@/lib/api";
 import { getServerSession } from "@/lib/server-session";
-
-const WEBHOOK_EVENTS = new Set([
-  "import_completed",
-  "import_failed",
-  "import_repair_required",
-  "publish_succeeded",
-  "publish_failed",
-  "approval_decision",
-]);
+import { WEBHOOK_EVENT_TYPES as WEBHOOK_EVENTS } from "@/lib/constants/webhook-events";
 
 async function requireAdminRequestOptions() {
   const { authHeader, actorRole: role } = await getServerSession();

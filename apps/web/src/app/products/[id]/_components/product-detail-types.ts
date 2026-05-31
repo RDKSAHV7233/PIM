@@ -22,7 +22,8 @@ export type DetailTab =
   | "media"
   | "channels"
   | "quality"
-  | "activity";
+  | "activity"
+  | "relationships";
 
 export type ProductDetailPageData = {
   productId: string;

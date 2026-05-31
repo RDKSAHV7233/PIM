@@ -33,6 +33,7 @@ export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "channels", label: "Channels" },
   { key: "quality", label: "Quality" },
   { key: "activity", label: "Activity" },
+  { key: "relationships", label: "Relationships" },
 ];
 
 export function normalizeDetailTab(value: string | undefined): DetailTab {

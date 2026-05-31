@@ -4,14 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createApiAccessKey, normalizeAppRole, revokeApiAccessKey, type ApiClientScope } from "@/lib/api";
 import { getServerSession } from "@/lib/server-session";
+import { SUPPORTED_API_KEY_SCOPES } from "@/lib/constants/api-scopes";
 
 export type ApiKeyCreateActionState = {
   status: "idle" | "success" | "error";
   message: string | null;
   createdKey: string | null;
 };
-
-const SUPPORTED_API_KEY_SCOPES: readonly ApiClientScope[] = ["catalog.read", "catalog.write"];
 
 async function requireAdminRequestOptions() {
   const { authHeader, actorRole: role } = await getServerSession();

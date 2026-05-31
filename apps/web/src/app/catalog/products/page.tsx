@@ -11,6 +11,7 @@ import {
   type CatalogStats,
   type ProductListItem,
 } from "@/lib/api";
+import { getAdvancedSearchProducts } from "@/lib/api/catalog";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { mapConnectorSlugToMarketplaceChannel } from "@/lib/marketplace-channels";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -25,6 +26,10 @@ interface CatalogProductsPageProps {
     view?: string;
     page?: string;
     limit?: string;
+    // Sprint 1: faceted search params
+    categoryId?: string;
+    brand?: string;
+    status?: string;
   }>;
 }
 
@@ -140,13 +145,28 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const initialSearch = resolveProductSearch(query.search);
   const page = resolvePositiveInteger(query.page, 1, 10_000);
   const limit = resolvePositiveInteger(query.limit, 50, 200);
+  // Sprint 1: faceted search
+  const categoryId = query.categoryId?.trim() || undefined;
+  const brand = query.brand?.trim() || undefined;
+  const facetStatus = query.status?.trim() || undefined;
+  const hasFacets = Boolean(categoryId || brand || facetStatus);
   const { authHeader, actorRole } = await getServerSession();
 
   try {
     const [stats, categories, productWindow, installedConnectors] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-      loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
+      // Sprint 1: use advanced-search endpoint when any facet is active
+      hasFacets
+        ? getAdvancedSearchProducts(
+            { q: initialSearch || undefined, categoryId, brand, status: facetStatus, limit },
+            { role: actorRole, authHeader },
+          ).then((res) => ({
+            items: res.items as ProductListItem[],
+            firstProduct: res.items[0] as ProductListItem | null,
+            totals: null,
+          }))
+        : loadVisibleProducts(page, limit, hideTestData, { role: actorRole, authHeader }),
       getInstalledConnectors({ role: actorRole, authHeader }).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) {
           return [] as Awaited<ReturnType<typeof getInstalledConnectors>>;
