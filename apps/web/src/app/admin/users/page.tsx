@@ -18,7 +18,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getAccessScopeAssignments,
-  getBillingUsage,
+  getCachedBillingUsage,
   getConnectorPermissions,
   getWorkspaceUsers,
 } from "@/lib/api";
@@ -129,7 +129,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
   try {
     const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([
-      getBillingUsage({ role: actorRole, authHeader }),
+      getCachedBillingUsage(actorRole, authHeader),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
