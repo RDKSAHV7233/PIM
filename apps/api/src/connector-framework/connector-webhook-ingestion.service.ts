@@ -5,6 +5,7 @@ import { LoggerService } from "../common/logging/logger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorIssue, ParsedWebhookEvent } from "./connector.interface";
+import { tenantRaw } from "../common/tenant/tenant-raw";
 
 type ConnectorInstallationLookup = {
   id: string;
@@ -197,9 +198,7 @@ export class ConnectorWebhookIngestionService {
       return null;
     }
 
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<SubmissionLookup[]>(
-      `
+    const rows = await tenantRaw<SubmissionLookup[]>(this.prisma.tenant(tenantKey), `
       SELECT cs.id
       FROM connector_submissions cs
       JOIN "Product" p ON p.id = cs.product_id
@@ -217,10 +216,7 @@ export class ConnectorWebhookIngestionService {
       ORDER BY cs.submitted_at DESC
       LIMIT 1
       `,
-      tenantKey,
-      installationId,
-      parsedEvent.productSku,
-    );
+      [tenantKey, installationId, parsedEvent.productSku]);
     return rows[0] ?? null;
   }
 

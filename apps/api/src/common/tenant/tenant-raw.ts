@@ -48,6 +48,26 @@ export async function tenantExecRaw(
   return client.$executeRawUnsafe(sql, ...params);
 }
 
+/**
+ * Executes a raw SQL SELECT on a GLOBAL (non-tenant-scoped) table.
+ *
+ * Use ONLY for shared reference tables such as connector_definitions, plan_limits, etc.
+ * These tables have no tenant_key column so no per-tenant filter is needed or possible.
+ *
+ * This helper deliberately skips assertTenantKeyPresent. Using it signals intent:
+ * the caller has confirmed the table is truly global and the query is correct.
+ *
+ * For any table that has a tenant_key column, use tenantRaw() instead.
+ */
+export async function globalQuery<T = unknown>(
+  client: PrismaClient,
+  sql: string,
+  params: unknown[] = [],
+): Promise<T> {
+  // RLS-BYPASS: manual tenant filter — intentionally global query on a table with no tenant_key column.
+  return client.$queryRawUnsafe<T>(sql, ...params);
+}
+
 function assertTenantKeyPresent(sql: string): void {
   if (process.env["NODE_ENV"] === "production") {
     return; // rely on correct code in production; avoid runtime overhead

@@ -22,6 +22,7 @@ import {
   ValidationResult,
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
+import { tenantRaw, tenantExecRaw } from "../../common/tenant/tenant-raw";
 
 type CredentialRow = {
   id: string;
@@ -997,9 +998,7 @@ export class ShopifyConnector implements ConnectorInterface {
     },
   ): Promise<void> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
+    await tenantExecRaw(db, `
       UPDATE connector_installations
       SET
         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
@@ -1015,22 +1014,13 @@ export class ShopifyConnector implements ConnectorInterface {
         updated_at = NOW()
       WHERE tenant_key = $1 AND id = $2
       `,
-      ctx.tenantId,
-      ctx.installationId,
-      metadata.shopDomain,
-      metadata.shopId,
-      metadata.shopName,
-      metadata.tokenMode,
-      metadata.authMode,
-      metadata.scope,
-    );
+      [ctx.tenantId, ctx.installationId, metadata.shopDomain, metadata.shopId,
+       metadata.shopName, metadata.tokenMode, metadata.authMode, metadata.scope]);
   }
 
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
+    await tenantExecRaw(db, `
       UPDATE connector_credentials
       SET
         last_validated_at = NOW(),
@@ -1040,10 +1030,7 @@ export class ShopifyConnector implements ConnectorInterface {
         AND installation_id = $2
         AND credential_type IN ('access_token', 'refresh_token', 'shop_domain', 'shop_id', 'shop_name')
       `,
-      ctx.tenantId,
-      ctx.installationId,
-      failureReason,
-    );
+      [ctx.tenantId, ctx.installationId, failureReason]);
   }
 
   private async requireCredential(ctx: ConnectorContext, credentialType: string): Promise<string> {
@@ -1062,9 +1049,7 @@ export class ShopifyConnector implements ConnectorInterface {
     credentialType: string,
   ): Promise<CredentialRow | null> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await db.$queryRawUnsafe<CredentialRow[]>(
-      `
+    const rows = await tenantRaw<CredentialRow[]>(db, `
       SELECT
         id,
         encrypted_value AS "encryptedValue",
@@ -1078,10 +1063,7 @@ export class ShopifyConnector implements ConnectorInterface {
         AND credential_type = $3
       LIMIT 1
       `,
-      ctx.tenantId,
-      ctx.installationId,
-      credentialType,
-    );
+      [ctx.tenantId, ctx.installationId, credentialType]);
     return rows[0] ?? null;
   }
 
@@ -1110,9 +1092,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const id = `${ctx.installationId}:${credentialType}`;
     const metadata = options.metadata ? JSON.stringify(options.metadata) : null;
 
-    // RLS-BYPASS: manual tenant filter
-    await db.$executeRawUnsafe(
-      `
+    await tenantExecRaw(db, `
       INSERT INTO connector_credentials (
         id,
         tenant_key,
@@ -1147,16 +1127,9 @@ export class ShopifyConnector implements ConnectorInterface {
         last_refresh_at = NOW(),
         updated_at = NOW()
       `,
-      id,
-      ctx.tenantId,
-      ctx.installationId,
-      credentialType,
-      encrypted.cipher,
-      keyVersion,
-      options.scope ?? null,
-      options.expiresAt ?? null,
-      metadata,
-    );
+      [id, ctx.tenantId, ctx.installationId, credentialType,
+       encrypted.cipher, keyVersion, options.scope ?? null,
+       options.expiresAt ?? null, metadata]);
   }
 
   private async fetchShopIdentity(shopDomain: string, accessToken: string): Promise<ShopifyShopIdentity> {
@@ -1376,19 +1349,14 @@ export class ShopifyConnector implements ConnectorInterface {
 
     // Persist into installation metadata using JSONB merge (preserves existing keys)
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter via tenant_key + installation id.
-    await db.$executeRawUnsafe(
-      `
+    await tenantExecRaw(db, `
       UPDATE connector_installations
       SET
         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('shopifyConfig', $3::jsonb),
         updated_at = NOW()
       WHERE tenant_key = $1 AND id = $2
       `,
-      ctx.tenantId,
-      ctx.installationId,
-      JSON.stringify(result),
-    );
+      [ctx.tenantId, ctx.installationId, JSON.stringify(result)]);
 
     this.logger.info("Shopify config imported", {
       installationId: ctx.installationId,
@@ -1782,18 +1750,14 @@ export class ShopifyConnector implements ConnectorInterface {
 
   private async getInstallationMetadata(ctx: ConnectorContext): Promise<Record<string, unknown>> {
     const db = this.prismaDirect.getClient();
-    // RLS-BYPASS: manual tenant filter
-    const rows = await db.$queryRawUnsafe<InstallationMetadataRow[]>(
-      `
+    const rows = await tenantRaw<InstallationMetadataRow[]>(db, `
       SELECT metadata
       FROM connector_installations
       WHERE tenant_key = $1
         AND id = $2
       LIMIT 1
       `,
-      ctx.tenantId,
-      ctx.installationId,
-    );
+      [ctx.tenantId, ctx.installationId]);
     return this.asRecord(rows[0]?.metadata);
   }
 

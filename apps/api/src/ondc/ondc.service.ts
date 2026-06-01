@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
+import { tenantRaw, tenantExecRaw } from "../common/tenant/tenant-raw";
 
 @Injectable()
 export class OndcService {
@@ -45,31 +46,22 @@ export class OndcService {
     }
 
     if (dto.isDefault) {
-      // RLS-BYPASS: manual tenant filter
-      await this.prisma.tenant().$executeRawUnsafe(
-        `
+      await tenantExecRaw(this.prisma.tenant(), `
         UPDATE ondc_mappings
         SET is_default = FALSE, updated_at = NOW()
         WHERE tenant_key = $1
           AND node_type = $2
           AND version = $3
           AND category_id = $4
-        `,
-        tenantKey,
-        dto.nodeType,
-        dto.version,
-        dto.categoryId,
-      );
+        `, [tenantKey, dto.nodeType, dto.version, dto.categoryId]);
     }
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant().$executeRawUnsafe(
-      `
+    await tenantExecRaw(this.prisma.tenant(), `
       INSERT INTO ondc_mappings (
         id, tenant_key, name, category_id, node_type, version, required_fields, field_map, discovery_metadata, is_default
       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10)
       `,
-      id,
+      [id,
       tenantKey,
       dto.name.trim(),
       dto.categoryId,
@@ -78,17 +70,14 @@ export class OndcService {
       JSON.stringify(normalizedRequiredFields),
       JSON.stringify(fieldMap),
       JSON.stringify(dto.discoveryMetadata ?? {}),
-      dto.isDefault ?? false,
-    );
+      dto.isDefault ?? false]);
 
     return this.getMapping(id);
   }
 
   async listMappings(nodeType?: string, version?: string, categoryId?: string) {
     const tenantKey = getTenantKeyFromContext();
-    // RLS-BYPASS: manual tenant filter
-    return this.prisma.tenant().$queryRawUnsafe(
-      `
+    return tenantRaw(this.prisma.tenant(), `
       SELECT
         id,
         name,
@@ -109,18 +98,12 @@ export class OndcService {
       ORDER BY is_default DESC, updated_at DESC
       LIMIT 200
       `,
-      tenantKey,
-      nodeType ?? null,
-      version ?? null,
-      categoryId ?? null,
-    );
+      [tenantKey, nodeType ?? null, version ?? null, categoryId ?? null]);
   }
 
   async getMapping(mappingId: string) {
     const tenantKey = getTenantKeyFromContext();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
+    const rows = (await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(), `
       SELECT
         id,
         name,
@@ -138,9 +121,7 @@ export class OndcService {
         AND id = $2
       LIMIT 1
       `,
-      tenantKey,
-      mappingId,
-    )) as Array<Record<string, unknown>>;
+      [tenantKey, mappingId]));
     if (rows.length === 0) {
       throw new NotFoundException("ONDC mapping not found");
     }
@@ -194,9 +175,7 @@ export class OndcService {
 
   private async getDefaultMapping(categoryId: string, nodeType: string, version: string) {
     const tenantKey = getTenantKeyFromContext();
-    // RLS-BYPASS: manual tenant filter
-    const rows = (await this.prisma.tenant().$queryRawUnsafe(
-      `
+    const rows = (await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(), `
       SELECT
         id,
         name,
@@ -215,11 +194,7 @@ export class OndcService {
       ORDER BY is_default DESC, updated_at DESC
       LIMIT 1
       `,
-      tenantKey,
-      categoryId,
-      nodeType,
-      version,
-    )) as Array<Record<string, unknown>>;
+      [tenantKey, categoryId, nodeType, version]));
 
     if (rows.length === 0) {
       throw new NotFoundException("No ONDC mapping found for category/node/version.");

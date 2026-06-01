@@ -12,6 +12,7 @@ import { AppRole } from "../common/rbac/roles";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { MarketplaceService } from "../marketplace/marketplace.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { tenantRaw, tenantExecRaw, globalQuery } from "../common/tenant/tenant-raw";
 import {
   ConnectorCap,
   ConnectorPublicationTarget,
@@ -149,8 +150,8 @@ export class ConnectorInstallerService {
 
   async listAvailableDefinitions(actor: ConnectorActor): Promise<ConnectorDefinitionRecord[]> {
     const stubSlugs = new Set(resolveStubConnectorSlugs());
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant().$queryRawUnsafe<Array<Record<string, unknown>>>(`
+    // globalQuery: connector_definitions is shared reference data — no tenant_key column.
+    const rows = await globalQuery<Array<Record<string, unknown>>>(this.prisma.tenant(), `
       SELECT
         id,
         slug,
@@ -238,9 +239,8 @@ export class ConnectorInstallerService {
         accountAlias,
       });
 
-      // RLS-BYPASS: manual tenant filter
-      const definitionRows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `
+      // globalQuery: connector_definitions is shared reference data — no tenant_key column.
+      const definitionRows = await globalQuery<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
         SELECT
           id,
           slug,
@@ -250,8 +250,7 @@ export class ConnectorInstallerService {
         WHERE slug = $1 AND is_active = TRUE
         LIMIT 1
         `,
-        normalizedSlug,
-      );
+        [normalizedSlug]);
       const definition = definitionRows[0];
       if (!definition) {
         throw new NotFoundException(`Connector '${normalizedSlug}' is not available.`);
@@ -269,9 +268,7 @@ export class ConnectorInstallerService {
       }
 
       try {
-        // RLS-BYPASS: manual tenant filter
-        await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-          `
+        await tenantExecRaw(this.prisma.tenant(tenantKey), `
           INSERT INTO connector_installations (
             id,
             tenant_key,
@@ -283,14 +280,13 @@ export class ConnectorInstallerService {
             installed_by
           ) VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7)
           `,
-          installationId,
+          [installationId,
           tenantKey,
           String(definition.id),
           accountAlias,
           externalAccountRef,
           "ACTIVE",
-          actor.actorId,
-        );
+          actor.actorId]);
       } catch (error: unknown) {
         if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
           throw new ConflictException(
@@ -444,8 +440,7 @@ export class ConnectorInstallerService {
 
     params.push(limit + 1);
     // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
       SELECT
         ci.id,
         ci.tenant_key AS "tenantKey",
@@ -471,8 +466,7 @@ export class ConnectorInstallerService {
       ORDER BY ci.installed_at DESC, ci.id DESC
       LIMIT $${params.length}
       `,
-      ...params,
-    );
+      params);
 
     const hasNext = rows.length > limit;
     const pageRows = hasNext ? rows.slice(0, limit) : rows;
@@ -552,16 +546,12 @@ export class ConnectorInstallerService {
         accountAlias: installation.accountAlias,
       });
 
-      // RLS-BYPASS: manual tenant filter
-      const affected = await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-        `
+      const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
         SET status = 'DISABLED', updated_at = NOW()
         WHERE id = $1 AND tenant_key = $2
         `,
-        installationId,
-        tenantKey,
-      );
+        [installationId, tenantKey]);
       if (affected === 0) {
         throw new NotFoundException("Connector installation not found.");
       }
@@ -642,15 +632,11 @@ export class ConnectorInstallerService {
         },
       });
 
-      // RLS-BYPASS: manual tenant filter
-      const affected = await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-        `
+      const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         DELETE FROM connector_installations
         WHERE id = $1 AND tenant_key = $2
         `,
-        installationId,
-        tenantKey,
-      );
+        [installationId, tenantKey]);
       if (affected === 0) {
         throw new NotFoundException("Connector installation not found.");
       }
@@ -697,9 +683,7 @@ export class ConnectorInstallerService {
         accountAlias: installation.accountAlias,
       });
 
-      // RLS-BYPASS: manual tenant filter
-      const affected = await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-        `
+      const affected = await tenantExecRaw(this.prisma.tenant(tenantKey), `
         UPDATE connector_installations
         SET
           status = 'ACTIVE',
@@ -707,9 +691,7 @@ export class ConnectorInstallerService {
           updated_at = NOW()
         WHERE id = $1 AND tenant_key = $2
         `,
-        installationId,
-        tenantKey,
-      );
+        [installationId, tenantKey]);
       if (affected === 0) {
         throw new NotFoundException("Connector installation not found.");
       }
@@ -1297,17 +1279,12 @@ export class ConnectorInstallerService {
     installationId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-      `
+    await tenantExecRaw(this.prisma.tenant(tenantKey), `
       UPDATE connector_installations
       SET metadata = metadata || $1::jsonb
       WHERE id = $2 AND tenant_key = $3
       `,
-      JSON.stringify(patch),
-      installationId,
-      tenantKey,
-    );
+      [JSON.stringify(patch), installationId, tenantKey]);
   }
 
   /**
@@ -1386,34 +1363,24 @@ export class ConnectorInstallerService {
   }
 
   private async cleanupInstallationArtifacts(tenantKey: string, installationId: string): Promise<void> {
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-      `
+    await tenantExecRaw(this.prisma.tenant(tenantKey), `
       DELETE FROM connector_credentials
       WHERE tenant_key = $1 AND installation_id = $2
       `,
-      tenantKey,
-      installationId,
-    );
+      [tenantKey, installationId]);
 
-    // RLS-BYPASS: manual tenant filter
-    await this.prisma.tenant(tenantKey).$executeRawUnsafe(
-      `
+    await tenantExecRaw(this.prisma.tenant(tenantKey), `
       DELETE FROM connector_installations
       WHERE tenant_key = $1 AND id = $2
       `,
-      tenantKey,
-      installationId,
-    );
+      [tenantKey, installationId]);
   }
 
   private async requireInstallationForAction(
     installationId: string,
     tenantKey: string,
   ): Promise<{ id: string; slug: string; accountAlias: string }> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
       SELECT
         ci.id,
         ci.account_alias AS "accountAlias",
@@ -1423,9 +1390,7 @@ export class ConnectorInstallerService {
       WHERE ci.id = $1 AND ci.tenant_key = $2
       LIMIT 1
       `,
-      installationId,
-      tenantKey,
-    );
+      [installationId, tenantKey]);
 
     const row = rows[0];
     if (!row) {
@@ -1451,9 +1416,7 @@ export class ConnectorInstallerService {
     externalAccountRef: string | null;
     metadata: Record<string, unknown>;
   }> {
-    // RLS-BYPASS: manual tenant filter
-    const rows = await this.prisma.tenant(tenantKey).$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `
+    const rows = await tenantRaw<Array<Record<string, unknown>>>(this.prisma.tenant(tenantKey), `
       SELECT
         ci.id,
         ci.tenant_key AS "tenantKey",
@@ -1467,9 +1430,7 @@ export class ConnectorInstallerService {
       WHERE ci.id = $1 AND ci.tenant_key = $2
       LIMIT 1
       `,
-      installationId,
-      tenantKey,
-    );
+      [installationId, tenantKey]);
 
     const row = rows[0];
     if (!row) {
