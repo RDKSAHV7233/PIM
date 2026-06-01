@@ -58,7 +58,7 @@ The on-call engineer should verify these items each morning:
 1. GitHub Actions: confirm the latest `e2e-staging.yml` nightly run completed successfully with 0 failures.
 2. GitHub Actions: confirm the latest `deploy-staging.yml` run, if any, completed successfully and uploaded artifacts.
 3. Railway: confirm the API and Web services show no unexpected restart spikes overnight.
-4. Staging API: check `GET https://api-staging-4faf.up.railway.app/api/v1/health` for `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
+4. Staging API: resolve the current public API origin from Railway first, then check `GET <staging-api-origin>/api/v1/health` for `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
 5. If self-serve signup rollout is in play, confirm the `Public signup smoke check` step is green in the latest staging deploy and nightly E2E runs.
 6. If the rollout expectation changed, verify `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED` matches the intended staging state.
    - Default state after the 2026-05-17 recovery is `false`.
@@ -119,8 +119,11 @@ If you only need non-commercial staging to boot and do not need real delivery, s
 
 ## 7. Useful commands and references
 
+- Resolve the current public Railway URLs:
+  - Web: `node scripts/resolve-railway-service-url.cjs`
+  - API: `RAILWAY_SERVICE="${RAILWAY_API_SERVICE:-Vexa API}" node scripts/resolve-railway-service-url.cjs`
 - Public health check:
-  - `curl https://api-staging-4faf.up.railway.app/api/v1/health`
+  - `curl "$(RAILWAY_SERVICE="${RAILWAY_API_SERVICE:-Vexa API}" node scripts/resolve-railway-service-url.cjs)/api/v1/health"`
 - Post-deploy verification:
   - `node scripts/staging-postdeploy-check.cjs`
   - Verifies both API auth/trust boundaries and admin-only SSR rendering on the deployed web app

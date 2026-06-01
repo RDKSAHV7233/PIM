@@ -32,7 +32,8 @@ CTO escalation: [FILL: CTO name, phone] — page for all P0s without exception
 
 1. Open the Railway project dashboard: [FILL: Railway project URL].
 2. Check staging health:
-   - `GET https://api-staging-4faf.up.railway.app/api/v1/health`
+   - Resolve the current public API origin with `RAILWAY_SERVICE="${RAILWAY_API_SERVICE:-Vexa API}" node scripts/resolve-railway-service-url.cjs`
+   - `GET <resolved-staging-api-origin>/api/v1/health`
    - Healthy response includes `status: "ok"`, `env: "staging"`, `queueRuntime.backend: "bullmq"`, and `queueRuntime.workerEnabled: true`.
    - If `env` is not `staging`, you are looking at the wrong service or the wrong URL.
    - If `queueRuntime.workerEnabled` is `false`, the deployed runtime is not matching the staging contract.

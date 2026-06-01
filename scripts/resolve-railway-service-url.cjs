@@ -118,12 +118,21 @@ function chooseBestUrl(urls) {
   return scored[0]?.url ?? "";
 }
 
+function resolveServiceTarget(env = process.env) {
+  return (
+    optionalEnv("RAILWAY_SERVICE_ID", env) ||
+    optionalEnv("RAILWAY_SERVICE", env) ||
+    optionalEnv("RAILWAY_WEB_SERVICE_ID", env) ||
+    requireEnv("RAILWAY_WEB_SERVICE", env)
+  );
+}
+
 function main(env = process.env) {
   const railwayBin = optionalEnv("RAILWAY_CLI_BIN", env) || "railway";
   const railwayEnv = buildRailwayEnv(env);
   const projectId = requireEnv("RAILWAY_PROJECT_ID", env);
   const environmentName = optionalEnv("RAILWAY_ENVIRONMENT_NAME", env) || "staging";
-  const serviceTarget = optionalEnv("RAILWAY_WEB_SERVICE_ID", env) || requireEnv("RAILWAY_WEB_SERVICE", env);
+  const serviceTarget = resolveServiceTarget(env);
 
   runCommand(railwayBin, ["link", "--project", projectId, "--environment", environmentName, "--service", serviceTarget, "--json"], railwayEnv);
 
@@ -152,9 +161,24 @@ function main(env = process.env) {
   throw new Error("Could not resolve a public Railway service URL from CLI status output.");
 }
 
-try {
-  main(process.env);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main(process.env);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  buildRailwayEnv,
+  chooseBestUrl,
+  collectUrlCandidates,
+  dedupe,
+  main,
+  normalizeUrl,
+  optionalEnv,
+  resolveServiceTarget,
+  requireEnv,
+  runCommand,
+};
