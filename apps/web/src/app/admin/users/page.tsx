@@ -23,6 +23,7 @@ import {
   getCachedBillingUsage,
   getConnectorPermissions,
   getTenantAuthPolicy,
+  getRoleCapabilities,
   getWorkspaceUsers,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -88,12 +89,13 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
 
   try {
-    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, authPolicy] = await Promise.all([
+    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, authPolicy, capabilities] = await Promise.all([
       getCachedBillingUsage(actorRole, authHeader),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
       getTenantAuthPolicy({ role: actorRole, authHeader }),
+      getRoleCapabilities({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -170,7 +172,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
-          <KpiCard label="Role Profiles" value={ROLE_PERMISSIONS.length} />
+          <KpiCard label="Role Profiles" value={capabilities.matrix.length} />
           <KpiCard label="Connector Overrides" value={connectorPermissions.length} tone="info" />
           <KpiCard
             label="User Principals"
@@ -610,7 +612,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   ),
                 },
               ]}
-              rows={[...ROLE_PERMISSIONS]}
+              rows={[...capabilities.matrix]}
               getRowKey={(entry) => entry.role}
               caption="Role Matrix"
             />

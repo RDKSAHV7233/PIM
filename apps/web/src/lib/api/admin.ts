@@ -58,6 +58,29 @@ export async function updateTenantAuthPolicy(
   return patchJson<TenantAuthPolicy>("/admin/auth-policy", dto, options);
 }
 
+export interface RoleCapabilityDescription {
+  role: AppRole;
+  description: string;
+}
+
+export interface RolePermissionMatrixEntry {
+  role: string;
+  catalog: string;
+  channels: string;
+  ops: string;
+  quality: string;
+  admin: string;
+}
+
+export interface RoleCapabilitiesResponse {
+  descriptions: RoleCapabilityDescription[];
+  matrix: readonly RolePermissionMatrixEntry[];
+}
+
+export async function getRoleCapabilities(options?: ApiRequestOptions) {
+  return fetchJson<RoleCapabilitiesResponse>("/admin/workspace/users/role-capabilities", undefined, options);
+}
+
 export async function getWorkspaceUsers(options?: ApiRequestOptions) {
   return fetchJson<WorkspaceUser[]>("/admin/workspace/users", undefined, options);
 }

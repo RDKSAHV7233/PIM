@@ -3242,6 +3242,14 @@ paths:
         "201":
           description: ""
       tags: *a24
+  /api/v1/admin/workspace/users/role-capabilities:
+    get:
+      operationId: WorkspaceUsersController_getRoleCapabilities
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags: *a24
   /api/v1/admin/workspace/users/{userId}/role:
     patch:
       operationId: WorkspaceUsersController_updateUserRole

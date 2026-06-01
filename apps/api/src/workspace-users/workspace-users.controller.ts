@@ -13,7 +13,7 @@ import type { Request } from "express";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
-import { AppRole, Roles } from "../common/rbac/roles";
+import { APP_ROLES, AppRole, ENTERPRISE_ROLE_CAPABILITIES, ROLE_PERMISSION_MATRIX, Roles } from "../common/rbac/roles";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
 import { SetUserPasswordDto } from "./dto/set-user-password.dto";
@@ -44,6 +44,18 @@ export class WorkspaceUsersController {
   listUsers(@Req() request: AuthenticatedRequest) {
     const actor = this.requireActor(request);
     return this.workspaceUsersService.listUsers(actor.tenantId);
+  }
+
+  /** Returns the role capability matrix for display in admin UIs. Static data. */
+  @Get("role-capabilities")
+  getRoleCapabilities() {
+    return {
+      descriptions: APP_ROLES.map((role) => ({
+        role,
+        description: ENTERPRISE_ROLE_CAPABILITIES[role],
+      })),
+      matrix: ROLE_PERMISSION_MATRIX,
+    };
   }
 
   @Post()

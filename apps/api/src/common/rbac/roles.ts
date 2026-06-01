@@ -26,3 +26,13 @@ export const ENTERPRISE_ROLE_CAPABILITIES: Record<AppRole, string> = {
 };
 
 export const Roles = (...roles: AppRole[]) => SetMetadata(ROLES_KEY, roles);
+
+/** Per-domain capability matrix for the four primary UI roles. Used by admin/users. */
+export const ROLE_PERMISSION_MATRIX = [
+  { role: "Admin",    catalog: "write", channels: "write", ops: "write", quality: "write", admin: "full" },
+  { role: "Editor",   catalog: "write", channels: "write", ops: "write", quality: "write", admin: "limited" },
+  { role: "Reviewer", catalog: "read",  channels: "read",  ops: "read",  quality: "approve", admin: "none" },
+  { role: "Viewer",   catalog: "read",  channels: "read",  ops: "read",  quality: "read",    admin: "none" },
+] as const;
+
+export type RolePermissionEntry = (typeof ROLE_PERMISSION_MATRIX)[number];
