@@ -91,6 +91,7 @@ function buildBaseEnv() {
   setDefaultEnv("QUEUE_BACKEND", "memory");
   setDefaultEnv("QUEUE_WORKER_ENABLED", "true");
   setDefaultEnv("JWT_BLOCKLIST_REDIS_DISABLED", "true");
+  setDefaultEnv("PIM_AUTH_REDIS_DISABLED", "true");  // Set L: auth middleware Redis gate
   setDefaultEnv("R2_ACCOUNT_ID", "local-dev");
   setDefaultEnv("R2_ACCESS_KEY_ID", "local-dev");
   setDefaultEnv("R2_SECRET_ACCESS_KEY", "local-dev");
