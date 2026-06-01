@@ -29,7 +29,7 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <div className={cn("rounded-lg border border-slate-200 bg-white p-6 text-center", className)}>
+    <div className={cn("rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm", className)}>
       {typeof icon === "string" ? (
         <p className="text-3xl">{icon}</p>
       ) : (

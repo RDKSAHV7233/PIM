@@ -52,10 +52,10 @@ export function DataGrid<T extends object>({
       <div className="hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
         <table className="w-full text-left text-sm">
           {caption ? <caption className="sr-only">{caption}</caption> : null}
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               {columns.map((col) => (
-                <th key={col.key} className={cn("px-3 py-2", col.headerClassName)}>
+                <th key={col.key} scope="col" className={cn("px-3 py-2.5", col.headerClassName)}>
                   {col.header}
                 </th>
               ))}
