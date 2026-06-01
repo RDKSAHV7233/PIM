@@ -22,9 +22,11 @@ import {
   getAccessScopeAssignments,
   getCachedBillingUsage,
   getConnectorPermissions,
+  getTenantAuthPolicy,
   getWorkspaceUsers,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { ROLE_PERMISSIONS, PILOT_ROLE_ALIGNMENT } from "@/lib/constants/role-alignment";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
@@ -33,50 +35,6 @@ interface AdminUsersPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
-const rolePermissions = [
-  { role: "Admin", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "full" },
-  { role: "Editor", catalog: "write", channels: "write", ops: "write", quality: "write", admin: "limited" },
-  { role: "Reviewer", catalog: "read", channels: "read", ops: "read", quality: "approve", admin: "none" },
-  { role: "Viewer", catalog: "read", channels: "read", ops: "read", quality: "read", admin: "none" },
-];
-
-const pilotRoleAlignment = [
-  {
-    persona: "Product admin",
-    currentModel: "Admin",
-    pilotHandling: "Workspace governance, catalog write, operations write, connector governance, users, API keys, webhooks, and audit logs.",
-  },
-  {
-    persona: "System admin",
-    currentModel: "Admin plus internal operator routes outside this customer shell",
-    pilotHandling: "Customer shell keeps internal/developer routes hidden; full system-admin split remains future scope.",
-  },
-  {
-    persona: "Editor",
-    currentModel: "Editor",
-    pilotHandling: "Catalog, import, bulk edit, connector setup, and quality triage write access without machine credential or audit-log administration.",
-  },
-  {
-    persona: "Reviewer",
-    currentModel: "Reviewer",
-    pilotHandling: "Read-only catalog and operations review with explicit approval/rejection authority.",
-  },
-  {
-    persona: "Vendor",
-    currentModel: "Viewer plus delegated access scopes",
-    pilotHandling: "Read-only frontend access; vendor-specific scoped write journeys remain future scope.",
-  },
-  {
-    persona: "Category manager",
-    currentModel: "Editor or reviewer plus delegated category/brand scopes",
-    pilotHandling: "Scope assignments are visible here; dedicated category-manager navigation remains future scope.",
-  },
-  {
-    persona: "API/client operations",
-    currentModel: "Admin-issued API key with assigned role",
-    pilotHandling: "Machine-principal access is managed from API Keys; scoped machine-principal UX remains future scope.",
-  },
-];
 
 function toneForCapability(value: string) {
   if (value === "write") {
@@ -130,11 +88,12 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
 
   try {
-    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([
+    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, authPolicy] = await Promise.all([
       getCachedBillingUsage(actorRole, authHeader),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
+      getTenantAuthPolicy({ role: actorRole, authHeader }),
     ]);
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -144,6 +103,8 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
     const activeUsers = workspaceUsers.filter((user) => user.isActive).length;
     const lockedUsers = workspaceUsers.filter((user) => user.isLocked && user.isActive).length;
     const adminUsers = workspaceUsers.filter((user) => user.role === "admin" && user.isActive).length;
+    const mfaEnrolledCount = workspaceUsers.filter((user) => user.mfaEnrolled && user.isActive).length;
+    const mfaUnenrolledCount = activeUsers - mfaEnrolledCount;
     const atUserLimit = usage.users.current >= usage.users.limit;
 
     return (
@@ -207,9 +168,9 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         {status === "scope-created" ? <InlineAlert tone="success" message="Delegated access scope assigned." /> : null}
         {status === "scope-deleted" ? <InlineAlert tone="success" message="Delegated access scope removed." /> : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <KpiCard label="User Limit" value={`${usage.users.current}/${usage.users.limit}`} />
-          <KpiCard label="Role Profiles" value={rolePermissions.length} />
+          <KpiCard label="Role Profiles" value={ROLE_PERMISSIONS.length} />
           <KpiCard label="Connector Overrides" value={connectorPermissions.length} tone="info" />
           <KpiCard
             label="User Principals"
@@ -217,6 +178,12 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
             helper={`Role principals: ${byPrincipalType.role ?? 0}`}
           />
           <KpiCard label="Delegated Scopes" value={accessScopeAssignments.length} tone="info" />
+          <KpiCard
+            label="MFA Enrolled"
+            value={`${mfaEnrolledCount}/${activeUsers}`}
+            tone={authPolicy.mfaRequired && mfaUnenrolledCount > 0 ? "danger" : mfaEnrolledCount === activeUsers && activeUsers > 0 ? "success" : "default"}
+            helper={authPolicy.mfaRequired ? "MFA required" : "MFA optional"}
+          />
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -447,15 +414,26 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                             </button>
                           </form>
                         ) : (
-                          <form action={lockWorkspaceUserAction}>
+                          <form action={lockWorkspaceUserAction} className="flex items-center gap-1.5">
                             <input type="hidden" name="userId" value={user.userId} />
-                            <input type="hidden" name="durationMinutes" value="60" />
+                            <select
+                              name="durationMinutes"
+                              defaultValue="60"
+                              disabled={isSelf || !user.isActive}
+                              aria-label="Lock duration"
+                              className="rounded-md border border-amber-300 px-2 py-1.5 text-sm text-amber-800 disabled:opacity-60"
+                            >
+                              <option value="60">60m</option>
+                              <option value="240">4h</option>
+                              <option value="1440">24h</option>
+                              <option value="10080">7d</option>
+                            </select>
                             <button
                               type="submit"
-                              className="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={isSelf || !user.isActive}
                             >
-                              Lock 60m
+                              Lock
                             </button>
                           </form>
                         )}
@@ -585,7 +563,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                 { key: "currentModel", header: "Current Web Model", cellClassName: "text-slate-700" },
                 { key: "pilotHandling", header: "Pilot Handling", cellClassName: "text-slate-600" },
               ]}
-              rows={pilotRoleAlignment}
+              rows={[...PILOT_ROLE_ALIGNMENT]}
               getRowKey={(entry) => entry.persona}
               caption="Pilot Role Alignment"
             />
@@ -632,10 +610,34 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
                   ),
                 },
               ]}
-              rows={rolePermissions}
+              rows={[...ROLE_PERMISSIONS]}
               getRowKey={(entry) => entry.role}
               caption="Role Matrix"
             />
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle>MFA Policy</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            MFA is currently{" "}
+            <span className={`font-semibold ${authPolicy.mfaRequired ? "text-emerald-700" : "text-slate-600"}`}>
+              {authPolicy.mfaRequired ? "required" : "optional"}
+            </span>
+            {" "}for this workspace.{" "}
+            {mfaUnenrolledCount > 0 && authPolicy.mfaRequired
+              ? `${mfaUnenrolledCount} active user${mfaUnenrolledCount === 1 ? " has" : "s have"} not yet enrolled.`
+              : mfaEnrolledCount === activeUsers && activeUsers > 0
+              ? "All active users are enrolled."
+              : null}
+          </p>
+          <div className="mt-3">
+            <Link
+              href="/admin/auth-policy"
+              className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Manage Auth Policy
+            </Link>
           </div>
         </Card>
 
