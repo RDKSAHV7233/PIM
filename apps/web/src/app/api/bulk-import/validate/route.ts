@@ -14,16 +14,24 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.text();
-  const response = await fetch(`${getApiBaseUrl()}/bulk-import/validate`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/bulk-import/validate`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body,
+      cache: "no-store",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "UPSTREAM_UNAVAILABLE", message: error instanceof Error ? error.message : "API unreachable" },
+      { status: 503 },
+    );
+  }
 
   const payload = await response.text();
   return new NextResponse(payload, {

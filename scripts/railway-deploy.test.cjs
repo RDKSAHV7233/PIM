@@ -151,6 +151,17 @@ function main() {
     "Deploy config must fail fast when API and web Railway targets point to the same service.",
   );
 
+  const nameFallbackConfig = resolveConfig(
+    {
+      RAILWAY_PROJECT_ID: "proj_name_fallback",
+      RAILWAY_API_SERVICE: "API",
+      RAILWAY_WEB_SERVICE: "PIM1",
+    },
+    repoRoot,
+  );
+  assert.equal(nameFallbackConfig.apiServiceTarget, "API");
+  assert.equal(nameFallbackConfig.webServiceTarget, "PIM1");
+
   assert.deepEqual(
     classifyDeployTargets([
       "apps/web/src/app/dashboard/page.tsx",

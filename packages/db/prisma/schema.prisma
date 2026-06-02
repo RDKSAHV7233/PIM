@@ -90,6 +90,11 @@ enum BulkImportRunStatus {
   failed
 }
 
+enum BulkImportRunMode {
+  standard
+  large
+}
+
 enum BulkImportJobRole {
   standard
   large_batch
@@ -445,6 +450,7 @@ model BulkImportRow {
   jobId              String
   job                BulkImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   runId              String?
+  run                BulkImportRun?      @relation(fields: [runId], references: [id], onDelete: SetNull)
   rowNumber          Int
   rowNumberGlobal    Int?
   rowNumberInBatch   Int?
@@ -471,21 +477,22 @@ model BulkImportRun {
   categoryId           String
   category             Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   status               BulkImportRunStatus  @default(uploaded)
-  sourceFileKey        String?
+  sourceFileKey        String
   sourceName           String?
-  sourceFormat         String               @default("csv")
-  sourceFileSizeBytes  Int?
+  sourceFormat         String
+  sourceFileSizeBytes  Int                  @default(0)
   sourceExpiresAt      DateTime?
-  totalRows            Int?
-  acceptedRows         Int?
-  failedRows           Int?
-  deadLetterRows       Int?
-  blockingIssueCount   Int?
-  warningCount         Int?
-  estimatedBatchCount  Int?
-  effectiveMode        String?
+  totalRows            Int                  @default(0)
+  acceptedRows         Int                  @default(0)
+  failedRows           Int                  @default(0)
+  deadLetterRows       Int                  @default(0)
+  blockingIssueCount   Int                  @default(0)
+  warningCount         Int                  @default(0)
+  estimatedBatchCount  Int                  @default(0)
+  effectiveMode        BulkImportRunMode?
   preflightSummary     Json?
   maxRetries           Int                  @default(3)
+  rows                 BulkImportRow[]
   jobs                 BulkImportJob[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt

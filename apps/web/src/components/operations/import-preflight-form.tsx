@@ -406,7 +406,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
                 {validation.canImport ? "Step 3 ready: start import" : "Step 3 disabled: blocking issues present"}
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                Step 4 repair queue: {validation.repairSummary.failedRows + validation.repairSummary.deadLetterRows}
+                Step 4 repair queue: {(validation.repairSummary?.failedRows ?? 0) + (validation.repairSummary?.deadLetterRows ?? 0)}
               </span>
             </div>
             <p className="mt-3 text-sm text-slate-600">
@@ -425,30 +425,30 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <p><span className="font-medium">Mapped fields:</span> {mappedFieldCount}</p>
-              <p><span className="font-medium">Unmapped source fields:</span> {validation.unmappedFields.length}</p>
-              <p><span className="font-medium">Unused headers:</span> {validation.unusedHeaders.length}</p>
+              <p><span className="font-medium">Unmapped source fields:</span> {(validation.unmappedFields ?? []).length}</p>
+              <p><span className="font-medium">Unused headers:</span> {(validation.unusedHeaders ?? []).length}</p>
             </div>
-            {validation.unmappedFields.length > 0 || validation.unusedHeaders.length > 0 ? (
+            {(validation.unmappedFields ?? []).length > 0 || (validation.unusedHeaders ?? []).length > 0 ? (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-900">Unmapped fields</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {validation.unmappedFields.length > 0 ? validation.unmappedFields.join(", ") : "None"}
+                    {(validation.unmappedFields ?? []).length > 0 ? validation.unmappedFields.join(", ") : "None"}
                   </p>
                 </div>
                 <div>
                   <p className="font-medium text-slate-900">Unused headers</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {validation.unusedHeaders.length > 0 ? validation.unusedHeaders.join(", ") : "None"}
+                    {(validation.unusedHeaders ?? []).length > 0 ? validation.unusedHeaders.join(", ") : "None"}
                   </p>
                 </div>
               </div>
             ) : null}
-            {validation.sampleIssues.length > 0 ? (
+            {(validation.sampleIssues ?? []).length > 0 ? (
               <div className="mt-3 space-y-2">
                 <p className="font-medium text-slate-900">Representative issues</p>
                 <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {validation.sampleIssues.map((issue, index) => (
+                  {(validation.sampleIssues ?? []).map((issue, index) => (
                     <li key={`${issue.code}-${issue.rowNumber}-${index}`}>
                       Row {issue.rowNumber || 0}: {issue.message}
                     </li>

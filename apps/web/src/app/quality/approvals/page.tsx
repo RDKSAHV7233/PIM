@@ -268,6 +268,44 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
               </p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
+              <StatusChip
+                label={`${productsWithRevisionEvidence} with revision evidence`}
+                tone={productsWithRevisionEvidence > 0 ? "success" : "neutral"}
+              />
+              <StatusChip
+                label={
+                  productsWithoutRevisionEvidence > 0
+                    ? `${productsWithoutRevisionEvidence} awaiting evidence`
+                    : "No evidence gaps"
+                }
+                tone={productsWithoutRevisionEvidence > 0 ? "warning" : "success"}
+              />
+              <StatusChip
+                label={`${revisionsWithDecisionNotes} with reviewer notes`}
+                tone={revisionsWithDecisionNotes > 0 ? "info" : "neutral"}
+              />
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              Use inline revision history first, then open product detail only when you need deeper readiness or validation context.
+            </p>
+          </Card>
+          <Card>
+            <CardTitle>Reviewer Decision Guide</CardTitle>
+            <p className="mt-2 text-sm text-slate-700">
+              Use the same evidence path on every item so approval stays consistent across the review queue.
+            </p>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p>
+                <strong>1. Check blockers.</strong> Confirm whether blocking issues are cleared before you approve.
+              </p>
+              <p>
+                <strong>2. Open product context.</strong> Review the product quality tab and the latest workflow updates before recording a final decision.
+              </p>
+              <p>
+                <strong>3. Use rejection intentionally.</strong> Reject items when quality or publish readiness still needs editor follow-up.
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/quality/issues?productStatus=in_review"
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

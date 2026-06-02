@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { BulkImportRunStatus, BulkImportRowStatus, BulkImportJobStatus, Prisma } from "@prisma/client";
+import { BulkImportRunStatus, BulkImportRunMode, BulkImportRowStatus, BulkImportJobStatus, Prisma } from "@prisma/client";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { PrismaService } from "../prisma/prisma.service";
@@ -484,22 +484,22 @@ export class BulkImportRunService implements OnModuleInit {
       }
 
       // Determine effective mode
-      let effectiveMode: "standard" | "large" | null;
+      let effectiveMode: BulkImportRunMode | null;
       let newStatus: BulkImportRunStatus;
-      let estimatedBatchCount: number | null = null;
+      let estimatedBatchCount = 0;
 
       if (mvpCeilingExceeded) {
         effectiveMode = null;
         newStatus = BulkImportRunStatus.preflight_blocked;
       } else if (blockingIssueCount > 0) {
-        effectiveMode = totalRows > LARGE_IMPORT_MODE_THRESHOLD ? "large" : "standard";
+        effectiveMode = totalRows > LARGE_IMPORT_MODE_THRESHOLD ? BulkImportRunMode.large : BulkImportRunMode.standard;
         newStatus = BulkImportRunStatus.preflight_blocked;
       } else {
-        effectiveMode = totalRows > LARGE_IMPORT_MODE_THRESHOLD ? "large" : "standard";
+        effectiveMode = totalRows > LARGE_IMPORT_MODE_THRESHOLD ? BulkImportRunMode.large : BulkImportRunMode.standard;
         newStatus = BulkImportRunStatus.preflight_ready;
       }
 
-      if (effectiveMode === "large" && !mvpCeilingExceeded) {
+      if (effectiveMode === BulkImportRunMode.large && !mvpCeilingExceeded) {
         estimatedBatchCount = Math.ceil(totalRows / LARGE_IMPORT_BATCH_SIZE);
       }
 

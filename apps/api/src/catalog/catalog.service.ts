@@ -1000,6 +1000,30 @@ export class CatalogService {
     await this.auditService.record({
       actorId: actor.id,
       actorRole: actor.role,
+      action: "REVIEW_DECISION",
+      resource: "/api/v1/catalog/products/:id/review-decision",
+      resourceId: product.id,
+      metadata: {
+        model: "Product",
+        fromStatus: current.status,
+        toStatus: nextStatus,
+        changedFields: [
+          {
+            path: "status",
+            label: "Status",
+            before: current.status,
+            after: nextStatus,
+          },
+        ],
+        changedFieldCount: 1,
+        changedSectionCount: 1,
+        decisionNote: dto.note?.trim() || null,
+      },
+    });
+
+    await this.auditService.record({
+      actorId: actor.id,
+      actorRole: actor.role,
       action: "STATUS_TRANSITION",
       resource: "/api/v1/catalog/products/:id/review-decision",
       resourceId: product.id,
