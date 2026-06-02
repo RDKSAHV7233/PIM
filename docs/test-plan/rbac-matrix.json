@@ -1,0 +1,176 @@
+{
+  "_generated": "From @Roles() decorators in apps/api/src/ — 2026-06-02",
+  "_note": "This file is the single source of truth for RBAC. Seam tests compare against this.",
+  "surfaces": {
+    "catalog_read": {
+      "description": "Read products, variants, revisions, activity",
+      "roles": ["admin", "editor", "approver", "reviewer", "viewer"],
+      "source": "catalog.controller.ts — multiple GET endpoints with explicit @Roles"
+    },
+    "catalog_relationships_read": {
+      "description": "List product relationships (bundles, kits)",
+      "roles": ["admin", "editor", "reviewer", "viewer"],
+      "source": "catalog.controller.ts:405"
+    },
+    "catalog_write": {
+      "description": "Create/update products, variants, attributes",
+      "roles": ["admin", "editor"],
+      "source": "catalog.controller.ts:138,154,319,353,365,377,390,418"
+    },
+    "catalog_delete": {
+      "description": "Soft-delete and purge products",
+      "roles": ["admin"],
+      "source": "catalog.controller.ts:282,330"
+    },
+    "catalog_approve": {
+      "description": "Approve/reject products, review decisions",
+      "roles": ["admin", "approver", "reviewer"],
+      "source": "catalog.controller.ts:167,240,307"
+    },
+    "catalog_comments": {
+      "description": "Add approval comments",
+      "roles": ["admin", "editor", "reviewer", "approver"],
+      "source": "catalog.controller.ts:180,266"
+    },
+    "catalog_status": {
+      "description": "Submit for review, update product status",
+      "roles": ["admin", "editor", "approver"],
+      "source": "catalog.controller.ts:225"
+    },
+    "bulk_import": {
+      "description": "Upload, process, repair bulk imports",
+      "roles": ["admin", "editor"],
+      "source": "bulk-import.controller.ts — all endpoints @Roles(admin, editor)"
+    },
+    "bulk_edit": {
+      "description": "Scope, preview, apply bulk edits",
+      "roles": ["admin", "editor"],
+      "source": "bulk-edit.controller.ts — all endpoints @Roles(admin, editor)"
+    },
+    "marketplace_channels_read": {
+      "description": "List channels, readiness, mappings (read)",
+      "roles": ["admin", "editor", "channel_manager"],
+      "source": "marketplace.controller.ts:59,65,78,99,113,131,237,594"
+    },
+    "marketplace_channels_write": {
+      "description": "Create/update export jobs, mapping templates",
+      "roles": ["admin", "editor"],
+      "source": "marketplace.controller.ts — most POST/PUT @Roles(admin, editor)"
+    },
+    "marketplace_publish": {
+      "description": "Submit products for publish, create export jobs",
+      "roles": ["admin", "editor", "publisher", "channel_manager"],
+      "source": "marketplace.controller.ts:169,329,364"
+    },
+    "marketplace_publish_trigger": {
+      "description": "Trigger batch publish, check readiness",
+      "roles": ["admin", "channel_manager", "publisher"],
+      "source": "marketplace.controller.ts:182,220"
+    },
+    "submissions_read": {
+      "description": "List and view submission status",
+      "roles": ["admin", "editor", "publisher", "channel_manager"],
+      "source": "submissions.controller.ts:12 (class-level)"
+    },
+    "submissions_write": {
+      "description": "Update submission status, retry",
+      "roles": ["admin", "editor"],
+      "source": "submissions.controller.ts:62,70"
+    },
+    "connector_list": {
+      "description": "List installed connectors (read)",
+      "roles": ["admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher"],
+      "source": "connector-installer.controller.ts:39,60"
+    },
+    "connector_install": {
+      "description": "Install, configure, manage connector credentials",
+      "roles": ["admin", "editor", "connector_admin"],
+      "source": "connector-installer.controller.ts:46,68,87,93,105,173,196,210,226"
+    },
+    "connector_admin_only": {
+      "description": "Delete connector, manage permissions",
+      "roles": ["admin"],
+      "source": "connector-installer.controller.ts:75,240,247,257"
+    },
+    "taxonomy_read": {
+      "description": "List categories, attributes (read — default authenticated read)",
+      "roles": ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"],
+      "source": "taxonomy.controller.ts — GET endpoints use default read policy"
+    },
+    "taxonomy_write": {
+      "description": "Create/update/delete categories, attributes",
+      "roles": ["admin"],
+      "source": "taxonomy.controller.ts:63,70,77,97,109,121"
+    },
+    "compliance_read": {
+      "description": "View validation issues (read — authenticated read policy)",
+      "roles": ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"],
+      "source": "issues.controller.ts — GET uses authenticated read"
+    },
+    "compliance_write": {
+      "description": "Resolve/update compliance issues",
+      "roles": ["admin", "editor"],
+      "source": "issues.controller.ts:35"
+    },
+    "compliance_rules": {
+      "description": "Manage validation rules",
+      "roles": ["admin"],
+      "source": "compliance.controller.ts:29,37,44,51"
+    },
+    "dashboard": {
+      "description": "View dashboard, snapshots, KPI trends",
+      "roles": ["admin", "editor"],
+      "source": "dashboard.controller.ts:40,50,82"
+    },
+    "admin_users": {
+      "description": "Manage workspace users, roles",
+      "roles": ["admin"],
+      "source": "workspace-users.controller.ts:40 (class-level)"
+    },
+    "admin_api_keys": {
+      "description": "CRUD API keys",
+      "roles": ["admin"],
+      "source": "api-keys.controller.ts:34 (class-level)"
+    },
+    "admin_webhooks": {
+      "description": "CRUD outbound webhooks",
+      "roles": ["admin"],
+      "source": "outbound-webhooks.controller.ts:39 (class-level)"
+    },
+    "admin_audit": {
+      "description": "View audit logs",
+      "roles": ["admin"],
+      "source": "audit.controller.ts:42,50,57"
+    },
+    "admin_auth_policy": {
+      "description": "Manage auth policy, MFA, OIDC",
+      "roles": ["admin"],
+      "source": "auth-policy.controller.ts:24 (class-level)"
+    },
+    "billing_read": {
+      "description": "View plan usage",
+      "roles": ["admin", "editor"],
+      "source": "billing.controller.ts:54"
+    },
+    "billing_admin": {
+      "description": "Manage plan tier, billing contact, checkout",
+      "roles": ["admin"],
+      "source": "billing.controller.ts:64,73,111,123,171,204"
+    },
+    "mfa": {
+      "description": "MFA enrollment, challenge, backup codes",
+      "roles": ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"],
+      "source": "mfa.controller.ts — all @Roles(...APP_ROLES)"
+    },
+    "auth_self": {
+      "description": "Password change, session management, privacy",
+      "roles": ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"],
+      "source": "auth.controller.ts — all @Roles(...APP_ROLES)"
+    },
+    "rejection_intelligence": {
+      "description": "View rejection predictions",
+      "roles": ["admin", "editor", "reviewer"],
+      "source": "rejection-intelligence.controller.ts:36"
+    }
+  }
+}

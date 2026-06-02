@@ -11,6 +11,10 @@ const STORAGE_STATE_DIR = path.join(__dirname, ".runlogs", "storage-state");
 const storageStatePaths = {
   admin: path.join(STORAGE_STATE_DIR, "admin.json"),
   editor: path.join(STORAGE_STATE_DIR, "editor.json"),
+  publisher: path.join(STORAGE_STATE_DIR, "publisher.json"),
+  approver: path.join(STORAGE_STATE_DIR, "approver.json"),
+  channel_manager: path.join(STORAGE_STATE_DIR, "channel_manager.json"),
+  connector_admin: path.join(STORAGE_STATE_DIR, "connector_admin.json"),
   reviewer: path.join(STORAGE_STATE_DIR, "reviewer.json"),
   viewer: path.join(STORAGE_STATE_DIR, "viewer.json"),
 };

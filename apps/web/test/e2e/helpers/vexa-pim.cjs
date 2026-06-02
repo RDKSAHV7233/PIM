@@ -8,10 +8,14 @@ const DEFAULT_API_URL = process.env.PLAYWRIGHT_API_URL || "http://127.0.0.1:4001
 const DEFAULT_PASSWORD = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
 
 const USERS = {
-  admin: { userId: process.env.PLAYWRIGHT_ADMIN_USER || "admin@vexa-pim.local", roleBadge: "Role: Admin" },
-  editor: { userId: process.env.PLAYWRIGHT_EDITOR_USER || "editor@vexa-pim.local", roleBadge: "Role: Editor" },
-  reviewer: { userId: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@vexa-pim.local", roleBadge: "Role: Reviewer" },
-  viewer: { userId: process.env.PLAYWRIGHT_VIEWER_USER || "viewer@vexa-pim.local", roleBadge: "Role: Viewer" },
+  admin:           { userId: process.env.PLAYWRIGHT_ADMIN_USER           || "admin@vexa-pim.local",           roleBadge: "Role: Admin" },
+  editor:          { userId: process.env.PLAYWRIGHT_EDITOR_USER          || "editor@vexa-pim.local",          roleBadge: "Role: Editor" },
+  publisher:       { userId: process.env.PLAYWRIGHT_PUBLISHER_USER       || "publisher@vexa-pim.local",       roleBadge: "Role: Publisher" },
+  approver:        { userId: process.env.PLAYWRIGHT_APPROVER_USER        || "approver@vexa-pim.local",        roleBadge: "Role: Approver" },
+  channel_manager: { userId: process.env.PLAYWRIGHT_CHANNEL_MANAGER_USER || "channel_manager@vexa-pim.local", roleBadge: "Role: Channel Manager" },
+  connector_admin: { userId: process.env.PLAYWRIGHT_CONNECTOR_ADMIN_USER || "connector_admin@vexa-pim.local", roleBadge: "Role: Connector Admin" },
+  reviewer:        { userId: process.env.PLAYWRIGHT_REVIEWER_USER        || "reviewer@vexa-pim.local",        roleBadge: "Role: Reviewer" },
+  viewer:          { userId: process.env.PLAYWRIGHT_VIEWER_USER          || "viewer@vexa-pim.local",          roleBadge: "Role: Viewer" },
 };
 
 const LOGIN_CACHE = new Map();

@@ -71,10 +71,14 @@ module.exports = async function globalSetup() {
 
   const password = process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password";
   const roleUsers = {
-    admin:    process.env.PLAYWRIGHT_ADMIN_USER    || "admin@vexa-pim.local",
-    editor:   process.env.PLAYWRIGHT_EDITOR_USER   || "editor@vexa-pim.local",
-    reviewer: process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@vexa-pim.local",
-    viewer:   process.env.PLAYWRIGHT_VIEWER_USER   || "viewer@vexa-pim.local",
+    admin:           process.env.PLAYWRIGHT_ADMIN_USER           || "admin@vexa-pim.local",
+    editor:          process.env.PLAYWRIGHT_EDITOR_USER          || "editor@vexa-pim.local",
+    publisher:       process.env.PLAYWRIGHT_PUBLISHER_USER       || "publisher@vexa-pim.local",
+    approver:        process.env.PLAYWRIGHT_APPROVER_USER        || "approver@vexa-pim.local",
+    channel_manager: process.env.PLAYWRIGHT_CHANNEL_MANAGER_USER || "channel_manager@vexa-pim.local",
+    connector_admin: process.env.PLAYWRIGHT_CONNECTOR_ADMIN_USER || "connector_admin@vexa-pim.local",
+    reviewer:        process.env.PLAYWRIGHT_REVIEWER_USER        || "reviewer@vexa-pim.local",
+    viewer:          process.env.PLAYWRIGHT_VIEWER_USER          || "viewer@vexa-pim.local",
   };
 
   const tokenCache = {};
