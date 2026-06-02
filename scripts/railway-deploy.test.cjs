@@ -153,14 +153,15 @@ function main() {
 
   const nameFallbackConfig = resolveConfig(
     {
+      RAILWAY_TOKEN: "token_name_fallback",
       RAILWAY_PROJECT_ID: "proj_name_fallback",
       RAILWAY_API_SERVICE: "API",
       RAILWAY_WEB_SERVICE: "PIM1",
     },
     repoRoot,
   );
-  assert.equal(nameFallbackConfig.apiServiceTarget, "API");
-  assert.equal(nameFallbackConfig.webServiceTarget, "PIM1");
+  assert.deepEqual(nameFallbackConfig.apiServiceTargets, ["API"]);
+  assert.deepEqual(nameFallbackConfig.webServiceTargets, ["PIM1"]);
 
   assert.deepEqual(
     classifyDeployTargets([
