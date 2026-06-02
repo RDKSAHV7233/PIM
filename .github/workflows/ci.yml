@@ -121,6 +121,14 @@ jobs:
       - name: Build Web
         run: npm run build --workspace @pim1/web
 
+      - name: Seam tests (RBAC parity, plan-limit coverage, error contract)
+        run: |
+          if [ -d "apps/api/test/seam" ] && [ -n "$(ls apps/api/test/seam/*.cjs 2>/dev/null)" ]; then
+            npx jest apps/api/test/seam/ --no-coverage
+          else
+            echo "Seam test directory not present yet — skipping (add tests via fix/phase3-5-tests)"
+          fi
+
       - name: DevOps contract tests
         run: |
           node scripts/check-pr-scope.test.cjs
