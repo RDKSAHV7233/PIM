@@ -6,6 +6,17 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "actions.ts");
+const ACCESS_SCOPE_FORM = path.join(
+  REPO_ROOT,
+  "apps",
+  "web",
+  "src",
+  "app",
+  "admin",
+  "users",
+  "_components",
+  "access-scope-form.tsx",
+);
 
 function assert(condition, message) {
   if (!condition) {
@@ -16,6 +27,7 @@ function assert(condition, message) {
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
+  const accessScopeFormSource = fs.readFileSync(ACCESS_SCOPE_FORM, "utf8");
 
   assert(
       source.includes("await getServerSession();") &&
@@ -29,7 +41,7 @@ function run() {
     "Admin users must normalize page status and invite query state while deriving write access from shared role capabilities.",
   );
   assert(
-    source.includes("const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments] = await Promise.all([") &&
+    source.includes("const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, capabilities] = await Promise.all([") &&
       source.includes("getBillingUsage({ role: actorRole, authHeader })") &&
       source.includes("getConnectorPermissions(undefined, { role: actorRole, authHeader })") &&
       source.includes("getWorkspaceUsers({ role: actorRole, authHeader })") &&
@@ -100,14 +112,15 @@ function run() {
   assert(
     source.includes("<CardTitle>Delegated Access Scopes</CardTitle>") &&
       source.includes("Admin-only delegated scope assignments constrain non-admin access by category, brand, channel, and connector account.") &&
-      source.includes("form action={createAccessScopeAssignmentAction}") &&
-      source.includes('name="subjectType"') &&
-      source.includes('name="subjectId"') &&
-      source.includes('name="scopeType"') &&
-      source.includes('name="categoryId"') &&
-      source.includes('name="scopeValue"') &&
-      source.includes('name="connectorInstallationId"') &&
-      source.includes('name="actions"') &&
+      accessScopeFormSource.includes("form action={createAccessScopeAssignmentAction}") &&
+      accessScopeFormSource.includes('name="subjectType"') &&
+      accessScopeFormSource.includes('name="subjectId"') &&
+      accessScopeFormSource.includes('name="scopeType"') &&
+      accessScopeFormSource.includes('field: "categoryId"') &&
+      accessScopeFormSource.includes('field: "scopeValue"') &&
+      accessScopeFormSource.includes('field: "connectorInstallationId"') &&
+      accessScopeFormSource.includes("name={active.field}") &&
+      accessScopeFormSource.includes('name="actions"') &&
       source.includes("form action={deleteAccessScopeAssignmentAction}"),
     "Admin users must keep delegated scope assignment management in the admin-only users workspace.",
   );

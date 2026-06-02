@@ -8,10 +8,9 @@ describe("ConnectorInstallerService", () => {
     const queryMock = jest.fn();
     const executeMock = jest.fn();
     const tenantMock = jest.fn().mockReturnValue({
-      // RLS-BYPASS: manual tenant filter
-      $queryRawUnsafe: queryMock,
-      // RLS-BYPASS: manual tenant filter
-      $executeRawUnsafe: executeMock,
+      // RLS-BYPASS: manual tenant filter — tenantRaw/tenantExecRaw/globalQuery call through to these
+      $queryRawUnsafe: queryMock, // RLS-BYPASS: manual tenant filter
+      $executeRawUnsafe: executeMock, // RLS-BYPASS: manual tenant filter
     });
     const prisma = {
       tenant: tenantMock,

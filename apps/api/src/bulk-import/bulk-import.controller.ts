@@ -9,6 +9,7 @@ import { BulkImportService } from "./bulk-import.service";
 import { BulkImportRunService } from "./bulk-import-run.service";
 import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportRunDto } from "./dto/create-bulk-import-run.dto";
+import { CreateBulkImportRunJsonDto } from "./dto/create-bulk-import-run-json.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { ImportValidateDto } from "./dto/import-validate.dto";
 import { ProcessBulkImportJobDto } from "./dto/process-bulk-import-job.dto";
@@ -260,6 +261,19 @@ export class BulkImportController {
   }
 
   // ── Run endpoints (Large Import Mode MVP) ────────────────────────────────────
+
+  @Roles("admin", "editor")
+  @Post("runs")
+  createRunFromJson(
+    @Body() dto: CreateBulkImportRunJsonDto,
+    @Req() request: { pimUserId?: string; pimRole?: AppRole; pimTenant?: string },
+  ) {
+    return this.bulkImportRunService.createRunFromJson(dto, {
+      actorId: request.pimUserId,
+      actorRole: request.pimRole,
+      tenantId: request.pimTenant,
+    });
+  }
 
   @Roles("admin", "editor")
   @Post("runs/upload")

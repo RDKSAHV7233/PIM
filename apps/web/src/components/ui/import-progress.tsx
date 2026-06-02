@@ -67,7 +67,7 @@ export function ImportProgress({ initialJob, role }: ImportProgressProps) {
   return (
     <div className="space-y-2 rounded-md border border-slate-200 bg-white p-3">
       <p className="text-sm font-medium text-slate-800">{translateJobStatus(job.status)}</p>
-      <div className="h-2 rounded-full bg-slate-100">
+      <div className="h-2 rounded-full bg-slate-100" role="progressbar" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100} aria-label="Import progress">
         <div
           className="h-2 rounded-full bg-orange-500 transition-all duration-500 ease-out"
           style={{ width: `${progressPct}%` }}

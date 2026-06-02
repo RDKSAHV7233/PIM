@@ -20,17 +20,38 @@ import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
   getAccessScopeAssignments,
-  getCachedBillingUsage,
+  getBillingUsage,
   getConnectorPermissions,
   getTenantAuthPolicy,
   getRoleCapabilities,
   getWorkspaceUsers,
+  type TenantAuthPolicy,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { ROLE_PERMISSIONS, PILOT_ROLE_ALIGNMENT } from "@/lib/constants/role-alignment";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
+
+const DEFAULT_TENANT_AUTH_POLICY: TenantAuthPolicy = {
+  id: null,
+  tenantKey: "",
+  externalIdentityMode: false,
+  mfaRequired: false,
+  mfaGracePeriodDays: 0,
+  sessionTimeoutMinutes: 0,
+  allowedAuthMethods: ["password"],
+  isPersisted: false,
+  createdBy: null,
+  updatedBy: null,
+  createdAt: null,
+  updatedAt: null,
+  runtimeApplied: {
+    sessionTimeout: false,
+    mfaEnrollment: false,
+    externalIdentity: false,
+  },
+};
 
 interface AdminUsersPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -89,14 +110,24 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
   const inviteFieldErrors = resolveInviteFieldErrors(errorMessage);
 
   try {
-    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, authPolicy, capabilities] = await Promise.all([
-      getCachedBillingUsage(actorRole, authHeader),
+    const [usage, connectorPermissions, workspaceUsers, accessScopeAssignments, capabilities] = await Promise.all([
+      getBillingUsage({ role: actorRole, authHeader }),
       getConnectorPermissions(undefined, { role: actorRole, authHeader }),
       getWorkspaceUsers({ role: actorRole, authHeader }),
       getAccessScopeAssignments({ role: actorRole, authHeader }),
-      getTenantAuthPolicy({ role: actorRole, authHeader }),
       getRoleCapabilities({ role: actorRole, authHeader }),
     ]);
+    let authPolicy = {
+      ...DEFAULT_TENANT_AUTH_POLICY,
+      tenantKey: usage.profile.tenantKey,
+    };
+    try {
+      authPolicy = await getTenantAuthPolicy({ role: actorRole, authHeader });
+    } catch (error: unknown) {
+      if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+        redirect(buildLoginRedirect("/admin/users", error));
+      }
+    }
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
       acc[item.principalType] = (acc[item.principalType] ?? 0) + 1;

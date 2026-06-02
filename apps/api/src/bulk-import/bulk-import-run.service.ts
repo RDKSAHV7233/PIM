@@ -19,6 +19,7 @@ import {
   resolveCursorLimit,
 } from "../common/pagination/cursor-pagination";
 import { CreateBulkImportRunDto } from "./dto/create-bulk-import-run.dto";
+import { CreateBulkImportRunJsonDto } from "./dto/create-bulk-import-run-json.dto";
 
 const LARGE_IMPORT_MAX_FILE_SIZE_BYTES = 32 * 1024 * 1024; // 32 MB
 const LARGE_IMPORT_ROW_CEILING = 30_000;
@@ -172,6 +173,62 @@ export class BulkImportRunService implements OnModuleInit {
     });
 
     return run;
+  }
+
+  async createRunFromJson(dto: CreateBulkImportRunJsonDto, actor?: PolicyActor) {
+    let fileBuffer: Buffer;
+    let originalName = dto.sourceName?.trim() || "import";
+
+    if (dto.fileContentBase64) {
+      fileBuffer = Buffer.from(dto.fileContentBase64, "base64");
+      if (!originalName.includes(".")) {
+        originalName += dto.sourceFormat === "json" ? ".json" : ".csv";
+      }
+    } else if (dto.csvContent) {
+      fileBuffer = Buffer.from(dto.csvContent, "utf-8");
+      if (!originalName.includes(".")) {
+        originalName += ".csv";
+      }
+    } else if (dto.rows && Array.isArray(dto.rows)) {
+      if (dto.sourceFormat === "json") {
+        fileBuffer = Buffer.from(JSON.stringify(dto.rows), "utf-8");
+        if (!originalName.includes(".")) {
+          originalName += ".json";
+        }
+      } else {
+        const headers = this.extractCsvHeaders(dto.rows);
+        const lines = [headers.join(",")];
+        for (const row of dto.rows) {
+          lines.push(headers.map((h) => this.toCsvCell(String(row[h] ?? ""))).join(","));
+        }
+        fileBuffer = Buffer.from(lines.join("\r\n"), "utf-8");
+        if (!originalName.includes(".")) {
+          originalName += ".csv";
+        }
+      }
+    } else {
+      throw new BadRequestException(
+        "One of fileContentBase64, csvContent, or rows is required.",
+      );
+    }
+
+    return this.uploadRun(
+      { categoryId: dto.categoryId, sourceName: dto.sourceName, maxRetries: dto.maxRetries },
+      fileBuffer,
+      originalName,
+      fileBuffer.length,
+      actor,
+    );
+  }
+
+  private extractCsvHeaders(rows: Record<string, unknown>[]): string[] {
+    const headerSet = new Set<string>();
+    for (const row of rows) {
+      for (const key of Object.keys(row)) {
+        headerSet.add(key);
+      }
+    }
+    return [...headerSet];
   }
 
   async listRuns(status?: string, pagination?: CursorPaginationQuery, actor?: PolicyActor) {

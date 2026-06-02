@@ -298,9 +298,9 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             <span className={trend.className}>{trend.label}</span>
             <span className="text-slate-500">Yesterday: {inbox.resolvedYesterday}</span>
           </div>
-          <div className="mt-4 h-2 rounded-full bg-slate-100">
+          <div className="mt-4 h-2 rounded-full bg-slate-100" role="progressbar" aria-valuenow={resolvedProgressPct} aria-valuemin={0} aria-valuemax={100} aria-label="Issue resolution progress">
             <div
-              className="h-2 rounded-full bg-emerald-500"
+              className="h-2 rounded-full bg-emerald-500 transition-all"
               style={{ width: `${resolvedProgressPct}%` }}
             />
           </div>

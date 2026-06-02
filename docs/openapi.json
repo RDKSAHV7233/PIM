@@ -4076,6 +4076,51 @@
         ]
       }
     },
+    "/api/v1/bulk-import/runs": {
+      "post": {
+        "operationId": "BulkImportController_createRunFromJson",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBulkImportRunJsonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      },
+      "get": {
+        "operationId": "BulkImportController_listRuns",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "BulkImport"
+        ]
+      }
+    },
     "/api/v1/bulk-import/runs/upload": {
       "post": {
         "operationId": "BulkImportController_uploadRun",
@@ -4092,29 +4137,6 @@
         },
         "responses": {
           "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "BulkImport"
-        ]
-      }
-    },
-    "/api/v1/bulk-import/runs": {
-      "get": {
-        "operationId": "BulkImportController_listRuns",
-        "parameters": [
-          {
-            "name": "status",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
             "description": ""
           }
         },
@@ -6405,6 +6427,10 @@
         "properties": {}
       },
       "RepairBulkImportRowDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateBulkImportRunJsonDto": {
         "type": "object",
         "properties": {}
       },

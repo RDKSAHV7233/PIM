@@ -2388,6 +2388,32 @@ paths:
         "201":
           description: ""
       tags: *a18
+  /api/v1/bulk-import/runs:
+    post:
+      operationId: BulkImportController_createRunFromJson
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBulkImportRunJsonDto"
+      responses:
+        "201":
+          description: ""
+      tags: *a18
+    get:
+      operationId: BulkImportController_listRuns
+      parameters:
+        - name: status
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags: *a18
   /api/v1/bulk-import/runs/upload:
     post:
       operationId: BulkImportController_uploadRun
@@ -2400,19 +2426,6 @@ paths:
               $ref: "#/components/schemas/CreateBulkImportRunDto"
       responses:
         "201":
-          description: ""
-      tags: *a18
-  /api/v1/bulk-import/runs:
-    get:
-      operationId: BulkImportController_listRuns
-      parameters:
-        - name: status
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
           description: ""
       tags: *a18
   /api/v1/bulk-import/runs/{id}:
@@ -3858,6 +3871,9 @@ components:
       type: object
       properties: {}
     RepairBulkImportRowDto:
+      type: object
+      properties: {}
+    CreateBulkImportRunJsonDto:
       type: object
       properties: {}
     CreateBulkImportRunDto:
