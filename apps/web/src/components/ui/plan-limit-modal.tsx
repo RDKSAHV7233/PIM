@@ -27,6 +27,15 @@ function normalizeResourceLabel(resource: string): string {
   if (normalized === "storagegb" || normalized === "storage_gb") {
     return "storage";
   }
+  if (normalized === "users") {
+    return "user";
+  }
+  if (normalized === "connectors_installations") {
+    return "connector installation";
+  }
+  if (normalized === "connector_accounts") {
+    return "connector account";
+  }
   return resource;
 }
 

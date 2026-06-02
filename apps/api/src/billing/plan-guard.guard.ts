@@ -34,9 +34,12 @@ export class PlanGuard implements CanActivate {
     // monthly submission counters and hitting PLAN_LIMIT_EXCEEDED mid-run.
     // The guard is locked to APP_ENV=development — staging and production
     // are immune regardless of the env var value.
+    // Set PIM_PLAN_GUARD_FORCE_ENFORCE=true to override this bypass in E2E
+    // tests that need to verify plan-limit enforcement in dev mode.
     const appEnv = String(process.env.APP_ENV ?? "").trim().toLowerCase();
     const tierOverride = String(process.env.PIM_PLAN_TIER_OVERRIDE ?? "").trim().toUpperCase();
-    if (tierOverride && appEnv === "development") {
+    const forceEnforce = String(process.env.PIM_PLAN_GUARD_FORCE_ENFORCE ?? "").trim().toLowerCase();
+    if (tierOverride && appEnv === "development" && forceEnforce !== "true") {
       this.logger.warn(
         `Quota check bypassed: PIM_PLAN_TIER_OVERRIDE=${tierOverride} (APP_ENV=development). ` +
           `Remove PIM_PLAN_TIER_OVERRIDE before deploying to staging or production.`,

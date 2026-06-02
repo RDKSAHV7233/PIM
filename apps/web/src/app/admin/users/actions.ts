@@ -68,6 +68,15 @@ function resolveCreateUserErrorMessage(error: unknown): string {
       if (code === "PLAN_LIMIT_EXCEEDED") {
         return "Plan limit reached. Review your plan on the Plan & Usage page.";
       }
+      if (code === "USER_ALREADY_EXISTS") {
+        return "A user with this email already exists in the workspace.";
+      }
+      if (code === "USER_ID_REQUIRED") {
+        return "An email address is required to invite a user.";
+      }
+      if (code === "ACCESS_POLICY_DENIED") {
+        return "You do not have permission to perform this action.";
+      }
     }
   }
   return error instanceof Error ? error.message : "Unable to invite workspace user.";

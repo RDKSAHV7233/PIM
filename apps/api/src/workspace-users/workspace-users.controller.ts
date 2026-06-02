@@ -10,6 +10,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -59,6 +60,7 @@ export class WorkspaceUsersController {
   }
 
   @Post()
+  @RequirePlanLimit("users")
   createUser(
     @Body() dto: CreateWorkspaceUserDto,
     @Req() request: AuthenticatedRequest,

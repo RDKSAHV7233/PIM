@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -14,11 +14,30 @@ const PLAN_TIER_TO_PRICE_ID_ENV: Record<string, string> = {
 };
 
 @Injectable()
-export class StripeService {
+export class StripeService implements OnModuleInit {
   private readonly logger = new Logger(StripeService.name);
   private stripeClient: StripeClient | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit(): void {
+    if (!this.isEnabled()) {
+      return;
+    }
+    const missingPriceIds: string[] = [];
+    for (const [tier, envKey] of Object.entries(PLAN_TIER_TO_PRICE_ID_ENV)) {
+      const value = String(process.env[envKey] ?? "").trim();
+      if (!value) {
+        missingPriceIds.push(`${tier} (${envKey})`);
+      }
+    }
+    if (missingPriceIds.length > 0) {
+      this.logger.warn(
+        `Stripe billing is enabled but missing price IDs for: ${missingPriceIds.join(", ")}. ` +
+          `Self-serve checkout will fail for these tiers. Set the env vars to fix.`,
+      );
+    }
+  }
 
   isEnabled(): boolean {
     const key = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
