@@ -301,7 +301,10 @@ const env = {
   PIM_AUTH_PASSWORD: process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password",
   PIM_DEFAULT_TENANT_KEY: process.env.PLAYWRIGHT_TENANT_KEY || "default",
   PIM_DEFAULT_WORKSPACE_SLUG: process.env.PLAYWRIGHT_WORKSPACE || "default",
-  PIM_AUTH_IP_ATTEMPT_LIMIT: process.env.PLAYWRIGHT_AUTH_IP_ATTEMPT_LIMIT || "100",
+  // E2E suites cycle through many roles per run; default of 100 trips the rate
+  // limiter within ~2 suite runs. 2000 leaves headroom for the full ~46-test suite
+  // plus 2-3 retries without flake.
+  PIM_AUTH_IP_ATTEMPT_LIMIT: process.env.PLAYWRIGHT_AUTH_IP_ATTEMPT_LIMIT || "2000",
   PIM_AUTH_REDIS_DISABLED: "true",
   JWT_BLOCKLIST_REDIS_DISABLED: "true",
   DASHBOARD_CACHE_REDIS_DISABLED: "true",

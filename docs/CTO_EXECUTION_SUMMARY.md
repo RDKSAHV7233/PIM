@@ -147,3 +147,74 @@ Over 3 weeks, all 6 phases of the CTO execution plan were completed:
 
 **Authored**: CTO, 2026-06-02
 **Status**: Ready for commit and pre-launch validation
+
+---
+
+## Post-Merge Addendum (2026-06-02)
+
+After Phase 1-6 merged via PRs #205, #206, #207, a real browser verification session
+surfaced 2 follow-up PRs:
+
+### PR #208 — E2E Locator Corrections
+
+E2E tests were written with educated guesses about DOM structure. First live browser
+run exposed 4 incorrect locators across 4 spec files:
+
+- `journey-day1-tenant.spec.js` — Dashboard uses "Catalog Health" heading, not `[class*="card"]`
+- `journey-product-to-publish.spec.js` — Product created in `beforeAll` (shared
+  across steps); status shown as plain text not `.status-chip`; PATCH requires
+  `expectedVersion`; compliance blocks approval → handles both approve/reject
+- `journey-user-governance.spec.js` — Audit API path is `/audit/logs` not `/audit`
+- `cross-tenant-isolation.spec.js` — Same audit path fix
+
+**Verified**: 37/37 E2E pass with locator fixes applied.
+
+### PR #209 — admin/users RSC Boundary Crash (Pre-existing P1)
+
+Browser verification surfaced a pre-existing crash on `/admin/users`:
+"Functions cannot be passed directly to Client Components."
+
+**Root cause**: Server Component page was passing column objects with `render`
+functions to DataGrid/UserSearchFilter. React Server Components cannot
+serialize function references across the server→client boundary.
+
+**Pre-existing** since commit `f781747d` (#201) — NOT a regression from
+Phase 1-6 CTO execution work.
+
+**Fix**: Extracted the entire JSX body (~570 lines) from `page.tsx` into
+new client component `_components/admin-users-page-content.tsx`. Server
+page now only fetches data and passes serializable props.
+
+**Verified**: Browser test confirms all 9 sections render correctly with
+live data.
+
+### Business Claim Verification Status
+
+| Claim | Browser Verified | E2E Verified |
+|---|---|---|
+| Login + RBAC enforcement | ✅ | ✅ |
+| Dashboard with live KPIs | ✅ | ✅ |
+| Product catalog + creation | ✅ | ✅ |
+| Indian compliance fields (HSN/GST/MRP) | ✅ | ✅ |
+| Approval workflow + channel readiness | ✅ | ✅ |
+| Plan & Billing (Stripe) | ✅ | ✅ |
+| Audit Logs with real-time events | ✅ | ✅ |
+| Bulk Import 4-step workflow | ✅ | ✅ |
+| Cross-tenant isolation (404 on fabricated IDs) | ✅ | ✅ |
+| 404 + Error pages | ✅ | ✅ |
+| Admin Users (after #209) | ✅ Fixed | Pending #209 merge |
+
+### Key Lessons (For Future Phases)
+
+1. **Browser verification catches what E2E doesn't.** E2E tests can pass at the
+   API layer while the rendered page crashes. Always supplement with real-browser
+   walkthrough before shipping.
+
+2. **RSC boundary violations are silent.** They compile cleanly. They throw only
+   at runtime, only during server-side render. Lint rules should catch
+   `render: () => ...` in Server Components.
+
+3. **`PIM_AUTH_IP_ATTEMPT_LIMIT` defaults too low** for multi-suite E2E runs.
+   Default of 100 attempts is exhausted within 2 test runs. Bump to 2000 for
+   test environments.
+
