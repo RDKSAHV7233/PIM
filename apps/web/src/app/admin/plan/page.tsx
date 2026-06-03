@@ -10,6 +10,7 @@ import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions"
 import { UsageMeters } from "./_components/usage-meters";
 import { SignupConversionSection } from "./_components/signup-conversion";
 import { PlanManagementSection } from "./_components/plan-management";
+import { PlanComparisonWrapper } from "./_components/plan-comparison-wrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +151,14 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       ) : null}
 
       <UsageMeters usage={usage} />
+
+      {role === "admin" ? (
+        <PlanComparisonWrapper
+          currentTier={usage.planTier}
+          billingStatus={usage.profile.billingStatus}
+          stripeEnabled={true}
+        />
+      ) : null}
 
       {role !== "admin" ? (
         <div className="rounded-md border border-slate-200 px-3 py-3 text-sm text-slate-600">
