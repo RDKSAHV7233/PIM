@@ -3,6 +3,7 @@ import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute } from "../common/rbac/read-access-policy.decorator";
 import { Roles } from "../common/rbac/roles";
 import { CreateOndcMappingDto } from "./dto/create-ondc-mapping.dto";
+import { ExportOndcCatalogDto } from "./dto/export-ondc-catalog.dto";
 import { SimulateOndcProductDto } from "./dto/simulate-ondc-product.dto";
 import { OndcService } from "./ondc.service";
 
@@ -16,6 +17,21 @@ export class OndcController {
   @Get("versions")
   listVersions() {
     return this.ondcService.listVersions();
+  }
+
+  /**
+   * Bulk catalog compliance export.
+   * Runs ONDC payload simulation across up to 250 products and returns a readiness report.
+   * Use this to identify which products are ONDC-ready before submitting to a Network Participant.
+   */
+  @Post("catalog/export")
+  exportCatalog(@Body() dto: ExportOndcCatalogDto) {
+    return this.ondcService.exportCatalog({
+      productIds: dto.productIds,
+      nodeType: dto.nodeType,
+      version: dto.version,
+      mappingId: dto.mappingId,
+    });
   }
 
   @Post("mappings")

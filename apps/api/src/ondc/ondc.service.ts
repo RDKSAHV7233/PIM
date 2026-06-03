@@ -1,3 +1,9 @@
+/**
+ * TODO (schema-drift risk): ondc_mappings is a raw SQL table not modelled in schema.prisma.
+ * Prisma migrations won't catch column renames or type changes. When adding columns,
+ * update both the migration SQL AND the SELECT/INSERT queries in this file.
+ * Track as: https://github.com/vexa-pim/issues/ONDC-SCHEMA-1
+ */
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
@@ -126,6 +132,73 @@ export class OndcService {
       throw new NotFoundException("ONDC mapping not found");
     }
     return rows[0];
+  }
+
+  /**
+   * Bulk catalog compliance check — run simulateProduct across multiple products.
+   *
+   * Returns per-product readiness, the ONDC payload for each, and aggregate stats.
+   * This is the primary tool for sellers to validate ONDC readiness before submitting
+   * their catalog to an ONDC Network Participant.
+   */
+  async exportCatalog(input: {
+    productIds: string[];
+    nodeType: string;
+    version: string;
+    mappingId?: string;
+  }) {
+    const MAX_PRODUCTS = 250;
+    const ids = Array.from(new Set(input.productIds.slice(0, MAX_PRODUCTS)));
+
+    const results = await Promise.allSettled(
+      ids.map((id) => this.simulateProduct(id, input.nodeType, input.version, input.mappingId)),
+    );
+
+    const items: Array<{
+      productId: string;
+      publishReady: boolean;
+      missingFields: string[];
+      payload: Record<string, unknown>;
+      error?: string;
+    }> = [];
+
+    for (let i = 0; i < ids.length; i++) {
+      const r = results[i];
+      if (r.status === "fulfilled") {
+        items.push({
+          productId: ids[i],
+          publishReady: r.value.publishReady,
+          missingFields: r.value.missingFields,
+          payload: r.value.payload as Record<string, unknown>,
+        });
+      } else {
+        items.push({
+          productId: ids[i],
+          publishReady: false,
+          missingFields: [],
+          payload: {},
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        });
+      }
+    }
+
+    const readyCount = items.filter((p) => p.publishReady).length;
+    const notReadyCount = items.filter((p) => !p.publishReady && !p.error).length;
+    const errorCount = items.filter((p) => !!p.error).length;
+
+    return {
+      nodeType: input.nodeType,
+      version: input.version,
+      mappingId: input.mappingId ?? null,
+      summary: {
+        total: items.length,
+        ready: readyCount,
+        notReady: notReadyCount,
+        errors: errorCount,
+        readyPercent: items.length > 0 ? Math.round((readyCount / items.length) * 100) : 0,
+      },
+      items,
+    };
   }
 
   async simulateProduct(productId: string, nodeType: string, version: string, mappingId?: string) {
