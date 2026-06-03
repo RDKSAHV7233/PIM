@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AmazonConnector } from "../connectors/amazon/amazon.connector";
 import { FlipkartConnector } from "../connectors/flipkart/flipkart.connector";
 import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
+import { ShopifyApiClient } from "../connectors/shopify/shopify-api-client.service";
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
 import { LoggingModule } from "../common/logging/logging.module";
 import { PrismaModule } from "../prisma/prisma.module";
@@ -23,6 +24,7 @@ import { ConnectorRegistry } from "./connector.registry";
     AmazonConnector,
     FlipkartConnector,
     MeeshoConnector,
+    ShopifyApiClient,
     ShopifyConnector,
     ConnectorRegistry,
     ConnectorCredentialService,

@@ -24,6 +24,8 @@ module.exports = {
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
     "**/connectors/flipkart/flipkart.connector.spec.ts",
     "**/connectors/meesho/meesho-category-templates.spec.ts",
+    "**/connectors/shopify/shopify.connector.spec.ts",
+    "**/connectors/shopify/shopify-api-client.spec.ts",
     "**/billing/commercial-reminders.service.spec.ts",
     "**/connector-installer/connector-installer.service.spec.ts",
     "**/bulk-import/bulk-import-run.service.spec.ts",

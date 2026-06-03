@@ -23,6 +23,12 @@ import {
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import { tenantRaw, tenantExecRaw } from "../../common/tenant/tenant-raw";
+import {
+  ShopifyApiClient,
+  ShopifyTokenResponse,
+  SHOPIFY_DEFAULT_ADMIN_API_VERSION,
+  SHOPIFY_ADMIN_API_VERSION_DEPRECATE_AFTER,
+} from "./shopify-api-client.service";
 
 type CredentialRow = {
   id: string;
@@ -37,32 +43,8 @@ type InstallationMetadataRow = {
   metadata: unknown;
 };
 
-type ShopifyTokenResponse = {
-  access_token?: string;
-  scope?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  refresh_token_expires_in?: number;
-};
-
-type ShopifyGraphQlEnvelope<T> = {
-  data?: T;
-  errors?: Array<{
-    message?: string;
-    extensions?: { code?: string };
-  }>;
-  extensions?: {
-    cost?: {
-      requestedQueryCost?: number;
-      actualQueryCost?: number;
-      throttleStatus?: {
-        maximumAvailable?: number;
-        currentlyAvailable?: number;
-        restoreRate?: number;
-      };
-    };
-  };
-};
+// ShopifyTokenResponse and ShopifyGraphQlEnvelope live in shopify-api-client.service.ts
+// and are imported above. Only connector-specific types are defined here.
 
 type ShopifyShopIdentity = {
   id?: string;
@@ -254,12 +236,12 @@ type ShopifyBulkUpdateVariantResponse = {
   } | null;
 };
 
-const CONNECTOR_HTTP_TIMEOUT_MS = 30_000;
+// HTTP timeout is owned by ShopifyApiClient (SHOPIFY_HTTP_TIMEOUT_MS).
 const ACCESS_TOKEN_BUFFER_MS = 60_000;
 const DEFAULT_OFFLINE_REQUESTED_TOKEN_TYPE = "urn:shopify:params:oauth:token-type:offline-access-token";
 const DEFAULT_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
 const DEFAULT_TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
-const DEFAULT_ADMIN_API_VERSION = "2026-04";
+// API version constants are defined in ShopifyApiClient and imported above.
 const DEFAULT_CUSTOM_ID_NAMESPACE = "pim_connector";
 const DEFAULT_CUSTOM_ID_KEY = "sku";
 const DEFAULT_PIM_METAFIELD_NAMESPACE = "pim_connector";
@@ -295,6 +277,7 @@ export class ShopifyConnector implements ConnectorInterface {
   constructor(
     private readonly prismaDirect: PrismaDirectService,
     private readonly logger: LoggerService,
+    private readonly apiClient: ShopifyApiClient,
   ) {
     if (!this.keys.has(this.currentKeyVersion)) {
       throw new Error(
@@ -306,6 +289,22 @@ export class ShopifyConnector implements ConnectorInterface {
         "PIM_SHOPIFY_CLIENT_ID is not set. Shopify OAuth flows will fail at runtime.",
         { connector: "shopify" },
       );
+    }
+
+    // Warn when the active API version is approaching its deprecation window.
+    const activeVersion = this.apiClient.resolveAdminApiVersion();
+    const daysUntilDeprecation = Math.floor(
+      (SHOPIFY_ADMIN_API_VERSION_DEPRECATE_AFTER.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
+    if (daysUntilDeprecation <= 90) {
+      this.logger.warn("connector.shopify.api_version.deprecation_approaching", {
+        activeVersion,
+        deprecateAfter: SHOPIFY_ADMIN_API_VERSION_DEPRECATE_AFTER.toISOString().slice(0, 10),
+        daysRemaining: daysUntilDeprecation,
+        action:
+          "Update SHOPIFY_DEFAULT_ADMIN_API_VERSION in shopify-api-client.service.ts. " +
+          "See https://shopify.dev/docs/api/usage/versioning",
+      });
     }
   }
 
@@ -347,7 +346,7 @@ export class ShopifyConnector implements ConnectorInterface {
     let token: ShopifyTokenResponse;
     let authMode: string;
 
-    // Direct admin API token (custom app flow â€” token copied from Shopify Admin â†’ Apps â†’ API credentials)
+    // Direct admin API token (custom app flow â€" token copied from Shopify Admin â†’ Apps â†’ API credentials)
     const directToken = String(params.accessToken ?? params.access_token ?? "").trim();
 
     if (directToken && !authCode) {
@@ -355,9 +354,9 @@ export class ShopifyConnector implements ConnectorInterface {
       authMode = "custom_app_direct_token";
     } else if (authCode) {
       // Standard OAuth authorization code flow (for local dev / non-embedded installs)
-      token = await this.exchangeToken(requestedShopDomain, {
-        client_id: this.requireClientId(),
-        client_secret: this.requireClientSecret(),
+      token = await this.apiClient.exchangeToken(requestedShopDomain, {
+        client_id: this.apiClient.requireClientId(),
+        client_secret: this.apiClient.requireClientSecret(),
         code: authCode,
       });
       authMode = "authorization_code";
@@ -365,9 +364,9 @@ export class ShopifyConnector implements ConnectorInterface {
       if (!sessionToken) {
         throw new Error("Missing Shopify session token for token exchange.");
       }
-      token = await this.exchangeToken(requestedShopDomain, {
-        client_id: this.requireClientId(),
-        client_secret: this.requireClientSecret(),
+      token = await this.apiClient.exchangeToken(requestedShopDomain, {
+        client_id: this.apiClient.requireClientId(),
+        client_secret: this.apiClient.requireClientSecret(),
         grant_type: DEFAULT_TOKEN_EXCHANGE_GRANT,
         subject_token: sessionToken,
         subject_token_type: DEFAULT_SUBJECT_TOKEN_TYPE,
@@ -381,7 +380,7 @@ export class ShopifyConnector implements ConnectorInterface {
       throw new Error("Shopify token response did not include access_token.");
     }
 
-    const shopIdentity = await this.fetchShopIdentity(requestedShopDomain, token.access_token);
+    const shopIdentity = await this.fetchShopIdentity(ctx, requestedShopDomain, token.access_token);
     const canonicalShopDomain = this.normalizeShopDomain(
       shopIdentity.myshopifyDomain ?? requestedShopDomain,
     );
@@ -573,7 +572,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const accessToken = await this.resolveAccessToken(ctx);
     const metadata = await this.getInstallationMetadata(ctx);
     const selectedIds = new Set(this.readPublicationTargetIds(metadata));
-    const response = await this.graphqlRequest<ShopifyPublicationQueryResponse>({
+    const response = await this.apiClient.graphqlRequest<ShopifyPublicationQueryResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -688,7 +687,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const shopDomain = await this.requireCredential(ctx, "shop_domain");
     const accessToken = await this.resolveAccessToken(ctx);
     const selectedPublicationIds = await this.requirePublicationTargetIds(ctx);
-    const response = await this.graphqlRequest<ShopifyProductStatusResponse>({
+    const response = await this.apiClient.graphqlRequest<ShopifyProductStatusResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -820,30 +819,12 @@ export class ShopifyConnector implements ConnectorInterface {
     };
   }
 
-  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
-    try {
-      const provided = await ctx.getAccessToken();
-      if (typeof provided === "string" && provided.trim().length > 0) {
-        return provided.trim();
-      }
-    } catch {
-      // Current framework doesn't inject connector-managed tokens before the guided
-      // managed-install handshake persists the Shopify token set.
-    }
-
-    const existing = await this.getCredentialRow(ctx, "access_token");
-    if (existing) {
-      const accessToken = this.decryptCredential(existing);
-      if (this.isCredentialFresh(existing)) {
-        return accessToken;
-      }
-    }
-
+  async refreshAccessToken(ctx: ConnectorContext): Promise<string> {
     const refreshToken = await this.requireCredential(ctx, "refresh_token");
     const shopDomain = await this.requireCredential(ctx, "shop_domain");
-    const token = await this.exchangeToken(shopDomain, {
-      client_id: this.requireClientId(),
-      client_secret: this.requireClientSecret(),
+    const token = await this.apiClient.exchangeToken(shopDomain, {
+      client_id: this.apiClient.requireClientId(),
+      client_secret: this.apiClient.requireClientSecret(),
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     });
@@ -851,7 +832,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const existingMetadata = await this.getInstallationMetadata(ctx);
     const shopIdentity =
       token.access_token && !this.normalizeOptionalString(existingMetadata.shopId)
-        ? await this.fetchShopIdentity(shopDomain, token.access_token)
+        ? await this.fetchShopIdentity(ctx, shopDomain, token.access_token)
         : null;
 
     await this.persistTokenSet(ctx, token, {
@@ -865,42 +846,11 @@ export class ShopifyConnector implements ConnectorInterface {
     return token.access_token;
   }
 
-  private async exchangeToken(
-    shopDomain: string,
-    payload: Record<string, string>,
-  ): Promise<ShopifyTokenResponse> {
-    const endpoint = `${this.resolveTokenBaseUrl(shopDomain)}/admin/oauth/access_token`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams(payload),
-    });
-
-    const text = await response.text();
-    let parsed: ShopifyTokenResponse | Record<string, unknown> = {};
-    try {
-      parsed = text ? (JSON.parse(text) as ShopifyTokenResponse) : {};
-    } catch {
-      parsed = {};
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        `Shopify token exchange failed with status ${response.status}.`,
-      );
-    }
-
-    this.logger.info("Shopify token request completed", {
-      shopDomain,
-      grantType: payload.grant_type ?? "unknown",
-      statusCode: response.status,
-    });
-    return parsed as ShopifyTokenResponse;
+  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
+    return ctx.getAccessToken();
   }
+
+  // exchangeToken — delegated to this.apiClient.exchangeToken().
 
   private async persistTokenSet(
     ctx: ConnectorContext,
@@ -1018,6 +968,22 @@ export class ShopifyConnector implements ConnectorInterface {
        metadata.shopName, metadata.tokenMode, metadata.authMode, metadata.scope]);
   }
 
+  /**
+   * Mark the stored access_token as expired so the next ctx.getAccessToken() call
+   * triggers a refresh via refreshAccessToken(). Used when a 401 response indicates
+   * the token was revoked server-side (e.g. app uninstall / Shopify Partner rotation).
+   */
+  private async expireAccessToken(ctx: ConnectorContext): Promise<void> {
+    const db = this.prismaDirect.getClient();
+    await tenantExecRaw(db, `
+      UPDATE connector_credentials
+      SET expires_at = NOW(), updated_at = NOW()
+      WHERE tenant_key = $1
+        AND installation_id = $2
+        AND credential_type = 'access_token'
+    `, [ctx.tenantId, ctx.installationId]);
+  }
+
   private async noteCredentialHealth(ctx: ConnectorContext, failureReason: string | null): Promise<void> {
     const db = this.prismaDirect.getClient();
     await tenantExecRaw(db, `
@@ -1132,8 +1098,12 @@ export class ShopifyConnector implements ConnectorInterface {
        options.expiresAt ?? null, metadata]);
   }
 
-  private async fetchShopIdentity(shopDomain: string, accessToken: string): Promise<ShopifyShopIdentity> {
-    const response = await this.graphqlRequest<{ shop?: ShopifyShopIdentity | null }>({
+  private async fetchShopIdentity(
+    ctx: ConnectorContext,
+    shopDomain: string,
+    accessToken: string,
+  ): Promise<ShopifyShopIdentity> {
+    const response = await this.apiClient.graphqlRequest<{ shop?: ShopifyShopIdentity | null }>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -1161,7 +1131,7 @@ export class ShopifyConnector implements ConnectorInterface {
   ): Promise<{ id: string; handle: string | null; status: string | null }> {
     const shopDomain = await this.requireCredential(ctx, "shop_domain");
     const accessToken = await this.resolveAccessToken(ctx);
-    const response = await this.graphqlRequest<ShopifyProductSetResponse>({
+    const response = await this.apiClient.graphqlRequest<ShopifyProductSetResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -1243,7 +1213,7 @@ export class ShopifyConnector implements ConnectorInterface {
       taxable: true,
       inventoryItem: { tracked: false, ...(sku ? { sku } : {}) },
     };
-    const variantResponse = await this.graphqlRequest<ShopifyBulkUpdateVariantResponse>({
+    const variantResponse = await this.apiClient.graphqlRequest<ShopifyBulkUpdateVariantResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -1275,7 +1245,7 @@ export class ShopifyConnector implements ConnectorInterface {
     const accessToken = await this.resolveAccessToken(ctx);
 
     const [metafieldData, collectionsData, taxonomyData] = await Promise.all([
-      this.graphqlRequest<ShopifyConfigQueryResponse>({
+      this.apiClient.graphqlRequest<ShopifyConfigQueryResponse>(ctx, {
         shopDomain,
         accessToken,
         query: `
@@ -1291,7 +1261,7 @@ export class ShopifyConnector implements ConnectorInterface {
         `,
         variables: { ownerType: "PRODUCT" },
       }).catch(() => ({ metafieldDefinitions: null })),
-      this.graphqlRequest<ShopifyConfigQueryResponse>({
+      this.apiClient.graphqlRequest<ShopifyConfigQueryResponse>(ctx, {
         shopDomain,
         accessToken,
         query: `
@@ -1302,7 +1272,7 @@ export class ShopifyConnector implements ConnectorInterface {
           }
         `,
       }).catch(() => ({ collections: null })),
-      this.graphqlRequest<ShopifyConfigQueryResponse>({
+      this.apiClient.graphqlRequest<ShopifyConfigQueryResponse>(ctx, {
         shopDomain,
         accessToken,
         query: `
@@ -1449,7 +1419,7 @@ export class ShopifyConnector implements ConnectorInterface {
             userErrors?: Array<{ field?: string[]; message?: string }>;
           } | null;
         };
-        const response = await this.graphqlRequest<TranslationsRegisterResponse>({
+        const response = await this.apiClient.graphqlRequest<TranslationsRegisterResponse>(ctx, {
           shopDomain,
           accessToken,
           query: `
@@ -1491,7 +1461,7 @@ export class ShopifyConnector implements ConnectorInterface {
   ): Promise<void> {
     const shopDomain = await this.requireCredential(ctx, "shop_domain");
     const accessToken = await this.resolveAccessToken(ctx);
-    const response = await this.graphqlRequest<ShopifyPublishResponse>({
+    const response = await this.apiClient.graphqlRequest<ShopifyPublishResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -1545,7 +1515,7 @@ export class ShopifyConnector implements ConnectorInterface {
   ): Promise<ShopifyProductPreview> {
     const shopDomain = await this.requireCredential(ctx, "shop_domain");
     const accessToken = await this.resolveAccessToken(ctx);
-    const response = await this.graphqlRequest<ShopifyProductStateQueryResponse>({
+    const response = await this.apiClient.graphqlRequest<ShopifyProductStateQueryResponse>(ctx, {
       shopDomain,
       accessToken,
       query: `
@@ -1775,129 +1745,14 @@ export class ShopifyConnector implements ConnectorInterface {
     );
   }
 
-  private async graphqlRequest<T>(input: {
-    shopDomain: string;
-    accessToken: string;
-    query: string;
-    variables?: Record<string, unknown>;
-  }): Promise<T> {
-    const endpoint = `${this.resolveAdminApiBaseUrl(input.shopDomain)}/admin/api/${this.resolveAdminApiVersion()}/graphql.json`;
-    const MAX_RETRIES = 3;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": input.accessToken,
-        },
-        body: JSON.stringify({
-          query: input.query,
-          variables: input.variables ?? {},
-        }),
-      });
-
-      // HTTP 429 â€” Shopify REST-level rate limit
-      if (response.status === 429) {
-        const retryAfterRaw = response.headers.get("Retry-After");
-        const retryAfterSec = retryAfterRaw ? parseFloat(retryAfterRaw) : 2;
-        const waitMs = Math.min(Math.ceil(retryAfterSec * 1000), 60_000);
-        this.logger.warn("Shopify rate limit hit (HTTP 429). Backing off before retry.", {
-          shopDomain: input.shopDomain,
-          attempt,
-          retryAfterSec,
-          waitMs,
-        });
-        if (attempt < MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-          continue;
-        }
-        throw new Error(
-          `Shopify rate limit exceeded after ${MAX_RETRIES} retries. ` +
-          `The store is receiving too many API requests. Try again in a few seconds.`,
-        );
-      }
-
-      const text = await response.text();
-      let parsed: ShopifyGraphQlEnvelope<T> = {};
-      try {
-        parsed = text ? (JSON.parse(text) as ShopifyGraphQlEnvelope<T>) : {};
-      } catch {
-        parsed = {};
-      }
-
-      // GraphQL THROTTLED error â€” query cost exceeded the leaky-bucket limit
-      const isThrottled = Array.isArray(parsed.errors) &&
-        parsed.errors.some((e) => e?.extensions?.code === "THROTTLED");
-      if (isThrottled) {
-        const bucket = parsed.extensions?.cost?.throttleStatus;
-        const restoreRate = bucket?.restoreRate ?? 50;
-        const needed = parsed.extensions?.cost?.requestedQueryCost ?? 0;
-        const available = bucket?.currentlyAvailable ?? 0;
-        // Wait long enough for the bucket to restore the needed cost
-        const waitMs = Math.min(Math.ceil(((needed - available) / restoreRate) * 1000) + 200, 60_000);
-        this.logger.warn("Shopify GraphQL query throttled. Waiting for bucket to restore.", {
-          shopDomain: input.shopDomain,
-          attempt,
-          requestedQueryCost: needed,
-          currentlyAvailable: available,
-          restoreRate,
-          waitMs,
-        });
-        if (attempt < MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-          continue;
-        }
-        throw new Error(
-          `Shopify API query cost throttled after ${MAX_RETRIES} retries. ` +
-          `Bucket available: ${available}/${bucket?.maximumAvailable ?? "?"}, requested: ${needed}. ` +
-          `Reduce concurrent exports or wait before retrying.`,
-        );
-      }
-
-      // Log a warning when the bucket is running low (below 20% capacity)
-      const throttleStatus = parsed.extensions?.cost?.throttleStatus;
-      if (throttleStatus) {
-        const { currentlyAvailable = 0, maximumAvailable = 1 } = throttleStatus;
-        if (currentlyAvailable / maximumAvailable < 0.2) {
-          this.logger.warn("Shopify API rate limit bucket is running low.", {
-            shopDomain: input.shopDomain,
-            currentlyAvailable,
-            maximumAvailable,
-            restoreRate: throttleStatus.restoreRate,
-          });
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(`Shopify GraphQL request failed with status ${response.status}.`);
-      }
-      if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
-        const message = parsed.errors
-          .map((issue) => String(issue?.message ?? "").trim())
-          .filter((value) => value.length > 0)
-          .join(" | ");
-        throw new Error(message || "Shopify GraphQL request returned errors.");
-      }
-      if (!parsed.data) {
-        throw new Error("Shopify GraphQL response did not include data.");
-      }
-
-      return parsed.data;
-    }
-
-    // Unreachable â€” loop always returns or throws
-    throw new Error("Shopify GraphQL request failed: exhausted retry attempts.");
-  }
+  // graphqlRequest — fully delegated to this.apiClient.graphqlRequest().
 
   private verifyWebhookSignature(rawBody: Buffer, headers: Record<string, string>): boolean {
     const signatureHeader = String(headers[SHOPIFY_WEBHOOK_HMAC_HEADER] ?? "").trim();
     if (!signatureHeader) {
       return false;
     }
-    const digest = createHmac("sha256", this.requireClientSecret())
+    const digest = createHmac("sha256", this.apiClient.requireClientSecret())
       .update(rawBody)
       .digest("base64");
     const provided = Buffer.from(signatureHeader, "utf8");
@@ -2006,41 +1861,8 @@ export class ShopifyConnector implements ConnectorInterface {
       .slice(0, 80) || "product";
   }
 
-  private requireClientId(): string {
-    const value = String(process.env.PIM_SHOPIFY_CLIENT_ID ?? "").trim();
-    if (!value) {
-      throw new Error("PIM_SHOPIFY_CLIENT_ID is not configured.");
-    }
-    return value;
-  }
-
-  private requireClientSecret(): string {
-    const value = String(process.env.PIM_SHOPIFY_CLIENT_SECRET ?? "").trim();
-    if (!value) {
-      throw new Error("PIM_SHOPIFY_CLIENT_SECRET is not configured.");
-    }
-    return value;
-  }
-
-  private resolveTokenBaseUrl(shopDomain: string): string {
-    const explicit = String(process.env.PIM_SHOPIFY_TOKEN_BASE_URL ?? "").trim().replace(/\/+$/, "");
-    if (explicit.length > 0) {
-      return explicit;
-    }
-    return `https://${shopDomain}`;
-  }
-
-  private resolveAdminApiBaseUrl(shopDomain: string): string {
-    const explicit = String(process.env.PIM_SHOPIFY_ADMIN_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
-    if (explicit.length > 0) {
-      return explicit;
-    }
-    return `https://${shopDomain}`;
-  }
-
-  private resolveAdminApiVersion(): string {
-    return String(process.env.PIM_SHOPIFY_ADMIN_API_VERSION ?? DEFAULT_ADMIN_API_VERSION).trim() || DEFAULT_ADMIN_API_VERSION;
-  }
+  // requireClientId, requireClientSecret, resolveTokenBaseUrl, resolveAdminApiBaseUrl,
+  // resolveAdminApiVersion — all delegated to this.apiClient.
 
   private normalizeShopDomain(raw: string | undefined): string {
     const trimmed = String(raw ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
