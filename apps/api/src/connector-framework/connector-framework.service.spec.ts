@@ -62,6 +62,9 @@ function makeService(connectorOverrides: Record<string, unknown> = {}) {
     {} as never, // prisma
     registry as never,
     {} as never, // logger
+    {} as never, // credentialService
+    {} as never, // httpClient
+    {} as never, // snapshotStorage
   );
 
   return { svc, registry, connector: defaultConnector };

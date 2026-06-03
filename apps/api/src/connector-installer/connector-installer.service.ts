@@ -19,6 +19,8 @@ import {
   ConnectorImplementationStatus,
 } from "../connector-framework/connector.interface";
 import { resolveConnectorLaunchPolicy } from "../connector-framework/connector-launch-policy";
+import { ConnectorCredentialService } from "../connector-framework/connector-credential.service";
+import { ConnectorHttpClient } from "../connector-framework/connector-http-client.service";
 import { ConnectorRegistry } from "../connector-framework/connector.registry";
 import {
   ConnectorActionRule,
@@ -119,6 +121,8 @@ export class ConnectorInstallerService {
     private readonly credentialEncryptionService: ConnectorCredentialEncryptionService,
     private readonly connectorPermissionService: ConnectorPermissionService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly credentialService: ConnectorCredentialService,
+    private readonly httpClient: ConnectorHttpClient,
   ) {}
 
   private getTenantKey(): string {
@@ -1123,13 +1127,16 @@ export class ConnectorInstallerService {
     });
 
     const connector = this.connectorRegistry.getConnector("flipkart");
-    const validated = await connector.validateCredentials({
-      tenantId: input.tenantKey,
-      installationId: input.installationId,
-      connectorId: input.connectorId,
-      sellerId: input.externalAccountRef ?? undefined,
-      getAccessToken: async () => "",
-    });
+    const validated = await connector.validateCredentials(
+      this.buildConnectorContext({
+        id: input.installationId,
+        tenantKey: input.tenantKey,
+        connectorId: input.connectorId,
+        slug: "flipkart",
+        externalAccountRef: input.externalAccountRef ?? null,
+        metadata: {},
+      }),
+    );
 
     if (!validated) {
       throw new BadRequestException({
@@ -1188,14 +1195,16 @@ export class ConnectorInstallerService {
     const defaultProductType = String(input.dto.defaultProductType ?? "").trim().toUpperCase() || null;
 
     const connector = this.connectorRegistry.getConnector("amazon-in");
-    const validated = await connector.validateCredentials({
-      tenantId: input.tenantKey,
-      installationId: input.installationId,
-      connectorId: input.connectorId,
-      sellerId: input.externalAccountRef ?? undefined,
-      marketplaceId,
-      getAccessToken: async () => "",
-    });
+    const validated = await connector.validateCredentials(
+      this.buildConnectorContext({
+        id: input.installationId,
+        tenantKey: input.tenantKey,
+        connectorId: input.connectorId,
+        slug: "amazon-in",
+        externalAccountRef: input.externalAccountRef ?? null,
+        metadata: { sellerId: input.externalAccountRef, marketplaceId },
+      }),
+    );
 
     if (!validated) {
       throw new BadRequestException({
@@ -1458,7 +1467,7 @@ export class ConnectorInstallerService {
   }) {
     const metadataSellerId = String(installation.metadata.sellerId ?? "").trim();
     const metadataMarketplaceId = String(installation.metadata.marketplaceId ?? "").trim();
-    return {
+    const ctx = {
       tenantId: installation.tenantKey,
       installationId: installation.id,
       connectorId: installation.connectorId,
@@ -1466,8 +1475,26 @@ export class ConnectorInstallerService {
       marketplaceId:
         metadataMarketplaceId ||
         (installation.slug === "amazon-in" ? "A21TJRUUN4KGV" : undefined),
-      getAccessToken: async () => "",
+      getAccessToken: async (): Promise<string> => {
+        const connector = this.connectorRegistry.getConnector(installation.slug);
+        return this.credentialService.getOrRefreshAccessToken(
+          installation.tenantKey,
+          installation.id,
+          installation.slug,
+          async () => {
+            if (!connector.refreshAccessToken) {
+              throw new Error(
+                `Connector '${installation.slug}' does not implement refreshAccessToken.`,
+              );
+            }
+            return connector.refreshAccessToken(ctx);
+          },
+        );
+      },
+      fetch: (url: string, init?: import("../connector-framework/connector.interface").ConnectorFetchInit) =>
+        this.httpClient.fetch(installation.slug, installation.id, url, init),
     };
+    return ctx;
   }
 }
 

@@ -64,6 +64,8 @@ describe("ConnectorInstallerService", () => {
       credentialEncryptionService as never,
       connectorPermissionService as never,
       accessPolicy as never,
+      {} as never, // credentialService
+      {} as never, // httpClient
     );
     return {
       service,

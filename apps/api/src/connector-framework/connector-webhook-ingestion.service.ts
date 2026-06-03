@@ -53,8 +53,31 @@ export class ConnectorWebhookIngestionService {
       };
     }
 
+    // Security contract enforcement: connectors with WEBHOOK_RECEIVE must verify
+    // HMAC signatures in parseWebhookEvent. If requiresWebhookSignatureVerification
+    // is explicitly false, that is an unusual configuration requiring a documented
+    // alternative control (e.g. IP allowlisting). Emit a startup-time warning so
+    // it doesn't silently accept unverified payloads.
+    if (
+      connector.capabilities.includes("WEBHOOK_RECEIVE") &&
+      connector.requiresWebhookSignatureVerification === false
+    ) {
+      this.logger.warn("connector.webhook.signature_verification_disabled", {
+        slug: installation.slug,
+        installationId: input.installationId,
+        note: "This connector has WEBHOOK_RECEIVE but requiresWebhookSignatureVerification=false. " +
+              "Ensure an alternative control (e.g. IP allowlisting) is documented and active.",
+      });
+    }
+
     const parsedEvent = await connector.parseWebhookEvent(input.rawBody, input.headers);
     if (!parsedEvent) {
+      this.logger.warn("connector.webhook.rejected", {
+        slug: installation.slug,
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        reason: "invalid_signature_or_payload",
+      });
       return {
         accepted: false,
         duplicate: false,
@@ -77,10 +100,10 @@ export class ConnectorWebhookIngestionService {
     const submissionId = await this.resolveSubmissionFromWebhook(input.tenantKey, input.installationId, parsedEvent);
     await this.markWebhookProcessed(input.tenantKey, insertedWebhookId, submissionId);
 
-    this.logger.info("Connector webhook ingested", {
+    this.logger.info("connector.webhook.accepted", {
+      slug: installation.slug,
       tenantKey: input.tenantKey,
       installationId: input.installationId,
-      connectorSlug: installation.slug,
       rawEventId: parsedEvent.rawEventId,
       eventType: parsedEvent.eventType,
       submissionId,

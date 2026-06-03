@@ -16,6 +16,14 @@ export type ConnectorImplementationStatus = 'full' | 'partial' | 'stub';
 // CONTEXT — injected into every connector call
 // ─────────────────────────────────────────────
 
+export interface ConnectorFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | URLSearchParams | Buffer;
+  /** Request timeout in ms. Defaults to 30s. */
+  timeoutMs?: number;
+}
+
 export interface ConnectorContext {
   tenantId: string;
   installationId: string;
@@ -24,6 +32,11 @@ export interface ConnectorContext {
   marketplaceId?: string;  // "A21TJRUUN4KGV" for Amazon India
   /** Handles token refresh transparently. Never returns a stored DB value. */
   getAccessToken(): Promise<string>;
+  /**
+   * Rate-limited, retrying fetch for outbound marketplace API calls.
+   * Handles 429/503 backoff automatically. Use instead of raw fetch() in connectors.
+   */
+  fetch?(url: string, init?: ConnectorFetchInit): Promise<Response>;
 }
 
 // ─────────────────────────────────────────────
@@ -248,12 +261,23 @@ export interface ConnectorInterface {
 
   /**
    * Verify webhook signature and parse to internal event.
-   * MUST verify signature before parsing body. Return null on invalid signature.
+   * MUST verify HMAC signature before parsing body. Return null on invalid signature.
+   * Never return a non-null result from an unverified payload.
    */
   parseWebhookEvent?(
     rawBody: Buffer,
     headers: Record<string, string>
   ): Promise<ParsedWebhookEvent | null>;
+
+  /**
+   * Whether this connector verifies HMAC signatures in parseWebhookEvent.
+   * Defaults to true for all connectors with WEBHOOK_RECEIVE capability.
+   * The ingestion service emits a security warning if this is false but the
+   * connector still has WEBHOOK_RECEIVE — that combination requires a written
+   * explanation (e.g. IP allowlisting used instead).
+   * Set explicitly to false only when you have documented the alternative control.
+   */
+  readonly requiresWebhookSignatureVerification?: boolean;
 
   /**
    * Generate export file (Meesho Excel, future: ERP CSV).
@@ -275,6 +299,17 @@ export interface ConnectorInterface {
     ctx: ConnectorContext,
     products: ProductPayload[]
   ): Promise<BulkSubmissionRef>;
+
+  /**
+   * Exchange a stale access token for a fresh one.
+   * Called by ConnectorCredentialService when the stored token is absent or expired.
+   * Implementation MUST persist the new token(s) to ConnectorCredential before returning.
+   * Returns the new plain-text access token.
+   *
+   * Only required for connectors with OAuth2 auth flows (Amazon LWA, Shopify, Flipkart).
+   * Export-only connectors (Meesho) and connectors with static API keys do not need this.
+   */
+  refreshAccessToken?(ctx: ConnectorContext): Promise<string>;
 }
 
 // ─────────────────────────────────────────────

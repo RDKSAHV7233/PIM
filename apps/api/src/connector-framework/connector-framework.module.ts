@@ -6,6 +6,10 @@ import { MeeshoConnector } from "../connectors/meesho/meesho.connector";
 import { ShopifyConnector } from "../connectors/shopify/shopify.connector";
 import { LoggingModule } from "../common/logging/logging.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { ConnectorCredentialService } from "./connector-credential.service";
+import { ConnectorHeartbeatService } from "./connector-heartbeat.service";
+import { ConnectorHttpClient } from "./connector-http-client.service";
+import { ConnectorSubmissionStorageService } from "./connector-submission-storage.service";
 import { ConnectorWebhookIngestionService } from "./connector-webhook-ingestion.service";
 import { ConnectorWebhookProcessingService } from "./connector-webhook-processing.service";
 import { ConnectorWebhookRelayController } from "./connector-webhook-relay.controller";
@@ -21,12 +25,18 @@ import { ConnectorRegistry } from "./connector.registry";
     MeeshoConnector,
     ShopifyConnector,
     ConnectorRegistry,
+    ConnectorCredentialService,
+    ConnectorHeartbeatService,
+    ConnectorHttpClient,
+    ConnectorSubmissionStorageService,
     ConnectorFrameworkService,
     ConnectorWebhookIngestionService,
     ConnectorWebhookProcessingService,
   ],
   exports: [
     ConnectorRegistry,
+    ConnectorCredentialService,
+    ConnectorHttpClient,
     ConnectorFrameworkService,
     ConnectorWebhookIngestionService,
     ConnectorWebhookProcessingService,

@@ -1,8 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { LoggerService } from "../common/logging/logger.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
@@ -11,6 +9,9 @@ import {
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "./connector.errors";
+import { ConnectorCredentialService } from "./connector-credential.service";
+import { ConnectorHttpClient } from "./connector-http-client.service";
+import { ConnectorSubmissionStorageService } from "./connector-submission-storage.service";
 import {
   BulkSubmissionRef,
   ConnectorCap,
@@ -68,6 +69,9 @@ export class ConnectorFrameworkService {
     private readonly prisma: PrismaService,
     private readonly registry: ConnectorRegistry,
     private readonly logger: LoggerService,
+    private readonly credentialService: ConnectorCredentialService,
+    private readonly httpClient: ConnectorHttpClient,
+    private readonly snapshotStorage: ConnectorSubmissionStorageService,
   ) {}
 
   private resolveImplementationStatus(slug: string): ConnectorImplementationStatus {
@@ -167,7 +171,27 @@ export class ConnectorFrameworkService {
     product: ProductPayload,
   ): Promise<ValidationResult> {
     const connector = this.registry.getConnector(installation.slug);
-    return connector.validateProduct(this.buildContext(installation), product);
+    const started = Date.now();
+    try {
+      const result = await connector.validateProduct(this.buildContext(installation), product);
+      this.logger.info("connector.validate.completed", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        isValid: result.isValid,
+        errorCount: result.errors.length,
+        source: result.source,
+        durationMs: Date.now() - started,
+      });
+      return result;
+    } catch (err) {
+      this.logger.warn("connector.validate.failed", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - started,
+      });
+      throw err;
+    }
   }
 
   async publish(
@@ -181,7 +205,34 @@ export class ConnectorFrameworkService {
     if (!connector.publishProduct) {
       throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
     }
-    return connector.publishProduct(this.buildContext(installation), product);
+    const started = Date.now();
+    this.logger.info("connector.publish.attempt", {
+      slug: installation.slug,
+      tenantKey: installation.tenantKey,
+      sku: product.sku,
+    });
+    try {
+      const result = await connector.publishProduct(this.buildContext(installation), product);
+      this.logger.info("connector.publish.success", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        sku: product.sku,
+        externalRef: result.externalRef,
+        status: result.status,
+        isAsync: result.isAsync,
+        durationMs: Date.now() - started,
+      });
+      return result;
+    } catch (err) {
+      this.logger.warn("connector.publish.failure", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        sku: product.sku,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - started,
+      });
+      throw err;
+    }
   }
 
   async update(
@@ -196,7 +247,32 @@ export class ConnectorFrameworkService {
     if (!connector.updateProduct) {
       throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
     }
-    return connector.updateProduct(this.buildContext(installation), product, externalRef);
+    const started = Date.now();
+    this.logger.info("connector.update.attempt", {
+      slug: installation.slug,
+      tenantKey: installation.tenantKey,
+      sku: product.sku,
+      externalRef,
+    });
+    try {
+      const result = await connector.updateProduct(this.buildContext(installation), product, externalRef);
+      this.logger.info("connector.update.success", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        sku: product.sku,
+        durationMs: Date.now() - started,
+      });
+      return result;
+    } catch (err) {
+      this.logger.warn("connector.update.failure", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        sku: product.sku,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - started,
+      });
+      throw err;
+    }
   }
 
   async syncStatus(
@@ -224,7 +300,32 @@ export class ConnectorFrameworkService {
     if (!connector.publishBulkProducts) {
       throw new CapabilityNotSupportedError(installation.slug, "BULK_PUBLISH");
     }
-    return connector.publishBulkProducts(this.buildContext(installation), products);
+    const started = Date.now();
+    this.logger.info("connector.bulk_publish.attempt", {
+      slug: installation.slug,
+      tenantKey: installation.tenantKey,
+      productCount: products.length,
+    });
+    try {
+      const result = await connector.publishBulkProducts(this.buildContext(installation), products);
+      this.logger.info("connector.bulk_publish.success", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        feedId: result.feedId,
+        productCount: result.productCount,
+        durationMs: Date.now() - started,
+      });
+      return result;
+    } catch (err) {
+      this.logger.warn("connector.bulk_publish.failure", {
+        slug: installation.slug,
+        tenantKey: installation.tenantKey,
+        productCount: products.length,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - started,
+      });
+      throw err;
+    }
   }
 
   async exportProducts(
@@ -371,14 +472,34 @@ export class ConnectorFrameworkService {
   }
 
   private buildContext(installation: ConnectorInstallationRecord): ConnectorContext {
-    return {
+    // ctx is defined as const so closures can reference it safely after construction
+    const ctx: ConnectorContext = {
       tenantId: installation.tenantKey,
       installationId: installation.id,
       connectorId: installation.connectorId,
       marketplaceId: installation.metadata.marketplaceId as string | undefined,
       sellerId: installation.metadata.sellerId as string | undefined,
-      getAccessToken: async () => "",
+      getAccessToken: async () => {
+        const connector = this.registry.getConnector(installation.slug);
+        return this.credentialService.getOrRefreshAccessToken(
+          installation.tenantKey,
+          installation.id,
+          installation.slug,
+          async () => {
+            if (!connector.refreshAccessToken) {
+              throw new Error(
+                `Connector '${installation.slug}' does not implement refreshAccessToken. ` +
+                `Add refreshAccessToken() to the connector or set up a static access token.`,
+              );
+            }
+            return connector.refreshAccessToken(ctx);
+          },
+        );
+      },
+      fetch: (url, init) =>
+        this.httpClient.fetch(installation.slug, installation.id, url, init),
     };
+    return ctx;
   }
 
   private async capPayloadSnapshot(
@@ -388,33 +509,48 @@ export class ConnectorFrameworkService {
   ): Promise<{ snapshotJson: string; payloadSnapshotUrl: string | null }> {
     const rawSnapshotJson = JSON.stringify(payloadSnapshot ?? {});
     const sizeBytes = Buffer.byteLength(rawSnapshotJson, "utf8");
+
+    // Under the cap: store inline in DB, no external storage needed.
     if (sizeBytes <= PAYLOAD_SNAPSHOT_CAP_BYTES) {
+      return { snapshotJson: rawSnapshotJson, payloadSnapshotUrl: null };
+    }
+
+    // Over the cap: upload to R2 (or local FS in dev) and store the access URL.
+    try {
+      const { accessUrl } = await this.snapshotStorage.storeSnapshot({
+        tenantKey: installation.tenantKey,
+        jobId,
+        content: rawSnapshotJson,
+      });
+
       return {
-        snapshotJson: rawSnapshotJson,
+        snapshotJson: JSON.stringify({
+          truncated: true,
+          originalSizeBytes: sizeBytes,
+          snapshotUrl: accessUrl,
+        }),
+        payloadSnapshotUrl: accessUrl,
+      };
+    } catch (err) {
+      // Storage failure is non-fatal — store a truncated inline snapshot rather
+      // than blocking the submission record. Engineers can request a re-publish
+      // to get a fresh snapshot if needed.
+      this.logger.warn("connector.snapshot.upload_failed", {
+        tenantKey: installation.tenantKey,
+        jobId,
+        originalSizeBytes: sizeBytes,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const truncated = rawSnapshotJson.slice(0, PAYLOAD_SNAPSHOT_CAP_BYTES);
+      return {
+        snapshotJson: JSON.stringify({
+          truncated: true,
+          originalSizeBytes: sizeBytes,
+          uploadFailed: true,
+          partialSnapshot: JSON.parse(truncated.endsWith("}") ? truncated : truncated + '"..."}'),
+        }),
         payloadSnapshotUrl: null,
       };
     }
-
-    const safeTenant = installation.tenantKey.replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const safeJobId = jobId.replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const relativePath = path.join("submissions", safeTenant, `${safeJobId}-payload.json`);
-    const storagePath = path.join(process.cwd(), "storage", relativePath);
-    await fs.mkdir(path.dirname(storagePath), { recursive: true });
-    await fs.writeFile(storagePath, rawSnapshotJson, "utf8");
-
-    const publicBase = String(process.env.R2_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
-    const normalizedRelative = relativePath.replace(/\\/g, "/");
-    const payloadSnapshotUrl = publicBase
-      ? `${publicBase}/${normalizedRelative}`
-      : storagePath;
-
-    return {
-      snapshotJson: JSON.stringify({
-        truncated: true,
-        originalSizeBytes: sizeBytes,
-        snapshotUrl: payloadSnapshotUrl,
-      }),
-      payloadSnapshotUrl,
-    };
   }
 }
