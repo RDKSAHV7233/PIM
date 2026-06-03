@@ -66,7 +66,7 @@ function run() {
   assert(
     source.includes('href={`/products/${encodeURIComponent(submission.productId)}`}') &&
       source.includes("StatusChip label={normalizeStatus(submission.status)} tone={statusTone(submission.status)}") &&
-      source.includes("new Date(submission.submittedAt).toLocaleString(\"en-IN\", { timeZone: \"Asia/Kolkata\" })") &&
+      source.includes("formatDateTime(submission.submittedAt)") &&
       source.includes("CardTitle>Latest Submission Timeline</CardTitle>") &&
       source.includes("Timeline className=\"mt-3\" items={submissionTimelineItems(latestSubmission)}"),
     "Channels submissions must keep product drilldown, normalized status chips, and submission timestamps visible in the table.",

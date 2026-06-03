@@ -28,9 +28,8 @@ function run() {
     "Admin webhooks must load configured endpoints and recent deliveries together from the shared auth context.",
   );
   assert(
-    source.includes("const EVENT_LABELS: Record<string, string> = {") &&
-      source.includes('approval_decision: "Approval decision"') &&
-      source.includes('publish_failed: "Publish failed"'),
+    source.includes('WEBHOOK_EVENT_LABELS as EVENT_LABELS') &&
+      source.includes("Object.entries(EVENT_LABELS)"),
     "Admin webhooks must expose the canonical event label map for the supported outbound webhook events.",
   );
   assert(

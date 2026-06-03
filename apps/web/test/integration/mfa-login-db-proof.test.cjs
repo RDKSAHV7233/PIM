@@ -266,14 +266,14 @@ async function run() {
     await waitForHttp(`${apiBaseUrl}/health`, 60_000);
 
     // 1. Register workspace + admin
-    const signupResult = await apiRequest(apiBaseUrl, "POST", "/auth/workspace/register", {
+    const signupResult = await apiRequest(apiBaseUrl, "POST", "/signup/workspace", {
       displayName: "MFA Proof Workspace",
       workspaceSlug,
       adminEmail,
       password,
       acceptedTerms: true,
     });
-    assertStatus(signupResult, 201, "workspace register");
+    assertStatus(signupResult, 200, "workspace register");
     assert(signupResult.payload?.status === "pending_verification", "Expected pending_verification status");
 
     // 2. Locate verification token from outbox
@@ -294,7 +294,7 @@ async function run() {
     assert(verificationToken, "Verification token not found in outbox within 10s");
 
     // 3. Verify workspace
-    const verifyResult = await apiRequest(apiBaseUrl, "POST", "/auth/workspace/verify", { token: verificationToken });
+    const verifyResult = await apiRequest(apiBaseUrl, "POST", "/signup/verify", { token: verificationToken });
     assertStatus(verifyResult, 200, "workspace verify");
 
     // 4. Login to get access token
