@@ -80,7 +80,7 @@ test.describe("Journey: User Governance", () => {
   test("viewer cannot access admin audit logs (API)", async () => {
     const viewerToken = await apiLogin("viewer");
     try {
-      await apiRequest("GET", "/audit?limit=5", viewerToken, undefined, DEFAULT_API_URL);
+      await apiRequest("GET", "/audit/logs?limit=5", viewerToken, undefined, DEFAULT_API_URL);
       expect(true).toBe(false);
     } catch (err) {
       expect(err.message).toMatch(/403|forbidden/i);

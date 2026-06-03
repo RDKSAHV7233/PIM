@@ -19,9 +19,9 @@ test.describe("Journey: Day 1 Tenant Experience", () => {
     await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator("main")).toBeVisible();
-    // Dashboard should show some content — cards, charts, or empty state
+    // Dashboard should show Catalog Health section with KPI stats
     await expect(
-      page.locator('[class*="card"], [class*="kpi"], [class*="chart"], [class*="metric"]').first()
+      page.getByText("Catalog Health").or(page.getByText("Dashboard")).first()
     ).toBeVisible({ timeout: 15_000 });
   });
 

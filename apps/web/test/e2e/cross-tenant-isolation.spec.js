@@ -69,7 +69,7 @@ test.describe("Cross-Tenant Isolation", () => {
   test("audit log only shows actions from current tenant", async () => {
     const token = await apiLogin("admin");
     try {
-      const result = await apiRequest("GET", "/audit?limit=10", token, undefined, DEFAULT_API_URL);
+      const result = await apiRequest("GET", "/audit/logs?limit=10", token, undefined, DEFAULT_API_URL);
       const entries = result.items || result || [];
       expect(Array.isArray(entries)).toBe(true);
       // Every entry should belong to our tenant — no foreign entries
