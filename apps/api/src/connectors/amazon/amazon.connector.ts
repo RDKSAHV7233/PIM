@@ -724,24 +724,7 @@ export class AmazonConnector implements ConnectorInterface {
 
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
-    try {
-      const provided = await ctx.getAccessToken();
-      if (typeof provided === "string" && provided.trim().length > 0) {
-        return provided.trim();
-      }
-    } catch {
-      // Current framework still returns an empty token for managed connectors.
-    }
-
-    const existing = await this.getCredentialRow(ctx, "access_token");
-    if (existing) {
-      const accessToken = this.decryptCredential(existing);
-      if (this.isCredentialFresh(existing)) {
-        return accessToken;
-      }
-    }
-
+  async refreshAccessToken(ctx: ConnectorContext): Promise<string> {
     const clientId = await this.requireCredential(ctx, "client_id");
     const clientSecret = await this.requireCredential(ctx, "client_secret");
     const refreshToken = await this.requireCredential(ctx, "refresh_token");
@@ -749,12 +732,15 @@ export class AmazonConnector implements ConnectorInterface {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     });
-
     await this.persistTokenSet(ctx, token);
     if (!token.access_token) {
       throw new Error("Amazon token response did not include access_token.");
     }
     return token.access_token;
+  }
+
+  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
+    return ctx.getAccessToken();
   }
 
   private async exchangeToken(
@@ -1310,9 +1296,9 @@ export class AmazonConnector implements ConnectorInterface {
     init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
   ): Promise<Response> {
     let token = await this.resolveAccessToken(ctx);
-    let response = await fetch(url, {
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      ...init,
+    let response = await ctx.fetch!(url, {
+      method: init.method as string | undefined,
+      body: init.body as string | undefined,
       headers: {
         ...init.headers,
         "x-amz-access-token": token,
@@ -1324,11 +1310,12 @@ export class AmazonConnector implements ConnectorInterface {
       return response;
     }
 
+    // 401 means the token was invalidated server-side — expire locally and retry once
     await this.invalidateAccessToken(ctx);
     token = await this.resolveAccessToken(ctx);
-    response = await fetch(url, {
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      ...init,
+    response = await ctx.fetch!(url, {
+      method: init.method as string | undefined,
+      body: init.body as string | undefined,
       headers: {
         ...init.headers,
         "x-amz-access-token": token,

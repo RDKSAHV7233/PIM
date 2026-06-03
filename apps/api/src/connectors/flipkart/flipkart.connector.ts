@@ -567,24 +567,7 @@ export class FlipkartConnector implements ConnectorInterface {
     };
   }
 
-  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
-    try {
-      const provided = await ctx.getAccessToken();
-      if (typeof provided === "string" && provided.trim().length > 0) {
-        return provided.trim();
-      }
-    } catch {
-      // Current framework still returns an empty token for Flipkart; fall back to connector-managed resolution.
-    }
-
-    const existing = await this.getCredentialRow(ctx, "access_token");
-    if (existing) {
-      const accessToken = this.decryptCredential(existing);
-      if (this.isCredentialFresh(existing)) {
-        return accessToken;
-      }
-    }
-
+  async refreshAccessToken(ctx: ConnectorContext): Promise<string> {
     const clientId = await this.requireCredential(ctx, "client_id");
     const clientSecret = await this.requireCredential(ctx, "client_secret");
     const refreshToken = await this.requireCredential(ctx, "refresh_token");
@@ -596,10 +579,7 @@ export class FlipkartConnector implements ConnectorInterface {
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (
-        reason.includes("status 400") ||
-        reason.includes("status 401")
-      ) {
+      if (reason.includes("status 400") || reason.includes("status 401")) {
         const refreshRow = await this.getCredentialRow(ctx, "refresh_token");
         if (refreshRow?.expiresAt && refreshRow.expiresAt <= new Date()) {
           throw new Error("REFRESH_TOKEN_EXPIRED");
@@ -607,12 +587,15 @@ export class FlipkartConnector implements ConnectorInterface {
       }
       throw error;
     }
-
     await this.persistTokenSet(ctx, token);
     if (!token.access_token) {
       throw new Error("Flipkart token response did not include access_token.");
     }
     return token.access_token;
+  }
+
+  private async resolveAccessToken(ctx: ConnectorContext): Promise<string> {
+    return ctx.getAccessToken();
   }
 
   private async exchangeToken(
@@ -893,11 +876,10 @@ export class FlipkartConnector implements ConnectorInterface {
     url: string,
     init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
   ): Promise<Response> {
-    await this.delay(DEFAULT_REQUEST_DELAY_MS);
     let token = await this.resolveAccessToken(ctx);
-    let response = await fetch(url, {
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      ...init,
+    let response = await ctx.fetch!(url, {
+      method: init.method as string | undefined,
+      body: init.body as string | undefined,
       headers: {
         ...init.headers,
         Authorization: `Bearer ${token}`,
@@ -907,12 +889,12 @@ export class FlipkartConnector implements ConnectorInterface {
       return response;
     }
 
+    // 401 means the token was invalidated server-side — expire locally and retry once
     await this.invalidateAccessToken(ctx);
     token = await this.resolveAccessToken(ctx);
-    await this.delay(DEFAULT_REQUEST_DELAY_MS);
-    response = await fetch(url, {
-      signal: AbortSignal.timeout(CONNECTOR_HTTP_TIMEOUT_MS),
-      ...init,
+    response = await ctx.fetch!(url, {
+      method: init.method as string | undefined,
+      body: init.body as string | undefined,
       headers: {
         ...init.headers,
         Authorization: `Bearer ${token}`,

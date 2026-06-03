@@ -187,6 +187,7 @@ describe('MeeshoConnector.generateExportFile — variant expansion', () => {
     installationId: 'i1',
     connectorId: 'c1',
     getAccessToken: async () => 'token',
+    fetch: jest.fn(),
   };
 
   it('single-SKU product produces exactly 1 data row', async () => {
@@ -323,6 +324,7 @@ describe('MeeshoConnector.validateProduct', () => {
     installationId: 'i1',
     connectorId: 'c1',
     getAccessToken: async () => 'token',
+    fetch: jest.fn(),
   };
 
   it('valid kurtis product passes with no errors', async () => {
@@ -466,7 +468,7 @@ describe('MeeshoConnector class-level invariants', () => {
   });
 
   it('generateExportFile produces filename matching meesho_<category>_<YYYYMMDD>.xlsx', async () => {
-    const ctx = { tenantId: 't1', installationId: 'i1', connectorId: 'c1', getAccessToken: async () => 'tok' };
+    const ctx = { tenantId: 't1', installationId: 'i1', connectorId: 'c1', getAccessToken: async () => 'tok', fetch: jest.fn() };
     const result = await connector.generateExportFile(ctx, [
       { sku: 'S1', title: 'T', brand: 'B', hsnCode: '12345', gstRate: 5, mrp: 100, sellingPrice: 90,
         mainImageUrl: 'https://x.com/img.jpg', productType: 'kurtis', description: 'desc',
