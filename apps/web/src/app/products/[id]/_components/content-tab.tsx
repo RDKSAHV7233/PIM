@@ -4,7 +4,6 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ViewerEditTooltip } from "@/components/ui/viewer-edit-tooltip";
 import { getAllowedValues, RoleHiddenInput } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
@@ -192,12 +191,60 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
         </form>
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">You can review product data in read-only mode.</p>
-          <div className="rounded-md border border-dashed border-slate-300 p-3">
-            <ViewerEditTooltip>
-              <div className="h-10 w-40 rounded-md border border-slate-200 bg-slate-50" />
-            </ViewerEditTooltip>
-          </div>
+          <p className="text-sm text-slate-600">You can review product data in read-only mode. Contact an editor to make changes.</p>
+          <fieldset disabled className="grid gap-3 md:grid-cols-2 opacity-75">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Product Title</label>
+              <Input value={data.product.title} disabled />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Brand</label>
+              <Input value={data.product.brand || ""} disabled />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Description</label>
+              <Textarea value={data.product.description || ""} disabled rows={3} />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Main Image URL</label>
+              <Input value={String(data.productAttributes?.mainImageUrl ?? "")} disabled />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">HSN Code</label>
+              <Input value={data.product.hsnCode ?? ""} disabled />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">GST Rate</label>
+              <Input type="number" value={data.product.gstRate ?? ""} disabled />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Status</label>
+              <Select value={data.product.status} disabled>
+                <option value="draft">draft</option>
+                <option value="in_review">in_review</option>
+                <option value="approved">approved</option>
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+              </Select>
+            </div>
+            {data.productAttributeDefinitions.length > 0 && (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Additional Attributes</label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {data.productAttributeDefinitions.map((definition) => {
+                    const currentValue = data.productAttributes[definition.key];
+                    const defaultTextValue = currentValue === null || currentValue === undefined ? "" : typeof currentValue === "string" ? currentValue : String(currentValue);
+                    return (
+                      <div key={definition.id} className="space-y-1">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">{definition.name}</label>
+                        <Input value={defaultTextValue} disabled />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </fieldset>
         </div>
       )}
     </Card>
