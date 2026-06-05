@@ -2808,18 +2808,19 @@ export class MarketplaceService implements OnModuleInit {
       throw new NotFoundException("Connector installation not found.");
     }
 
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
+    const [connectorDef, failed] = await Promise.all([
+      db.connectorDefinition.findUnique({
+        where: { id: installation.connectorId },
+        select: { slug: true },
+      }),
+      db.connectorSubmission.findMany({
+        where: { installationId, status: "FAILED" },
+        take: 10_000, // defensive cap — large installations can have many failed submissions
+        select: { productId: true, channelErrors: true },
+      }),
+    ]);
     const connectorSlug = connectorDef?.slug ?? "shopify";
     const channel = this.mapConnectorSlugToChannel(connectorSlug);
-
-    const failed = await db.connectorSubmission.findMany({
-      where: { installationId, status: "FAILED" },
-      take: 10_000, // defensive cap — large installations can have many failed submissions
-      select: { productId: true, channelErrors: true },
-    });
 
     const eligible = failed.filter((sub) => {
       const errors = Array.isArray(sub.channelErrors) ? sub.channelErrors : [];
@@ -2921,19 +2922,11 @@ export class MarketplaceService implements OnModuleInit {
 
   async importShopifyConfig(installationId: string): Promise<ShopifyConfigResult> {
     const db = this.prisma.tenant();
-    const installation = await db.connectorInstallation.findFirst({
-      where: { id: installationId },
-      select: { id: true, connectorId: true, tenantKey: true },
-    });
+    const installation = await this.resolveInstallationWithSlug(installationId, db);
     if (!installation) {
       throw new NotFoundException("Connector installation not found.");
     }
-
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "shopify";
+    const connectorSlug = installation.connectorSlug;
 
     const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
       importShopifyConfig: (ctx: unknown) => Promise<ShopifyConfigResult>;
@@ -2951,19 +2944,11 @@ export class MarketplaceService implements OnModuleInit {
 
   async getShopifyConfig(installationId: string): Promise<ShopifyConfigResult | null> {
     const db = this.prisma.tenant();
-    const installation = await db.connectorInstallation.findFirst({
-      where: { id: installationId },
-      select: { id: true, connectorId: true, tenantKey: true },
-    });
+    const installation = await this.resolveInstallationWithSlug(installationId, db);
     if (!installation) {
       throw new NotFoundException("Connector installation not found.");
     }
-
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "shopify";
+    const connectorSlug = installation.connectorSlug;
 
     const connector = this.connectorRegistry.getConnector(connectorSlug) as unknown as {
       getShopifyConfig: (ctx: unknown) => Promise<ShopifyConfigResult | null>;
@@ -3101,22 +3086,14 @@ export class MarketplaceService implements OnModuleInit {
   ): Promise<{ queued: number; skipped: number }> {
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
     const db = this.prisma.tenant(tenantKey);
-    const installation = await db.connectorInstallation.findFirst({
-      where: { id: installationId },
-      select: { id: true, connectorId: true },
-    });
+    const installation = await this.resolveInstallationWithSlug(installationId, db);
     if (!installation) throw new NotFoundException("Installation not found.");
 
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true, capabilities: true },
-    });
-    const capabilities = Array.isArray(connectorDef?.capabilities) ? connectorDef.capabilities : [];
-    if (!capabilities.includes("PUBLISH")) {
+    if (!installation.capabilities.includes("PUBLISH")) {
       throw new BadRequestException("This connector does not support publish — delta sync not available.");
     }
 
-    const channel = connectorDef?.slug ?? "shopify";
+    const channel = installation.connectorSlug;
     const createdBy = actor?.actorId?.trim() ? actor.actorId.trim() : "delta_sync";
     let queued = 0;
     let skipped = 0;
@@ -3457,27 +3434,15 @@ export class MarketplaceService implements OnModuleInit {
     const db = this.prisma.tenant();
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
 
-    const installationRow = await db.connectorInstallation.findFirst({
-      where: { id: installationId },
-      select: { id: true, connectorId: true, tenantKey: true },
-    });
+    const installationRow = await this.resolveInstallationWithSlug(installationId, db);
     if (!installationRow) {
       throw new NotFoundException("Connector installation not found.");
     }
 
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installationRow.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "";
-
-    const installation = await this.connectorFramework.requireInstallation(
-      tenantKey,
-      connectorSlug,
-      installationId,
-    );
-
-    const products = await Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id)));
+    const [installation, products] = await Promise.all([
+      this.connectorFramework.requireInstallation(tenantKey, installationRow.connectorSlug, installationId),
+      Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id))),
+    ]);
 
     const bulkRef = await this.connectorFramework.publishBulk(installation, products);
 
@@ -3546,32 +3511,94 @@ export class MarketplaceService implements OnModuleInit {
     const db = this.prisma.tenant();
     const tenantKey = this.connectorFramework.getCurrentTenantKey();
 
-    const installationRow = await db.connectorInstallation.findFirst({
-      where: { id: installationId },
-      select: { id: true, connectorId: true, tenantKey: true },
-    });
+    const installationRow = await this.resolveInstallationWithSlug(installationId, db);
     if (!installationRow) {
       throw new NotFoundException("Connector installation not found.");
     }
 
-    const connectorDef = await db.connectorDefinition.findUnique({
-      where: { id: installationRow.connectorId },
-      select: { slug: true },
-    });
-    const connectorSlug = connectorDef?.slug ?? "";
-
-    const installation = await this.connectorFramework.requireInstallation(
-      tenantKey,
-      connectorSlug,
-      installationId,
-    );
-
-    const products = await Promise.all(
-      productIds.map((id) => this.buildConnectorProductPayload(id)),
-    );
+    const [installation, products] = await Promise.all([
+      this.connectorFramework.requireInstallation(tenantKey, installationRow.connectorSlug, installationId),
+      Promise.all(productIds.map((id) => this.buildConnectorProductPayload(id))),
+    ]);
 
     const exportFile = await this.connectorFramework.exportProducts(installation, products);
 
     return exportFile;
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Single-query JOIN: ConnectorInstallation + ConnectorDefinition.
+   *
+   * Prisma has no @relation between these two models (connector_id is an
+   * untyped FK in the schema), so we use $queryRaw for a proper LEFT JOIN.
+   * This collapses the repeated findFirst(installation) → findUnique(definition)
+   * pattern that appears across several methods into one round-trip.
+   *
+   * Returns null when the installation does not exist.
+   */
+  private async resolveInstallationWithSlug(
+    installationId: string,
+    db: ReturnType<typeof this.prisma.tenant>,
+  ): Promise<{
+    id: string;
+    connectorId: string;
+    tenantKey: string;
+    connectorSlug: string;
+    capabilities: string[];
+  } | null> {
+    const rows = await db.$queryRaw<
+      Array<{
+        id: string;
+        connectorId: string;
+        tenantKey: string;
+        connectorSlug: string | null;
+        capabilities: unknown;
+      }>
+    >(Prisma.sql`
+      SELECT
+        ci.id           AS "id",
+        ci.connector_id AS "connectorId",
+        ci.tenant_key   AS "tenantKey",
+        cd.slug         AS "connectorSlug",
+        cd.capabilities AS "capabilities"
+      FROM connector_installations ci
+      LEFT JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.id = ${installationId}
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+
+    // Prisma's $queryRaw may return a PostgreSQL text[] as a JS array or as
+    // the "{val1,val2}" string literal — handle both forms defensively.
+    let capabilities: string[] = [];
+    if (Array.isArray(row.capabilities)) {
+      capabilities = (row.capabilities as unknown[]).map(String);
+    } else {
+      const raw = String(row.capabilities ?? "").trim();
+      if (raw.startsWith("{") && raw.endsWith("}")) {
+        capabilities = raw.slice(1, -1).split(",").filter(Boolean);
+      }
+    }
+
+    if (!row.connectorSlug) {
+      // ConnectorInstallation.connectorId has no DB-level FK constraint (plain String,
+      // no @relation). If the definition row is missing/deleted, silently defaulting to
+      // "shopify" would route the request to the wrong connector.  Fail fast instead.
+      throw new NotFoundException(
+        `Connector definition not found for installation ${installationId}. ` +
+        "The connector may have been removed. Re-install the connector to continue.",
+      );
+    }
+
+    return {
+      id: row.id,
+      connectorId: row.connectorId,
+      tenantKey: row.tenantKey,
+      connectorSlug: row.connectorSlug,
+      capabilities,
+    };
   }
 }

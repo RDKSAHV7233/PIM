@@ -470,14 +470,18 @@ export class AmazonConnector implements ConnectorInterface {
       throw new Error("publishBulkProducts requires at least one product.");
     }
 
-    // Validate all products before uploading — fail fast to avoid wasted feed documents.
-    for (const product of products) {
-      const validation = await this.validateProduct(ctx, product);
-      if (!validation.isValid) {
-        const messages = validation.errors.map((issue) => issue.sellerMessage).join(" | ");
-        throw new Error(`Bulk publish validation failed for SKU ${product.sku}: ${messages}`);
-      }
-    }
+    // Validate all products in parallel before uploading — each validation is independent.
+    // Promise.all: first rejection aborts the rest, giving the same fail-fast semantics
+    // as the sequential loop but without the serial round-trip penalty.
+    await Promise.all(
+      products.map(async (product) => {
+        const validation = await this.validateProduct(ctx, product);
+        if (!validation.isValid) {
+          const messages = validation.errors.map((issue) => issue.sellerMessage).join(" | ");
+          throw new Error(`Bulk publish validation failed for SKU ${product.sku}: ${messages}`);
+        }
+      }),
+    );
 
     const feedContent = this.buildFeedDocument(ctx, products);
 
@@ -1348,7 +1352,16 @@ export class AmazonConnector implements ConnectorInterface {
     }
     try {
       return JSON.parse(text) as T;
-    } catch {
+    } catch (err: unknown) {
+      // Amazon occasionally returns HTML error pages (WAF, throttle proxy, 503 maintenance).
+      // Log the raw body excerpt so this case is visible in logs rather than appearing as
+      // a successful response with all-undefined fields.
+      this.logger.warn("Amazon response is not valid JSON", {
+        url: response.url,
+        status: response.status,
+        bodyExcerpt: text.slice(0, 200),
+        error: err instanceof Error ? err.message : String(err),
+      });
       return {} as T;
     }
   }

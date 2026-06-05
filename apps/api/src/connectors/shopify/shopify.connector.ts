@@ -640,9 +640,12 @@ export class ShopifyConnector implements ConnectorInterface {
 
     const selectedPublicationIds = await this.requirePublicationTargetIds(ctx);
     const productRecord = await this.upsertProduct(ctx, product);
-    for (const publicationId of selectedPublicationIds) {
-      await this.publishToPublication(ctx, productRecord.id, publicationId);
-    }
+    // Publications are independent — publish all channels in parallel.
+    await Promise.all(
+      selectedPublicationIds.map((publicationId) =>
+        this.publishToPublication(ctx, productRecord.id, publicationId),
+      ),
+    );
 
     this.logger.info("Shopify product sync completed", {
       installationId: ctx.installationId,
@@ -669,9 +672,11 @@ export class ShopifyConnector implements ConnectorInterface {
 
     const selectedPublicationIds = await this.requirePublicationTargetIds(ctx);
     const productRecord = await this.upsertProduct(ctx, product, externalRef);
-    for (const publicationId of selectedPublicationIds) {
-      await this.publishToPublication(ctx, productRecord.id, publicationId);
-    }
+    await Promise.all(
+      selectedPublicationIds.map((publicationId) =>
+        this.publishToPublication(ctx, productRecord.id, publicationId),
+      ),
+    );
 
     return {
       externalRef: productRecord.id,
@@ -869,62 +874,60 @@ export class ShopifyConnector implements ConnectorInterface {
     const shopId = this.normalizeOptionalString(input.shopIdentity?.id);
     const shopName = this.normalizeOptionalString(input.shopIdentity?.name);
 
-    await this.storeCredential(ctx, "shop_domain", canonicalShopDomain, {
-      scope,
-      metadata: {
-        authMode: input.authMode,
-      },
-    });
+    // Collect all credential stores and run them in parallel — each is an independent UPSERT
+    // on a distinct credential_type row, so there is no write conflict between them.
+    const credentialStores: Array<Promise<void>> = [
+      this.storeCredential(ctx, "shop_domain", canonicalShopDomain, {
+        scope,
+        metadata: { authMode: input.authMode },
+      }),
+    ];
 
     if (shopId) {
-      await this.storeCredential(ctx, "shop_id", shopId, {
-        scope,
-        metadata: {
-          authMode: input.authMode,
-          shopDomain: canonicalShopDomain,
-        },
-      });
+      credentialStores.push(
+        this.storeCredential(ctx, "shop_id", shopId, {
+          scope,
+          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain },
+        }),
+      );
     }
 
     if (shopName) {
-      await this.storeCredential(ctx, "shop_name", shopName, {
-        scope,
-        metadata: {
-          authMode: input.authMode,
-          shopDomain: canonicalShopDomain,
-        },
-      });
+      credentialStores.push(
+        this.storeCredential(ctx, "shop_name", shopName, {
+          scope,
+          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain },
+        }),
+      );
     }
 
     if (token.access_token) {
       const expiresAt = Number.isFinite(token.expires_in)
         ? new Date(now + Math.max(1, Number(token.expires_in)) * 1000)
         : null;
-      await this.storeCredential(ctx, "access_token", token.access_token, {
-        expiresAt,
-        scope,
-        metadata: {
-          authMode: input.authMode,
-          shopDomain: canonicalShopDomain,
-          shopId,
-        },
-      });
+      credentialStores.push(
+        this.storeCredential(ctx, "access_token", token.access_token, {
+          expiresAt,
+          scope,
+          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId },
+        }),
+      );
     }
 
     if (token.refresh_token) {
       const refreshExpiresAt = Number.isFinite(token.refresh_token_expires_in)
         ? new Date(now + Math.max(1, Number(token.refresh_token_expires_in)) * 1000)
         : null;
-      await this.storeCredential(ctx, "refresh_token", token.refresh_token, {
-        expiresAt: refreshExpiresAt,
-        scope,
-        metadata: {
-          authMode: input.authMode,
-          shopDomain: canonicalShopDomain,
-          shopId,
-        },
-      });
+      credentialStores.push(
+        this.storeCredential(ctx, "refresh_token", token.refresh_token, {
+          expiresAt: refreshExpiresAt,
+          scope,
+          metadata: { authMode: input.authMode, shopDomain: canonicalShopDomain, shopId },
+        }),
+      );
     }
+
+    await Promise.all(credentialStores);
 
     await this.persistInstallationMetadata(ctx, {
       shopDomain: canonicalShopDomain,

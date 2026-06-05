@@ -1,4 +1,5 @@
 import { ConnectorCap } from "./connector.interface";
+import { CONNECTOR_SLUGS } from "./connector.constants";
 
 export type ConnectorLaunchStage = "live" | "manual" | "planned";
 
@@ -14,7 +15,7 @@ export function resolveConnectorLaunchPolicy(
 ): ConnectorLaunchPolicy {
   const slug = String(slugInput ?? "").trim().toLowerCase();
 
-  if (slug === "amazon-in") {
+  if (slug === CONNECTOR_SLUGS.AMAZON) {
     return {
       launchStage: "live",
       launchNote:
@@ -23,7 +24,7 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
-  if (slug === "meesho") {
+  if (slug === CONNECTOR_SLUGS.MEESHO) {
     return {
       launchStage: "manual",
       launchNote:
@@ -32,7 +33,7 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
-  if (slug === "shopify") {
+  if (slug === CONNECTOR_SLUGS.SHOPIFY) {
     return {
       launchStage: "live",
       launchNote:

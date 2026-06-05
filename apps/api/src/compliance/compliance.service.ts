@@ -284,22 +284,35 @@ export class ComplianceService {
     let skippedAlreadyResolved = 0;
     let skippedMissing = 0;
 
-    for (const issueId of uniqueIssueIds) {
-      const issue = issueMap.get(issueId);
-      if (!issue) {
-        skippedMissing += 1;
-        continue;
-      }
-      await this.accessPolicy.assertProductAccess(
-        actor ?? {},
-        "edit",
-        {
-          id: issue.productId,
-          categoryId: issue.product?.categoryId ?? null,
-          brand: issue.product?.brand ?? null,
-        },
-        "ValidationIssue",
-      );
+    // Access checks per issue are independent and may each hit the DB —
+    // run in parallel. Behaviour matches the prior sequential loop: a denial
+    // throws and aborts the request (no per-issue swallow).
+    const presentIssues = uniqueIssueIds
+      .map((issueId) => ({ issueId, issue: issueMap.get(issueId) }))
+      .filter((entry): entry is { issueId: string; issue: NonNullable<ReturnType<typeof issueMap.get>> } => {
+        if (!entry.issue) {
+          skippedMissing += 1;
+          return false;
+        }
+        return true;
+      });
+
+    await Promise.all(
+      presentIssues.map(({ issue }) =>
+        this.accessPolicy.assertProductAccess(
+          actor ?? {},
+          "edit",
+          {
+            id: issue.productId,
+            categoryId: issue.product?.categoryId ?? null,
+            brand: issue.product?.brand ?? null,
+          },
+          "ValidationIssue",
+        ),
+      ),
+    );
+
+    for (const { issue } of presentIssues) {
       if (issue.status !== ValidationIssueStatus.open) {
         skippedAlreadyResolved += 1;
         continue;
@@ -816,30 +829,31 @@ export class ComplianceService {
   }
 
   private async loadInstallationScopeCandidate(tenantKey: string, installationId: string) {
-    const installation = await this.prisma.tenant(tenantKey).connectorInstallation.findUnique({
-      where: { id: installationId },
-      select: {
-        id: true,
-        accountAlias: true,
-        connectorId: true,
-      },
-    });
-    if (!installation) {
-      return null;
-    }
-    const definition = await this.prisma.tenant(tenantKey).connectorDefinition.findUnique({
-      where: { id: installation.connectorId },
-      select: { slug: true },
-    });
+    const rows = await this.prisma.tenant(tenantKey).$queryRaw<
+      Array<{ id: string; accountAlias: string; connectorSlug: string | null }>
+    >(Prisma.sql`
+      SELECT
+        ci.id          AS "id",
+        ci.account_alias AS "accountAlias",
+        cd.slug        AS "connectorSlug"
+      FROM connector_installations ci
+      LEFT JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ci.id = ${installationId}
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
     return {
-      id: installation.id,
-      accountAlias: installation.accountAlias,
-      connectorSlug: definition?.slug ?? null,
+      id: row.id,
+      accountAlias: row.accountAlias,
+      connectorSlug: row.connectorSlug ?? null,
     };
   }
 
   private async requireRule(ruleId: string) {
-    const rule = await this.prisma.tenant().complianceRule.findUnique({ where: { id: ruleId } });
+    const rule = await this.prisma
+      .tenant()
+      .complianceRule.findUnique({ where: { id: ruleId }, select: { id: true } });
     if (!rule) {
       throw new NotFoundException("Compliance rule not found");
     }
@@ -847,7 +861,9 @@ export class ComplianceService {
   }
 
   private async requireCategory(categoryId: string) {
-    const category = await this.prisma.tenant().category.findUnique({ where: { id: categoryId } });
+    const category = await this.prisma
+      .tenant()
+      .category.findUnique({ where: { id: categoryId }, select: { id: true } });
     if (!category) {
       throw new NotFoundException("Category not found");
     }

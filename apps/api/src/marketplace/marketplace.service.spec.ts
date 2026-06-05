@@ -178,8 +178,23 @@ describe("MarketplaceService.triggerConnectorExport", () => {
 
   const MOCK_INSTALLATION_ROW = { id: "inst_1", connectorId: "conn_1", tenantKey: "tenant1" };
 
+  // Shape returned by resolveInstallationWithSlug ($queryRaw JOIN result)
+  const MOCK_RESOLVED_ROW = {
+    id: "inst_1",
+    connectorId: "conn_1",
+    tenantKey: "tenant1",
+    connectorSlug: "meesho",
+    capabilities: [],
+  };
+
   function makeExportService(installationRow: unknown = MOCK_INSTALLATION_ROW) {
+    // resolveInstallationWithSlug uses $queryRaw; return [] when installationRow is null
+    // (simulates missing installation → NotFoundException path)
+    const queryRawResult = installationRow ? [MOCK_RESOLVED_ROW] : [];
+
     const tenantDb = {
+      // $queryRaw is called by resolveInstallationWithSlug
+      $queryRaw: jest.fn().mockResolvedValue(queryRawResult),
       connectorInstallation: {
         findFirst: jest.fn().mockResolvedValue(installationRow),
       },
