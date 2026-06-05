@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AppRole } from "@/lib/api";
 import { canViewAdminNavigationItem, type AdminNavigationAudience } from "@/lib/admin-navigation";
 import { cn } from "@/lib/utils";
@@ -226,12 +226,19 @@ interface AppSidebarProps {
 export function AppSidebar({ actorRole, adminBoundaryRoles = [], showInternal = false }: AppSidebarProps) {
   const pathname = usePathname();
   const [badges, setBadges] = useState<SidebarBadgeSummary>({ quality: 0, operations: 0 });
-  const sections = (showInternal ? [...SIDEBAR_SECTIONS, INTERNAL_SECTION] : SIDEBAR_SECTIONS)
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => canViewAdminNavigationItem(actorRole, item.visibility, adminBoundaryRoles)),
-    }))
-    .filter((section) => section.items.length > 0);
+  // Memoize so SIDEBAR_SECTIONS is not re-filtered on every pathname change or badge update.
+  const sections = useMemo(
+    () =>
+      (showInternal ? [...SIDEBAR_SECTIONS, INTERNAL_SECTION] : SIDEBAR_SECTIONS)
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) =>
+            canViewAdminNavigationItem(actorRole, item.visibility, adminBoundaryRoles),
+          ),
+        }))
+        .filter((section) => section.items.length > 0),
+    [actorRole, adminBoundaryRoles, showInternal],
+  );
 
   useEffect(() => {
     const controller = new AbortController();

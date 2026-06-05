@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { ChannelReadinessBadge } from "@/components/channel/channel-readiness-badge";
 import type { MarketplaceChannel } from "@/lib/api";
 import {
@@ -16,7 +16,7 @@ interface ProductChannelReadinessCellProps {
   onResolvedStatus?: (status: ReadinessStatus) => void;
 }
 
-export function ProductChannelReadinessCell({
+export const ProductChannelReadinessCell = memo(function ProductChannelReadinessCell({
   readiness,
   onResolvedStatus,
 }: ProductChannelReadinessCellProps) {
@@ -50,4 +50,4 @@ export function ProductChannelReadinessCell({
   );
 
   return <div className="flex flex-wrap gap-1">{badges}</div>;
-}
+});

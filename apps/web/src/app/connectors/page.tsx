@@ -501,7 +501,9 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
         throw err;
       }),
       getInstalledConnectors({ role: actorRole, authHeader }),
-      getProductList({ slim: true }, { role: actorRole, authHeader }).catch((err) => {
+      // Only firstProductId is used from this list — cache for 60s to avoid
+      // a full catalogue round-trip on every connector page load.
+      getProductList({ slim: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }).catch((err) => {
         if (err instanceof ApiHttpError && (err.status === 403 || err.status === 401)) return [] as Awaited<ReturnType<typeof getProductList>>;
         throw err;
       }),

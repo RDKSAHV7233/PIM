@@ -11,6 +11,7 @@
     "dev:api": "dotenv -o -e .env -- npm run dev --workspace @pim1/api",
     "dev": "npm run dev:api",
     "test": "npm run test:integration:auth-revocation && npm run test:integration:connector-idempotency-semantics && npm run test:integration:marketplace-worker-failure-visibility && npm run test:integration:worker-backpressure && npm run test:integration:connector-mapping-lifecycle",
+    "test:integration:parallel": "dotenv -o -e .env -- node scripts/run-integration-parallel.cjs",
     "build": "npm run prisma:generate && npm run build --workspace @pim1/api && npm run build --workspace @pim1/web",
     "lint": "npm run lint --workspace @pim1/api && npm run lint --workspace @pim1/web",
     "start": "npm run start --workspace @pim1/api",

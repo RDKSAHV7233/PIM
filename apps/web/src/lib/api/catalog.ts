@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { ApiRequestOptions, AttributeDefinition, BulkImportValidationSummary, CatalogSearchResult, CatalogStats, Category, CategoryListQuery, PaginatedResponse, Product, ProductListItem, ProductListQuery, ProductRevision, ValidationIssue, Variant, ApprovalComment, ProductActivityResponse } from "./core";
 import { fetchJson, postJson } from "./core";
 
@@ -15,6 +16,22 @@ function isApiRequestOptions(value: unknown): value is ApiRequestOptions {
   }
   return "role" in value || "tenantKey" in value || "authHeader" in value || "headers" in value;
 }
+
+/**
+ * Per-request React cache wrapper for getCategoryTree.
+ *
+ * Use getCachedCategoryTree instead of getCategoryTree when called from multiple
+ * Server Components in the same render tree — React cache() deduplicates to a
+ * single fetch within a request at zero TTL cost.
+ *
+ * Note: this does NOT replace the revalidateSeconds option; the underlying fetchJson
+ * still populates the Next.js Data Cache. getCachedCategoryTree adds deduplication
+ * on top of that.
+ */
+export const getCachedCategoryTree = cache(
+  (inputOrOptions?: CategoryListQuery | ApiRequestOptions, maybeOptions?: ApiRequestOptions) =>
+    getCategoryTree(inputOrOptions, maybeOptions),
+);
 
 export async function getCategoryTree(
   inputOrOptions?: CategoryListQuery | ApiRequestOptions,

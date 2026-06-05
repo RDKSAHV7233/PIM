@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { AppSidebar } from "@/components/nav/app-sidebar";
-import { GlobalSearch } from "@/components/nav/global-search";
+import { GlobalSearchTrigger as GlobalSearch } from "@/components/global-search/global-search-trigger";
 import { NotificationCenter } from "@/components/nav/notification-center";
 import { AppDrawer } from "@/components/ui/app-drawer";
 import { BrandLogo } from "@/components/ui/brand-logo";

@@ -21,11 +21,14 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { PILOT_ROLE_ALIGNMENT } from "@/lib/constants/role-alignment";
 import type {
   ConnectorPermission,
+  RoleCapabilitiesResponse,
   TenantAuthPolicy,
   WorkspaceUser,
   AccessScopeAssignment,
-  RoleCapabilityMatrix,
 } from "@/lib/api";
+
+/** Alias kept for readability within this component. */
+type RoleCapabilityMatrix = RoleCapabilitiesResponse;
 
 interface BillingUsage {
   profile: { tenantKey: string };

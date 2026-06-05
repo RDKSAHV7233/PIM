@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { Channel } from "@/lib/design-tokens";
 import { channelConfig } from "@/lib/design-tokens";
 import type { ReadinessStatus } from "@/lib/channel-readiness";
@@ -52,7 +53,7 @@ function badgeStyle(status: ReadinessStatus) {
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
-export function ChannelReadinessBadge({
+export const ChannelReadinessBadge = memo(function ChannelReadinessBadge({
   channel,
   status,
   errorCount = 0,
@@ -71,4 +72,4 @@ export function ChannelReadinessBadge({
   }
 
   return <span className={className}>{content}</span>;
-}
+});

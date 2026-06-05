@@ -11,7 +11,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { RefreshOnInterval } from "@/components/ui/refresh-on-interval";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import type { BulkImportRun, BulkImportRunRow } from "@/lib/api/core";
-import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCategoryTree } from "@/lib/api";
+import { ApiHttpError, getBulkImportJobRows, getBulkImportJobs, getCachedCategoryTree } from "@/lib/api";
 // validateImportPreflight is the import wizard preflight client — available for the wizard validation summary step
 import { validateImportPreflight } from "@/lib/api/imports";
 import { getBulkImportRun, getBulkImportRunRows, getBulkImportRuns } from "@/lib/api/operations";
@@ -158,27 +158,39 @@ export default async function OperationsImportsPage({ searchParams }: Operations
   const canWrite = canEditWorkspace(actorRole);
 
   try {
-    const [jobsResult, categoriesResult] = await Promise.allSettled([
-      getBulkImportJobs({ role: actorRole, authHeader }),
-      getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-    ]);
-    if (jobsResult.status === "rejected") {
-      const err = jobsResult.reason;
-      if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) throw err;
-    }
-    if (categoriesResult.status === "rejected") {
-      const err = categoriesResult.reason;
-      if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) throw err;
+    // All independent fetches — including the optionally-selected job/run rows — run in
+    // parallel up front. URL params (selectedBulkJobId, selectedBulkRunId) are known
+    // immediately, so there is no reason to wait for the jobs list before fetching rows.
+    const [jobsResult, categoriesResult, runsResult, selectedRowsResult, selectedRunResult, selectedRunRowsResult] =
+      await Promise.allSettled([
+        getBulkImportJobs({ role: actorRole, authHeader }),
+        getCachedCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
+        getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader }),
+        selectedBulkJobId
+          ? getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
+          : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportJobRows>>),
+        selectedBulkRunId
+          ? getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader })
+          : Promise.resolve(null),
+        selectedBulkRunId
+          ? getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader })
+          : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportRunRows>>),
+      ]);
+
+    // Re-throw 401/403 from any slot so the outer catch can redirect to login.
+    // Previously, runs/run-rows sat inside the outer try/catch and would naturally
+    // propagate; Promise.allSettled absorbs them, so we must re-throw explicitly.
+    for (const result of [jobsResult, categoriesResult, runsResult, selectedRowsResult, selectedRunResult, selectedRunRowsResult]) {
+      if (result.status === "rejected") {
+        const err = result.reason;
+        if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) throw err;
+      }
     }
     const jobs = jobsResult.status === "fulfilled" ? jobsResult.value : [];
     const categories = categoriesResult.status === "fulfilled" ? categoriesResult.value : [];
-    let runs: BulkImportRun[] = [];
-    try {
-      const runCollection = await getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader });
-      runs = normalizeCollection<BulkImportRun>(runCollection);
-    } catch {
-      // Runs endpoint may not be available on all deployments; degrade gracefully.
-    }
+    const runs = normalizeCollection<BulkImportRun>(
+      runsResult.status === "fulfilled" ? runsResult.value : [],
+    );
     const largeRuns = runs.filter((run) => run.effectiveMode === "large");
     const filteredByData = filterTestData(jobs, hideTestData);
     const visibleJobs =
@@ -186,9 +198,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
         ? filteredByData.filter((job) => String(job.status).toLowerCase() === selectedStatus)
         : filteredByData;
 
-    const selectedRows = selectedBulkJobId
-      ? await getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
-      : [];
+    const selectedRows = selectedRowsResult.status === "fulfilled" ? selectedRowsResult.value : [];
     const selectedJob = selectedBulkJobId
       ? filteredByData.find((job) => job.id === selectedBulkJobId) ?? jobs.find((job) => job.id === selectedBulkJobId) ?? null
       : null;
@@ -206,26 +216,14 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       selectedAttentionRows,
       selectedSuccessfulRows: selectedSuccessfulRows.length,
     });
-    let selectedRun: BulkImportRun | null = selectedBulkRunId
-      ? (largeRuns.find((run) => run.id === selectedBulkRunId) ?? null)
-      : null;
-    if (selectedBulkRunId && !selectedRun) {
-      try {
-        selectedRun = await getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader });
-      } catch {
-        // Run not found or endpoint unavailable; show page without run detail.
-      }
-    }
-    let selectedRunRows: BulkImportRunRow[] = [];
-    if (selectedBulkRunId) {
-      try {
-        selectedRunRows = normalizeCollection<BulkImportRunRow>(
-          await getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader }),
-        );
-      } catch {
-        // Run rows endpoint unavailable; degrade gracefully.
-      }
-    }
+    const selectedRun: BulkImportRun | null =
+      (selectedBulkRunId
+        ? largeRuns.find((run) => run.id === selectedBulkRunId) ??
+          (selectedRunResult.status === "fulfilled" ? selectedRunResult.value : null)
+        : null) ?? null;
+    const selectedRunRows: BulkImportRunRow[] = normalizeCollection<BulkImportRunRow>(
+      selectedRunRowsResult.status === "fulfilled" ? selectedRunRowsResult.value : [],
+    );
     const selectedRunRowCounts = selectedRunRows.reduce<Record<string, number>>((accumulator, row) => {
       const key = String(row.status ?? "").toLowerCase() || "unknown";
       accumulator[key] = (accumulator[key] ?? 0) + 1;
