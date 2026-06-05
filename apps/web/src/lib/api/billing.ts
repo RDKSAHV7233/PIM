@@ -26,12 +26,6 @@ export async function createBillingUpgradeRequest(
   return postJson<PlanUpgradeRequestCreateResponse>("/billing/upgrade-request", body, options);
 }
 
-export async function createBillingCheckoutSession(
-  body: { planTier: string; successUrl?: string; cancelUrl?: string },
-  options?: ApiRequestOptions,
-) {
-  return postJson<{ url: string }>("/billing/checkout-session", body, options);
-}
 
 export async function updateBillingContact(
   body: { billingContactEmail?: string | null },

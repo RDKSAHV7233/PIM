@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ApiHttpError, createBillingCheckoutSession, createBillingUpgradeRequest, updateBillingContact } from "@/lib/api";
+import { ApiHttpError, createBillingUpgradeRequest, updateBillingContact } from "@/lib/api";
 import { getServerSession } from "@/lib/server-session";
 
 async function requireAdminRequestOptions() {
@@ -52,6 +52,7 @@ export async function requestPlanUpgradeAction(formData: FormData) {
   }
 }
 
+
 export async function updateBillingContactAction(formData: FormData) {
   const rawBillingContactEmail = String(formData.get("billingContactEmail") ?? "").trim();
   const clearRequested = String(formData.get("clear") ?? "").trim().toLowerCase() === "true";
@@ -76,43 +77,5 @@ export async function updateBillingContactAction(formData: FormData) {
       }
     }
     throw error;
-  }
-}
-
-export async function createCheckoutSessionAction(formData: FormData) {
-  const planTier = String(formData.get("planTier") ?? "GROWTH").trim().toUpperCase();
-  const returnTo = resolveReturnTo(formData);
-  const webBaseUrl = String(process.env.PIM_WEB_BASE_URL ?? "http://localhost:3001").trim().replace(/\/+$/, "");
-
-  try {
-    const result = await createBillingCheckoutSession(
-      {
-        planTier,
-        successUrl: `${webBaseUrl}/admin/plan?checkout=success`,
-        cancelUrl: `${webBaseUrl}/admin/plan?checkout=cancelled`,
-      },
-      await requireAdminRequestOptions(),
-    );
-    if (result.url) {
-      redirect(result.url);
-    }
-    redirect(withRequestStatus(returnTo, "checkout-failed"));
-  } catch (error) {
-    // Next.js redirect() throws — let it propagate
-    if (error instanceof Error && "digest" in error) {
-      throw error;
-    }
-    if (error instanceof ApiHttpError) {
-      if (error.status === 400) {
-        const body = error.body as Record<string, unknown> | null;
-        if (String(body?.error ?? "") === "STRIPE_BILLING_NOT_ENABLED") {
-          redirect(withRequestStatus(returnTo, "stripe-not-enabled"));
-        }
-      }
-      if (error.status === 403) {
-        redirect(withRequestStatus(returnTo, "forbidden"));
-      }
-    }
-    redirect(withRequestStatus(returnTo, "checkout-failed"));
   }
 }

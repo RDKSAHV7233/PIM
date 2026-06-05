@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Card, CardTitle } from "@/components/ui/card";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
@@ -10,7 +11,6 @@ import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions"
 import { UsageMeters } from "./_components/usage-meters";
 import { SignupConversionSection } from "./_components/signup-conversion";
 import { PlanManagementSection } from "./_components/plan-management";
-import { PlanComparisonWrapper } from "./_components/plan-comparison-wrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +88,8 @@ function resolveBillingContactStatusAlert(statusInput: string | undefined, billi
   return null;
 }
 
+
+
 function resolveSignupHealthAlert({ rangeDays, requests, verifications, verificationRate, medianVerifyHours }: { rangeDays: number; requests: number; verifications: number; verificationRate: number; medianVerifyHours: number }) {
   const pending = Math.max(requests - verifications, 0);
   if (requests < 3) return null;
@@ -152,14 +154,6 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
 
       <UsageMeters usage={usage} />
 
-      {role === "admin" ? (
-        <PlanComparisonWrapper
-          currentTier={usage.planTier}
-          billingStatus={usage.profile.billingStatus}
-          stripeEnabled={true}
-        />
-      ) : null}
-
       {role !== "admin" ? (
         <div className="rounded-md border border-slate-200 px-3 py-3 text-sm text-slate-600">
           <span className="font-semibold">Commercial controls are admin-only.</span> You can still review current usage and status above.
@@ -188,6 +182,16 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           upgradeRequestStatusAlert={upgradeRequestStatusAlert}
           commercialContact={commercialContact}
         />
+      ) : null}
+
+      {role === "admin" ? (
+        <Card>
+          <CardTitle>Commercial operations</CardTitle>
+          <p className="text-sm text-slate-600">Change tenant plan tiers, process upgrade requests, and view commercial overview across all workspaces.</p>
+          <Link href="/admin/commercial" className="mt-3 inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+            Open commercial ops
+          </Link>
+        </Card>
       ) : null}
     </div>
   );

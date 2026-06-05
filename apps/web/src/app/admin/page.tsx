@@ -58,6 +58,12 @@ const adminLinks = [
     visibility: "all" as AdminNavigationAudience,
   },
   {
+    title: "Commercial Ops",
+    description: "Manage tenant plans, process upgrade requests, and change billing tiers.",
+    href: "/admin/commercial",
+    visibility: "system_admin_gated" as AdminNavigationAudience,
+  },
+  {
     title: "Audit Logs",
     description: "Review security and governance actions with traceability.",
     href: "/admin/audit",
