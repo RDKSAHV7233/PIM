@@ -831,6 +831,7 @@ model ConnectorInstallation {
 
   @@unique([tenantKey, connectorId, accountAlias], map: "connector_installations_tenant_connector_alias_unique")
   @@index([tenantKey, installedAt(sort: Desc), id(sort: Desc)], map: "idx_connector_installations_tenant_installed_at")
+  @@index([tenantKey, connectorId], map: "idx_connector_installations_tenant_connector_id")
   @@map("connector_installations")
 }
 
@@ -876,6 +877,7 @@ model ConnectorSubmission {
   @@unique([tenantKey, installationId, idempotencyKey], map: "idx_connector_submissions_tenant_installation_idempotency")
   @@index([tenantKey, status, submittedAt(sort: Desc)], map: "idx_connector_submissions_tenant_status")
   @@index([tenantKey, installationId, status], map: "idx_connector_submissions_tenant_installation_status")
+  @@index([tenantKey, installationId, productId], map: "idx_connector_submissions_tenant_installation_product")
   @@map("connector_submissions")
 }
 
@@ -990,6 +992,7 @@ model AuthIdentity {
 
   @@index([tenantKey, role, isActive])
   @@index([tenantKey, createdAt(sort: Desc), id(sort: Desc)], map: "idx_auth_identity_tenant_created_id")
+  @@index([tenantKey, userId], map: "idx_auth_identity_tenant_user_id")
 }
 
 model ApiAccessKey {
