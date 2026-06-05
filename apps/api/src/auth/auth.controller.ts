@@ -107,10 +107,9 @@ export class AuthController {
     }
 
     if (result.type === "invalid_credentials") {
-      throw new UnauthorizedException({
-        error: "INVALID_CREDENTIALS",
-        attemptsRemaining: result.attemptsRemaining,
-      });
+      // Do not expose the exact attempt count — a precise number lets an attacker
+      // stop just before lockout and rotate credentials, defeating the rate limit.
+      throw new UnauthorizedException({ error: "INVALID_CREDENTIALS" });
     }
 
     if (result.type === "workspace_not_found") {

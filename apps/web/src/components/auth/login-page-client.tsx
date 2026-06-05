@@ -336,9 +336,16 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           </button>
 
           {errorMessage && (
-            <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
-              {errorMessage}
-            </p>
+            <div className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
+              <p>{errorMessage}</p>
+              {attemptsRemaining !== null && attemptsRemaining <= 3 && (
+                <p className="mt-1 text-xs font-medium">
+                  {attemptsRemaining === 1
+                    ? "1 attempt remaining before your account is temporarily locked."
+                    : `${attemptsRemaining} attempts remaining before your account is temporarily locked.`}
+                </p>
+              )}
+            </div>
           )}
           <p className="text-xs leading-5 text-slate-600">
             {authCopy.forgotPasswordPrefix}{" "}

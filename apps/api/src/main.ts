@@ -24,8 +24,10 @@ async function bootstrap() {
         environment: env.APP_ENV,
         tracesSampleRate: env.APP_ENV === "production" ? 0.1 : 1.0,
       });
-    } catch {
-      // @sentry/node not installed — error tracking unavailable
+    } catch (err: unknown) {
+      // @sentry/node not installed or init failed — error tracking unavailable.
+      // Log so a DSN misconfiguration is visible at startup rather than silently swallowed.
+      console.warn("Sentry init failed:", err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -42,8 +44,9 @@ async function bootstrap() {
       });
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       sdk.start();
-    } catch {
-      // @opentelemetry packages not installed - tracing unavailable
+    } catch (err: unknown) {
+      // @opentelemetry packages not installed or init failed — tracing unavailable.
+      console.warn("OpenTelemetry init failed:", err instanceof Error ? err.message : String(err));
     }
   }
 

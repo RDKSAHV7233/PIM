@@ -63,6 +63,10 @@ export class StripeWebhookController {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? "unknown");
       this.logger.error(`Stripe webhook dispatch failed for event ${event.id} type=${event.type}: ${message}`);
+      // Re-throw so Stripe sees HTTP 500 and retries — swallowing the error
+      // would cause Stripe to mark the event as delivered even though billing
+      // state was never updated.
+      throw error;
     }
 
     return { received: true };

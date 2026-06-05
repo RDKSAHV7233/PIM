@@ -289,7 +289,8 @@ export class SignupService implements OnModuleDestroy {
       if (code === "EMAIL_PROVIDER_MISCONFIGURED") {
         throw new Error(code);
       }
-      this.logger.error(`Public signup verification email failed for ${adminEmail}: ${code}`);
+      // Do not log the raw email address — it is PII. Use the request ID for correlation.
+      this.logger.error(`Public signup verification email failed [ref:${signupRequestId}]: ${code}`);
       throw new Error("SIGNUP_VERIFICATION_SEND_FAILED");
     }
 
@@ -467,7 +468,7 @@ export class SignupService implements OnModuleDestroy {
       if (code === "EMAIL_PROVIDER_MISCONFIGURED") {
         throw new Error(code);
       }
-      this.logger.error(`Public signup verification resend failed for ${adminEmail}: ${code}`);
+      this.logger.error(`Public signup verification resend failed [ref:${signup.id}]: ${code}`);
       throw new Error("SIGNUP_VERIFICATION_SEND_FAILED");
     }
 

@@ -1844,26 +1844,24 @@ export class AuthService implements OnModuleDestroy {
   private async buildAccountExportDocument(tenantIdInput: string, userIdInput: string, jobId: string): Promise<Record<string, unknown>> {
     const tenantId = normalizeTenantKey(tenantIdInput);
     const userId = this.normalizeUserKey(userIdInput);
-    const authIdentity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findFirst({
-      where: {
-        tenantKey: tenantId,
-        userId,
-      },
-      select: {
-        id: true,
-        tenantKey: true,
-        userId: true,
-        role: true,
-        isActive: true,
-        lockedUntil: true,
-        createdBy: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    const workspace = await this.tenantDirectoryService.resolveTenantAlias(tenantId);
+    // authIdentity and workspace are independent — fetch in parallel.
     const tenantPrisma = this.prisma.tenant(tenantId);
-    const [consents, exportRequests, deletionRequests, notifications, auditRows, mfaEnrollments] = await Promise.all([
+    const [authIdentity, workspace, consents, exportRequests, deletionRequests, notifications, auditRows, mfaEnrollments] = await Promise.all([
+      this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findFirst({
+        where: { tenantKey: tenantId, userId },
+        select: {
+          id: true,
+          tenantKey: true,
+          userId: true,
+          role: true,
+          isActive: true,
+          lockedUntil: true,
+          createdBy: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.tenantDirectoryService.resolveTenantAlias(tenantId),
       tenantPrisma.accountConsentEvent.findMany({
         where: { userId },
         orderBy: { consentRecordedAt: "desc" },
