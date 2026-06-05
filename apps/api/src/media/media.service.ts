@@ -310,21 +310,22 @@ export class MediaService {
       await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product);
     }
     if (variantId) {
+      // Single query via Variant→Product @relation (replaces two sequential findUnique calls).
       const variant = await this.prisma.tenant().variant.findUnique({
         where: { id: variantId },
-        select: { id: true, productId: true },
+        select: {
+          id: true,
+          productId: true,
+          product: { select: { id: true, categoryId: true, brand: true, vendorScopeKey: true } },
+        },
       });
       if (!variant) {
         return emptyResult();
       }
-      const product = await this.prisma.tenant().product.findUnique({
-        where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
-      });
-      if (!product) {
+      if (!variant.product) {
         throw new NotFoundException("Product not found");
       }
-      await this.accessPolicy.assertProductAccess(actor ?? {}, "view", product);
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "view", variant.product);
     }
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);
@@ -591,9 +592,14 @@ export class MediaService {
     const normalizedProductId = productId?.trim() || null;
     const normalizedVariantId = variantId?.trim() || null;
     if (normalizedVariantId) {
+      // Single query via Variant→Product @relation.
       const variant = await this.prisma.tenant().variant.findUnique({
         where: { id: normalizedVariantId },
-        select: { id: true, productId: true },
+        select: {
+          id: true,
+          productId: true,
+          product: { select: { id: true, categoryId: true, brand: true, vendorScopeKey: true } },
+        },
       });
       if (!variant) {
         throw new NotFoundException("Variant not found");
@@ -601,14 +607,10 @@ export class MediaService {
       if (normalizedProductId && normalizedProductId !== variant.productId) {
         throw new BadRequestException("Provided productId does not match variant product.");
       }
-      const product = await this.prisma.tenant().product.findUnique({
-        where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
-      });
-      if (!product) {
+      if (!variant.product) {
         throw new NotFoundException("Product not found");
       }
-      await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", product);
+      await this.accessPolicy.assertProductAccess(actor ?? {}, "edit", variant.product);
       return {
         productId: variant.productId,
         variantId: variant.id,
@@ -656,21 +658,22 @@ export class MediaService {
       return;
     }
     if (variantId) {
+      // Single query via Variant→Product @relation.
       const variant = await this.prisma.tenant().variant.findUnique({
         where: { id: variantId },
-        select: { id: true, productId: true },
+        select: {
+          id: true,
+          productId: true,
+          product: { select: { id: true, categoryId: true, brand: true, vendorScopeKey: true } },
+        },
       });
       if (!variant) {
         throw new NotFoundException("Variant not found");
       }
-      const product = await this.prisma.tenant().product.findUnique({
-        where: { id: variant.productId },
-        select: { id: true, categoryId: true, brand: true, vendorScopeKey: true },
-      });
-      if (!product) {
+      if (!variant.product) {
         throw new NotFoundException("Product not found");
       }
-      await this.accessPolicy.assertProductAccess(actor, access, product, "MediaAsset");
+      await this.accessPolicy.assertProductAccess(actor, access, variant.product, "MediaAsset");
       return;
     }
     await this.accessPolicy.assertProductAccess(actor, access, { id: assetId, categoryId: null, brand: null }, "MediaAsset");

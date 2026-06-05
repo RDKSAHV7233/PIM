@@ -618,27 +618,21 @@ export class CatalogService {
           filters: { channelSlug: params.channelSlug },
         };
       }
-      const channelInstallations = await this.prisma.tenant().connectorInstallation.findMany({
-        where: { connectorId: channelDef.id },
-        take: 50, // defensive cap — one installation per marketplace store account
-        select: { id: true },
-      });
-      if (channelInstallations.length === 0) {
-        return {
-          items: [],
-          limit: pageLimit,
-          total: null as null,
-          nextCursor: null as null,
-          filters: { channelSlug: params.channelSlug },
-        };
-      }
-      const channelSubmissions = await this.prisma.tenant().connectorSubmission.findMany({
-        where: { installationId: { in: channelInstallations.map((i) => i.id) } },
-        select: { productId: true },
-        distinct: ["productId"],
-        take: 50_000, // defensive cap — one distinct productId per submitted product
-      });
-      const channelProductIds = channelSubmissions.map((s) => s.productId);
+      // Single JOIN query replaces two sequential queries:
+      // 1. connectorInstallation.findMany({ where: { connectorId } })
+      // 2. connectorSubmission.findMany({ where: { installationId: { in: ids } } })
+      // ConnectorSubmission has no Prisma @relation to ConnectorInstallation,
+      // so $queryRaw is the only option without a schema migration.
+      const channelProductRows = await this.prisma.tenant().$queryRaw<Array<{ productId: string }>>(
+        Prisma.sql`
+          SELECT DISTINCT cs.product_id AS "productId"
+          FROM connector_submissions cs
+          JOIN connector_installations ci ON ci.id = cs.installation_id
+          WHERE ci.connector_id = ${channelDef.id}
+          LIMIT 50000
+        `,
+      );
+      const channelProductIds = channelProductRows.map((r) => r.productId);
       if (channelProductIds.length === 0) {
         return {
           items: [],
@@ -1000,30 +994,6 @@ export class CatalogService {
     await this.auditService.record({
       actorId: actor.id,
       actorRole: actor.role,
-      action: "REVIEW_DECISION",
-      resource: "/api/v1/catalog/products/:id/review-decision",
-      resourceId: product.id,
-      metadata: {
-        model: "Product",
-        fromStatus: current.status,
-        toStatus: nextStatus,
-        changedFields: [
-          {
-            path: "status",
-            label: "Status",
-            before: current.status,
-            after: nextStatus,
-          },
-        ],
-        changedFieldCount: 1,
-        changedSectionCount: 1,
-        decisionNote: dto.note?.trim() || null,
-      },
-    });
-
-    await this.auditService.record({
-      actorId: actor.id,
-      actorRole: actor.role,
       action: "STATUS_TRANSITION",
       resource: "/api/v1/catalog/products/:id/review-decision",
       resourceId: product.id,
@@ -1067,6 +1037,14 @@ export class CatalogService {
       where: { productId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100,
+      select: {
+        id: true,
+        productId: true,
+        actorId: true,
+        actorRole: true,
+        body: true,
+        createdAt: true,
+      },
     });
   }
 
@@ -1121,6 +1099,18 @@ export class CatalogService {
       where: { productId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100,
+      select: {
+        id: true,
+        productId: true,
+        requesterId: true,
+        requesterRole: true,
+        reason: true,
+        status: true,
+        resolvedAt: true,
+        resolvedById: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
@@ -1437,7 +1427,21 @@ export class CatalogService {
   }
 
   private async requireVariant(variantId: string) {
-    const variant = await this.prisma.tenant().variant.findUnique({ where: { id: variantId } });
+    const variant = await this.prisma.tenant().variant.findUnique({
+      where: { id: variantId },
+      select: {
+        id: true,
+        productId: true,
+        skuCode: true,
+        attributes: true,
+        mrp: true,
+        sellingPrice: true,
+        inventoryQty: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }

@@ -124,6 +124,9 @@ type BulkImportTemplateRow = BulkImportTemplateLike & {
   categoryPath: string;
 };
 
+/** Single source of truth for the WORKFLOW_ENTRY_INVALID error code. */
+const WORKFLOW_ENTRY_INVALID_CODE = "WORKFLOW_ENTRY_INVALID" as const;
+
 @Injectable()
 export class BulkImportService {
   constructor(
@@ -1367,7 +1370,7 @@ export class BulkImportService {
       if (normalizedStatus !== RecordStatus.draft) {
         issues.push({
           severity: "blocking",
-          code: "WORKFLOW_ENTRY_INVALID",
+          code: WORKFLOW_ENTRY_INVALID_CODE,
           message: "Imported rows must enter workflow in draft status.",
         });
       }
@@ -1465,11 +1468,11 @@ export class BulkImportService {
     const response = error.getResponse();
     if (response && typeof response === "object" && !Array.isArray(response)) {
       const code = (response as { code?: unknown }).code;
-      if (typeof code === "string" && code.trim().toUpperCase() === "WORKFLOW_ENTRY_INVALID") {
+      if (typeof code === "string" && code.trim().toUpperCase() === WORKFLOW_ENTRY_INVALID_CODE) {
         return true;
       }
     }
-    return String(error.message).toUpperCase().includes("WORKFLOW_ENTRY_INVALID");
+    return String(error.message).toUpperCase().includes(WORKFLOW_ENTRY_INVALID_CODE);
   }
 
   private toCsvCell(value: string) {

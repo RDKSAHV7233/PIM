@@ -416,15 +416,23 @@ export class BulkImportRunService implements OnModuleInit {
 
       let collisionCount = 0;
       const skuCodeValues = [...skuCodesSeen.keys()];
-      for (let index = 0; index < skuCodeValues.length; index += 1000) {
-        const chunk = skuCodeValues.slice(index, index + 1000);
-        if (chunk.length === 0) {
-          continue;
-        }
-        const existingVariants = await this.prisma.tenant().variant.findMany({
-          where: { skuCode: { in: chunk } },
-          select: { skuCode: true },
-        });
+      // Build chunks first, then run all DB lookups in parallel.
+      // Each chunk is independent (distinct skuCode slice), so Promise.all
+      // is safe and reduces wall-time from N×RTT to 1×RTT for large imports.
+      const chunks: string[][] = [];
+      for (let i = 0; i < skuCodeValues.length; i += 1000) {
+        const chunk = skuCodeValues.slice(i, i + 1000);
+        if (chunk.length > 0) chunks.push(chunk);
+      }
+      const chunkResults = await Promise.all(
+        chunks.map((chunk) =>
+          this.prisma.tenant().variant.findMany({
+            where: { skuCode: { in: chunk } },
+            select: { skuCode: true },
+          }),
+        ),
+      );
+      for (const existingVariants of chunkResults) {
         for (const variant of existingVariants) {
           const rowNumbers = skuCodesSeen.get(variant.skuCode) ?? [];
           if (rowNumbers.length === 0) {
@@ -808,7 +816,7 @@ export class BulkImportRunService implements OnModuleInit {
         lineNumber++;
       }
 
-      await this.refreshJobCounters(jobId);
+      await this.refreshLargeJobCounters(jobId);
       await this.refreshRunCounters(runId);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Batch processing failed.";
@@ -822,7 +830,15 @@ export class BulkImportRunService implements OnModuleInit {
     }
   }
 
-  private async refreshJobCounters(jobId: string) {
+  /**
+   * Refreshes job status counters for large-run batch processing.
+   *
+   * Intentionally named `refreshLargeJobCounters` (not `refreshJobCounters`) to
+   * distinguish it from BulkImportService.refreshJobCounters, which additionally
+   * emits notifications and syncs linked run state. The two methods diverge by
+   * design — do not consolidate them without accounting for those side effects.
+   */
+  private async refreshLargeJobCounters(jobId: string) {
     // groupBy replaces the prior findMany + in-memory loop: the DB aggregates
     // by status and returns at most one row per distinct status value instead of
     // shipping every row across the wire (potentially thousands per large batch job).

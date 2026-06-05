@@ -294,43 +294,45 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   async seedPlanLimits(): Promise<void> {
-    for (const item of PLAN_LIMITS) {
-      await this.prisma.tenant().$executeRaw(Prisma.sql`
-        INSERT INTO "PlanLimits" (
-          "id",
-          "planTier",
-          "maxSkus",
-          "maxSubmissionsPerMonth",
-          "maxUsers",
-          "maxStorageGb",
-          "maxConnectorInstallations",
-          "maxAccountsPerConnector",
-          "createdAt",
-          "updatedAt"
-        )
-        VALUES (
-          ${this.randomId()},
-          ${item.planTier},
-          ${item.maxSkus},
-          ${item.maxSubmissionsPerMonth},
-          ${item.maxUsers},
-          ${item.maxStorageGb},
-          ${item.maxConnectorInstallations},
-          ${item.maxAccountsPerConnector},
-          NOW(),
-          NOW()
-        )
-        ON CONFLICT ("planTier")
-        DO UPDATE SET
-          "maxSkus" = EXCLUDED."maxSkus",
-          "maxSubmissionsPerMonth" = EXCLUDED."maxSubmissionsPerMonth",
-          "maxUsers" = EXCLUDED."maxUsers",
-          "maxStorageGb" = EXCLUDED."maxStorageGb",
-          "maxConnectorInstallations" = EXCLUDED."maxConnectorInstallations",
-          "maxAccountsPerConnector" = EXCLUDED."maxAccountsPerConnector",
-          "updatedAt" = NOW()
-      `);
-    }
+    await Promise.all(
+      PLAN_LIMITS.map((item) =>
+        this.prisma.tenant().$executeRaw(Prisma.sql`
+          INSERT INTO "PlanLimits" (
+            "id",
+            "planTier",
+            "maxSkus",
+            "maxSubmissionsPerMonth",
+            "maxUsers",
+            "maxStorageGb",
+            "maxConnectorInstallations",
+            "maxAccountsPerConnector",
+            "createdAt",
+            "updatedAt"
+          )
+          VALUES (
+            ${this.randomId()},
+            ${item.planTier},
+            ${item.maxSkus},
+            ${item.maxSubmissionsPerMonth},
+            ${item.maxUsers},
+            ${item.maxStorageGb},
+            ${item.maxConnectorInstallations},
+            ${item.maxAccountsPerConnector},
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT ("planTier")
+          DO UPDATE SET
+            "maxSkus" = EXCLUDED."maxSkus",
+            "maxSubmissionsPerMonth" = EXCLUDED."maxSubmissionsPerMonth",
+            "maxUsers" = EXCLUDED."maxUsers",
+            "maxStorageGb" = EXCLUDED."maxStorageGb",
+            "maxConnectorInstallations" = EXCLUDED."maxConnectorInstallations",
+            "maxAccountsPerConnector" = EXCLUDED."maxAccountsPerConnector",
+            "updatedAt" = NOW()
+        `),
+      ),
+    );
   }
 
   async touchUsageForCurrentTenant(): Promise<UsageRow> {
@@ -1038,50 +1040,37 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   private async getPlanLimits(planTierInput: string): Promise<PlanLimitsRow> {
     const planTier = this.normalizePlanTier(planTierInput);
+    // One query: fetch the requested tier, falling back to STARTER if absent.
+    // ORDER BY CASE puts the exact match first so LIMIT 1 returns it preferentially.
     const rows = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
       SELECT
-        "planTier" AS "planTier",
-        "maxSkus" AS "maxSkus",
-        "maxSubmissionsPerMonth" AS "maxSubmissionsPerMonth",
-        "maxUsers" AS "maxUsers",
-        "maxStorageGb" AS "maxStorageGb",
+        "planTier"                  AS "planTier",
+        "maxSkus"                   AS "maxSkus",
+        "maxSubmissionsPerMonth"    AS "maxSubmissionsPerMonth",
+        "maxUsers"                  AS "maxUsers",
+        "maxStorageGb"              AS "maxStorageGb",
         "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
+        "maxAccountsPerConnector"   AS "maxAccountsPerConnector"
       FROM "PlanLimits"
-      WHERE "planTier" = ${planTier}
+      WHERE "planTier" IN (${planTier}, 'STARTER')
+      ORDER BY CASE WHEN "planTier" = ${planTier} THEN 0 ELSE 1 END
       LIMIT 1
     `);
     if (rows[0]) {
       return rows[0];
     }
 
-    const fallback = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
-      SELECT
-        "planTier" AS "planTier",
-        "maxSkus" AS "maxSkus",
-        "maxSubmissionsPerMonth" AS "maxSubmissionsPerMonth",
-        "maxUsers" AS "maxUsers",
-        "maxStorageGb" AS "maxStorageGb",
-        "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
-      FROM "PlanLimits"
-      WHERE "planTier" = 'STARTER'
-      LIMIT 1
-    `);
-    if (fallback[0]) {
-      return fallback[0];
-    }
-
+    // Degenerate path: table is empty (first boot before seed ran).
     await this.seedPlanLimits();
     const seeded = await this.prisma.tenant().$queryRaw<PlanLimitsRow[]>(Prisma.sql`
       SELECT
-        "planTier" AS "planTier",
-        "maxSkus" AS "maxSkus",
-        "maxSubmissionsPerMonth" AS "maxSubmissionsPerMonth",
-        "maxUsers" AS "maxUsers",
-        "maxStorageGb" AS "maxStorageGb",
+        "planTier"                  AS "planTier",
+        "maxSkus"                   AS "maxSkus",
+        "maxSubmissionsPerMonth"    AS "maxSubmissionsPerMonth",
+        "maxUsers"                  AS "maxUsers",
+        "maxStorageGb"              AS "maxStorageGb",
         "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
+        "maxAccountsPerConnector"   AS "maxAccountsPerConnector"
       FROM "PlanLimits"
       WHERE "planTier" = 'STARTER'
       LIMIT 1
