@@ -9,7 +9,13 @@ import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
-import { type AppRole, type FoundationRole } from "../common/rbac/roles";
+import {
+  APP_ROLES,
+  availableRolesForTier,
+  isRoleAvailableForTier,
+  type AppRole,
+  type FoundationRole,
+} from "../common/rbac/roles";
 import { normalizeAppRole, normalizeFoundationRole } from "../common/rbac/role-utils";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
@@ -123,6 +129,13 @@ export class WorkspaceUsersService {
       throw new ForbiddenException({ error: "ADMIN_ROLE_REQUIRES_ADMIN" });
     }
 
+    await this.assertRoleAllowedForTenantPlan(normalizedTenantId, role);
+    for (const assignedRole of assignedRoles) {
+      if ((APP_ROLES as readonly string[]).includes(assignedRole)) {
+        await this.assertRoleAllowedForTenantPlan(normalizedTenantId, assignedRole as AppRole);
+      }
+    }
+
     const existing = await this.prisma.tenant(normalizedTenantId).authIdentity.findFirst({
       where: {
         tenantKey: normalizedTenantId,
@@ -213,10 +226,17 @@ export class WorkspaceUsersService {
       throw new BadRequestException({ error: "CANNOT_CHANGE_OWN_ROLE" });
     }
 
+    await this.assertRoleAllowedForTenantPlan(normalizedTenantId, nextRole);
+
     const existing = await this.findTenantUserOrThrow(normalizedTenantId, normalizedTargetUserId);
     const nextAssignedRoles = dto.assignedRoles === undefined
       ? this.normalizeManagedAssignedRolesOrThrow(nextRole, existing.assignedRoles)
       : this.normalizeManagedAssignedRolesOrThrow(nextRole, dto.assignedRoles);
+    for (const assignedRole of nextAssignedRoles) {
+      if ((APP_ROLES as readonly string[]).includes(assignedRole)) {
+        await this.assertRoleAllowedForTenantPlan(normalizedTenantId, assignedRole as AppRole);
+      }
+    }
     const updated = await this.prisma.tenant(normalizedTenantId).authIdentity.update({
       where: {
         id: existing.id,
@@ -502,6 +522,18 @@ export class WorkspaceUsersService {
       throw new BadRequestException({ error: "INVALID_ROLE" });
     }
     return normalized;
+  }
+
+  private async assertRoleAllowedForTenantPlan(tenantKey: string, role: AppRole): Promise<void> {
+    const planTier = await this.planUsage.getTenantPlanTier(tenantKey);
+    if (!isRoleAvailableForTier(role, planTier)) {
+      throw new BadRequestException({
+        error: "ROLE_NOT_AVAILABLE_IN_PLAN",
+        role,
+        planTier,
+        availableRoles: availableRolesForTier(planTier),
+      });
+    }
   }
 
   private normalizeAssignedRolesOrThrow(value: unknown): FoundationRole[] {

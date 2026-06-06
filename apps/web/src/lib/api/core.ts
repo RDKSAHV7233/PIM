@@ -26,16 +26,12 @@ export type ApiClientScope =
 
 const APP_ROLES: readonly AppRole[] = ["admin", "editor", "publisher", "approver", "channel_manager", "connector_admin", "reviewer", "viewer"];
 
-export function normalizeAppRole(value: FormDataEntryValue | string | null | undefined): AppRole {
+export function normalizeAppRole(value: FormDataEntryValue | string | null | undefined): AppRole | null {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (APP_ROLES.includes(normalized as AppRole)) {
     return normalized as AppRole;
   }
-  const envDefault = String(process.env.PIM_DEFAULT_ROLE ?? "").trim().toLowerCase();
-  if (APP_ROLES.includes(envDefault as AppRole)) {
-    return envDefault as AppRole;
-  }
-  return "viewer";
+  return null;
 }
 
 export interface ValidationIssue {

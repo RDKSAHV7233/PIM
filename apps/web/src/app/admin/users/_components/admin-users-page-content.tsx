@@ -18,7 +18,6 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
-import { PILOT_ROLE_ALIGNMENT } from "@/lib/constants/role-alignment";
 import type {
   ConnectorPermission,
   RoleCapabilitiesResponse,
@@ -52,6 +51,31 @@ interface AdminUsersPageContentProps {
   mfaEnrolledCount: number;
   mfaUnenrolledCount: number;
   atUserLimit: boolean;
+}
+
+const ROLE_INVITE_DESCRIPTIONS: Record<string, string> = {
+  admin: "Admin — full governance, users, API keys, and connector management",
+  editor: "Editor — manage catalog, imports, and product data",
+  publisher: "Publisher — queue and manage channel exports",
+  approver: "Approver — record approval decisions on submissions",
+  channel_manager: "Channel Manager — manage channel-level settings and submissions",
+  connector_admin: "Connector Admin — install and configure connector integrations",
+  reviewer: "Reviewer — read-only catalog; comment on submissions and review queue",
+  viewer: "Viewer — read-only access to catalog and reporting",
+};
+
+const MINIMUM_TIER_BY_ROLE: Record<string, string> = {
+  admin: "Starter", editor: "Starter", viewer: "Starter",
+  publisher: "Growth", approver: "Growth", reviewer: "Growth",
+  channel_manager: "Enterprise", connector_admin: "Enterprise",
+};
+
+function describeRole(role: string): string {
+  return ROLE_INVITE_DESCRIPTIONS[role] ?? role;
+}
+
+function minimumTierLabel(role: string): string {
+  return MINIMUM_TIER_BY_ROLE[role] ?? "Enterprise";
 }
 
 function toneForCapability(value: string) {
@@ -288,10 +312,9 @@ export function AdminUsersPageContent({
                 aria-invalid={status === "user-error" && inviteFieldErrors.role ? "true" : undefined}
                 aria-describedby={status === "user-error" && inviteFieldErrors.role ? "workspace-user-role-error" : undefined}
               >
-                <option value="admin">Admin — full governance, users, API keys, and connector management</option>
-                <option value="editor">Editor — manage catalog, imports, and product data</option>
-                <option value="reviewer">Reviewer — read-only catalog with approval authority</option>
-                <option value="viewer">Viewer — read-only access to catalog and reporting</option>
+                {capabilities.availableRoles.map((role) => (
+                  <option key={role} value={role}>{describeRole(role)}</option>
+                ))}
               </select>
               {status === "user-error" && inviteFieldErrors.role ? (
                 <p id="workspace-user-role-error" className="text-xs text-red-700">{errorMessage}</p>
@@ -316,6 +339,7 @@ export function AdminUsersPageContent({
           <UserSearchFilter
             users={workspaceUsers}
             currentUserId={currentUserId}
+            availableRoles={capabilities.availableRoles}
             columns={[
               {
                 key: "userId",
@@ -332,30 +356,52 @@ export function AdminUsersPageContent({
                 header: "Role",
                 render: (user) => {
                   const isSelf = user.userId === currentUserId;
+                  const isOutOfTier = !capabilities.availableRoles.includes(user.role as never);
+                  const editOptions = capabilities.availableRoles.includes(user.role as never)
+                    ? capabilities.availableRoles
+                    : [...capabilities.availableRoles, user.role];
                   return canManageUsers ? (
-                    <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
-                      <input type="hidden" name="userId" value={user.userId} />
-                      <select
-                        name="role"
-                        defaultValue={user.role}
-                        className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-                        disabled={isSelf}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="editor">Editor</option>
-                        <option value="reviewer">Reviewer</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                      <button
-                        type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={isSelf}
-                      >
-                        Save
-                      </button>
-                    </form>
+                    <div className="flex flex-col gap-1">
+                      <form action={updateWorkspaceUserRoleAction} className="flex items-center gap-2">
+                        <input type="hidden" name="userId" value={user.userId} />
+                        <select
+                          name="role"
+                          defaultValue={user.role}
+                          className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+                          disabled={isSelf}
+                        >
+                          {editOptions.map((r) => {
+                            const locked = !capabilities.availableRoles.includes(r as never);
+                            return (
+                              <option key={r} value={r} disabled={locked}>
+                                {locked ? `${r} (Requires ${minimumTierLabel(r)} plan)` : r}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <button
+                          type="submit"
+                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isSelf}
+                        >
+                          Save
+                        </button>
+                      </form>
+                      {isOutOfTier ? (
+                        <span className="inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Requires {minimumTierLabel(user.role)} plan
+                        </span>
+                      ) : null}
+                    </div>
                   ) : (
-                    <StatusChip label={user.role} tone="info" />
+                    <div className="flex flex-col gap-1">
+                      <StatusChip label={user.role} tone="info" />
+                      {isOutOfTier ? (
+                        <span className="inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Requires {minimumTierLabel(user.role)} plan
+                        </span>
+                      ) : null}
+                    </div>
                   );
                 },
               },
@@ -546,22 +592,17 @@ export function AdminUsersPageContent({
       </Card>
 
       <Card>
-        <CardTitle>Pilot Role Alignment</CardTitle>
+        <CardTitle>Roles available on your plan</CardTitle>
         <p className="mt-2 text-sm text-slate-600">
-          The web app currently uses four first-class roles. Enterprise persona names are handled through those roles
-          plus delegated access scopes until dedicated vendor, category-manager, and system-admin shells are released.
+          Your <strong>{capabilities.planTier}</strong> plan includes {capabilities.availableRoles.length} role{capabilities.availableRoles.length !== 1 ? "s" : ""}. Roles marked Requires upgrade are assigned to existing users but cannot be granted to new users on this plan.
         </p>
-        <div className="mt-3">
-          <DataGrid
-            columns={[
-              { key: "persona", header: "Enterprise Persona", cellClassName: "font-medium text-slate-900" },
-              { key: "currentModel", header: "Current Web Model", cellClassName: "text-slate-700" },
-              { key: "pilotHandling", header: "Pilot Handling", cellClassName: "text-slate-600" },
-            ]}
-            rows={[...PILOT_ROLE_ALIGNMENT]}
-            getRowKey={(entry) => entry.persona}
-            caption="Pilot Role Alignment"
-          />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {capabilities.availableRoles.map((role) => (
+            <div key={role} className="rounded-md border border-slate-200 px-3 py-2">
+              <div className="text-sm font-medium text-slate-900">{role.charAt(0).toUpperCase() + role.slice(1)}</div>
+              <div className="mt-0.5 text-xs text-slate-500">{describeRole(role)}</div>
+            </div>
+          ))}
         </div>
       </Card>
 

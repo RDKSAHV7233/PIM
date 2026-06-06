@@ -27,6 +27,40 @@ export const ENTERPRISE_ROLE_CAPABILITIES: Record<AppRole, string> = {
 
 export const Roles = (...roles: AppRole[]) => SetMetadata(ROLES_KEY, roles);
 
+export const PLAN_TIERS = ["STARTER", "GROWTH", "ENTERPRISE"] as const;
+export type PlanTier = (typeof PLAN_TIERS)[number];
+
+export const ROLE_AVAILABILITY_BY_TIER: Record<PlanTier, readonly AppRole[]> = {
+  STARTER: ["admin", "editor", "viewer"],
+  GROWTH: ["admin", "editor", "publisher", "approver", "reviewer", "viewer"],
+  ENTERPRISE: APP_ROLES,
+};
+
+export function normalizePlanTier(value: unknown): PlanTier {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if ((PLAN_TIERS as readonly string[]).includes(normalized)) {
+    return normalized as PlanTier;
+  }
+  return "STARTER";
+}
+
+export function availableRolesForTier(tier: unknown): readonly AppRole[] {
+  return ROLE_AVAILABILITY_BY_TIER[normalizePlanTier(tier)];
+}
+
+export function isRoleAvailableForTier(role: AppRole, tier: unknown): boolean {
+  return availableRolesForTier(tier).includes(role);
+}
+
+export function minimumTierForRole(role: AppRole): PlanTier {
+  for (const tier of PLAN_TIERS) {
+    if (ROLE_AVAILABILITY_BY_TIER[tier].includes(role)) {
+      return tier;
+    }
+  }
+  return "ENTERPRISE";
+}
+
 /** Per-domain capability matrix for all eight app roles. Used by admin/users UI. */
 export const ROLE_PERMISSION_MATRIX = [
   { role: "Admin",           catalog: "write",   channels: "write",   ops: "write", quality: "write",   admin: "full" },

@@ -9,11 +9,10 @@ interface UserSearchFilterProps {
   users: WorkspaceUser[];
   columns: Column<WorkspaceUser>[];
   currentUserId: string;
+  availableRoles: readonly string[];
 }
 
-const ALL_ROLES = ["admin", "editor", "reviewer", "viewer"] as const;
-
-export function UserSearchFilter({ users, columns, currentUserId: _currentUserId }: UserSearchFilterProps) {
+export function UserSearchFilter({ users, columns, currentUserId: _currentUserId, availableRoles }: UserSearchFilterProps) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
@@ -59,7 +58,7 @@ export function UserSearchFilter({ users, columns, currentUserId: _currentUserId
           className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         >
           <option value="all">All roles</option>
-          {ALL_ROLES.map((r) => (
+          {availableRoles.map((r) => (
             <option key={r} value={r}>
               {r.charAt(0).toUpperCase() + r.slice(1)}
             </option>

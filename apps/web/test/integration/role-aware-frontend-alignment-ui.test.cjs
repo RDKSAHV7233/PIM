@@ -23,6 +23,8 @@ function run() {
   const sidebarSource = read("apps/web/src/components/nav/app-sidebar.tsx");
   const shellSource = read("apps/web/src/components/nav/authenticated-shell.tsx");
   const adminUsersSource = read("apps/web/src/app/admin/users/page.tsx");
+  const adminUsersContentSource = read("apps/web/src/app/admin/users/_components/admin-users-page-content.tsx");
+  const accessScopeFormSource = read("apps/web/src/app/admin/users/_components/access-scope-form.tsx");
   const apiKeysSource = read("apps/web/src/app/admin/api-keys/page.tsx");
   const connectorPermissionFormSource = read("apps/web/src/components/settings/connector-permission-form.tsx");
 
@@ -70,20 +72,17 @@ function run() {
     "Authenticated shell must use role-filtered navigation and keep internal routes out of the customer shell.",
   );
   assert(
-    adminUsersSource.includes("Pilot Role Alignment") &&
-      adminUsersSource.includes("Product admin") &&
-      adminUsersSource.includes("System admin") &&
-      adminUsersSource.includes("Vendor") &&
-      adminUsersSource.includes("Category manager") &&
-      adminUsersSource.includes("API/client operations") &&
-      adminUsersSource.includes("dedicated vendor, category-manager, and system-admin shells are released"),
-    "Admin Users must explain how enterprise personas map to current web roles and future-scope gaps.",
+    adminUsersContentSource.includes("Roles available on your plan") &&
+      adminUsersContentSource.includes("capabilities.availableRoles") &&
+      adminUsersContentSource.includes("Requires") &&
+      adminUsersContentSource.includes("plan"),
+    "Admin Users must surface the tenant's plan-gated availableRoles and flag legacy out-of-tier assignments as requiring an upgrade.",
   );
   assert(
-    adminUsersSource.includes("Delegated Access Scopes") &&
-      adminUsersSource.includes("category, brand, channel, and connector account") &&
-      adminUsersSource.includes('name="subjectType"') &&
-      adminUsersSource.includes('name="actions"'),
+    adminUsersContentSource.includes("Delegated Access Scopes") &&
+      adminUsersContentSource.includes("category, brand, channel, and connector account") &&
+      accessScopeFormSource.includes('name="subjectType"') &&
+      accessScopeFormSource.includes('name="actions"'),
     "Admin Users must expose delegated scope review/assignment for scoped category, brand, channel, and connector access.",
   );
   assert(

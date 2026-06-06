@@ -12,14 +12,8 @@ import {
   unlockWorkspaceUser,
   updateWorkspaceUserRole,
   normalizeAppRole,
-  type AppRole,
 } from "@/lib/api";
 import { getServerSession } from "@/lib/server-session";
-
-// UI exposes the four first-class roles. Advanced roles (publisher, approver,
-// channel_manager, connector_admin) remain in the API but are not offered in the invite flow.
-const PILOT_VISIBLE_ROLES: readonly AppRole[] = ["admin", "editor", "reviewer", "viewer"];
-const INVITE_ROLES = PILOT_VISIBLE_ROLES;
 
 async function requireAdminRequestOptions() {
   const { authHeader, actorRole } = await getServerSession();
@@ -58,7 +52,7 @@ function resolveCreateUserErrorMessage(error: unknown): string {
   if (error instanceof ApiHttpError) {
     const body = error.body;
     if (body && typeof body === "object") {
-      const { error: code, limit, current } = body as Record<string, unknown>;
+      const { error: code, limit, current, role, planTier } = body as Record<string, unknown>;
       if (code === "PLAN_USERS_LIMIT_EXCEEDED") {
         const limitStr = typeof limit === "number" ? String(limit) : "";
         const currentStr = typeof current === "number" ? String(current) : "";
@@ -67,6 +61,11 @@ function resolveCreateUserErrorMessage(error: unknown): string {
       }
       if (code === "PLAN_LIMIT_EXCEEDED") {
         return "Plan limit reached. Review your plan on the Plan & Usage page.";
+      }
+      if (code === "ROLE_NOT_AVAILABLE_IN_PLAN") {
+        const roleStr = typeof role === "string" ? role : "this role";
+        const tierStr = typeof planTier === "string" ? planTier : "your current plan";
+        return `Role "${roleStr}" is not available on the ${tierStr} plan. Upgrade to assign it.`;
       }
       if (code === "USER_ALREADY_EXISTS") {
         return "A user with this email already exists in the workspace.";
@@ -82,6 +81,21 @@ function resolveCreateUserErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unable to invite workspace user.";
 }
 
+function resolveUpdateRoleErrorMessage(error: unknown): string {
+  if (error instanceof ApiHttpError) {
+    const body = error.body;
+    if (body && typeof body === "object") {
+      const { error: code, role, planTier } = body as Record<string, unknown>;
+      if (code === "ROLE_NOT_AVAILABLE_IN_PLAN") {
+        const roleStr = typeof role === "string" ? role : "this role";
+        const tierStr = typeof planTier === "string" ? planTier : "your current plan";
+        return `Role "${roleStr}" is not available on the ${tierStr} plan. Upgrade to assign it.`;
+      }
+    }
+  }
+  return error instanceof Error ? error.message : "Unable to update workspace user.";
+}
+
 export async function createWorkspaceUserAction(formData: FormData) {
   const userId = String(formData.get("userId") ?? "").trim();
   const role = normalizeAppRole(formData.get("role"));
@@ -90,8 +104,8 @@ export async function createWorkspaceUserAction(formData: FormData) {
     if (!userId) {
       throw new Error("User ID is required.");
     }
-    if (!INVITE_ROLES.includes(role)) {
-      throw new Error("Role must be one of: admin, editor, reviewer, viewer.");
+    if (role === null) {
+      throw new Error("A valid role is required.");
     }
     await createWorkspaceUser({ userId, role }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
@@ -108,10 +122,13 @@ export async function updateWorkspaceUserRoleAction(formData: FormData) {
     if (!userId) {
       throw new Error("User ID is required.");
     }
+    if (role === null) {
+      throw new Error("A valid role is required.");
+    }
     await updateWorkspaceUserRole(userId, { role }, await requireAdminRequestOptions());
     revalidatePath("/admin/users");
   } catch (error) {
-    redirectWithError(error instanceof Error ? error.message : "Unable to update workspace user.");
+    redirectWithError(resolveUpdateRoleErrorMessage(error));
   }
   redirectWithStatus("role-updated");
 }

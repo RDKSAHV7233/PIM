@@ -10,7 +10,7 @@ const ISSUES_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "quality",
 const PRODUCTS_TAB = path.join(REPO_ROOT, "apps", "web", "src", "components", "product", "products-tab.tsx");
 const PRODUCT_DETAIL = path.join(REPO_ROOT, "apps", "web", "src", "app", "products", "[id]", "page.tsx");
 const ROLE_BADGE = path.join(REPO_ROOT, "apps", "web", "src", "components", "ui", "role-badge.tsx");
-const ADMIN_USERS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "page.tsx");
+const ADMIN_USERS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "_components", "admin-users-page-content.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -55,7 +55,7 @@ function run() {
       roleBadgeSource.includes('const manageRolesHref = pathname === "/admin/users" ? "#workspace-users" : "/admin/users#workspace-users";') &&
       roleBadgeSource.includes('href={manageRolesHref}') &&
       adminUsersSource.includes('id="workspace-users"') &&
-      adminUsersSource.includes('persona: "Reviewer"'),
+      adminUsersSource.includes('reviewer: "Reviewer'),
     "Reviewer role must be surfaced consistently in the badge and admin role matrix, and team-role navigation must deep-link to the live users table.",
   );
 

@@ -10,11 +10,19 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
-import { APP_ROLES, AppRole, ENTERPRISE_ROLE_CAPABILITIES, ROLE_PERMISSION_MATRIX, Roles } from "../common/rbac/roles";
+import {
+  APP_ROLES,
+  AppRole,
+  availableRolesForTier,
+  ENTERPRISE_ROLE_CAPABILITIES,
+  ROLE_PERMISSION_MATRIX,
+  Roles,
+} from "../common/rbac/roles";
 import { CreateWorkspaceUserDto } from "./dto/create-workspace-user.dto";
 import { LockWorkspaceUserDto } from "./dto/lock-workspace-user.dto";
 import { SetUserPasswordDto } from "./dto/set-user-password.dto";
@@ -39,7 +47,10 @@ type AuthenticatedRequest = Request & {
 @AdminBoundaryAccess({ capability: "manage_users" })
 @Roles("admin")
 export class WorkspaceUsersController {
-  constructor(private readonly workspaceUsersService: WorkspaceUsersService) {}
+  constructor(
+    private readonly workspaceUsersService: WorkspaceUsersService,
+    private readonly planUsageService: PlanUsageService,
+  ) {}
 
   @Get()
   listUsers(@Req() request: AuthenticatedRequest) {
@@ -47,15 +58,19 @@ export class WorkspaceUsersController {
     return this.workspaceUsersService.listUsers(actor.tenantId);
   }
 
-  /** Returns the role capability matrix for display in admin UIs. Static data. */
+  /** Returns the role capability matrix plus the tenant's plan-gated availableRoles. */
   @Get("role-capabilities")
-  getRoleCapabilities() {
+  async getRoleCapabilities(@Req() request: AuthenticatedRequest) {
+    const actor = this.requireActor(request);
+    const planTier = await this.planUsageService.getTenantPlanTier(actor.tenantId);
     return {
       descriptions: APP_ROLES.map((role) => ({
         role,
         description: ENTERPRISE_ROLE_CAPABILITIES[role],
       })),
       matrix: ROLE_PERMISSION_MATRIX,
+      planTier,
+      availableRoles: availableRolesForTier(planTier),
     };
   }
 

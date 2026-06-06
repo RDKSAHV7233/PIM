@@ -3,12 +3,19 @@ import type { Response } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { PlanGuard } from "../billing/plan-guard.guard";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { Public } from "../auth/public.decorator";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
-import { AppRole, Roles } from "../common/rbac/roles";
+import {
+  APP_ROLES,
+  AppRole,
+  availableRolesForTier,
+  isRoleAvailableForTier,
+  Roles,
+} from "../common/rbac/roles";
 import { ConfigureConnectorDto } from "./dto/configure-connector.dto";
 import { ConnectorPayloadPreviewDto } from "./dto/connector-payload-preview.dto";
 import { GrantConnectorPermissionDto } from "./dto/grant-connector-permission.dto";
@@ -25,7 +32,10 @@ type AuthenticatedRequest = Request & { pimUserId?: string; pimRole?: AppRole; p
 @AuthenticatedReadRoute({ classification: "human_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
 @ApiTags("Connectors")
 export class ConnectorInstallerController {
-  constructor(private readonly connectorInstallerService: ConnectorInstallerService) {}
+  constructor(
+    private readonly connectorInstallerService: ConnectorInstallerService,
+    private readonly planUsageService: PlanUsageService,
+  ) {}
 
   private resolveActor(request: AuthenticatedRequest) {
     return {
@@ -245,11 +255,26 @@ export class ConnectorInstallerController {
   @Post("permissions")
   @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")
-  grantPermission(
+  async grantPermission(
     @Body() dto: GrantConnectorPermissionDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.connectorInstallerService.grantPermission(dto, this.resolveActor(request));
+    const actor = this.resolveActor(request);
+    if (dto.principalType === "role" && actor.tenantId) {
+      const normalizedRole = String(dto.principalId ?? "").trim().toLowerCase();
+      if ((APP_ROLES as readonly string[]).includes(normalizedRole)) {
+        const planTier = await this.planUsageService.getTenantPlanTier(actor.tenantId);
+        if (!isRoleAvailableForTier(normalizedRole as AppRole, planTier)) {
+          throw new BadRequestException({
+            error: "ROLE_NOT_AVAILABLE_IN_PLAN",
+            role: normalizedRole,
+            planTier,
+            availableRoles: availableRolesForTier(planTier),
+          });
+        }
+      }
+    }
+    return this.connectorInstallerService.grantPermission(dto, actor);
   }
 
   @Delete("permissions/:id")

@@ -75,6 +75,8 @@ export interface RolePermissionMatrixEntry {
 export interface RoleCapabilitiesResponse {
   descriptions: RoleCapabilityDescription[];
   matrix: readonly RolePermissionMatrixEntry[];
+  planTier: string;
+  availableRoles: readonly AppRole[];
 }
 
 export async function getRoleCapabilities(options?: ApiRequestOptions) {

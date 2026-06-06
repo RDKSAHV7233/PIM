@@ -41,6 +41,13 @@ export async function createApiAccessKeyAction(
         createdKey: null,
       };
     }
+    if (!role) {
+      return {
+        status: "error",
+        message: "A valid role is required.",
+        createdKey: null,
+      };
+    }
     if (role === "admin") {
       return {
         status: "error",
