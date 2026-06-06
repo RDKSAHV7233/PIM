@@ -11,6 +11,7 @@ import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions"
 import { UsageMeters } from "./_components/usage-meters";
 import { SignupConversionSection } from "./_components/signup-conversion";
 import { PlanManagementSection } from "./_components/plan-management";
+import { PlanComparisonWrapper } from "./_components/plan-comparison-wrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +112,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   try {
     [usage, signupTrends, upgradeRequest] = await Promise.all([
       getBillingUsage({ role, authHeader }),
-      role === "admin" ? getKpiTrends({ days: signupTrendDays }, { role, authHeader }) : Promise.resolve(null),
+      role === "admin" ? getKpiTrends({ days: signupTrendDays }, { role, authHeader }).catch((err: unknown) => { if (err instanceof ApiHttpError && err.status === 404) return null; throw err; }) : Promise.resolve(null),
       role === "admin" ? getBillingUpgradeRequest({ role, authHeader }).then((r) => r.item) : Promise.resolve(null),
     ]);
   } catch (error: unknown) {
@@ -183,6 +184,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           commercialContact={commercialContact}
         />
       ) : null}
+
+      <PlanComparisonWrapper
+        currentTier={usage.planTier}
+        billingStatus={usage.billingStatus}
+        stripeEnabled={false}
+      />
 
       {role === "admin" ? (
         <Card>

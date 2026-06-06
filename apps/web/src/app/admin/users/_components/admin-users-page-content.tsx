@@ -594,10 +594,10 @@ export function AdminUsersPageContent({
       <Card>
         <CardTitle>Roles available on your plan</CardTitle>
         <p className="mt-2 text-sm text-slate-600">
-          Your <strong>{capabilities.planTier}</strong> plan includes {capabilities.availableRoles.length} role{capabilities.availableRoles.length !== 1 ? "s" : ""}. Roles marked Requires upgrade are assigned to existing users but cannot be granted to new users on this plan.
+          Your <strong>{capabilities.planTier ?? "—"}</strong> plan includes {(capabilities.availableRoles ?? []).length} role{(capabilities.availableRoles ?? []).length !== 1 ? "s" : ""}. Roles marked Requires upgrade are assigned to existing users but cannot be granted to new users on this plan.
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {capabilities.availableRoles.map((role) => (
+          {(capabilities.availableRoles ?? []).map((role) => (
             <div key={role} className="rounded-md border border-slate-200 px-3 py-2">
               <div className="text-sm font-medium text-slate-900">{role.charAt(0).toUpperCase() + role.slice(1)}</div>
               <div className="mt-0.5 text-xs text-slate-500">{describeRole(role)}</div>

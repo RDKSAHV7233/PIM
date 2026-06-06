@@ -18,6 +18,7 @@ const PLAN_TIERS = [
       skus: 500,
       submissions: 500,
       users: 3,
+      roles: "3 (admin, editor, viewer)",
       storageGb: 5,
       connectorInstallations: 2,
       accountsPerConnector: 1,
@@ -26,7 +27,6 @@ const PLAN_TIERS = [
       "Product catalog management",
       "Bulk import & repair",
       "Quality validation",
-      "Approval workflow",
       "1 marketplace connector",
       "Community support",
     ],
@@ -40,12 +40,14 @@ const PLAN_TIERS = [
       skus: 5000,
       submissions: 5000,
       users: 20,
+      roles: "6 (+reviewer, approver, publisher)",
       storageGb: 50,
       connectorInstallations: 10,
       accountsPerConnector: 3,
     },
     features: [
       "Everything in Starter",
+      "Approval workflow",
       "10x catalog & submission limits",
       "Multi-account connectors",
       "Priority support",
@@ -62,6 +64,7 @@ const PLAN_TIERS = [
       skus: 99999,
       submissions: 99999,
       users: 999,
+      roles: "8 (all roles)",
       storageGb: 500,
       connectorInstallations: 100,
       accountsPerConnector: 20,
@@ -148,6 +151,10 @@ export function PlanComparison({
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Users</span>
                   <span className="font-medium text-slate-900">{formatLimit(plan.limits.users)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Roles</span>
+                  <span className="font-medium text-slate-900">{plan.limits.roles}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Storage</span>
