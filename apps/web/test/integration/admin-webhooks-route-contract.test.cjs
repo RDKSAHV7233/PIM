@@ -6,6 +6,7 @@ const path = require("node:path");
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "actions.ts");
+const WEBHOOK_EVENTS = path.join(REPO_ROOT, "apps", "web", "src", "lib", "constants", "webhook-events.ts");
 
 function assert(condition, message) {
   if (!condition) {
@@ -16,6 +17,7 @@ function assert(condition, message) {
 function run() {
   const source = fs.readFileSync(PAGE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS, "utf8");
+  const eventsSource = fs.readFileSync(WEBHOOK_EVENTS, "utf8");
 
   assert(
     source.includes("const { authHeader, actorRole: role } = await getServerSession();"),
@@ -28,8 +30,10 @@ function run() {
     "Admin webhooks must load configured endpoints and recent deliveries together from the shared auth context.",
   );
   assert(
-    source.includes('WEBHOOK_EVENT_LABELS as EVENT_LABELS') &&
-      source.includes("Object.entries(EVENT_LABELS)"),
+    eventsSource.includes("WEBHOOK_EVENT_LABELS") &&
+      eventsSource.includes('approval_decision: "Approval decision"') &&
+      eventsSource.includes('publish_failed: "Publish failed"') &&
+      source.includes("WEBHOOK_EVENT_LABELS"),
     "Admin webhooks must expose the canonical event label map for the supported outbound webhook events.",
   );
   assert(

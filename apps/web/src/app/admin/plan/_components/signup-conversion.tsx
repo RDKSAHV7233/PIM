@@ -131,6 +131,7 @@ export function SignupConversionSection({
         ) : null}
         <div className={`mt-4 rounded-md border px-3 py-3 text-sm ${signupPendingBacklog > 0 ? "border-sky-200 bg-sky-50 text-sky-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
           <div className="font-semibold">Pending Verification Backlog</div>
+          <div className="mt-0.5 text-xs opacity-75">Use the chart and table below to spot the slowest days.</div>
           <div className="mt-1">
             {signupRequests === 0 ? "No signup requests recorded in this window yet."
               : signupPendingBacklog > 0 ? `${signupPendingBacklog} signup requests in the last ${signupTrends.rangeDays} days still need email verification.`

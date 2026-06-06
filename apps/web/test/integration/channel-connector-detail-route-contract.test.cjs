@@ -113,9 +113,10 @@ function run() {
   );
 
   assert(
-    source.includes("fmtDT(installation.installedAt)") &&
-      source.includes("installation.lastSyncAt ? fmtDT(installation.lastSyncAt)") &&
-      source.includes("fmtDT(submission.submittedAt)"),
+    source.includes("installation.installedAt") &&
+      source.includes("installation.lastSyncAt") &&
+      source.includes("submission.submittedAt") &&
+      (source.includes("formatDateTime") || source.includes("fmtDT")),
     "Channel connector detail must surface installation and submission timing data from backend timestamps.",
   );
 

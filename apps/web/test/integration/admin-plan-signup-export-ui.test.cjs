@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PLAN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "plan", "page.tsx");
+const SIGNUP_CONVERSION = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "plan", "_components", "signup-conversion.tsx");
 const EXPORT_ROUTE = path.join(
   REPO_ROOT,
   "apps",
@@ -27,11 +28,12 @@ function assert(condition, message) {
 
 function run() {
   const planSource = fs.readFileSync(PLAN_PAGE, "utf8");
+  const conversionSource = fs.readFileSync(SIGNUP_CONVERSION, "utf8");
   const routeSource = fs.readFileSync(EXPORT_ROUTE, "utf8");
 
   assert(
     planSource.includes("const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;") &&
-      planSource.includes("Export CSV"),
+      conversionSource.includes("Export CSV"),
     "Plan page must expose the signup trends CSV export link.",
   );
   assert(
