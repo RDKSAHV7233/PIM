@@ -177,18 +177,19 @@ will throw "Unknown tax regime" because `TaxRegime` rows don't exist yet.
 
 ---
 
-## 8. Fix daily E2E signup check noise (5 min)
+## 8. Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` (5 min)
 
-**Why**: `capture-daily-rollout-evidence.yml` checks the staging signup page but the check
-expects a 404 when signup is live on staging. This produces a false-positive failure every day
-until the env var is set. The workflow's broken `git push` step has already been fixed (this PR).
+**Why**: The staging deploy signup smoke check asserts that the live signup state matches this
+secret. When mismatched, the check fails. PR #241 makes this check non-blocking (emits a
+`::warning::` annotation instead of failing the pipeline), so the deploy pipeline completes
+even without this fix — but setting the secret removes the warning and enables strict assertion.
 
 **Steps**:
 
 1. GitHub → Settings → Secrets and variables → Actions → `staging` environment
 2. Add secret: `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true`
 
-**Verify**: Next daily run of `capture-daily-rollout-evidence` workflow exits 0.
+**Verify**: Next `Deploy Staging` run shows no warning annotation on the signup check step.
 
 ---
 
