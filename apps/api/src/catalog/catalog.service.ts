@@ -827,12 +827,16 @@ export class CatalogService {
     if (dto.expectedVersion !== current.version) {
       this.throwVersionConflict(dto.expectedVersion, current.version);
     }
-    await this.requireCategory(dto.categoryId);
+    const mergedTitle = dto.title ?? current.title;
+    const mergedDescription = dto.description ?? current.description;
+    const mergedBrand = dto.brand ?? current.brand;
+    const mergedCategoryId = dto.categoryId ?? current.categoryId;
+    await this.requireCategory(mergedCategoryId);
     await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "edit", {
         resource: "Product",
         resourceId: productId,
-        categoryId: dto.categoryId,
-        brand: dto.brand,
+        categoryId: mergedCategoryId,
+        brand: mergedBrand,
         vendorScopeKey: requestedVendorScopeKey,
       });
     const nextStatus = dto.status as RecordStatus;
@@ -870,10 +874,10 @@ export class CatalogService {
           version: dto.expectedVersion,
         },
         data: {
-          title: dto.title.trim(),
-          description: dto.description.trim(),
-          brand: dto.brand.trim(),
-          categoryId: dto.categoryId,
+          title: mergedTitle.trim(),
+          description: mergedDescription.trim(),
+          brand: mergedBrand.trim(),
+          categoryId: mergedCategoryId,
           vendorScopeKey: requestedVendorScopeKey,
           hsnCode: dto.hsnCode?.trim() || null,
           gstRate: dto.gstRate ?? null,
@@ -908,10 +912,10 @@ export class CatalogService {
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     const changedFields = this.collectChangedProductFields(current, {
-      title: dto.title.trim(),
-      description: dto.description.trim(),
-      brand: dto.brand.trim(),
-      categoryId: dto.categoryId,
+      title: mergedTitle.trim(),
+      description: mergedDescription.trim(),
+      brand: mergedBrand.trim(),
+      categoryId: mergedCategoryId,
       vendorScopeKey: requestedVendorScopeKey,
       hsnCode: dto.hsnCode?.trim() || null,
       gstRate: dto.gstRate ?? null,
@@ -1597,10 +1601,10 @@ export class CatalogService {
         ? this.normalizeVendorScopeKey(current.vendorScopeKey)
         : this.normalizeVendorScopeKey(dto.vendorScopeKey);
     const contentChanged =
-      current.title !== dto.title.trim() ||
-      current.description !== dto.description.trim() ||
-      current.brand !== dto.brand.trim() ||
-      current.categoryId !== dto.categoryId ||
+      current.title !== (dto.title ?? current.title).trim() ||
+      current.description !== (dto.description ?? current.description).trim() ||
+      current.brand !== (dto.brand ?? current.brand).trim() ||
+      current.categoryId !== (dto.categoryId ?? current.categoryId) ||
       this.normalizeVendorScopeKey(current.vendorScopeKey) !== nextVendorScopeKey ||
       (current.hsnCode ?? null) !== (dto.hsnCode?.trim() || null) ||
       (current.gstRate ?? null) !== (dto.gstRate ?? null) ||

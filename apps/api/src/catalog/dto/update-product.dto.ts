@@ -23,27 +23,31 @@ export class UpdateProductDto {
   @Min(1)
   expectedVersion!: number;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(220)
-  title!: string;
+  title?: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(5000)
-  description!: string;
+  description?: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  brand!: string;
+  brand?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
   vendorScopeKey?: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(50)
-  categoryId!: string;
+  categoryId?: string;
 
   @IsOptional()
   @IsString()
