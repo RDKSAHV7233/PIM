@@ -5,6 +5,7 @@ const AMAZON_TITLE_MAX_LENGTH = 200;
 const AMAZON_BULLET_POINTS_MAX = 5;
 const AMAZON_ADDITIONAL_IMAGES_MAX = 8;
 
+// India-specific required fields (includes hsnCode + gstRate).
 export const AMAZON_DEFAULT_REQUIRED_FIELDS = [
   "title",
   "brand",
@@ -16,6 +17,32 @@ export const AMAZON_DEFAULT_REQUIRED_FIELDS = [
   "attributes.color",
   "attributes.material",
 ] as const;
+
+// Required fields for non-India Amazon marketplaces (no flat HSN/GST fields).
+// Sellers in non-India markets use the structured `taxCodes` array instead.
+export const AMAZON_REQUIRED_FIELDS_GLOBAL = [
+  "title",
+  "brand",
+  "description",
+  "mainImageUrl",
+  "countryOfOrigin",
+  "attributes.color",
+  "attributes.material",
+] as const;
+
+/**
+ * Return the market-appropriate required field list.
+ * Falls back to India list when marketCode is unknown (safe default — India is
+ * the current primary market and the stricter list).
+ */
+export function resolveAmazonRequiredFields(
+  marketCode: string | undefined,
+): readonly string[] {
+  if (marketCode && marketCode !== "IN") {
+    return AMAZON_REQUIRED_FIELDS_GLOBAL;
+  }
+  return AMAZON_DEFAULT_REQUIRED_FIELDS;
+}
 
 export const AMAZON_DEFAULT_FIELD_MAP: Record<string, string> = {
   title: "item_name",
@@ -79,14 +106,22 @@ export function buildAmazonFallbackIssues(displayName: string, missingFields: re
 /**
  * Content-level validation rules that go beyond "field is missing."
  * Catches title length, image HTTPS format, bullet point count, variation
- * consistency, and India-specific compliance fields.
+ * consistency, and market-specific compliance fields.
  * Returns both errors and warnings — caller must split on severity.
+ *
+ * @param options.marketCode ISO 3166-1 alpha-2 market code from ConnectorContext.
+ *   Determines which tax/compliance rules apply (India vs global).
+ *   When undefined, India rules are applied (safe default — stricter list).
+ * @param options.isIndia Deprecated: prefer marketCode. Retained for backward compatibility.
  */
 export function runAmazonLocalValidation(
   product: ProductPayload,
   displayName: string,
-  options: { isIndia?: boolean } = {},
+  options: { marketCode?: string; isIndia?: boolean } = {},
 ): ConnectorIssue[] {
+  // Normalise: marketCode wins; fall back to legacy isIndia flag.
+  const marketCode = options.marketCode;
+  const isIndia = marketCode ? marketCode === "IN" : (options.isIndia !== false);
   const issues: ConnectorIssue[] = [];
 
   // ── Title ─────────────────────────────────────────────────────────────────
@@ -188,9 +223,16 @@ export function runAmazonLocalValidation(
     });
   }
 
-  // ── HSN / GST (required for India) ────────────────────────────────────────
-  if (options.isIndia !== false) {
-    if (isEmpty(product.hsnCode)) {
+  // ── India: HSN code + GST rate ────────────────────────────────────────────
+  // Check both the flat fields (legacy) and the structured taxCodes array.
+  // A value in either place is acceptable — the connector prefers taxCodes but
+  // falls back to hsnCode/gstRate during the transition period.
+  if (isIndia) {
+    const hasHsnFlat = !isEmpty(product.hsnCode);
+    const hasHsnStructured = Array.isArray(product.taxCodes) &&
+      product.taxCodes.some((tc) => tc.regimeKey === "IN" && tc.key === "HSN_CODE" && tc.value.trim().length > 0);
+
+    if (!hasHsnFlat && !hasHsnStructured) {
       issues.push({
         code: "CHANNEL_REQUIRED_FIELD",
         fieldPath: "hsnCode",
@@ -198,13 +240,44 @@ export function runAmazonLocalValidation(
         severity: "error",
       });
     }
-    if (isEmpty(product.gstRate) && product.gstRate !== 0) {
+
+    const hasGstFlat = !isEmpty(product.gstRate) || product.gstRate === 0;
+    const hasGstStructured = Array.isArray(product.taxCodes) &&
+      product.taxCodes.some((tc) => tc.regimeKey === "IN" && tc.key === "HSN_CODE" && tc.rate != null);
+
+    if (!hasGstFlat && !hasGstStructured) {
       issues.push({
         code: "CHANNEL_REQUIRED_FIELD",
         fieldPath: "gstRate",
         sellerMessage: "GST rate is required for Amazon India listings.",
         severity: "error",
       });
+    }
+  }
+
+  // ── Non-India: structured taxCodes advisory warnings ─────────────────────
+  // taxCodes is the correct way to set compliance codes for global markets.
+  // These are warnings (not errors) since Amazon doesn't always hard-reject
+  // listings without a commodity/HS code — but they are required for customs.
+  if (!isIndia && marketCode) {
+    const TAX_KEY_REQUIREMENTS: Record<string, { key: string; label: string }> = {
+      GB: { key: "COMMODITY_CODE", label: "UK Trade Tariff commodity code" },
+      AE: { key: "HS_CODE",        label: "UAE HS code (6-digit)" },
+      AU: { key: "COMMODITY_CODE", label: "AU commodity code" },
+      SA: { key: "HS_CODE",        label: "Saudi HS code (6-digit)" },
+    };
+    const req = TAX_KEY_REQUIREMENTS[marketCode];
+    if (req) {
+      const hasTaxCode = Array.isArray(product.taxCodes) &&
+        product.taxCodes.some((tc) => tc.regimeKey === marketCode && tc.key === req.key && tc.value.trim().length > 0);
+      if (!hasTaxCode) {
+        issues.push({
+          code: "TAX_CODE_MISSING",
+          fieldPath: "taxCodes",
+          sellerMessage: `${req.label} is recommended for Amazon ${marketCode} listings. Add it via taxCodes.`,
+          severity: "warning",
+        });
+      }
     }
   }
 

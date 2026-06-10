@@ -7,6 +7,15 @@ const SAMPLE_JSON = [
     brand: "Vexa PIM",
     hsnCode: "61091000",
     gstRate: 12,
+    // International tax codes are optional — include only markets you sell in.
+    // regimeKey: "GB" | "AE" | "US" | "AU"
+    // key: "COMMODITY_CODE" (GB/AU) | "HS_CODE" (AE) | "TAX_CATEGORY" (US)
+    taxCodes: [
+      { regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" },
+      { regimeKey: "AE", key: "HS_CODE", value: "620442" },
+      { regimeKey: "US", key: "TAX_CATEGORY", value: "CLOTHING" },
+      { regimeKey: "AU", key: "COMMODITY_CODE", value: "62044200" },
+    ],
     status: "draft",
     attributes: {
       material: "cotton",

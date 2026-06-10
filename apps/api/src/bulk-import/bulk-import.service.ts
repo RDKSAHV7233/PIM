@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus } from "@prisma/client";
+import { BulkImportJobStatus, BulkImportRowStatus, BulkImportRunStatus, Prisma, RecordStatus, TaxCodeKey } from "@prisma/client";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
@@ -18,6 +18,13 @@ import { CreateBulkImportJobDto } from "./dto/create-bulk-import-job.dto";
 import { CreateBulkImportTemplateDto } from "./dto/create-bulk-import-template.dto";
 import { RepairBulkImportRowDto } from "./dto/repair-bulk-import-row.dto";
 
+type TaxCodeEntry = {
+  regimeKey: string;
+  key: string;
+  value: string;
+  rate?: number;
+};
+
 type CanonicalRowPayload = {
   title?: string;
   description?: string;
@@ -26,6 +33,8 @@ type CanonicalRowPayload = {
   gstRate?: number;
   status?: string;
   attributes?: Record<string, unknown>;
+  /** Structured international tax codes; collected from flat CSV columns (gb_commodity_code etc.) or JSON taxCodes array. */
+  taxCodes?: TaxCodeEntry[];
 };
 
 type MappingSuggestion = {
@@ -954,6 +963,34 @@ export class BulkImportService {
           status: RecordStatus.draft,
         },
       });
+
+      // Write international tax codes if the row included any.
+      // Uses a single TaxRegime lookup per row — regimes are a tiny seeded table (5 rows).
+      // Silently skips any entry whose regimeKey is not in the DB (e.g. seed not yet run).
+      if (payload.taxCodes && payload.taxCodes.length > 0) {
+        const tenantKey = this.resolveRequestTenantKey();
+        const regimeKeys = [...new Set(payload.taxCodes.map((tc) => tc.regimeKey))];
+        const regimes = await this.prisma.tenant().taxRegime.findMany({
+          where: { marketCode: { in: regimeKeys } },
+          select: { id: true, marketCode: true },
+        });
+        const regimeMap = new Map(regimes.map((r) => [r.marketCode, r]));
+        const validEntries = payload.taxCodes.filter((tc) => regimeMap.has(tc.regimeKey));
+        if (validEntries.length > 0) {
+          await this.prisma.tenant().productTaxCode.createMany({
+            data: validEntries.map((tc) => ({
+              tenantKey,
+              productId: product.id,
+              regimeId: regimeMap.get(tc.regimeKey)!.id,
+              marketCode: tc.regimeKey,
+              key: tc.key as TaxCodeKey,
+              value: tc.value.trim(),
+              rate: tc.rate ?? null,
+            })),
+          });
+        }
+      }
+
       await this.complianceService.validateAndPersistProduct(product.id);
 
       await this.prisma.tenant().bulkImportRow.update({
@@ -1235,6 +1272,7 @@ export class BulkImportService {
     const gstRateRaw = this.pickMappedValue(input, mapping.gstRate);
     const status = this.pickMappedValue(input, mapping.status);
     const attributesRaw = this.pickMappedValue(input, mapping.attributes);
+    const taxCodes = this.collectTaxCodes(input);
 
     return {
       title: this.asTrimmedString(title),
@@ -1244,7 +1282,99 @@ export class BulkImportService {
       gstRate: this.asOptionalNumber(gstRateRaw),
       status: this.asTrimmedString(status),
       attributes: this.parseAttributes(attributesRaw),
+      ...(taxCodes !== undefined ? { taxCodes } : {}),
     };
+  }
+
+  /**
+   * Flat CSV column descriptors for international tax codes.
+   * Each entry maps one or more CSV column name aliases to a (regimeKey, key) pair.
+   * Rate columns are optional and market-specific.
+   */
+  private static readonly INTL_TAX_COLUMNS = [
+    {
+      regimeKey: "GB", key: "COMMODITY_CODE",
+      aliases: ["gb_commodity_code", "uk_commodity_code", "commodity_code_gb", "commodity_code_uk"],
+      rateAliases: ["gb_tax_rate", "uk_tax_rate", "vat_rate_gb"],
+    },
+    {
+      regimeKey: "AE", key: "HS_CODE",
+      aliases: ["ae_hs_code", "uae_hs_code", "hs_code_ae", "hs_code_uae"],
+      rateAliases: ["ae_tax_rate", "uae_tax_rate"],
+    },
+    {
+      regimeKey: "US", key: "TAX_CATEGORY",
+      aliases: ["us_tax_category", "us_tax_cat", "tax_category_us", "us_sales_tax"],
+      rateAliases: [],
+    },
+    {
+      regimeKey: "AU", key: "COMMODITY_CODE",
+      aliases: ["au_commodity_code", "australia_commodity_code", "commodity_code_au"],
+      rateAliases: ["au_tax_rate", "australia_tax_rate"],
+    },
+  ] as const;
+
+  /**
+   * Collect structured international tax codes from a single import row.
+   *
+   * Supports two formats:
+   * 1. **JSON array** — `taxCodes` field is a JSON array of `{ regimeKey, key, value, rate? }` objects.
+   * 2. **Flat CSV columns** — recognises per-market column name aliases such as
+   *    `gb_commodity_code`, `ae_hs_code`, `us_tax_category`, `au_commodity_code`.
+   *
+   * Returns `undefined` when no tax code input is detected at all (leaving any
+   * existing tax codes on the product untouched in an update context).
+   * Returns an empty array when input was detected but all values were blank.
+   */
+  private collectTaxCodes(input: Record<string, unknown>): TaxCodeEntry[] | undefined {
+    // --- JSON array format ---
+    const rawTaxCodes =
+      this.pickMappedValue(input, "taxCodes") ??
+      this.pickMappedValue(input, "tax_codes") ??
+      this.pickMappedValue(input, "taxcode_list");
+
+    if (Array.isArray(rawTaxCodes)) {
+      const entries: TaxCodeEntry[] = [];
+      for (const tc of rawTaxCodes) {
+        if (!tc || typeof tc !== "object" || Array.isArray(tc)) continue;
+        const entry = tc as Record<string, unknown>;
+        const regimeKey = String(entry["regimeKey"] ?? entry["regime_key"] ?? "").trim().toUpperCase();
+        const key = String(entry["key"] ?? "").trim().toUpperCase();
+        const value = String(entry["value"] ?? "").trim();
+        if (!regimeKey || !key || !value) continue;
+        const rateRaw = entry["rate"];
+        const rate = this.asOptionalNumber(rateRaw);
+        entries.push({ regimeKey, key, value, ...(rate !== undefined ? { rate } : {}) });
+      }
+      return entries;
+    }
+
+    // --- Flat CSV column format ---
+    const entries: TaxCodeEntry[] = [];
+    let hasAnyFlatColumn = false;
+
+    for (const col of BulkImportService.INTL_TAX_COLUMNS) {
+      const rawValue = this.findFirstAlias(input, col.aliases);
+      if (rawValue !== undefined) {
+        hasAnyFlatColumn = true;
+        const value = this.asTrimmedString(rawValue);
+        if (!value) continue;
+        const rateRaw = col.rateAliases.length > 0 ? this.findFirstAlias(input, col.rateAliases) : undefined;
+        const rate = this.asOptionalNumber(rateRaw);
+        entries.push({ regimeKey: col.regimeKey, key: col.key, value, ...(rate !== undefined ? { rate } : {}) });
+      }
+    }
+
+    return hasAnyFlatColumn ? entries : undefined;
+  }
+
+  /** Return the first non-undefined value matched by any alias in the input row. */
+  private findFirstAlias(input: Record<string, unknown>, aliases: readonly string[]): unknown {
+    for (const alias of aliases) {
+      const val = this.pickMappedValue(input, alias);
+      if (val !== undefined) return val;
+    }
+    return undefined;
   }
 
   private resolveImportSourceRows(dto: CreateBulkImportJobDto) {
@@ -1971,6 +2101,11 @@ export class BulkImportService {
       { sourceField: "gstRate", mappedTo: "gstRate" },
       { sourceField: "status", mappedTo: "status" },
       { sourceField: "attributes", mappedTo: "attributes" },
+      // International tax code flat columns (optional; also accepted as JSON taxCodes array)
+      { sourceField: "gb_commodity_code", mappedTo: "taxCodes[GB.COMMODITY_CODE]" },
+      { sourceField: "ae_hs_code", mappedTo: "taxCodes[AE.HS_CODE]" },
+      { sourceField: "us_tax_category", mappedTo: "taxCodes[US.TAX_CATEGORY]" },
+      { sourceField: "au_commodity_code", mappedTo: "taxCodes[AU.COMMODITY_CODE]" },
     ];
 
     return {

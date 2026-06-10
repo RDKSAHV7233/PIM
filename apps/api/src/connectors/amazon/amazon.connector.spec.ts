@@ -145,6 +145,33 @@ describe("AmazonConnector.validateProduct — local rules", () => {
     expect(Array.isArray(result.errors)).toBe(true);
     expect(Array.isArray(result.warnings)).toBe(true);
   });
+
+  // Regression guard: taxCodes is an additive field — Amazon connector must continue
+  // reading hsnCode/gstRate from the flat fields and must not be affected by taxCodes presence.
+  it("still reads hsnCode and gstRate when taxCodes is also populated (backward compat)", async () => {
+    const productWithTaxCodes = {
+      ...BASE_PRODUCT,
+      taxCodes: [
+        { regimeKey: "IN", key: "HSN_CODE", value: "62044200", rate: 5 },
+        { regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" },
+      ],
+    };
+    // Valid product — connector must ignore taxCodes and still pass on hsnCode/gstRate
+    const result = await connector.validateProduct(ctx, productWithTaxCodes);
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("fails on missing hsnCode even when taxCodes is present (flat field is still required)", async () => {
+    const productWithTaxCodes = {
+      ...BASE_PRODUCT,
+      hsnCode: "",  // missing flat field
+      taxCodes: [{ regimeKey: "IN", key: "HSN_CODE", value: "62044200", rate: 5 }],
+    };
+    const result = await connector.validateProduct(ctx, productWithTaxCodes);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.fieldPath.toLowerCase().includes("hsn"))).toBe(true);
+  });
 });
 
 // ─── refreshAccessToken (LWA exchange) ────────────────────────────────────────

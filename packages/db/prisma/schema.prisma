@@ -210,6 +210,7 @@ model Product {
   changeRequests    ChangeRequest[]
   relationshipsFrom ProductRelationship[] @relation("RelationshipSource")
   relationshipsTo   ProductRelationship[] @relation("RelationshipTarget")
+  taxCodes          ProductTaxCode[]
   deletedAt         DateTime?
   purgedById       String?
   createdAt        DateTime          @default(now())
@@ -1353,4 +1354,53 @@ model ProductRelationship {
   @@index([tenantKey, targetProductId], map: "idx_product_relationships_target")
   @@index([tenantKey, type], map: "idx_product_relationships_type")
   @@map("product_relationships")
+}
+
+// ── Tax Attributes ─────────────────────────────────────────────────────────────
+
+/// Canonical tax identifier key types across all supported regimes.
+/// Enum values map directly to Prisma-generated TaxCodeKey.
+enum TaxCodeKey {
+  HSN_CODE        // India GST — 4/6/8 digit Harmonized System of Nomenclature
+  HS_CODE         // International / UAE VAT — 6-digit Harmonized System code
+  COMMODITY_CODE  // UK Trade Tariff — 10-digit commodity code
+  TAX_CATEGORY    // US Sales Tax — Avalara/AvaTax category string
+}
+
+/// System-level tax regime registry — not per-tenant, seeded at deploy time.
+/// One row per market (IN = India GST, GB = UK VAT, US = US Sales Tax, etc.).
+model TaxRegime {
+  id          String           @id @default(cuid())
+  marketCode  String           @unique  // ISO country code: "IN" | "GB" | "US" | "AE" | "AU"
+  name        String           // "India GST", "UK VAT", "US Sales Tax"
+  description String           @default("")
+  taxCodes    ProductTaxCode[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("tax_regimes")
+}
+
+/// Per-product tax identifiers — one row per (tenantKey, product, marketCode, key) triple.
+/// Additive alongside legacy Product.hsnCode / Product.gstRate (India flat fields stay).
+model ProductTaxCode {
+  id         String      @id @default(cuid())
+  tenantKey  String      @default("default")
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  regimeId   String
+  regime     TaxRegime   @relation(fields: [regimeId], references: [id], onDelete: Restrict)
+  marketCode String      // denormalized from regime — avoids join on common read/delete paths
+  key        TaxCodeKey  // enum — prevents free-form drift
+  value      String      // e.g. "62044200", "6204420000", "CLOTHING"
+  rate       Float?      // Tax rate %: 5/12/18/28 (GST), 20 (UK VAT), null if not applicable
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([tenantKey, productId, marketCode, key])
+  @@index([tenantKey])
+  @@index([productId])
+  @@index([tenantKey, productId])   // fast delete path: deleteMany({ where: { tenantKey, productId } })
+  @@index([tenantKey, marketCode])
+  @@map("product_tax_codes")
 }

@@ -52,6 +52,8 @@ type CanonicalRowPayload = {
   gstRate?: number;
   status?: string;
   attributes?: Record<string, unknown>;
+  /** Structured international tax codes — collected by BulkImportService.normalizeCanonicalPayloadForImport(). */
+  taxCodes?: Array<{ regimeKey: string; key: string; value: string; rate?: number }>;
 };
 
 @Injectable()

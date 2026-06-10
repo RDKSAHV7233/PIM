@@ -21,16 +21,24 @@ function statusTone(status: string): "neutral" | "success" | "warning" | "danger
   return "neutral";
 }
 
+// Fields that live on the content tab rather than the attributes tab
+const CONTENT_TAB_FIELDS = new Set([
+  "title", "description", "brand",
+  "hsnCode", "gstRate", "taxCodes",
+]);
+
 function fieldPathToEditHref(productId: string, fieldPath: string | null): string | null {
   if (!fieldPath) return null;
-  // Map known field paths to product attribute editor anchors
+  // Map known field paths to product editor tab anchors.
   // e.g. "variants[0].barcode" → /products/{id}?tab=attributes#barcode
+  // e.g. "taxCodes"            → /products/{id}?tab=content#taxCodes
   const root = fieldPath
     .replace(/\[\d+\]/g, "")    // strip array indices
     .replace(/^variants\./, "") // strip variants prefix
     .split(".").pop() ?? "";    // take leaf segment
   if (!root) return null;
-  return `/products/${encodeURIComponent(productId)}?tab=attributes#${encodeURIComponent(root)}`;
+  const tab = CONTENT_TAB_FIELDS.has(root) ? "content" : "attributes";
+  return `/products/${encodeURIComponent(productId)}?tab=${tab}#${encodeURIComponent(root)}`;
 }
 
 interface SubmissionsGridProps {

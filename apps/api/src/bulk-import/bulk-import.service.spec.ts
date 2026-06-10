@@ -214,3 +214,116 @@ describe("BulkImportService.suggestMapping", () => {
     expect(suggestions).toHaveProperty("unusedHeaders");
   });
 });
+
+// ─── normalizeCanonicalPayloadForImport — taxCodes collection ─────────────────
+
+describe("BulkImportService — international tax code collection", () => {
+  function makeDefaultMapping() {
+    return {
+      title: "title", description: "description", brand: "brand",
+      hsnCode: "hsnCode", gstRate: "gstRate", status: "status", attributes: "attributes",
+    };
+  }
+
+  it("collects GB commodity code from flat CSV column", () => {
+    const svc = makeService();
+    const row = { title: "Tee", gb_commodity_code: "6204420000" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.length).toBe(1);
+    expect(result.taxCodes![0]).toMatchObject({ regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" });
+  });
+
+  it("collects AE hs code from flat CSV column", () => {
+    const svc = makeService();
+    const row = { title: "Tee", ae_hs_code: "620442" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.some((tc) => tc.regimeKey === "AE" && tc.key === "HS_CODE" && tc.value === "620442")).toBe(true);
+  });
+
+  it("collects US tax category from flat CSV column", () => {
+    const svc = makeService();
+    const row = { title: "Tee", us_tax_category: "CLOTHING" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.some((tc) => tc.regimeKey === "US" && tc.key === "TAX_CATEGORY" && tc.value === "CLOTHING")).toBe(true);
+  });
+
+  it("collects AU commodity code from flat CSV column", () => {
+    const svc = makeService();
+    const row = { title: "Tee", au_commodity_code: "62044200" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.some((tc) => tc.regimeKey === "AU" && tc.key === "COMMODITY_CODE")).toBe(true);
+  });
+
+  it("collects multiple flat columns in a single row", () => {
+    const svc = makeService();
+    const row = { title: "Tee", gb_commodity_code: "6204420000", ae_hs_code: "620442", us_tax_category: "CLOTHING" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.length).toBe(3);
+  });
+
+  it("includes optional rate when gb_tax_rate column is present", () => {
+    const svc = makeService();
+    const row = { title: "Tee", gb_commodity_code: "6204420000", gb_tax_rate: "20" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    const gb = result.taxCodes?.find((tc) => tc.regimeKey === "GB");
+    expect(gb?.rate).toBe(20);
+  });
+
+  it("returns undefined taxCodes when no tax code columns are present", () => {
+    const svc = makeService();
+    const row = { title: "Tee", brand: "Vexa", hsnCode: "61091000", gstRate: "12" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeUndefined();
+  });
+
+  it("skips empty flat columns and returns empty array (not undefined) when column is present but blank", () => {
+    const svc = makeService();
+    const row = { title: "Tee", gb_commodity_code: "" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    // Column was present (so hasAnyFlatColumn=true) but value is blank → empty array
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.length).toBe(0);
+  });
+
+  it("collects taxCodes from JSON array format", () => {
+    const svc = makeService();
+    const row = {
+      title: "Tee",
+      taxCodes: [
+        { regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" },
+        { regimeKey: "AE", key: "HS_CODE", value: "620442", rate: 5 },
+      ],
+    };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes).toBeDefined();
+    expect(result.taxCodes!.length).toBe(2);
+    expect(result.taxCodes!.find((tc) => tc.regimeKey === "AE")?.rate).toBe(5);
+  });
+
+  it("accepts case-insensitive flat column aliases (UK_COMMODITY_CODE)", () => {
+    const svc = makeService();
+    const row = { title: "Tee", UK_COMMODITY_CODE: "6204420000" };
+    const result = svc.normalizeCanonicalPayloadForImport(row, makeDefaultMapping());
+    expect(result.taxCodes?.some((tc) => tc.regimeKey === "GB")).toBe(true);
+  });
+
+  it("fieldMappingSummary includes international tax code entries", async () => {
+    const svc = makeService();
+    const result = await svc.validateImport({
+      fileName: "products.csv",
+      fileSize: 1000,
+      mimeType: "text/csv",
+      categoryId: "cat1",
+    });
+    const mappedSources = result.fieldMappingSummary.map((f) => f.sourceField);
+    expect(mappedSources).toContain("gb_commodity_code");
+    expect(mappedSources).toContain("ae_hs_code");
+    expect(mappedSources).toContain("us_tax_category");
+    expect(mappedSources).toContain("au_commodity_code");
+  });
+});

@@ -30,6 +30,20 @@ export interface ConnectorContext {
   connectorId: string;
   sellerId?: string;       // Amazon sellerId, Flipkart sellerId
   marketplaceId?: string;  // "A21TJRUUN4KGV" for Amazon India
+  /**
+   * ISO 3166-1 alpha-2 market code derived from the installation's marketplace context.
+   * For Amazon: resolved from the marketplace registry via marketplaceId.
+   * For Shopify: fetched from the shop's countryCode at OAuth time and stored in metadata.
+   * Undefined when the installation predates market-context support or the market is unknown.
+   */
+  marketCode?: string;
+  /**
+   * ISO 4217 currency code for this installation's primary market.
+   * For Amazon: resolved from the marketplace registry via marketplaceId.
+   * For Shopify: fetched from the shop's currencyCode at OAuth time and stored in metadata.
+   * Undefined when not yet populated — connectors should fall back to their own defaults.
+   */
+  currencyCode?: string;
   /** Handles token refresh transparently. Never returns a stored DB value. */
   getAccessToken(): Promise<string>;
   /**
@@ -59,6 +73,32 @@ export type ProductVariantPayload = {
   options?: { optionName: string; name: string }[];
 };
 
+/**
+ * Structured tax code entry for a single tax regime.
+ * Additive alongside the legacy hsnCode/gstRate fields — India connectors ignore this.
+ * Connector-specific key translation (e.g. "HSN_CODE" → "hsn_code" for Amazon SP-API)
+ * is deferred to a later PR; canonical enum values are exposed here.
+ */
+export type TaxCodeEntry = {
+  regimeKey: string;   // matches TaxRegime.marketCode: "IN" | "GB" | "US" | "AE" | "AU"
+  key: string;         // TaxCodeKey enum string: "HSN_CODE" | "HS_CODE" | "COMMODITY_CODE" | "TAX_CATEGORY"
+  value: string;       // e.g. "62044200", "6204420000", "CLOTHING"
+  rate?: number;       // tax rate %: 5, 12, 18, 20, 28
+};
+
+/**
+ * Market-specific price resolved from an active PriceList for a single variant.
+ * Populated from ProductPrice → PriceList → Market + Currency.
+ * Connectors that do not support multi-currency may ignore this and use the top-level mrp/sellingPrice.
+ */
+export type MarketPrice = {
+  marketCode: string;    // matches Market.code: "IN", "GB", "US", "AE", "AU"
+  currencyCode: string;  // ISO 4217: "INR", "GBP", "USD", "AED", "AUD"
+  mrp?: number;
+  sellingPrice?: number;
+  isDefault: boolean;    // true if this is the tenant's default PriceList for this market
+};
+
 export type ProductPayload = {
   sku: string;
   title: string;
@@ -85,6 +125,19 @@ export type ProductPayload = {
   seoDescription?: string;
   tags?: string[];
   status?: 'ACTIVE' | 'DRAFT';
+  /** Structured multi-regime tax codes. India connectors use hsnCode/gstRate instead. */
+  taxCodes?: TaxCodeEntry[];
+  /**
+   * ISO 4217 currency code of the resolved default market price.
+   * Falls back to "INR" when no PriceList is configured for the tenant.
+   */
+  currencyCode?: string;
+  /**
+   * Per-market prices for the primary variant, resolved from active PriceLists.
+   * Undefined when no PriceLists exist. Connectors targeting a single market
+   * should look for the entry where isDefault === true or marketCode matches their target.
+   */
+  marketPrices?: MarketPrice[];
 };
 
 export type ValidationResult = {

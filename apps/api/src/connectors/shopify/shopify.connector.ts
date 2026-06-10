@@ -52,6 +52,15 @@ type ShopifyShopIdentity = {
   myshopifyDomain?: string;
 };
 
+type ShopifyShopMarket = {
+  /** ISO 4217 currency code for the shop's primary storefront currency. */
+  currencyCode?: string;
+  /** BCP-47 locale string, e.g. "en", "en-US". */
+  primaryLocale?: string;
+  /** ISO 3166-1 alpha-2 country code, e.g. "US", "GB", "IN". */
+  countryCode?: string;
+};
+
 type ShopifyPublicationNode = {
   id?: string;
   name?: string;
@@ -465,6 +474,16 @@ export class ShopifyConnector implements ConnectorInterface {
       });
     }
 
+    if (!this.resolveHarmonizedSystemCode(product)) {
+      warnings.push({
+        code: "HS_CODE_MISSING",
+        fieldPath: "taxCodes",
+        sellerMessage:
+          "No HS/commodity code set. Add an AE HS code, GB commodity code, or AU commodity code in the product's International Tax Codes section so Shopify can populate the customs harmonizedSystemCode on inventory items.",
+        severity: "warning",
+      });
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
@@ -874,6 +893,11 @@ export class ShopifyConnector implements ConnectorInterface {
     const shopId = this.normalizeOptionalString(input.shopIdentity?.id);
     const shopName = this.normalizeOptionalString(input.shopIdentity?.name);
 
+    // Fetch market context in parallel with credential persistence (non-blocking on failure).
+    const shopMarket = token.access_token
+      ? await this.fetchShopMarket(ctx, canonicalShopDomain, token.access_token)
+      : {};
+
     // Collect all credential stores and run them in parallel — each is an independent UPSERT
     // on a distinct credential_type row, so there is no write conflict between them.
     const credentialStores: Array<Promise<void>> = [
@@ -936,6 +960,8 @@ export class ShopifyConnector implements ConnectorInterface {
       tokenMode: token.refresh_token ? "expiring_offline" : "offline",
       authMode: input.authMode,
       scope,
+      currencyCode: this.normalizeOptionalString(shopMarket.currencyCode),
+      marketCode: this.normalizeOptionalString(shopMarket.countryCode),
     });
   }
 
@@ -948,9 +974,22 @@ export class ShopifyConnector implements ConnectorInterface {
       tokenMode: string;
       authMode: string;
       scope: string | null;
+      /** ISO 4217 currency code fetched from shop.currencyCode. Null if unavailable. */
+      currencyCode?: string | null;
+      /** ISO 3166-1 alpha-2 country code fetched from shop.countryCode. Null if unavailable. */
+      marketCode?: string | null;
     },
   ): Promise<void> {
     const db = this.prismaDirect.getClient();
+    // Only include currencyCode / marketCode in the JSONB merge when they are non-null,
+    // to avoid overwriting previously set values with null on token refresh paths.
+    const marketFields = [
+      metadata.currencyCode ? `'currencyCode', ${JSON.stringify(metadata.currencyCode)}` : null,
+      metadata.marketCode ? `'marketCode', ${JSON.stringify(metadata.marketCode)}` : null,
+    ].filter(Boolean).join(", ");
+    const marketJsonb = marketFields
+      ? ` || jsonb_build_object(${marketFields})`
+      : "";
     await tenantExecRaw(db, `
       UPDATE connector_installations
       SET
@@ -963,7 +1002,7 @@ export class ShopifyConnector implements ConnectorInterface {
           'scope', $8::text,
           'connectionStage', 'connected',
           'managedInstallPending', false
-        ),
+        )${marketJsonb},
         updated_at = NOW()
       WHERE tenant_key = $1 AND id = $2
       `,
@@ -1125,6 +1164,41 @@ export class ShopifyConnector implements ConnectorInterface {
       throw new Error("Shopify shop identity query did not return a shop id.");
     }
     return shop;
+  }
+
+  /**
+   * Fetch the shop's primary market context: currency code, locale, and country code.
+   * Non-fatal — returns an empty object on any error so the OAuth callback still completes.
+   */
+  private async fetchShopMarket(
+    ctx: ConnectorContext,
+    shopDomain: string,
+    accessToken: string,
+  ): Promise<ShopifyShopMarket> {
+    try {
+      const response = await this.apiClient.graphqlRequest<{ shop?: ShopifyShopMarket | null }>(ctx, {
+        shopDomain,
+        accessToken,
+        query: `
+          query GetShopMarket {
+            shop {
+              currencyCode
+              primaryLocale
+              countryCode
+            }
+          }
+        `,
+      });
+      return response.shop ?? {};
+    } catch (err) {
+      // Market context is best-effort — a GraphQL scope gap or network error must not
+      // abort the install flow. The missing fields are back-filled at next OAuth refresh.
+      this.logger.warn("Shopify shop market fetch failed (non-fatal)", {
+        installationId: ctx.installationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {};
+    }
   }
 
   private async upsertProduct(
@@ -1589,6 +1663,8 @@ export class ShopifyConnector implements ConnectorInterface {
       taxable?: boolean;
       inventoryPolicy?: string;
       optionValues?: Array<{ optionName: string; name: string }>;
+      /** Customs HS / commodity code — written to Shopify inventoryItem.harmonizedSystemCode. */
+      harmonizedSystemCode?: string;
     },
   ): Record<string, unknown> {
     const price = this.formatMoney(sellingPrice);
@@ -1605,6 +1681,9 @@ export class ShopifyConnector implements ConnectorInterface {
       inventoryItem: {
         tracked: false,
         sku: String(sku).trim(),
+        ...(opts?.harmonizedSystemCode
+          ? { harmonizedSystemCode: opts.harmonizedSystemCode }
+          : {}),
         ...(opts?.weight && opts.weight > 0
           ? { measurement: { weight: { value: opts.weight, unit: opts.weightUnit ?? "KILOGRAMS" } } }
           : {}),
@@ -1614,11 +1693,40 @@ export class ShopifyConnector implements ConnectorInterface {
     };
   }
 
+  /**
+   * Resolve the best harmonizedSystemCode from a product's structured tax codes.
+   *
+   * Priority: AE HS_CODE (6-digit, closest to the universal HS standard) →
+   *           GB COMMODITY_CODE (UK 10-digit, widely used for EU/UK customs) →
+   *           AU COMMODITY_CODE.
+   *
+   * Returns undefined when no international HS/commodity code is present.
+   */
+  private resolveHarmonizedSystemCode(product: ProductPayload): string | undefined {
+    const taxCodes = product.taxCodes;
+    if (!Array.isArray(taxCodes) || taxCodes.length === 0) return undefined;
+
+    const find = (regimeKey: string, key: string) =>
+      taxCodes.find((tc) => tc.regimeKey === regimeKey && tc.key === key);
+
+    const ae = find("AE", "HS_CODE");
+    if (ae?.value) return ae.value.trim();
+
+    const gb = find("GB", "COMMODITY_CODE");
+    if (gb?.value) return gb.value.trim();
+
+    const au = find("AU", "COMMODITY_CODE");
+    if (au?.value) return au.value.trim();
+
+    return undefined;
+  }
+
   private buildProductSetInput(product: ProductPayload): Record<string, unknown> {
     const productType = this.normalizeOptionalString(product.productType);
     const brand = this.normalizeOptionalString(product.brand);
     const title = String(product.title ?? "").trim();
     const handle = this.buildHandle(product);
+    const harmonizedSystemCode = this.resolveHarmonizedSystemCode(product);
     const metafields = [
       {
         namespace: DEFAULT_CUSTOM_ID_NAMESPACE,
@@ -1645,6 +1753,8 @@ export class ShopifyConnector implements ConnectorInterface {
             weightUnit: v.weightUnit,
             taxable: v.taxable,
             inventoryPolicy: v.inventoryPolicy,
+            // harmonizedSystemCode is product-level in Vexa; apply uniformly to all variants
+            ...(harmonizedSystemCode ? { harmonizedSystemCode } : {}),
           }),
           optionValues: Array.isArray(v.options) && v.options.length > 0
             ? v.options
@@ -1655,7 +1765,10 @@ export class ShopifyConnector implements ConnectorInterface {
             String(product.sku ?? "").trim(),
             product.sellingPrice,
             product.mrp,
-            { compareAtPrice: product.compareAtPrice },
+            {
+              compareAtPrice: product.compareAtPrice,
+              ...(harmonizedSystemCode ? { harmonizedSystemCode } : {}),
+            },
           ),
           optionValues: [{ optionName: "Title", name: "Default Title" }],
         }];

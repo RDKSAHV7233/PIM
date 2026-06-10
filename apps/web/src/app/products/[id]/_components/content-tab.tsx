@@ -7,6 +7,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { getAllowedValues, RoleHiddenInput } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
+/**
+ * International (non-India) tax regime rows shown in the Tax Codes section.
+ * India is handled separately via the flat HSN Code / GST Rate fields above.
+ */
+const INTL_TAX_ROWS = [
+  { market: "GB", key: "COMMODITY_CODE", marketLabel: "UK",        codeLabel: "Commodity Code (10-digit)" },
+  { market: "AE", key: "HS_CODE",        marketLabel: "UAE",       codeLabel: "HS Code (6-digit)"          },
+  { market: "US", key: "TAX_CATEGORY",   marketLabel: "US",        codeLabel: "Tax Category"               },
+  { market: "AU", key: "COMMODITY_CODE", marketLabel: "Australia", codeLabel: "Commodity Code"             },
+] as const;
+
 export function ContentTab({ data }: { data: ProductDetailPageData }) {
   return (
     <Card hidden={!(data.activeTab === "content" || data.activeTab === "attributes")}>
@@ -82,6 +93,59 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
               step="0.01"
               defaultValue={data.product.gstRate ?? ""}
             />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              International Tax Codes
+            </label>
+            <p className="text-xs text-slate-500">
+              Used for UK/UAE/US/AU marketplace exports. Leave blank for markets you don&apos;t sell on.
+            </p>
+            <div className="overflow-x-auto rounded-md border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Market</th>
+                    <th className="px-3 py-2 text-left">Code type</th>
+                    <th className="px-3 py-2 text-left">Code value</th>
+                    <th className="px-3 py-2 text-left">Rate %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {INTL_TAX_ROWS.map(({ market, key, marketLabel, codeLabel }) => {
+                    const existing = data.product.taxCodes?.find(
+                      (tc) => tc.marketCode === market && tc.key === key,
+                    );
+                    return (
+                      <tr key={`${market}-${key}`} className="odd:bg-white even:bg-slate-50/50">
+                        <td className="px-3 py-2 font-medium text-slate-700">{marketLabel}</td>
+                        <td className="px-3 py-2 text-slate-500">{codeLabel}</td>
+                        <td className="px-3 py-2">
+                          <Input
+                            name={`taxCode_${market}_${key}_value`}
+                            defaultValue={existing?.value ?? ""}
+                            placeholder="e.g. 6204420000"
+                            className="h-7 text-xs"
+                          />
+                        </td>
+                        <td className="px-3 py-2 w-24">
+                          <Input
+                            name={`taxCode_${market}_${key}_rate`}
+                            type="number"
+                            min={0}
+                            max={100}
+                            step="0.01"
+                            defaultValue={existing?.rate ?? ""}
+                            placeholder="—"
+                            className="h-7 text-xs"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="product-status">
@@ -217,6 +281,35 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">GST Rate</label>
               <Input type="number" value={data.product.gstRate ?? ""} disabled />
             </div>
+            {data.product.taxCodes && data.product.taxCodes.filter((tc) => tc.marketCode !== "IN").length > 0 && (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">International Tax Codes</label>
+                <div className="overflow-x-auto rounded-md border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Market</th>
+                        <th className="px-3 py-2 text-left">Code type</th>
+                        <th className="px-3 py-2 text-left">Code value</th>
+                        <th className="px-3 py-2 text-left">Rate %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.product.taxCodes
+                        .filter((tc) => tc.marketCode !== "IN")
+                        .map((tc) => (
+                          <tr key={tc.id} className="odd:bg-white even:bg-slate-50/50">
+                            <td className="px-3 py-2 font-medium text-slate-700">{tc.regime?.name ?? tc.marketCode}</td>
+                            <td className="px-3 py-2 text-slate-500">{tc.key}</td>
+                            <td className="px-3 py-2 font-mono text-slate-800">{tc.value}</td>
+                            <td className="px-3 py-2 text-slate-600">{tc.rate != null ? `${tc.rate}%` : "—"}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Status</label>
               <Select value={data.product.status} disabled>

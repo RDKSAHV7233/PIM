@@ -118,6 +118,18 @@ export interface Variant {
   updatedAt: string;
 }
 
+/** One structured tax-code row returned by GET /catalog/products/:id */
+export interface ProductTaxCode {
+  id: string;
+  /** Market code matching TaxRegime.marketCode — "IN" | "GB" | "US" | "AE" | "AU" */
+  marketCode: string;
+  /** Canonical key: "HSN_CODE" | "COMMODITY_CODE" | "HS_CODE" | "TAX_CATEGORY" */
+  key: string;
+  value: string;
+  rate: number | null;
+  regime?: { marketCode: string; name: string };
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -133,6 +145,8 @@ export interface Product {
   variants?: Variant[];
   validationIssues?: ValidationIssue[];
   completenessScore?: number;
+  /** Structured multi-regime tax codes. Populated by GET /catalog/products/:id only. */
+  taxCodes?: ProductTaxCode[];
   createdAt: string;
   updatedAt: string;
 }

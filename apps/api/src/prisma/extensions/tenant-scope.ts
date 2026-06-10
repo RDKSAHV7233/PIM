@@ -130,7 +130,10 @@ export function createTenantScopeExtension(tenantKey: string) {
             return query(args);
           }
 
-          const baseArgs: JsonRecord = isRecord(args) ? { ...args } : {};
+          // Cast through `unknown` to avoid TS2590 ("union type too complex") when
+          // the Prisma schema grows — $allOperations args is a large discriminated union.
+          const rawArgs: unknown = args;
+          const baseArgs: JsonRecord = isRecord(rawArgs) ? { ...rawArgs } : {};
           const nextArgs = applyProductSoftDeleteScope(model, operation, baseArgs);
 
           if (FILTER_WHERE_OPERATIONS.has(operation)) {

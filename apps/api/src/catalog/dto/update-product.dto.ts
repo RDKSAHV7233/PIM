@@ -1,5 +1,6 @@
-import { Transform } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsNumber,
@@ -10,7 +11,9 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from "class-validator";
+import { TaxCodeDto } from "./create-product.dto";
 
 const PRODUCT_STATUSES = ["draft", "in_review", "approved", "rejected", "active", "archived"] as const;
 
@@ -59,4 +62,17 @@ export class UpdateProductDto {
 
   @IsIn(PRODUCT_STATUSES)
   status!: (typeof PRODUCT_STATUSES)[number];
+
+  /**
+   * Structured tax codes for one or more tax regimes.
+   * - undefined: existing tax codes are PRESERVED (no-op)
+   * - []: all existing tax codes for this product are CLEARED
+   * - [...]: full-replace — existing codes deleted, new ones inserted
+   * Duplicate regimeKey+key pairs or unknown regimeKeys are rejected with 400.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TaxCodeDto)
+  taxCodes?: TaxCodeDto[];
 }

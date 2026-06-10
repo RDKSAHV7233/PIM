@@ -12,7 +12,11 @@ interface RowRepairFormProps {
   jobId: string;
 }
 
-const KNOWN_IMPORT_FIELDS = ["title", "description", "brand", "hsnCode", "gstRate", "status", "attributes"] as const;
+const KNOWN_IMPORT_FIELDS = [
+  "title", "description", "brand", "hsnCode", "gstRate", "status", "attributes",
+  // International tax code fields — stored as flat CSV columns or as JSON taxCodes array
+  "taxCodes", "gb_commodity_code", "ae_hs_code", "us_tax_category", "au_commodity_code",
+] as const;
 
 function toEditableString(value: unknown): string {
   if (value == null) {
@@ -43,6 +47,17 @@ function parseEditedFieldValue(key: string, raw: string): unknown {
     try {
       const parsed = JSON.parse(trimmed);
       return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+  if (key === "taxCodes") {
+    if (!trimmed) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? parsed : trimmed;
     } catch {
       return trimmed;
     }

@@ -31,13 +31,14 @@ import {
 } from "../../connector-framework/connector.interface";
 import { PrismaDirectService } from "../../prisma/prisma-direct.service";
 import {
-  AMAZON_DEFAULT_REQUIRED_FIELDS,
   buildAmazonFallbackIssues,
   buildAmazonMappedPayload,
   collectAmazonMissingFields,
+  resolveAmazonRequiredFields,
   runAmazonAuthoritativeValidation,
   runAmazonLocalValidation,
 } from "./amazon-validation";
+import { lookupAmazonMarketplace, resolveAmazonTaxAttributeName } from "./amazon-marketplace-registry";
 
 type CredentialRow = {
   id: string;
@@ -222,12 +223,14 @@ export class AmazonConnector implements ConnectorInterface {
     product: ProductPayload,
   ): Promise<ValidationResult> {
     // Run rich local validation first — covers title length, image HTTPS, bullet
-    // points count, variation consistency, price rules, and India-specific fields.
-    const isIndia = this.resolveMarketplaceId(ctx) === DEFAULT_MARKETPLACE_ID;
-    const localIssues = runAmazonLocalValidation(product, this.displayName, { isIndia });
+    // points count, variation consistency, price rules, and market-specific fields.
+    const marketCode = ctx.marketCode;
+    const localIssues = runAmazonLocalValidation(product, this.displayName, { marketCode });
 
-    // Build the legacy missing-field list for the authoritative endpoint contract.
-    const fallbackMissingFields = collectAmazonMissingFields(product, AMAZON_DEFAULT_REQUIRED_FIELDS);
+    // Resolve market-appropriate required fields (India includes hsnCode/gstRate;
+    // other markets use the shorter global list and check taxCodes instead).
+    const requiredFields = resolveAmazonRequiredFields(marketCode);
+    const fallbackMissingFields = collectAmazonMissingFields(product, requiredFields);
     // Merge: local issues already cover required fields; avoid duplicating them in fallback.
     const localFieldPaths = new Set(localIssues.map((i) => i.fieldPath));
     const extraFallbackIssues = buildAmazonFallbackIssues(
@@ -240,7 +243,7 @@ export class AmazonConnector implements ConnectorInterface {
     const authoritativeValidation = await runAmazonAuthoritativeValidation({
       productId: product.sku,
       displayName: this.displayName,
-      requiredFields: AMAZON_DEFAULT_REQUIRED_FIELDS,
+      requiredFields,
       mappedPayload: buildAmazonMappedPayload(product),
       fallbackMissingFields,
       fallbackIssues: mergedFallbackIssues,
@@ -318,7 +321,7 @@ export class AmazonConnector implements ConnectorInterface {
       throw new Error("Amazon productType is required to fetch schema.");
     }
 
-    const endpoint = `${this.resolveDefinitionsBaseUrl()}/definitions/2020-09-01/productTypes/${encodeURIComponent(normalizedProductType)}?marketplaceIds=${encodeURIComponent(this.resolveMarketplaceId(ctx))}&requirements=LISTING&requirementsEnforced=ENFORCED&locale=${encodeURIComponent(this.resolveIssueLocale())}`;
+    const endpoint = `${this.resolveDefinitionsBaseUrl()}/definitions/2020-09-01/productTypes/${encodeURIComponent(normalizedProductType)}?marketplaceIds=${encodeURIComponent(this.resolveMarketplaceId(ctx))}&requirements=LISTING&requirementsEnforced=ENFORCED&locale=${encodeURIComponent(this.resolveIssueLocale(ctx))}`;
     const response = await this.fetchWithTokenRetry(ctx, endpoint, {
       method: "GET",
       headers: {
@@ -436,7 +439,7 @@ export class AmazonConnector implements ConnectorInterface {
     // ── Listings Items API path (default) ─────────────────────────────────
     const lookup = this.parseStatusLookupRef(externalRef);
     const sellerId = this.requireSellerId(ctx);
-    const endpoint = `${this.resolveSpApiBaseUrl()}/listings/2021-08-01/items/${encodeURIComponent(sellerId)}/${encodeURIComponent(lookup.sku)}?marketplaceIds=${encodeURIComponent(this.resolveMarketplaceId(ctx))}&issueLocale=${encodeURIComponent(this.resolveIssueLocale())}`;
+    const endpoint = `${this.resolveSpApiBaseUrl()}/listings/2021-08-01/items/${encodeURIComponent(sellerId)}/${encodeURIComponent(lookup.sku)}?marketplaceIds=${encodeURIComponent(this.resolveMarketplaceId(ctx))}&issueLocale=${encodeURIComponent(this.resolveIssueLocale(ctx))}`;
     this.logger.info("Amazon status sync started", {
       installationId: ctx.installationId,
       endpoint,
@@ -524,7 +527,7 @@ export class AmazonConnector implements ConnectorInterface {
       header: {
         sellerId,
         version: "2.0",
-        issueLocale: this.resolveIssueLocale(),
+        issueLocale: this.resolveIssueLocale(ctx),
       },
       messages,
     });
@@ -981,11 +984,21 @@ export class AmazonConnector implements ConnectorInterface {
       .replace(/\/+$/, "");
   }
 
-  private resolveIssueLocale(): string {
+  private resolveIssueLocale(ctx?: ConnectorContext): string {
+    // 1. Registry lookup via marketplaceId (per-installation, per-market)
+    const marketplaceId = ctx ? this.resolveMarketplaceId(ctx) : undefined;
+    if (marketplaceId) {
+      const entry = lookupAmazonMarketplace(marketplaceId);
+      if (entry) return entry.locale;
+    }
+    // 2. Env var fallback (deployment-wide override; useful in local dev / staging)
     return String(process.env.PIM_AMAZON_ISSUE_LOCALE ?? DEFAULT_ISSUE_LOCALE).trim() || DEFAULT_ISSUE_LOCALE;
   }
 
-  private resolveCurrencyCode(): string {
+  private resolveCurrencyCode(ctx?: ConnectorContext): string {
+    // 1. ctx.currencyCode — set by buildContext() via the marketplace registry
+    if (ctx?.currencyCode) return ctx.currencyCode;
+    // 2. Env var fallback
     return String(process.env.PIM_AMAZON_CURRENCY_CODE ?? DEFAULT_CURRENCY_CODE).trim() || DEFAULT_CURRENCY_CODE;
   }
 
@@ -1115,8 +1128,8 @@ export class AmazonConnector implements ConnectorInterface {
 
   private buildListingPayload(ctx: ConnectorContext, product: ProductPayload): Record<string, unknown> {
     const marketplaceId = this.resolveMarketplaceId(ctx);
-    const locale = this.resolveIssueLocale();
-    const currency = this.resolveCurrencyCode();
+    const locale = this.resolveIssueLocale(ctx);
+    const currency = this.resolveCurrencyCode(ctx);
     const color = String(product.attributes?.color ?? "").trim();
     const material = String(product.attributes?.material ?? "").trim();
     const size = String(product.attributes?.size ?? "").trim();
@@ -1277,9 +1290,65 @@ export class AmazonConnector implements ConnectorInterface {
         ],
         ...countryOfOriginAttribute,
         ...variationAttributes,
+        ...this.buildTaxAttributes(ctx, product),
       },
       marketplaceIds: [marketplaceId],
     };
+  }
+
+  /**
+   * Build the Amazon SP-API tax compliance attributes for a product.
+   *
+   * Resolution order for each attribute:
+   *   1. Structured `product.taxCodes` (regimeKey matches market, key matches AMAZON_TAX_ATTRIBUTE_MAP)
+   *   2. Flat `product.hsnCode` / `product.gstRate` (India only, backward compat)
+   *
+   * Returns an object ready to be spread into the listing `attributes` block.
+   * Empty attributes are omitted so callers never submit null/undefined values.
+   */
+  private buildTaxAttributes(
+    ctx: ConnectorContext,
+    product: ProductPayload,
+  ): Record<string, unknown> {
+    const marketplaceId = this.resolveMarketplaceId(ctx);
+    const marketCode = ctx.marketCode;
+    const attrs: Record<string, unknown> = {};
+
+    // ── India path (flat fields + structured taxCodes) ────────────────────────
+    // Structured taxCodes take priority; flat fields are the fallback for
+    // products that haven't been migrated to the new schema yet.
+    if (!marketCode || marketCode === "IN") {
+      const inEntry = Array.isArray(product.taxCodes)
+        ? product.taxCodes.find((tc) => tc.regimeKey === "IN" && tc.key === "HSN_CODE")
+        : undefined;
+
+      const hsnValue = inEntry?.value?.trim() ||
+        (typeof product.hsnCode === "string" ? product.hsnCode.trim() : "");
+      const gstValue = inEntry?.rate ??
+        (typeof product.gstRate === "number" ? product.gstRate : undefined);
+
+      if (hsnValue) {
+        attrs["hsn_code"] = [{ value: hsnValue, marketplace_id: marketplaceId }];
+      }
+      if (gstValue != null) {
+        attrs["tax_rate"] = [{ value: gstValue, marketplace_id: marketplaceId }];
+      }
+      return attrs;
+    }
+
+    // ── Global path (structured taxCodes only) ────────────────────────────────
+    // Walk every taxCode entry for this market and translate the key to an SP-API
+    // attribute name via the registry map. Unknown keys are silently skipped.
+    if (Array.isArray(product.taxCodes)) {
+      for (const tc of product.taxCodes) {
+        if (tc.regimeKey !== marketCode) continue;
+        const spApiAttr = resolveAmazonTaxAttributeName(marketCode, tc.key);
+        if (spApiAttr && tc.value.trim()) {
+          attrs[spApiAttr] = [{ value: tc.value.trim(), marketplace_id: marketplaceId }];
+        }
+      }
+    }
+    return attrs;
   }
 
   private mapConditionToAmazon(condition: ProductPayload["condition"]): string {

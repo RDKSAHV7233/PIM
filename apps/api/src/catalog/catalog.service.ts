@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity, ValidationIssueStatus } from "@prisma/client";
+import { AppliesTo, Prisma, ProductRelationshipType, RecordStatus, RuleSeverity, TaxCodeKey, ValidationIssueStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { AccessPolicyService } from "../common/access-policy/access-policy.service";
@@ -486,6 +486,10 @@ export class CatalogService {
           where: { status: "open" },
           orderBy: [{ createdAt: "desc" }],
         },
+        taxCodes: {
+          include: { regime: { select: { marketCode: true, name: true } } },
+          orderBy: { marketCode: "asc" },
+        },
       },
     });
     if (!product) {
@@ -753,22 +757,34 @@ export class CatalogService {
     const requestedStatus = (dto.status ?? RecordStatus.draft) as RecordStatus;
     this.assertDraftWorkflowEntry(requestedStatus, "create_product");
     const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
-    const product = await this.prisma.tenant().product.create({
-      data: {
-        title: dto.title.trim(),
-        description: dto.description.trim(),
-        brand: dto.brand.trim(),
-        categoryId: dto.categoryId,
-        vendorScopeKey: this.normalizeVendorScopeKey(dto.vendorScopeKey),
-        hsnCode: dto.hsnCode?.trim() || null,
-        gstRate: dto.gstRate ?? null,
-        attributes: attributes as Prisma.JsonObject,
-        status: RecordStatus.draft,
-      },
-      include: {
-        category: { select: CATEGORY_SELECT },
-        variants: { select: VARIANT_SELECT },
-      },
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+
+    // Pre-validate tax codes before touching the DB
+    const taxCodes = dto.taxCodes ?? [];
+    const regimeMap = taxCodes.length > 0
+      ? await this.validateAndResolveTaxCodes(taxCodes)
+      : new Map<string, { id: string; marketCode: string }>();
+
+    const product = await this.prisma.tenant().$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          title: dto.title.trim(),
+          description: dto.description.trim(),
+          brand: dto.brand.trim(),
+          categoryId: dto.categoryId,
+          vendorScopeKey: this.normalizeVendorScopeKey(dto.vendorScopeKey),
+          hsnCode: dto.hsnCode?.trim() || null,
+          gstRate: dto.gstRate ?? null,
+          attributes: attributes as Prisma.JsonObject,
+          status: RecordStatus.draft,
+        },
+        include: {
+          category: { select: CATEGORY_SELECT },
+          variants: { select: VARIANT_SELECT },
+        },
+      });
+      await this.insertTaxCodes(tx, created.id, tenantKey, taxCodes, regimeMap);
+      return created;
     });
     await this.complianceService.validateAndPersistProduct(product.id);
     await this.planUsageService.touchUsageForCurrentTenant();
@@ -840,25 +856,45 @@ export class CatalogService {
       slaDeadlineAt = new Date(Date.now() + targetDays * 24 * 60 * 60 * 1000);
     }
 
-    const updateResult = await this.prisma.tenant().product.updateMany({
-      where: {
-        id: productId,
-        version: dto.expectedVersion,
-      },
-      data: {
-        title: dto.title.trim(),
-        description: dto.description.trim(),
-        brand: dto.brand.trim(),
-        categoryId: dto.categoryId,
-        vendorScopeKey: requestedVendorScopeKey,
-        hsnCode: dto.hsnCode?.trim() || null,
-        gstRate: dto.gstRate ?? null,
-        attributes: attributes as Prisma.JsonObject,
-        status: nextStatus,
-        version: { increment: 1 },
-        ...(slaDeadlineAt !== null ? { slaDeadlineAt } : {}),
-      },
+    // Pre-validate tax codes before touching the DB
+    const taxCodes = dto.taxCodes;  // undefined = preserve, [] = clear, [...] = full-replace
+    const regimeMap = taxCodes != null && taxCodes.length > 0
+      ? await this.validateAndResolveTaxCodes(taxCodes)
+      : new Map<string, { id: string; marketCode: string }>();
+    const tenantKeyForUpdate = normalizeTenantKey(getTenantKeyFromContext());
+
+    const updateResult = await this.prisma.tenant().$transaction(async (tx) => {
+      const result = await tx.product.updateMany({
+        where: {
+          id: productId,
+          version: dto.expectedVersion,
+        },
+        data: {
+          title: dto.title.trim(),
+          description: dto.description.trim(),
+          brand: dto.brand.trim(),
+          categoryId: dto.categoryId,
+          vendorScopeKey: requestedVendorScopeKey,
+          hsnCode: dto.hsnCode?.trim() || null,
+          gstRate: dto.gstRate ?? null,
+          attributes: attributes as Prisma.JsonObject,
+          status: nextStatus,
+          version: { increment: 1 },
+          ...(slaDeadlineAt !== null ? { slaDeadlineAt } : {}),
+        },
+      });
+
+      // Full-replace tax codes when taxCodes is defined (including [])
+      if (taxCodes !== undefined) {
+        await tx.productTaxCode.deleteMany({
+          where: { tenantKey: tenantKeyForUpdate, productId },
+        });
+        await this.insertTaxCodes(tx, productId, tenantKeyForUpdate, taxCodes, regimeMap);
+      }
+
+      return result;
     });
+
     if (updateResult.count === 0) {
       const latest = await this.requireProduct(productId);
       this.throwVersionConflict(dto.expectedVersion, latest.version);
@@ -1765,6 +1801,67 @@ export class CatalogService {
       current = (current as Record<string, unknown>)[segment];
     }
     return current;
+  }
+
+  // ── Tax code helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Validate and resolve TaxCodeDtos against persisted TaxRegime rows.
+   * Throws BadRequestException on unknown regimeKey or duplicate (regimeKey, key) pairs.
+   * Returns a map of regimeKey → { id, marketCode }.
+   */
+  private async validateAndResolveTaxCodes(
+    taxCodes: import("./dto/create-product.dto").TaxCodeDto[],
+  ): Promise<Map<string, { id: string; marketCode: string }>> {
+    // 1. Reject duplicates within the request payload
+    const seen = new Set<string>();
+    for (const tc of taxCodes) {
+      const dupKey = `${tc.regimeKey}::${tc.key}`;
+      if (seen.has(dupKey)) {
+        throw new BadRequestException(`Duplicate tax code entry: ${tc.regimeKey} / ${tc.key}`);
+      }
+      seen.add(dupKey);
+    }
+
+    // 2. Reject unknown regimeKeys — single query for all requested regimes
+    // TaxRegime is system-level; tenant() client connects to same DB (RLS on TaxRegime is permissive)
+    const requestedKeys = [...new Set(taxCodes.map((tc) => tc.regimeKey))];
+    const regimes = await this.prisma.tenant().taxRegime.findMany({
+      where: { marketCode: { in: requestedKeys } },
+      select: { id: true, marketCode: true },
+    });
+    const regimeMap = new Map(regimes.map((r) => [r.marketCode, r]));
+    for (const marketCode of requestedKeys) {
+      if (!regimeMap.has(marketCode)) {
+        throw new BadRequestException(`Unknown tax regime: ${marketCode}`);
+      }
+    }
+    return regimeMap;
+  }
+
+  /**
+   * Insert ProductTaxCode rows within an active Prisma transaction.
+   * Skips silently if taxCodes is empty.
+   */
+  private async insertTaxCodes(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    tenantKey: string,
+    taxCodes: import("./dto/create-product.dto").TaxCodeDto[],
+    regimeMap: Map<string, { id: string; marketCode: string }>,
+  ): Promise<void> {
+    if (taxCodes.length === 0) return;
+    await tx.productTaxCode.createMany({
+      data: taxCodes.map((tc) => ({
+        tenantKey,                                 // explicit — never rely on DB default
+        productId,
+        regimeId: regimeMap.get(tc.regimeKey)!.id,
+        marketCode: tc.regimeKey,                  // denormalized
+        key: tc.key as TaxCodeKey,
+        value: tc.value.trim(),
+        rate: tc.rate ?? null,
+      })),
+    });
   }
 
   private isEmpty(value: unknown) {

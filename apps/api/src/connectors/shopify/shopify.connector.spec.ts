@@ -256,6 +256,105 @@ describe("ShopifyConnector.validateProduct — local rules", () => {
     expect(Array.isArray(result.errors)).toBe(true);
     expect(Array.isArray(result.warnings)).toBe(true);
   });
+
+  it("emits HS_CODE_MISSING warning when taxCodes has no HS/commodity code", async () => {
+    const result = await connector.validateProduct(ctx, BASE); // BASE has no taxCodes
+    const hsWarning = result.warnings.find((w) => w.code === "HS_CODE_MISSING");
+    expect(hsWarning).toBeDefined();
+    expect(hsWarning!.severity).toBe("warning");
+    expect(hsWarning!.fieldPath).toBe("taxCodes");
+  });
+
+  it("does NOT emit HS_CODE_MISSING when AE HS_CODE is set", async () => {
+    const result = await connector.validateProduct(ctx, {
+      ...BASE,
+      taxCodes: [{ regimeKey: "AE", key: "HS_CODE", value: "620442" }],
+    });
+    expect(result.warnings.find((w) => w.code === "HS_CODE_MISSING")).toBeUndefined();
+  });
+
+  it("does NOT emit HS_CODE_MISSING when GB COMMODITY_CODE is set", async () => {
+    const result = await connector.validateProduct(ctx, {
+      ...BASE,
+      taxCodes: [{ regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" }],
+    });
+    expect(result.warnings.find((w) => w.code === "HS_CODE_MISSING")).toBeUndefined();
+  });
+
+  it("does NOT emit HS_CODE_MISSING when AU COMMODITY_CODE is set", async () => {
+    const result = await connector.validateProduct(ctx, {
+      ...BASE,
+      taxCodes: [{ regimeKey: "AU", key: "COMMODITY_CODE", value: "62044200" }],
+    });
+    expect(result.warnings.find((w) => w.code === "HS_CODE_MISSING")).toBeUndefined();
+  });
+});
+
+// ─── harmonizedSystemCode resolution ─────────────────────────────────────────
+
+describe("ShopifyConnector — harmonizedSystemCode resolution", () => {
+  let connector: ShopifyConnector;
+
+  beforeEach(() => {
+    connector = makeConnector();
+  });
+
+  const BASE_PAYLOAD: ProductPayload = {
+    sku: "X", title: "T", description: "D",
+    brand: "B", hsnCode: "", attributes: {}, productType: "SHIRT",
+    mainImageUrl: "https://img.example.com/x.jpg",
+    mrp: 100, sellingPrice: 80, gstRate: 0,
+  };
+
+  it("resolves AE HS_CODE with highest priority", () => {
+    const product: ProductPayload = {
+      ...BASE_PAYLOAD,
+      taxCodes: [
+        { regimeKey: "AE", key: "HS_CODE", value: "620442" },
+        { regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" },
+        { regimeKey: "AU", key: "COMMODITY_CODE", value: "62044200" },
+      ],
+    };
+    const code = (connector as any).resolveHarmonizedSystemCode(product);
+    expect(code).toBe("620442"); // AE wins
+  });
+
+  it("falls back to GB COMMODITY_CODE when AE is absent", () => {
+    const product: ProductPayload = {
+      ...BASE_PAYLOAD,
+      taxCodes: [
+        { regimeKey: "GB", key: "COMMODITY_CODE", value: "6204420000" },
+        { regimeKey: "AU", key: "COMMODITY_CODE", value: "62044200" },
+      ],
+    };
+    const code = (connector as any).resolveHarmonizedSystemCode(product);
+    expect(code).toBe("6204420000"); // GB fallback
+  });
+
+  it("falls back to AU COMMODITY_CODE as last resort", () => {
+    const product: ProductPayload = {
+      ...BASE_PAYLOAD,
+      taxCodes: [{ regimeKey: "AU", key: "COMMODITY_CODE", value: "62044200" }],
+    };
+    const code = (connector as any).resolveHarmonizedSystemCode(product);
+    expect(code).toBe("62044200");
+  });
+
+  it("returns undefined when no HS/commodity code is present", () => {
+    const product: ProductPayload = {
+      ...BASE_PAYLOAD,
+      gstRate: 5,
+      taxCodes: [{ regimeKey: "IN", key: "HSN_CODE", value: "61091000", rate: 5 }],
+    };
+    const code = (connector as any).resolveHarmonizedSystemCode(product);
+    expect(code).toBeUndefined();
+  });
+
+  it("returns undefined when taxCodes is absent", () => {
+    const product: ProductPayload = { ...BASE_PAYLOAD, gstRate: 5 };
+    const code = (connector as any).resolveHarmonizedSystemCode(product);
+    expect(code).toBeUndefined();
+  });
 });
 
 // ─── refreshAccessToken ────────────────────────────────────────────────────────
