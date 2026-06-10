@@ -56,7 +56,8 @@ type SidebarIconName =
   | "code"
   | "flask"
   | "database"
-  | "globe";
+  | "globe"
+  | "tag";
 
 function SidebarIcon({ name, className }: { name: SidebarIconName; className?: string }) {
   const props = {
@@ -133,6 +134,8 @@ function SidebarIcon({ name, className }: { name: SidebarIconName; className?: s
       return <svg {...props}><ellipse cx="12" cy="6.5" rx="6.5" ry="2.5" /><path d="M5.5 6.5v5c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-5" /><path d="M5.5 11.5v5c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-5" /></svg>;
     case "globe":
       return <svg {...props}><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17" /><path d="M12 3.5a13 13 0 0 1 0 17" /><path d="M12 3.5a13 13 0 0 0 0 17" /></svg>;
+    case "tag":
+      return <svg {...props}><path d="M3 7a2 2 0 0 1 2-2h8l8 7-8 7H5a2 2 0 0 1-2-2Z" /><circle cx="7.5" cy="9.5" r="1.2" /></svg>;
   }
 }
 
@@ -189,6 +192,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     title: "Settings",
     items: [
       { label: "Plan & Usage", href: "/admin/plan", icon: "gauge", visibility: "editor_plus" },
+      { label: "Pricing", href: "/settings/pricing", icon: "tag", visibility: "editor_plus" },
       { label: "Users & Roles", href: "/admin/users", icon: "users", visibility: "system_admin_gated" },
       { label: "API Keys", href: "/admin/api-keys", icon: "key", visibility: "system_admin_gated" },
       { label: "Auth Policy", href: "/admin/auth-policy", icon: "shield", visibility: "system_admin_gated" },

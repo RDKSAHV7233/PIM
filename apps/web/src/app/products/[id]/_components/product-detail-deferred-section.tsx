@@ -28,6 +28,7 @@ import {
 import type { DetailTab, ProductDetailPageData } from "./product-detail-types";
 import { QualityTab } from "./quality-tab";
 import { VariantsTab } from "./variants-tab";
+import { PricingTab } from "./pricing-tab";
 
 interface ProductDetailDeferredSectionProps {
   productId: string;
@@ -202,6 +203,13 @@ export async function ProductDetailDeferredSection({
         {activeTab === "overview" && <OverviewTab data={pageData} />}
         {(activeTab === "content" || activeTab === "attributes") && <ContentTab data={pageData} />}
         {activeTab === "variants" && <VariantsTab data={pageData} />}
+        {activeTab === "pricing" && (
+          <PricingTab
+            productId={productId}
+            variants={variants}
+            canWrite={canWrite}
+          />
+        )}
         {activeTab === "media" && <MediaTab data={pageData} />}
         {activeTab === "channels" && <ChannelsTab data={pageData} />}
         {activeTab === "quality" && <QualityTab data={pageData} />}

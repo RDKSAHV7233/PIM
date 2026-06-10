@@ -53,10 +53,18 @@ function makeProduct(overrides: Partial<ProductStub> = {}): ProductStub {
   };
 }
 
+type PricingMocks = {
+  /** The default active price list to return, or null if none configured. */
+  defaultPriceList?: { id: string; name: string } | null;
+  /** Variants to return for the product, each with a prices[] sub-array. */
+  variants?: { id: string; prices: { id: string }[] }[];
+};
+
 function makeService(
   product: ProductStub | null,
   attrDefs: AttributeDefStub[] = [],
   rules: ComplianceRuleStub[] = [],
+  pricing: PricingMocks = {},
 ) {
   const deleteManyMock = jest.fn().mockResolvedValue({ count: 0 });
   const createManyMock = jest.fn().mockResolvedValue({ count: 0 });
@@ -64,6 +72,11 @@ function makeService(
   const txMock = jest.fn().mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
     await cb({ validationIssue: { deleteMany: deleteManyMock, createMany: createManyMock } });
   });
+
+  // Default pricing to "no price list configured" → collectPricingIssues returns [] so
+  // existing tests are unaffected.
+  const defaultPriceList = "defaultPriceList" in pricing ? pricing.defaultPriceList : null;
+  const variants = pricing.variants ?? [];
 
   const prisma = {
     tenant: jest.fn().mockReturnValue({
@@ -85,7 +98,7 @@ function makeService(
     ),
   };
 
-  // Wire attribute-defs and rules into the prisma tenant mock (used by producers)
+  // Wire attribute-defs, rules, and pricing mocks into the prisma tenant mock.
   (prisma.tenant as jest.Mock).mockReturnValue({
     product: {
       findUnique: jest.fn().mockResolvedValue(product),
@@ -95,6 +108,12 @@ function makeService(
     },
     complianceRule: {
       findMany: jest.fn().mockResolvedValue(rules),
+    },
+    priceList: {
+      findFirst: jest.fn().mockResolvedValue(defaultPriceList),
+    },
+    variant: {
+      findMany: jest.fn().mockResolvedValue(variants),
     },
     $transaction: txMock,
   });
@@ -392,5 +411,143 @@ describe("ComplianceService — parallel check paths (P0-A)", () => {
     await service.validateAndPersistProduct("prod_1");
     const data = createManyMock.mock.calls[0]?.[0]?.data as { status: string }[];
     expect(data.every((d) => d.status === ValidationIssueStatus.open)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pricing checks
+// ---------------------------------------------------------------------------
+
+describe("ComplianceService — pricing checks", () => {
+  const defaultPriceList = { id: "pl_1", name: "India Default" };
+
+  it("emits no pricing issues when no default price list is configured", async () => {
+    // defaultPriceList: null → skip pricing check
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      { defaultPriceList: null },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const codes = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string }[]).map((d) => d.ruleCode);
+    expect(codes).not.toContain("PRICING_NO_DEFAULT_PRICES");
+    expect(codes).not.toContain("PRICING_INCOMPLETE");
+  });
+
+  it("emits no pricing issues when the product has no variants yet", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      { defaultPriceList, variants: [] },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const codes = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string }[]).map((d) => d.ruleCode);
+    expect(codes).not.toContain("PRICING_NO_DEFAULT_PRICES");
+    expect(codes).not.toContain("PRICING_INCOMPLETE");
+  });
+
+  it("emits no pricing issues when all variants are priced", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      {
+        defaultPriceList,
+        variants: [
+          { id: "v1", prices: [{ id: "pp1" }] },
+          { id: "v2", prices: [{ id: "pp2" }] },
+        ],
+      },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const codes = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string }[]).map((d) => d.ruleCode);
+    expect(codes).not.toContain("PRICING_NO_DEFAULT_PRICES");
+    expect(codes).not.toContain("PRICING_INCOMPLETE");
+  });
+
+  it("emits PRICING_NO_DEFAULT_PRICES warning when zero variants are priced", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      {
+        defaultPriceList,
+        variants: [
+          { id: "v1", prices: [] },
+          { id: "v2", prices: [] },
+        ],
+      },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const data = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string; severity: string; fieldPath: string }[]);
+    const issue = data.find((d) => d.ruleCode === "PRICING_NO_DEFAULT_PRICES");
+    expect(issue).toBeDefined();
+    expect(issue?.severity).toBe(RuleSeverity.warning);
+    expect(issue?.fieldPath).toBe("pricing");
+  });
+
+  it("emits PRICING_INCOMPLETE warning when some variants are unpriced", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      {
+        defaultPriceList,
+        variants: [
+          { id: "v1", prices: [{ id: "pp1" }] }, // priced
+          { id: "v2", prices: [] },               // unpriced
+          { id: "v3", prices: [] },               // unpriced
+        ],
+      },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const data = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string; severity: string; message: string }[]);
+    const issue = data.find((d) => d.ruleCode === "PRICING_INCOMPLETE");
+    expect(issue).toBeDefined();
+    expect(issue?.severity).toBe(RuleSeverity.warning);
+    // Message should mention 2 unpriced out of 3 total
+    expect(issue?.message).toContain("2");
+    expect(issue?.message).toContain("3");
+  });
+
+  it("does not emit PRICING_NO_DEFAULT_PRICES when PRICING_INCOMPLETE was emitted (no double-firing)", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct(),
+      [],
+      [],
+      {
+        defaultPriceList,
+        variants: [
+          { id: "v1", prices: [{ id: "pp1" }] },
+          { id: "v2", prices: [] },
+        ],
+      },
+    );
+    await service.validateAndPersistProduct("prod_1");
+    const codes = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string }[]).map((d) => d.ruleCode);
+    expect(codes).toContain("PRICING_INCOMPLETE");
+    expect(codes).not.toContain("PRICING_NO_DEFAULT_PRICES");
+  });
+
+  it("pricing warning appears alongside GST issues in the merged result", async () => {
+    const { service, createManyMock } = makeService(
+      makeProduct({ hsnCode: null }), // triggers GST_HSN_REQUIRED
+      [],
+      [],
+      {
+        defaultPriceList,
+        variants: [{ id: "v1", prices: [] }], // triggers PRICING_NO_DEFAULT_PRICES
+      },
+    );
+    const result = await service.validateAndPersistProduct("prod_1");
+    const allCodes = result.issues.map((i) => i.ruleCode);
+    expect(allCodes).toContain("GST_HSN_REQUIRED");
+    expect(allCodes).toContain("PRICING_NO_DEFAULT_PRICES");
+
+    const persistedCodes = ((createManyMock.mock.calls[0]?.[0]?.data ?? []) as { ruleCode: string }[]).map((d) => d.ruleCode);
+    expect(persistedCodes).toContain("GST_HSN_REQUIRED");
+    expect(persistedCodes).toContain("PRICING_NO_DEFAULT_PRICES");
   });
 });

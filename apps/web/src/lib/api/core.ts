@@ -49,6 +49,7 @@ export interface ValidationIssue {
 }
 
 export type IssueInboxSeverity = "BLOCKING" | "WARNING";
+export type IssueInboxFieldFamily = "PRICING" | "GST_TAX" | "ATTRIBUTES" | "CORE" | "MEDIA";
 
 export interface IssueInboxItem {
   issueId: string;

@@ -30,6 +30,7 @@ export const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "attributes", label: "Attributes" },
   { key: "variants", label: "Variants" },
   { key: "media", label: "Media" },
+  { key: "pricing", label: "Pricing" },
   { key: "channels", label: "Channels" },
   { key: "quality", label: "Quality" },
   { key: "activity", label: "Activity" },

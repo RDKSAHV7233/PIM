@@ -190,6 +190,10 @@ export class ComplianceService {
       filters.push({ severity: RuleSeverity.warning });
     }
 
+    if (query.fieldFamily) {
+      filters.push(this.buildFieldFamilyWhere(query.fieldFamily));
+    }
+
     if (query.categoryId || query.productStatus) {
       const productWhere: Prisma.ProductWhereInput = {};
       if (query.categoryId) {
@@ -379,13 +383,14 @@ export class ComplianceService {
     const issues: IssueDraft[] = [];
 
     this.applyGstHsnChecks(product.hsnCode, product.gstRate, issues);
-    // Both DB reads are independent — run them in parallel to halve round-trip time.
+    // All three checks are independent DB round-trips — run them in parallel.
     // Impact: every product save/approve/bulk-import row benefits.
-    const [dynamicIssues, ruleIssues] = await Promise.all([
+    const [dynamicIssues, ruleIssues, pricingIssues] = await Promise.all([
       this.collectDynamicAttributeIssues(product.categoryId, attributes),
       this.collectComplianceRuleIssues(product.categoryId, product, attributes),
+      this.collectPricingIssues(productId),
     ]);
-    issues.push(...dynamicIssues, ...ruleIssues);
+    issues.push(...dynamicIssues, ...ruleIssues, ...pricingIssues);
 
     await this.prisma.tenant().$transaction(async (tx) => {
       await tx.validationIssue.deleteMany({ where: { productId } });
@@ -588,6 +593,88 @@ export class ComplianceService {
     return issues;
   }
 
+  /**
+   * Checks whether variants are priced in the tenant's default active price list.
+   *
+   * Rules:
+   *  - PRICING_NO_DEFAULT_PRICES (warning) — all variants unpriced in the default list
+   *  - PRICING_INCOMPLETE       (warning) — some but not all variants have prices
+   *
+   * Non-fatal: returns [] if no default price list is configured or the product has no
+   * variants yet (product is still being built).
+   *
+   * The default price list lookup is cached per-tenant for COMPLIANCE_CACHE_TTL_SECONDS.
+   * The null/missing case is wrapped in a tagged-union so "no list configured" is itself
+   * cacheable — the cache sentinel is the null value itself.
+   */
+  private async collectPricingIssues(productId: string): Promise<IssueDraft[]> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+
+    type DefaultPlCache = { found: false } | { found: true; id: string; name: string };
+    const cacheKey = `compliance:default-pricelist:${tenantKey}`;
+    const cached = await this.cache.getOrSet<DefaultPlCache>(
+      cacheKey,
+      COMPLIANCE_CACHE_TTL_SECONDS,
+      async () => {
+        const pl = await this.prisma.tenant().priceList.findFirst({
+          where: { tenantKey, isDefault: true, status: "active" },
+          select: { id: true, name: true },
+        });
+        return pl ? { found: true, id: pl.id, name: pl.name } : { found: false };
+      },
+    );
+
+    // No default price list configured — pricing not set up yet; skip silently.
+    if (!cached.found) {
+      return [];
+    }
+
+    // Load variants; for each, a take:1 prices sub-query to check existence only.
+    const variants = await this.prisma.tenant().variant.findMany({
+      where: { productId, tenantKey },
+      select: {
+        id: true,
+        prices: {
+          where: {
+            priceListId: cached.id,
+            tenantKey,
+            OR: [{ mrp: { not: null } }, { sellingPrice: { not: null } }],
+          },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    // Product has no variants yet — skip pricing check (not a pricing issue).
+    if (variants.length === 0) {
+      return [];
+    }
+
+    const totalCount = variants.length;
+    const unpricedCount = variants.filter((v) => v.prices.length === 0).length;
+    const issues: IssueDraft[] = [];
+
+    if (unpricedCount === totalCount) {
+      issues.push({
+        severity: RuleSeverity.warning,
+        ruleCode: "PRICING_NO_DEFAULT_PRICES",
+        message: `No variants have prices set in "${cached.name}" (default price list). Set prices before exporting to marketplaces.`,
+        fieldPath: "pricing",
+      });
+    } else if (unpricedCount > 0) {
+      const noun = unpricedCount === 1 ? "variant has" : "variants have";
+      issues.push({
+        severity: RuleSeverity.warning,
+        ruleCode: "PRICING_INCOMPLETE",
+        message: `${unpricedCount} of ${totalCount} ${noun} no price in "${cached.name}" (default price list).`,
+        fieldPath: "pricing",
+      });
+    }
+
+    return issues;
+  }
+
   private validateDataType(type: string, value: unknown) {
     switch (type) {
       case "text":
@@ -657,6 +744,14 @@ export class ComplianceService {
     if (!fieldPath || fieldPath.trim().length === 0) {
       return "Update the product details and re-run compliance validation.";
     }
+    const FIELD_SUGGESTIONS: Record<string, string> = {
+      hsnCode: "Set the HSN Code in the product editor Content tab and re-run validation.",
+      gstRate: "Set the GST Rate in the product editor Content tab and re-run validation.",
+      taxCodes: "Add the required international tax code in the product editor Content tab → International Tax Codes section.",
+      pricing: "Set prices in the default price list via Settings → Pricing.",
+    };
+    const known = FIELD_SUGGESTIONS[fieldPath.trim()];
+    if (known) return known;
     return `Update ${fieldPath.trim()} and re-run compliance validation.`;
   }
 
@@ -702,6 +797,42 @@ export class ComplianceService {
       suggestedFix: this.buildSuggestedFix(row.fieldPath),
       detectedAt: row.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Translates a field-family filter value into a Prisma `ValidationIssue` where clause.
+   *
+   * Family → fieldPath mapping mirrors the `issueFamily()` function in the web UI so that
+   * the filter dropdown and the "Top issue families" breakdown stay in sync.
+   *
+   * PRICING   → fieldPath = "pricing"
+   * GST_TAX   → fieldPath in ["hsnCode", "gstRate"]
+   * ATTRIBUTES → fieldPath starts with "attributes."
+   * CORE      → fieldPath in ["title", "brand", "description"]
+   * MEDIA     → fieldPath contains "image" | "media" | "asset"
+   */
+  private buildFieldFamilyWhere(family: string): Prisma.ValidationIssueWhereInput {
+    switch (family) {
+      case "PRICING":
+        return { fieldPath: "pricing" };
+      case "GST_TAX":
+        // taxCodes = structured international tax codes (UK/UAE/US/AU); grouped with India GST/HSN
+        return { fieldPath: { in: ["hsnCode", "gstRate", "taxCodes"] } };
+      case "ATTRIBUTES":
+        return { fieldPath: { startsWith: "attributes." } };
+      case "CORE":
+        return { fieldPath: { in: ["title", "brand", "description"] } };
+      case "MEDIA":
+        return {
+          OR: [
+            { fieldPath: { contains: "image" } },
+            { fieldPath: { contains: "media" } },
+            { fieldPath: { contains: "asset" } },
+          ],
+        };
+      default:
+        return {};
+    }
   }
 
   private buildIssueInboxCursorWhere(cursor: IssueInboxCursor | null): Prisma.ValidationIssueWhereInput | undefined {

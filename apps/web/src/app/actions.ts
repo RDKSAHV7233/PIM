@@ -45,6 +45,54 @@ function rethrowRedirectError(error: unknown): void {
   }
 }
 
+/** International (non-India) market rows that can be edited in the content-tab form. */
+const INTL_TAX_CODE_ROWS = [
+  { market: "GB", key: "COMMODITY_CODE" },
+  { market: "AE", key: "HS_CODE" },
+  { market: "US", key: "TAX_CATEGORY" },
+  { market: "AU", key: "COMMODITY_CODE" },
+] as const;
+
+/**
+ * Build the `taxCodes` array for a product PATCH from FormData.
+ * Combines the India flat-field entry (from hsnCode/gstRate inputs) with the
+ * international market rows (taxCode_{MARKET}_{KEY}_value inputs).
+ * Returns undefined when the form carries no tax data at all (preserves existing rows).
+ */
+function parseTaxCodes(
+  formData: FormData,
+): Array<{ regimeKey: string; key: string; value: string; rate?: number }> | undefined {
+  const entries: Array<{ regimeKey: string; key: string; value: string; rate?: number }> = [];
+
+  // India — from flat hsnCode / gstRate fields
+  const hsnCodeVal = String(formData.get("hsnCode") ?? "").trim();
+  if (hsnCodeVal) {
+    const rate = parseNumber(formData.get("gstRate"));
+    entries.push({ regimeKey: "IN", key: "HSN_CODE", value: hsnCodeVal, ...(rate !== undefined ? { rate } : {}) });
+  }
+
+  // International markets — from named table inputs
+  for (const { market, key } of INTL_TAX_CODE_ROWS) {
+    const value = String(formData.get(`taxCode_${market}_${key}_value`) ?? "").trim();
+    if (value) {
+      const rate = parseNumber(formData.get(`taxCode_${market}_${key}_rate`));
+      entries.push({ regimeKey: market, key, value, ...(rate !== undefined ? { rate } : {}) });
+    }
+  }
+
+  // If the form doesn't include the international tax code inputs at all (e.g. the quality
+  // tab's submit-for-review form, or any other partial-update context that doesn't render
+  // the international tax section), return undefined so existing ProductTaxCode rows are
+  // preserved untouched. The India hsnCode entry is handled independently via the flat
+  // Product.hsnCode column — it does NOT govern whether a full-replace is triggered.
+  const hasIntlInputs = INTL_TAX_CODE_ROWS.some(
+    ({ market, key }) => formData.has(`taxCode_${market}_${key}_value`),
+  );
+  if (!hasIntlInputs) return undefined;
+
+  return entries;
+}
+
 function parseNumber(value: FormDataEntryValue | null): number | undefined {
   if (value === null) {
     return undefined;
@@ -645,6 +693,8 @@ export async function updateProductAction(formData: FormData) {
   const returnTo = returnToRaw.startsWith("/") ? returnToRaw : undefined;
   const currentTab = String(formData.get("currentTab") ?? "").trim() || undefined;
 
+  const taxCodes = parseTaxCodes(formData);
+
   try {
     await patchJsonForAction(formData, `/catalog/products/${productId}`, {
       expectedVersion,
@@ -656,6 +706,7 @@ export async function updateProductAction(formData: FormData) {
       gstRate: parseNumber(formData.get("gstRate")),
       attributes,
       status: String(formData.get("status") ?? "draft"),
+      ...(taxCodes !== undefined ? { taxCodes } : {}),
     });
     revalidatePath(`/products/${productId}`);
     redirect(

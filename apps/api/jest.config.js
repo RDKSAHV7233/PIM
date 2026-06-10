@@ -19,6 +19,9 @@ module.exports = {
     "**/bulk-import/bulk-import.service.spec.ts",
     "**/marketplace/marketplace.service.spec.ts",
     "**/connectors/amazon/amazon-validation.spec.ts",
+    "**/connectors/amazon/amazon-marketplace-registry.spec.ts",
+    "**/connectors/amazon/amazon.connector.spec.ts",
+    "**/connectors/shopify/shopify.connector.spec.ts",
     "**/connectors/flipkart/flipkart-category-rules.spec.ts",
     "**/connectors/meesho/meesho-category-templates.spec.ts",
     "**/billing/commercial-reminders.service.spec.ts",
@@ -27,6 +30,7 @@ module.exports = {
     "**/connector-installer/credential-encryption.util.spec.ts",
     "**/compliance/compliance.service.spec.ts",
     "**/workspace-users/workspace-users.service.spec.ts",
+    "**/pricing/pricing.service.spec.ts",
   ],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],

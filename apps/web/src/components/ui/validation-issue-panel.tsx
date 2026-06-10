@@ -2,6 +2,7 @@
 
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { translateError } from "@/lib/errors";
+import { humaniseFieldPath } from "@/lib/field-labels";
 
 type ValidationIssueRow = {
   id: string;
@@ -79,7 +80,7 @@ export function ValidationIssuePanel({ issues }: ValidationIssuePanelProps) {
       key: "fieldPath",
       header: "Field",
       mobileHide: true,
-      render: (issue) => issue.fieldPath ?? "-",
+      render: (issue) => humaniseFieldPath(issue.fieldPath),
     },
     {
       key: "message",
@@ -93,7 +94,7 @@ export function ValidationIssuePanel({ issues }: ValidationIssuePanelProps) {
             className="text-left text-accent hover:underline"
             onClick={() => focusField(issue.fieldPath ?? "", remediation)}
           >
-            {issue.fieldPath ? `${issue.fieldPath}: ${issue.message}` : issue.message}
+            {issue.fieldPath ? `${humaniseFieldPath(issue.fieldPath)}: ${issue.message}` : issue.message}
           </button>
         ) : (
           issue.message
@@ -129,7 +130,7 @@ export function ValidationIssuePanel({ issues }: ValidationIssuePanelProps) {
                   className="mt-1 text-left text-xs text-accent hover:underline"
                   onClick={() => focusField(issue.fieldPath ?? "", remediation)}
                 >
-                  {issue.fieldPath}: {issue.message}
+                  {humaniseFieldPath(issue.fieldPath)}: {issue.message}
                 </button>
               ) : (
                 <p className="mt-1 text-xs text-slate-600">{issue.message}</p>

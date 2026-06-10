@@ -2,11 +2,16 @@ import { Type } from "class-transformer";
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export type IssueInboxSeverityFilter = "BLOCKING" | "WARNING";
+export type IssueInboxFieldFamily = "PRICING" | "GST_TAX" | "ATTRIBUTES" | "CORE" | "MEDIA";
 
 export class IssueInboxQueryDto {
   @IsOptional()
   @IsIn(["BLOCKING", "WARNING"])
   severity?: IssueInboxSeverityFilter;
+
+  @IsOptional()
+  @IsIn(["PRICING", "GST_TAX", "ATTRIBUTES", "CORE", "MEDIA"])
+  fieldFamily?: IssueInboxFieldFamily;
 
   @IsOptional()
   @IsString()

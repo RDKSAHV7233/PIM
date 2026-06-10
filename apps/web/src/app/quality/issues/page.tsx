@@ -15,12 +15,14 @@ import {
   ApiHttpError,
   type AppRole,
   type CatalogStatus,
+  type IssueInboxFieldFamily,
   type IssueInboxSeverity,
   getCategoryTree,
   getInstalledConnectors,
   getIssueInbox,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { humaniseFieldPath } from "@/lib/field-labels";
 import { canResolveIssueInboxWarnings } from "@/lib/role-capabilities";
 import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -30,6 +32,7 @@ export const dynamic = "force-dynamic";
 interface QualityIssuePageProps {
   searchParams: Promise<{
     severity?: IssueInboxSeverity;
+    fieldFamily?: IssueInboxFieldFamily;
     installationId?: string;
     categoryId?: string;
     productStatus?: CatalogStatus;
@@ -90,6 +93,21 @@ function trendBadge(trend: "up" | "down" | "flat"): { label: string; className: 
   return { label: "flat vs yesterday", className: "text-slate-600" };
 }
 
+/**
+ * Maps a display family name to the corresponding `fieldFamily` query-param value
+ * accepted by GET /issues/inbox. Families without a backend filter (Taxonomy,
+ * Channel mapping) map to null and are rendered as plain text in the UI.
+ */
+const FAMILY_FILTER_MAP: Record<string, IssueInboxFieldFamily | null> = {
+  Pricing: "PRICING",
+  "GST / Tax": "GST_TAX",
+  Attributes: "ATTRIBUTES",
+  "Core content": "CORE",
+  Media: "MEDIA",
+  Taxonomy: null,
+  "Channel mapping": null,
+};
+
 function issueFamily(issue: { fieldPath: string | null; sellerMessage: string }): string {
   const fieldPath = String(issue.fieldPath ?? "").trim().toLowerCase();
   const sellerMessage = String(issue.sellerMessage ?? "").trim().toLowerCase();
@@ -104,7 +122,14 @@ function issueFamily(issue: { fieldPath: string | null; sellerMessage: string })
   if (combined.includes("channel") || combined.includes("marketplace") || combined.includes("mapping")) {
     return "Channel mapping";
   }
-  if (combined.includes("price") || combined.includes("mrp") || combined.includes("gst")) {
+  // Separate GST/Tax from generic pricing so they match the filter dropdown options.
+  // taxCodes = structured international tax codes (e.g. UK COMMODITY_CODE, UAE HS_CODE)
+  if (fieldPath === "hsncode" || fieldPath === "gstrate" || fieldPath === "taxcodes" ||
+      combined.includes("hsn") || combined.includes("tax code") ||
+      (combined.includes("gst") && !combined.includes("price"))) {
+    return "GST / Tax";
+  }
+  if (fieldPath === "pricing" || combined.includes("price") || combined.includes("mrp")) {
     return "Pricing";
   }
   return "Core content";
@@ -130,6 +155,9 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
   if (query.severity) {
     filterParams.set("severity", query.severity);
   }
+  if (query.fieldFamily) {
+    filterParams.set("fieldFamily", query.fieldFamily);
+  }
   if (query.installationId) {
     filterParams.set("installationId", query.installationId);
   }
@@ -152,6 +180,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
       getIssueInbox(
         {
           severity: query.severity,
+          fieldFamily: query.fieldFamily,
           installationId: query.installationId,
           categoryId: query.categoryId,
           productStatus: query.productStatus,
@@ -229,7 +258,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
       {
         key: "fieldPath",
         header: "Field",
-        render: (issue) => <span className="font-mono text-xs text-slate-600">{issue.fieldPath ?? "-"}</span>,
+        render: (issue) => <span className="font-mono text-xs text-slate-600">{humaniseFieldPath(issue.fieldPath)}</span>,
       },
       {
         key: "severity",
@@ -344,12 +373,35 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
                 <p className="text-sm text-slate-600">No open issue families in the current scope.</p>
               ) : (
                 <ul className="space-y-2 text-sm">
-                  {dominantFamilies.map(([family, count]) => (
-                    <li key={family} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                      <span className="text-slate-700">{family}</span>
-                      <StatusChip label={`${count} open`} tone={count > 0 ? "info" : "neutral"} />
-                    </li>
-                  ))}
+                  {dominantFamilies.map(([family, count]) => {
+                    const filterValue = FAMILY_FILTER_MAP[family] ?? null;
+                    const familyParams = new URLSearchParams();
+                    if (filterValue) {
+                      familyParams.set("fieldFamily", filterValue);
+                    }
+                    // Preserve severity filter if already active so the link narrows within the current scope.
+                    if (query.severity) {
+                      familyParams.set("severity", query.severity);
+                    }
+                    const familyHref = filterValue
+                      ? `/quality/issues?${familyParams.toString()}`
+                      : null;
+                    return (
+                      <li key={family} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                        {familyHref ? (
+                          <Link
+                            href={familyHref}
+                            className="text-sm font-medium text-blue-700 hover:underline"
+                          >
+                            {family}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-700">{family}</span>
+                        )}
+                        <StatusChip label={`${count} open`} tone={count > 0 ? "info" : "neutral"} />
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -361,7 +413,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
             <h2 className="text-base font-semibold text-slate-900">Filters</h2>
             <span className="text-xs text-slate-500">Use filters to narrow assignment and severity scope.</span>
           </div>
-          <form method="get" className="grid gap-3 md:grid-cols-5">
+          <form method="get" className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="issue-severity">
                 Severity
@@ -370,6 +422,19 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
                 <option value="">All severities</option>
                 <option value="BLOCKING">Blocking</option>
                 <option value="WARNING">Warning</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="issue-field-family">
+                Field Family
+              </label>
+              <Select id="issue-field-family" name="fieldFamily" defaultValue={query.fieldFamily ?? ""}>
+                <option value="">All fields</option>
+                <option value="PRICING">Pricing</option>
+                <option value="GST_TAX">GST / Tax</option>
+                <option value="ATTRIBUTES">Attributes</option>
+                <option value="CORE">Core content</option>
+                <option value="MEDIA">Media</option>
               </Select>
             </div>
             <div className="space-y-1">
@@ -416,7 +481,7 @@ export default async function QualityIssuePage({ searchParams }: QualityIssuePag
               <Input id="issue-limit" name="limit" defaultValue={String(limit)} />
             </div>
             <input type="hidden" name="hideTestData" value={hideTestData ? "true" : "false"} />
-            <div className="md:col-span-5 flex items-center gap-2">
+            <div className="md:col-span-3 lg:col-span-6 flex items-center gap-2">
               <Button type="submit">Apply filters</Button>
               <Link
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

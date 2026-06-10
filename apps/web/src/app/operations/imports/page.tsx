@@ -45,12 +45,32 @@ const IMPORT_FIELD_GUIDE = [
   {
     name: "hsnCode",
     example: "61091000",
-    notes: "Tax/shipping classification code as text.",
+    notes: "India GST classification code (HSN). 4, 6, or 8 digits.",
   },
   {
     name: "gstRate",
     example: "12",
-    notes: "Numeric GST rate. Use digits only, without % sign.",
+    notes: "India GST rate as a number (5, 12, 18, 28). Digits only, no % sign.",
+  },
+  {
+    name: "gb_commodity_code",
+    example: "6204420000",
+    notes: "UK Trade Tariff commodity code (10 digits). Optional — leave blank if not selling in the UK.",
+  },
+  {
+    name: "ae_hs_code",
+    example: "620442",
+    notes: "UAE HS code (6 digits). Optional — leave blank if not selling in the UAE.",
+  },
+  {
+    name: "us_tax_category",
+    example: "CLOTHING",
+    notes: "US Avalara/AvaTax tax category string. Optional — leave blank if not selling in the US.",
+  },
+  {
+    name: "au_commodity_code",
+    example: "62044200",
+    notes: "Australia commodity code. Optional — leave blank if not selling in Australia.",
   },
   {
     name: "status",
@@ -71,6 +91,12 @@ const SAMPLE_JSON_PREVIEW = `[
     "brand": "Vexa PIM",
     "hsnCode": "61091000",
     "gstRate": 12,
+    "taxCodes": [
+      { "regimeKey": "GB", "key": "COMMODITY_CODE", "value": "6204420000" },
+      { "regimeKey": "AE", "key": "HS_CODE",        "value": "620442" },
+      { "regimeKey": "US", "key": "TAX_CATEGORY",   "value": "CLOTHING" },
+      { "regimeKey": "AU", "key": "COMMODITY_CODE", "value": "62044200" }
+    ],
     "status": "draft",
     "attributes": {
       "material": "cotton",

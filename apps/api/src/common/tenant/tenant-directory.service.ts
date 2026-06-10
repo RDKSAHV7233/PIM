@@ -211,11 +211,69 @@ export class TenantDirectoryService {
       });
     }
 
+    // Best-effort: seed default pricing data (India market, INR currency, default price list).
+    // Non-fatal — a failure here must not block tenant provisioning.
+    await this.seedDefaultPricing(prisma, tenantKey).catch((err) => {
+      this.logger.warn(
+        `Default pricing seed failed for tenant "${tenantKey}" (non-fatal): ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    });
+
     return {
       tenantId: normalizeTenantKey(workspace.tenantKey),
       workspaceSlug: normalizeWorkspaceSlug(workspace.workspaceSlug),
       displayName: workspace.displayName,
     };
+  }
+
+  /**
+   * Creates a default India market, INR currency, and default price list for
+   * newly-provisioned tenants. Idempotent — skips if any market already exists.
+   * Uses the raw PrismaClient to bypass tenant-scope extension (which would
+   * restamp tenantKey = "default" for this tenant's new records).
+   */
+  private async seedDefaultPricing(
+    prisma: ReturnType<PrismaDirectService["getClient"]>,
+    tenantKey: string,
+  ): Promise<void> {
+    const existing = await prisma.market.findFirst({
+      where: { tenantKey },
+      select: { id: true },
+    });
+    if (existing) return; // already seeded
+
+    await prisma.$transaction(async (tx) => {
+      const market = await tx.market.create({
+        data: {
+          tenantKey,
+          code: "IN",
+          locale: "en-IN",
+          displayName: "India",
+          isDefault: true,
+          status: "active",
+        },
+      });
+      const currency = await tx.currency.create({
+        data: {
+          tenantKey,
+          code: "INR",
+          symbol: "₹",
+          displayName: "Indian Rupee",
+          decimalPlaces: 2,
+        },
+      });
+      await tx.priceList.create({
+        data: {
+          tenantKey,
+          name: "India – INR",
+          marketId: market.id,
+          currencyId: currency.id,
+          isDefault: true,
+          status: "active",
+        },
+      });
+    });
   }
 
   private async resolveInitialPasswordHash(): Promise<string | null> {

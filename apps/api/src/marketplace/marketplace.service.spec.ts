@@ -78,6 +78,7 @@ function makeService(productOverride?: Record<string, unknown>) {
     notificationsService as never,
     logger as never,
     accessPolicy as never,
+    { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
   );
 }
 
@@ -145,6 +146,7 @@ describe("MarketplaceService.createExportJob — approval gate", () => {
       {} as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
     );
     await expect(svc.createExportJob("missing-id", dto as never)).rejects.toThrow(NotFoundException);
   });
@@ -232,6 +234,7 @@ describe("MarketplaceService.triggerConnectorExport", () => {
       {} as never,
       { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       { assertSensitivePayloadAccessAllowed: jest.fn().mockResolvedValue(undefined) } as never,
+      { fromRows: jest.fn().mockReturnValue([]), findDefault: jest.fn().mockReturnValue(undefined) } as never,
     );
 
     return { svc, prisma, connectorFramework, tenantDb };

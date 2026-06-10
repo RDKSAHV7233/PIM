@@ -20,6 +20,7 @@ export type DetailTab =
   | "attributes"
   | "variants"
   | "media"
+  | "pricing"
   | "channels"
   | "quality"
   | "activity"

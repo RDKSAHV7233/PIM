@@ -33,6 +33,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { OutboundWebhooksModule } from "./outbound-webhooks/outbound-webhooks.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
+import { PricingModule } from "./pricing/pricing.module";
 import { QueueModule } from "./queue/queue.module";
 import { RejectionIntelligenceModule } from "./rejection-intelligence/rejection-intelligence.module";
 import { SignupModule } from "./signup/signup.module";
@@ -72,6 +73,7 @@ const FEATURE_ONDC_ENABLED =
     OutboundWebhooksModule,
     NotificationsModule,
     PlatformAdminModule,
+    PricingModule,
     RejectionIntelligenceModule,
     SignupModule,
     WorkspaceUsersModule,

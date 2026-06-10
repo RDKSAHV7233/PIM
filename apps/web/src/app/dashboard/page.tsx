@@ -12,6 +12,7 @@ import {
   getDashboardHealth,
   getDashboardOperationsSummary,
   getKpiTrends,
+  getPricingCoverage,
   getProductList,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
@@ -229,7 +230,7 @@ export default async function DashboardPage() {
   const canViewBillingUsage = canViewOperationsSummary;
 
   try {
-    const [health, usage, operationsSummary, products, signupTrends] = await Promise.all([
+    const [health, usage, operationsSummary, products, signupTrends, pricingCoverage] = await Promise.all([
       getDashboardHealth({ role: actorRole, authHeader }),
       canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null),
       canViewOperationsSummary
@@ -239,6 +240,8 @@ export default async function DashboardPage() {
       actorRole === "admin"
         ? getKpiTrends({ days: 30 }, { role: actorRole, authHeader })
         : Promise.resolve(null),
+      // Non-fatal: pricing may not be configured yet; null = skip the KPI card.
+      getPricingCoverage({ role: actorRole, authHeader }).catch(() => null),
     ]);
     const activeConnectors = operationsSummary?.activeConnectors ?? null;
     const blockingIssues = health.snapshot.openIssuesBlocking;
@@ -289,6 +292,11 @@ export default async function DashboardPage() {
     const signupDrilldownHref = signupTrends
       ? `/admin/plan?days=${signupTrends.rangeDays}#signup-conversion`
       : "/admin/plan";
+    // Pricing coverage — null when pricing is not yet configured.
+    const pricingConfigured = pricingCoverage !== null && pricingCoverage.totalActivePriceLists > 0;
+    const pricingCoveragePercent = pricingCoverage?.defaultListCoverage ?? 0;
+    const pricingUnpriced = pricingCoverage?.unpricedInDefaultList ?? 0;
+    const pricingDefaultListName = pricingCoverage?.defaultPriceList?.name ?? null;
     const priorityProducts = products
       .map((product) => {
         const blockingCount = product.openValidationErrorCount ?? 0;
@@ -512,7 +520,7 @@ export default async function DashboardPage() {
               Review channel availability and publish blockers after the catalog is in shape.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Blocked Listings"
               value={blockedListingsTotal}
@@ -547,6 +555,29 @@ export default async function DashboardPage() {
               helper="Non-blocking quality issues worth resolving"
               tone={warningIssues > 0 ? "warning" : "default"}
               href="/quality/issues?severity=WARNING"
+            />
+            <KpiCard
+              label="Pricing Coverage"
+              value={pricingConfigured ? formatPercent(pricingCoveragePercent) : "—"}
+              helper={
+                !pricingConfigured
+                  ? "No price lists configured yet"
+                  : pricingUnpriced > 0
+                    ? `${pricingUnpriced} unpriced variant${pricingUnpriced === 1 ? "" : "s"}${pricingDefaultListName ? ` in ${pricingDefaultListName}` : ""}`
+                    : pricingDefaultListName
+                      ? `All variants priced in ${pricingDefaultListName}`
+                      : "All variants priced in default list"
+              }
+              tone={
+                !pricingConfigured
+                  ? "default"
+                  : pricingCoveragePercent >= 90
+                    ? "success"
+                    : pricingCoveragePercent >= 60
+                      ? "warning"
+                      : "danger"
+              }
+              href="/settings/pricing"
             />
           </div>
         </section>

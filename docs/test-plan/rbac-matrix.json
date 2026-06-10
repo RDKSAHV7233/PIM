@@ -1,5 +1,5 @@
 {
-  "_generated": "From @Roles() decorators in apps/api/src/ — 2026-06-02",
+  "_generated": "From @Roles() decorators in apps/api/src/ — 2026-06-10",
   "_note": "This file is the single source of truth for RBAC. Seam tests compare against this.",
   "surfaces": {
     "catalog_read": {
@@ -171,6 +171,21 @@
       "description": "View rejection predictions",
       "roles": ["admin", "editor", "reviewer"],
       "source": "rejection-intelligence.controller.ts:36"
+    },
+    "pricing_write": {
+      "description": "Create/update markets, currencies, price lists, bulk-upsert/import prices",
+      "roles": ["admin", "editor"],
+      "source": "pricing.controller.ts:74,83,119,128,160,170,278,302"
+    },
+    "pricing_delete": {
+      "description": "Delete markets, currencies, price lists",
+      "roles": ["admin"],
+      "source": "pricing.controller.ts:92,135,177"
+    },
+    "pricing_bootstrap": {
+      "description": "Bootstrap default pricing config (idempotent India market + INR + price list)",
+      "roles": ["admin"],
+      "source": "pricing.controller.ts:258"
     }
   }
 }

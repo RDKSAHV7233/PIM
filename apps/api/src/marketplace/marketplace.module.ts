@@ -9,12 +9,13 @@ import { QueueModule } from "../queue/queue.module";
 import { ConnectorMappingService } from "./connector-mapping.service";
 import { MarketplaceController } from "./marketplace.controller";
 import { MarketplaceService } from "./marketplace.service";
+import { PriceResolutionService } from "./price-resolution.service";
 import { SubmissionsController } from "./submissions.controller";
 
 @Module({
   imports: [QueueModule, ConnectorFrameworkModule, MetricsModule, AuthModule, AuditModule, NotificationsModule, AccessPolicyModule],
   controllers: [MarketplaceController, SubmissionsController],
-  providers: [MarketplaceService, ConnectorMappingService],
-  exports: [MarketplaceService, ConnectorMappingService],
+  providers: [MarketplaceService, ConnectorMappingService, PriceResolutionService],
+  exports: [MarketplaceService, ConnectorMappingService, PriceResolutionService],
 })
 export class MarketplaceModule {}

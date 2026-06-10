@@ -3160,6 +3160,330 @@ paths:
           description: ""
       tags:
         - PlatformAdmin
+  /api/v1/pricing/markets:
+    get:
+      operationId: PricingController_listMarkets
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: List all markets for this tenant
+      tags: &a23
+        - Pricing
+    post:
+      operationId: PricingController_createMarket
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMarketDto"
+      responses:
+        "201":
+          description: ""
+        "409":
+          description: Market code+locale already exists
+      summary: Create a market
+      tags: *a23
+  /api/v1/pricing/markets/{id}:
+    get:
+      operationId: PricingController_getMarket
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+        "404":
+          description: ""
+      summary: Get a single market
+      tags: *a23
+    patch:
+      operationId: PricingController_updateMarket
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMarketDto"
+      responses:
+        "200":
+          description: ""
+        "404":
+          description: ""
+      summary: Update a market
+      tags: *a23
+    delete:
+      operationId: PricingController_deleteMarket
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+        "409":
+          description: Market still referenced by price lists
+      summary: Delete a market (fails if price lists reference it)
+      tags: *a23
+  /api/v1/pricing/currencies:
+    get:
+      operationId: PricingController_listCurrencies
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: List all currencies for this tenant
+      tags: *a23
+    post:
+      operationId: PricingController_createCurrency
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCurrencyDto"
+      responses:
+        "201":
+          description: ""
+        "409":
+          description: Currency code already exists for this tenant
+      summary: Create a currency
+      tags: *a23
+  /api/v1/pricing/currencies/{id}:
+    get:
+      operationId: PricingController_getCurrency
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "404":
+          description: ""
+      summary: Get a single currency
+      tags: *a23
+    patch:
+      operationId: PricingController_updateCurrency
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCurrencyDto"
+      responses:
+        "200":
+          description: ""
+      summary: Update a currency
+      tags: *a23
+    delete:
+      operationId: PricingController_deleteCurrency
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      summary: Delete a currency (fails if price lists reference it)
+      tags: *a23
+  /api/v1/pricing/price-lists:
+    get:
+      operationId: PricingController_listPriceLists
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: List all price lists (with market + currency)
+      tags: *a23
+    post:
+      operationId: PricingController_createPriceList
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePriceListDto"
+      responses:
+        "201":
+          description: ""
+        "400":
+          description: marketId or currencyId not found in this tenant
+        "409":
+          description: Duplicate market+currency combination
+      summary: Create a price list
+      tags: *a23
+  /api/v1/pricing/price-lists/{id}:
+    get:
+      operationId: PricingController_getPriceList
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "404":
+          description: ""
+      summary: Get a single price list
+      tags: *a23
+    patch:
+      operationId: PricingController_updatePriceList
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePriceListDto"
+      responses:
+        "200":
+          description: ""
+      summary: Update a price list
+      tags: *a23
+    delete:
+      operationId: PricingController_deletePriceList
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      summary: Delete a price list and all its product prices
+      tags: *a23
+  /api/v1/pricing/price-lists/{id}/prices:
+    get:
+      operationId: PricingController_listPrices
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "404":
+          description: Price list not found
+      summary: List all product prices in a price list
+      tags: *a23
+    put:
+      description: Creates or updates ProductPrice rows for the given variantIds.
+        Sending the same variantId twice in one request is a validation error.
+      operationId: PricingController_upsertPrices
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProductPricesDto"
+      responses:
+        "200":
+          description: "{ upserted: N }"
+        "400":
+          description: Unknown variantId(s)
+      summary: Bulk-upsert prices for a price list
+      tags: *a23
+  /api/v1/pricing/price-lists/{id}/prices/template:
+    get:
+      description: Returns a UTF-8 CSV file with all tenant variant SKUs as rows.
+        Existing MRP and selling price values are pre-filled; unset cells are
+        blank. Download, complete the blanks, and upload via POST
+        /pricing/price-lists/:id/prices/import.
+      operationId: PricingController_downloadPriceTemplate
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: text/csv attachment
+        "404":
+          description: Price list not found
+      summary: Download a price list CSV template
+      tags: *a23
+  /api/v1/pricing/coverage:
+    get:
+      description: Returns how many variants have prices set in each active price
+        list, plus a top-level summary for the default list. A variant counts as
+        'priced' if at least one of mrp or sellingPrice is non-null.
+      operationId: PricingController_getCoverage
+      parameters: []
+      responses:
+        "200":
+          description: PricingCoverage snapshot
+      summary: Pricing coverage by price list
+      tags: *a23
+  /api/v1/pricing/bootstrap:
+    post:
+      description: "Idempotent. Creates one India market, one INR currency, and one
+        default price list if the tenant has no pricing data yet. Returns {
+        created: true } on first run, { created: false } on subsequent runs."
+      operationId: PricingController_bootstrapDefaultPricing
+      parameters: []
+      responses:
+        "201":
+          description: "{ created: boolean }"
+      summary: Bootstrap default pricing config (India market + INR + default price
+        list)
+      tags: *a23
+  /api/v1/pricing/price-lists/{id}/prices/import:
+    post:
+      description: "Upload a CSV file to bulk-set MRP and selling price for all
+        variants in this price list. Required column: sku_code (or sku /
+        skuCode). Optional columns: mrp, selling_price. Returns { imported,
+        skipped, errors[] }."
+      operationId: PricingController_importPrices
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: "{ imported: N, skipped: N, errors: [] }"
+        "400":
+          description: Parse error, missing column, or file too large
+      summary: Import prices from a CSV file
+      tags: *a23
   /api/v1/rejection-intelligence/products/{id}/score:
     get:
       operationId: RejectionIntelligenceController_scoreProduct
@@ -3186,7 +3510,7 @@ paths:
         "200":
           description: Workspace availability evaluated
       summary: Check whether a workspace slug is available for public signup
-      tags: &a23
+      tags: &a24
         - Public Signup
   /api/v1/signup/workspace:
     post:
@@ -3202,7 +3526,7 @@ paths:
         "200":
           description: Signup request accepted and pending verification
       summary: Create a pending public signup request
-      tags: *a23
+      tags: *a24
   /api/v1/signup/verify:
     post:
       operationId: SignupController_verifyPublicSignup
@@ -3217,7 +3541,7 @@ paths:
         "200":
           description: Signup verified and workspace provisioned
       summary: Verify a public signup token and provision the workspace
-      tags: *a23
+      tags: *a24
   /api/v1/signup/resend-verification:
     post:
       operationId: SignupController_resendVerification
@@ -3232,7 +3556,7 @@ paths:
         "200":
           description: Verification email resent when a pending signup exists
       summary: Resend the verification email for a pending public signup
-      tags: *a23
+      tags: *a24
   /api/v1/admin/workspace/users:
     get:
       operationId: WorkspaceUsersController_listUsers
@@ -3240,7 +3564,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a24
+      tags: &a25
         - WorkspaceUsers
     post:
       operationId: WorkspaceUsersController_createUser
@@ -3254,7 +3578,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/role-capabilities:
     get:
       operationId: WorkspaceUsersController_getRoleCapabilities
@@ -3262,7 +3586,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/{userId}/role:
     patch:
       operationId: WorkspaceUsersController_updateUserRole
@@ -3281,7 +3605,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/{userId}/lock:
     post:
       operationId: WorkspaceUsersController_lockUser
@@ -3300,7 +3624,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/{userId}/unlock:
     post:
       operationId: WorkspaceUsersController_unlockUser
@@ -3313,7 +3637,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/{userId}/deactivate:
     post:
       operationId: WorkspaceUsersController_deactivateUser
@@ -3326,7 +3650,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/users/{userId}/password:
     post:
       operationId: WorkspaceUsersController_setUserPassword
@@ -3345,7 +3669,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a24
+      tags: *a25
   /api/v1/admin/workspace/access-scopes:
     get:
       operationId: WorkspaceAccessScopesController_listAccessScopes
@@ -3353,7 +3677,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a25
+      tags: &a26
         - WorkspaceAccessScopes
     post:
       operationId: WorkspaceAccessScopesController_createAccessScope
@@ -3367,7 +3691,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/admin/workspace/access-scopes/{assignmentId}:
     delete:
       operationId: WorkspaceAccessScopesController_deleteAccessScope
@@ -3380,7 +3704,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a25
+      tags: *a26
   /api/v1/auto-suggestions/products/{id}/title-suggestion:
     get:
       operationId: AutoSuggestionsController_getTitleSuggestion
@@ -3393,7 +3717,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: &a26
+      tags: &a27
         - AutoSuggestions
   /api/v1/auto-suggestions/products/{id}/attribute-enrichment:
     get:
@@ -3407,7 +3731,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a26
+      tags: *a27
   /api/v1/auto-suggestions/products/{id}/category-suggestion:
     get:
       operationId: AutoSuggestionsController_getCategorySuggestion
@@ -3420,7 +3744,7 @@ paths:
       responses:
         "200":
           description: ""
-      tags: *a26
+      tags: *a27
   /api/v1/auto-suggestions/products/{id}/repair:
     post:
       operationId: AutoSuggestionsController_applyRepair
@@ -3433,7 +3757,7 @@ paths:
       responses:
         "201":
           description: ""
-      tags: *a26
+      tags: *a27
 info:
   title: Vexa PIM API
   description: Vexa PIM API OpenAPI specification
@@ -3924,6 +4248,147 @@ components:
     CreatePlatformTenantDto:
       type: object
       properties: {}
+    CreateMarketDto:
+      type: object
+      properties:
+        code:
+          type: string
+          example: IN
+          description: ISO 3166-1 alpha-2 market code
+        locale:
+          type: string
+          example: en-IN
+          description: BCP-47 locale identifier
+        displayName:
+          type: string
+          example: India
+          description: Human-readable market name
+        isDefault:
+          type: boolean
+          default: false
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+          default: active
+      required:
+        - code
+        - locale
+        - displayName
+    UpdateMarketDto:
+      type: object
+      properties:
+        locale:
+          type: string
+          example: en-IN
+        displayName:
+          type: string
+          example: India (Updated)
+        isDefault:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+    CreateCurrencyDto:
+      type: object
+      properties:
+        code:
+          type: string
+          example: INR
+          description: ISO 4217 currency code
+        symbol:
+          type: string
+          example: ₹
+          description: Currency symbol
+        displayName:
+          type: string
+          example: Indian Rupee
+        decimalPlaces:
+          type: number
+          default: 2
+          minimum: 0
+          maximum: 6
+      required:
+        - code
+        - symbol
+        - displayName
+    UpdateCurrencyDto:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: ₹
+        displayName:
+          type: string
+          example: Indian Rupee
+        decimalPlaces:
+          type: number
+          minimum: 0
+          maximum: 6
+    CreatePriceListDto:
+      type: object
+      properties:
+        name:
+          type: string
+          example: India Default Price List
+        marketId:
+          type: string
+          example: clz1abc...
+        currencyId:
+          type: string
+          example: clz1def...
+        isDefault:
+          type: boolean
+          default: false
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+          default: active
+      required:
+        - name
+        - marketId
+        - currencyId
+    UpdatePriceListDto:
+      type: object
+      properties:
+        name:
+          type: string
+          example: India Default Price List
+        isDefault:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+    ProductPriceEntryDto:
+      type: object
+      properties:
+        variantId:
+          type: string
+          example: clz1abc...
+        mrp:
+          type: object
+          example: 999
+        sellingPrice:
+          type: object
+          example: 799
+      required:
+        - variantId
+    UpsertProductPricesDto:
+      type: object
+      properties:
+        prices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductPriceEntryDto"
+      required:
+        - prices
     CreatePublicSignupDto:
       type: object
       properties: {}

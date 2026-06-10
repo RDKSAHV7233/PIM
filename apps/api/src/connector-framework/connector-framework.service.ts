@@ -26,6 +26,7 @@ import {
 import { resolveConnectorLaunchPolicy } from "./connector-launch-policy";
 import { ConnectorRegistry } from "./connector.registry";
 import { ConnectorInstallationRecord } from "./connector.types";
+import { lookupAmazonMarketplace } from "../connectors/amazon/amazon-marketplace-registry";
 
 function parseCapabilities(raw: unknown): ConnectorCap[] {
   if (Array.isArray(raw)) {
@@ -472,13 +473,31 @@ export class ConnectorFrameworkService {
   }
 
   private buildContext(installation: ConnectorInstallationRecord): ConnectorContext {
+    const metadata = installation.metadata;
+
+    // ── Marketplace context ───────────────────────────────────────────────────
+    // Derive marketCode + currencyCode from two sources (registry wins for Amazon):
+    //   1. Amazon registry: marketplaceId → entry (covers all Amazon global stores)
+    //   2. Installation metadata: marketCode / currencyCode written at OAuth time
+    //      (set by Shopify connector after fetching shop.countryCode / shop.currencyCode)
+    const marketplaceId = metadata.marketplaceId as string | undefined;
+    const registryEntry = marketplaceId ? lookupAmazonMarketplace(marketplaceId) : undefined;
+    const marketCode =
+      registryEntry?.marketCode ??
+      (metadata.marketCode as string | undefined);
+    const currencyCode =
+      registryEntry?.currencyCode ??
+      (metadata.currencyCode as string | undefined);
+
     // ctx is defined as const so closures can reference it safely after construction
     const ctx: ConnectorContext = {
       tenantId: installation.tenantKey,
       installationId: installation.id,
       connectorId: installation.connectorId,
-      marketplaceId: installation.metadata.marketplaceId as string | undefined,
-      sellerId: installation.metadata.sellerId as string | undefined,
+      marketplaceId,
+      sellerId: metadata.sellerId as string | undefined,
+      marketCode,
+      currencyCode,
       getAccessToken: async () => {
         const connector = this.registry.getConnector(installation.slug);
         return this.credentialService.getOrRefreshAccessToken(

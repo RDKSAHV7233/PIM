@@ -14,7 +14,8 @@ import {
   CredentialExpiredError,
   InstallationNotFoundError,
 } from "../connector-framework/connector.errors";
-import { ProductPayload } from "../connector-framework/connector.interface";
+import { MarketPrice, ProductPayload } from "../connector-framework/connector.interface";
+import { PriceResolutionService } from "./price-resolution.service";
 import { ShopifyConfigResult, ShopifyProductPreview, ShopifyPublishError } from "../connectors/shopify/shopify.connector";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import {
@@ -264,6 +265,7 @@ export class MarketplaceService implements OnModuleInit {
     private readonly notificationsService: NotificationsService,
     private readonly logger: LoggerService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly priceResolution: PriceResolutionService,
   ) {}
 
   onModuleInit() {
@@ -2442,6 +2444,24 @@ export class MarketplaceService implements OnModuleInit {
         },
         variants: {
           orderBy: [{ updatedAt: "desc" }],
+          include: {
+            prices: {
+              where: { priceList: { status: "active" } },
+              include: {
+                priceList: {
+                  select: {
+                    isDefault: true,
+                    market: { select: { code: true } },
+                    currency: { select: { code: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        taxCodes: {
+          include: { regime: { select: { marketCode: true } } },
+          orderBy: { marketCode: "asc" },
         },
       },
     });
@@ -2453,18 +2473,37 @@ export class MarketplaceService implements OnModuleInit {
     const pricing = this.asRecord(attributes.pricing);
     const primaryVariant = product.variants[0] ?? null;
     const primaryVariantAttributes = this.asRecord(primaryVariant?.attributes);
+
+    // ── Multi-currency price resolution ──────────────────────────────────────
+    // Resolve prices for the primary variant (if any) from active PriceLists.
+    // Falls back gracefully: when no PriceLists are configured the flat variant
+    // fields (mrp / sellingPrice) and INR defaults are used unchanged.
+    // Sort: default price list first so marketPrices[0] is the primary price.
+    const primaryPrices: MarketPrice[] = primaryVariant
+      ? this.priceResolution.fromRows(
+          [...primaryVariant.prices].sort((a, b) =>
+            (b.priceList.isDefault ? 1 : 0) - (a.priceList.isDefault ? 1 : 0),
+          ),
+        )
+      : [];
+    const defaultPrice = this.priceResolution.findDefault(primaryPrices);
+    const currencyCode = defaultPrice?.currencyCode ?? "INR";
+
     const sku = this.firstNonEmptyString(
       primaryVariant?.skuCode,
       attributes.sku,
       product.id,
     );
+    // Prefer the default PriceList price; fall back to flat variant / attributes fields.
     const mrp = this.firstNumber(
+      defaultPrice?.mrp,
       primaryVariant?.mrp,
       pricing.mrp,
       attributes.mrp,
       attributes.price,
     );
     const sellingPrice = this.firstNumber(
+      defaultPrice?.sellingPrice,
       primaryVariant?.sellingPrice,
       pricing.sellingPrice,
       attributes.sellingPrice,
@@ -2552,6 +2591,16 @@ export class MarketplaceService implements OnModuleInit {
       brand: this.firstNonEmptyString(product.brand),
       hsnCode: this.firstNonEmptyString(product.hsnCode),
       gstRate: this.firstNumber(product.gstRate),
+      taxCodes: product.taxCodes.length > 0
+        ? product.taxCodes.map((tc) => ({
+            regimeKey: tc.marketCode,   // denormalized — no extra join
+            key: String(tc.key),
+            value: tc.value,
+            rate: tc.rate ?? undefined,
+          }))
+        : undefined,
+      currencyCode,
+      marketPrices: primaryPrices.length > 0 ? primaryPrices : undefined,
       mrp,
       sellingPrice,
       mainImageUrl,

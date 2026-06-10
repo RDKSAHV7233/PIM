@@ -1,4 +1,4 @@
-import type { ApiRequestOptions, AuditEventListResponse, AuditEventsQuery, CatalogStatus, IssueInboxResolveResult, IssueInboxResponse, IssueInboxSeverity, Product } from "./core";
+import type { ApiRequestOptions, AuditEventListResponse, AuditEventsQuery, CatalogStatus, IssueInboxFieldFamily, IssueInboxResolveResult, IssueInboxResponse, IssueInboxSeverity, Product } from "./core";
 import { fetchJson, postJson } from "./core";
 
 export async function getAuditEvents(input?: AuditEventsQuery, options?: ApiRequestOptions) {
@@ -34,6 +34,7 @@ export async function getAuditEvents(input?: AuditEventsQuery, options?: ApiRequ
 export async function getIssueInbox(
   filters?: {
     severity?: IssueInboxSeverity;
+    fieldFamily?: IssueInboxFieldFamily;
     installationId?: string;
     categoryId?: string;
     productStatus?: CatalogStatus;
@@ -46,6 +47,9 @@ export async function getIssueInbox(
   params.set("pagination", "cursor");
   if (filters?.severity) {
     params.set("severity", filters.severity);
+  }
+  if (filters?.fieldFamily) {
+    params.set("fieldFamily", filters.fieldFamily);
   }
   if (filters?.installationId) {
     params.set("installationId", filters.installationId);

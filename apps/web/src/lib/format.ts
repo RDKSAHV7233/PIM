@@ -80,3 +80,91 @@ export function formatINRCompact(value: number | null | undefined): string {
   }
   return formatINR(value);
 }
+
+// \u2500\u2500 Multi-currency formatters \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Use these when displaying prices from PriceLists (multi-market tenants).
+// `formatINR` / `formatINRCompact` remain unchanged for India-only views.
+
+type CurrencyFmtOpts = {
+  /** BCP-47 locale to use for digit grouping / decimal separator. Defaults to DEFAULT_LOCALE ("en-IN"). */
+  locale?: string;
+  /** Number of decimal places. When omitted the ISO 4217 standard for the currency is applied by the browser/Node. */
+  maximumFractionDigits?: number;
+};
+
+/**
+ * Format a monetary value using Intl.NumberFormat with the given ISO 4217 currencyCode.
+ *
+ * @example
+ *   formatCurrency(1999, "GBP")              // "\u00A31,999"
+ *   formatCurrency(1999.5, "USD", { locale: "en-US" })  // "$1,999.50"
+ *   formatCurrency(null, "AED")              // "-"
+ */
+export function formatCurrency(
+  value: number | null | undefined,
+  currencyCode: string,
+  opts?: CurrencyFmtOpts,
+): string {
+  if (value == null) return "-";
+  // Fall back to formatINR for INR \u2014 preserves existing locale/rounding behaviour.
+  if (currencyCode === "INR" && !opts?.locale && opts?.maximumFractionDigits == null) {
+    return formatINR(value);
+  }
+  try {
+    return new Intl.NumberFormat(opts?.locale ?? DEFAULT_LOCALE, {
+      style: "currency",
+      currency: currencyCode,
+      maximumFractionDigits: opts?.maximumFractionDigits ?? 0,
+    }).format(value);
+  } catch {
+    // Unknown currencyCode passed at runtime \u2014 fall back to plain number with code suffix.
+    return `${value.toLocaleString(opts?.locale ?? DEFAULT_LOCALE)} ${currencyCode}`;
+  }
+}
+
+/**
+ * Compact version of `formatCurrency`.
+ *
+ * - INR \u2192 Indian notation (L / Cr) via `formatINRCompact`.
+ * - All other currencies \u2192 SI suffixes (K / M / B) with the currency symbol.
+ *
+ * @example
+ *   formatCurrencyCompact(1_500_000, "GBP")  // "\u00A31.5M"
+ *   formatCurrencyCompact(250_000, "INR")    // "\u20B92.5L"
+ *   formatCurrencyCompact(null, "USD")       // "-"
+ */
+export function formatCurrencyCompact(
+  value: number | null | undefined,
+  currencyCode: string,
+  opts?: CurrencyFmtOpts,
+): string {
+  if (value == null) return "-";
+  if (currencyCode === "INR" && !opts?.locale) {
+    return formatINRCompact(value);
+  }
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  // Determine symbol by formatting a known small value and stripping the number.
+  let symbol = currencyCode;
+  try {
+    const formatted = new Intl.NumberFormat(opts?.locale ?? DEFAULT_LOCALE, {
+      style: "currency",
+      currency: currencyCode,
+      maximumFractionDigits: 0,
+    }).format(1);
+    // Strip digits and separators to isolate the symbol (works for prefix symbols like \u00A3, $, \u20AC).
+    symbol = formatted.replace(/[\d,.\s]/g, "").trim() || currencyCode;
+  } catch {
+    // Unknown currency \u2014 use code as symbol.
+  }
+  if (absValue >= 1_000_000_000) {
+    return `${sign}${symbol}${(absValue / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (absValue >= 1_000_000) {
+    return `${sign}${symbol}${(absValue / 1_000_000).toFixed(1)}M`;
+  }
+  if (absValue >= 1_000) {
+    return `${sign}${symbol}${(absValue / 1_000).toFixed(1)}K`;
+  }
+  return formatCurrency(value, currencyCode, opts);
+}
