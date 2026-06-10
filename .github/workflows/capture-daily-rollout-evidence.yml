@@ -13,7 +13,7 @@ jobs:
       group: capture-daily-rollout-evidence
       cancel-in-progress: false
     permissions:
-      contents: write
+      contents: read
     env:
       APP_ENV: staging
     steps:
@@ -75,18 +75,7 @@ jobs:
             .run-logs/queue-failure-diagnostics-*.json
           if-no-files-found: error
 
-      - name: Commit daily rollout evidence
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/execution/gates/*.json docs/execution/rollout/*CONTROLLED_ROLLOUT_SNAPSHOT.json
-          if git diff --cached --quiet; then
-            echo "No daily rollout evidence changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(release): record daily rollout evidence [skip ci]"
-          if ! git push origin HEAD:main; then
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+      # Evidence is preserved via the artifact upload above.
+      # Direct push to main is intentionally removed: branch protection requires
+      # "build-and-verify" to pass before any push, so the bot commit was always
+      # rejected. Artifacts in GitHub Actions are the canonical evidence store.

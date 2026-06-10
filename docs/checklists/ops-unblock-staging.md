@@ -168,3 +168,4 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
 | 6 | Clear failed job + configure R2 | Ops | ❌ Pending | |
+| 7 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in GitHub `staging` env secrets | Ops | ❌ Pending (fixes daily E2E noise) | |
