@@ -442,7 +442,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   Workspace activity: {overview.tenantOverview.activeWorkspaces} active / {overview.tenantOverview.inactiveWorkspaces} inactive
                 </div>
                 <div className="mt-1">
-                  Plans: {overview.tenantOverview.planTierCounts.starter} starter, {overview.tenantOverview.planTierCounts.growth} growth, {overview.tenantOverview.planTierCounts.enterprise} enterprise
+                  Plans: {overview.tenantOverview.planTierCounts.trial} trial, {overview.tenantOverview.planTierCounts.starter} starter, {overview.tenantOverview.planTierCounts.growth} growth, {overview.tenantOverview.planTierCounts.enterprise} enterprise
                 </div>
                 <div className="mt-1">
                   Request queue: {overview.requestOverview.openRequests} open, {overview.requestOverview.acknowledgedRequests} acknowledged, {overview.requestOverview.resolvedRequests} resolved, {overview.requestOverview.cancelledRequests} cancelled

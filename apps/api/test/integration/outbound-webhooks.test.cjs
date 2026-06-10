@@ -409,11 +409,13 @@ async function run() {
   const editorUserId = `outbound-editor-${runId}@example.com`;
   const viewerUserId = `outbound-viewer-${runId}@example.com`;
 
+  const commercialOpsToken = `outbound-webhooks-commercial-${runId}`;
   const env = {
     ...process.env,
     PORT: String(port),
     AUTH_MODE: "db",
     PIM_PLATFORM_ADMIN_TOKEN: platformToken,
+    PIM_COMMERCIAL_OPS_TOKEN: commercialOpsToken,
     PIM_FLIPKART_OAUTH_BASE_URL: flipkartStub.baseUrl,
     PIM_ALLOW_LEGACY_HEADERS: "false",
     PIM_AUTH_IDENTITIES_JSON: "",
@@ -463,6 +465,22 @@ async function run() {
       { "x-pim-platform-admin-token": platformToken },
     );
     assertStatus(provision, 201, "platform tenant provisioning");
+
+    // Upgrade to ENTERPRISE: test needs 3 users (TRIAL allows 2) and 5 webhook
+    // endpoints (GROWTH allows 3).
+    const upgradePlan = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/plan-tier",
+      null,
+      { tenantKey, planTier: "ENTERPRISE" },
+      {
+        "x-pim-commercial-ops-token": commercialOpsToken,
+        "x-pim-operator-id": "integration-test",
+        "x-pim-operator-role": "system",
+      },
+    );
+    assertStatus(upgradePlan, 201, "upgrade test workspace to ENTERPRISE");
 
     const adminLogin = await login(baseUrl, workspaceSlug, adminUserId);
     assertStatus(adminLogin, 201, "admin login");

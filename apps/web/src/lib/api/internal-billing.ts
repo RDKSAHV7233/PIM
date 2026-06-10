@@ -31,6 +31,7 @@ export interface CommercialOverviewResponse {
     activeWorkspaces: number;
     inactiveWorkspaces: number;
     planTierCounts: {
+      trial: number;
       starter: number;
       growth: number;
       enterprise: number;

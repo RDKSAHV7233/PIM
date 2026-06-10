@@ -19,6 +19,9 @@ describe("BulkImportRunService.enqueueProcessJob", () => {
       getJob: jest.fn().mockResolvedValue(jobStub),
       processJob: jest.fn(),
     };
+    const planUsageService = {
+      getImportRowLimit: jest.fn().mockResolvedValue(30000),
+    };
 
     const service = new BulkImportRunService(
       prisma as never,
@@ -26,6 +29,7 @@ describe("BulkImportRunService.enqueueProcessJob", () => {
       queueService as never,
       storageService as never,
       bulkImportService as never,
+      planUsageService as never,
     );
 
     return { service, enqueueMock, bulkImportService };

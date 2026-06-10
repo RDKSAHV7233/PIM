@@ -369,7 +369,7 @@ export class SignupService implements OnModuleDestroy {
       tenantKey: workspace.tenantId,
       adminEmail: request.adminEmail,
       displayName: request.displayName,
-      planTier: "STARTER",
+      planTier: "TRIAL",
     });
 
     const hoursToVerify = Math.max(0, (Date.now() - new Date(request.createdAt).getTime()) / (60 * 60 * 1000));

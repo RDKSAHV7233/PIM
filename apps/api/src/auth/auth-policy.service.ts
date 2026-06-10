@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { AuditService } from "../audit/audit.service";
 import { type AppRole } from "../common/rbac/roles";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
@@ -50,11 +51,16 @@ export interface TenantAuthPolicyView {
   };
 }
 
+/** Fields only configurable on ENTERPRISE plan. */
+const ENTERPRISE_ONLY_FIELDS = ["externalIdentityMode", "mfaRequired", "mfaGracePeriodDays", "allowedAuthMethods"] as const;
+type EnterpriseOnlyField = (typeof ENTERPRISE_ONLY_FIELDS)[number];
+
 @Injectable()
 export class AuthPolicyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   async getPolicy(tenantIdInput: string): Promise<TenantAuthPolicyView> {
@@ -112,6 +118,30 @@ export class AuthPolicyService {
   ): Promise<TenantAuthPolicyView> {
     const tenantId = normalizeTenantKey(tenantIdInput);
     const actorId = String(actorIdInput ?? "").trim().toLowerCase() || "unknown";
+
+    const planTier = await this.planUsageService.getTenantPlanTier(tenantId);
+
+    if (planTier === "TRIAL" || planTier === "STARTER") {
+      throw new ForbiddenException({
+        error: "PLAN_UPGRADE_REQUIRED",
+        message: "Auth policy configuration requires a Growth or Enterprise plan.",
+        upgrade_url: "/admin/plan",
+      });
+    }
+
+    if (planTier === "GROWTH") {
+      const blockedFields = (Object.keys(dto) as EnterpriseOnlyField[]).filter(
+        (field) => (ENTERPRISE_ONLY_FIELDS as readonly string[]).includes(field) && dto[field] !== undefined,
+      );
+      if (blockedFields.length > 0) {
+        throw new ForbiddenException({
+          error: "PLAN_UPGRADE_REQUIRED",
+          message: `Fields ${blockedFields.join(", ")} require an Enterprise plan.`,
+          upgrade_url: "/admin/plan",
+        });
+      }
+    }
+
     const current = await this.prisma.tenant(tenantId).tenantAuthPolicy.findUnique({
       where: { tenantKey: tenantId },
       select: AUTH_POLICY_SELECT,

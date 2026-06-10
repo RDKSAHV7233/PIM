@@ -679,6 +679,9 @@ model PlanLimits {
   maxStorageGb           Float
   maxConnectorInstallations Int   @default(2)
   maxAccountsPerConnector Int     @default(1)
+  maxApiKeys             Int      @default(0)
+  maxOutboundWebhooks    Int      @default(0)
+  maxImportRowsPerJob    Int      @default(30000)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
@@ -703,7 +706,7 @@ model PlanUsage {
 model TenantPlanProfile {
   id                     String   @id @default(cuid())
   tenantKey              String   @unique
-  planTier               String   @default("STARTER")
+  planTier               String   @default("TRIAL")
   billingStatus          String   @default("trial")
   accessStatus           String   @default("active")
   effectiveFrom          DateTime?

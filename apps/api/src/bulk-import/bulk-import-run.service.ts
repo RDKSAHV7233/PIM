@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { BulkImportRunStatus, BulkImportRunMode, BulkImportRowStatus, BulkImportJobStatus, Prisma } from "@prisma/client";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccessPolicyService, PolicyActor } from "../common/access-policy/access-policy.service";
 import { QueueService } from "../queue/queue.service";
@@ -66,6 +67,7 @@ export class BulkImportRunService implements OnModuleInit {
     private readonly queueService: QueueService,
     private readonly storageService: BulkImportStorageService,
     private readonly bulkImportService: BulkImportService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   onModuleInit() {
@@ -453,15 +455,17 @@ export class BulkImportRunService implements OnModuleInit {
         }
       }
 
-      // Check row ceiling
+      // Check row ceiling — per-plan limit capped by the absolute system ceiling
+      const planRowLimit = await this.planUsageService.getImportRowLimit(this.resolveTenantKey());
+      const effectiveRowLimit = Math.min(planRowLimit, LARGE_IMPORT_ROW_CEILING);
       let mvpCeilingExceeded = false;
-      if (totalRows > LARGE_IMPORT_ROW_CEILING) {
+      if (totalRows > effectiveRowLimit) {
         mvpCeilingExceeded = true;
         blockingIssueCount++;
         if (sampleIssues.length < 10) {
           sampleIssues.push({
-            rowNumber: LARGE_IMPORT_ROW_CEILING + 1,
-            issues: [`Large import mode supports at most ${LARGE_IMPORT_ROW_CEILING} CSV rows in MVP.`],
+            rowNumber: effectiveRowLimit + 1,
+            issues: [`Your plan supports at most ${effectiveRowLimit} rows per import job.`],
             severity: "blocking",
           });
         }

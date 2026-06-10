@@ -12,11 +12,11 @@ export class PlanProfileSummaryDto {
   @ApiProperty({ example: "vexa-demo" })
   tenantKey!: string;
 
-  @ApiProperty({ enum: ["STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
-  planTier!: "STARTER" | "GROWTH" | "ENTERPRISE";
+  @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
+  planTier!: "TRIAL" | "STARTER" | "GROWTH" | "ENTERPRISE";
 
-  @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled"], example: "trial" })
-  billingStatus!: "trial" | "active_paid" | "past_due" | "cancelled";
+  @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled", "expired"], example: "trial" })
+  billingStatus!: "trial" | "active_paid" | "past_due" | "cancelled" | "expired";
 
   @ApiProperty({ enum: ["active", "suspended"], example: "active" })
   accessStatus!: "active" | "suspended";
@@ -56,11 +56,11 @@ export class PlanProfileSummaryDto {
 }
 
 export class PlanUsageSummaryDto {
-  @ApiProperty({ enum: ["STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
-  planTier!: "STARTER" | "GROWTH" | "ENTERPRISE";
+  @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
+  planTier!: "TRIAL" | "STARTER" | "GROWTH" | "ENTERPRISE";
 
-  @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled"], example: "trial" })
-  billingStatus!: "trial" | "active_paid" | "past_due" | "cancelled";
+  @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled", "expired"], example: "trial" })
+  billingStatus!: "trial" | "active_paid" | "past_due" | "cancelled" | "expired";
 
   @ApiProperty({ enum: ["active", "suspended"], example: "active" })
   accessStatus!: "active" | "suspended";
@@ -118,7 +118,7 @@ export class PlanUpgradeRequestSummaryDto {
   @ApiProperty({ example: "admin" })
   requesterRole!: string;
 
-  @ApiProperty({ enum: ["STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
+  @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"], example: "STARTER" })
   currentPlanTier!: string;
 
   @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled"], example: "trial" })

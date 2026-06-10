@@ -36,6 +36,12 @@ function normalizeResourceLabel(resource: string): string {
   if (normalized === "connector_accounts") {
     return "connector account";
   }
+  if (normalized === "api_keys") {
+    return "API key";
+  }
+  if (normalized === "outbound_webhooks") {
+    return "outbound webhook";
+  }
   return resource;
 }
 

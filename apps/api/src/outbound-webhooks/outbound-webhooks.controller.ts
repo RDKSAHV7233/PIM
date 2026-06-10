@@ -10,8 +10,11 @@ import {
   Query,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { PlanGuard } from "../billing/plan-guard.guard";
+import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
@@ -55,6 +58,8 @@ export class OutboundWebhooksController {
   }
 
   @Post()
+  @UseGuards(PlanGuard)
+  @RequirePlanLimit("outbound_webhooks")
   createEndpoint(@Req() request: AuthenticatedRequest, @Body() dto: CreateOutboundWebhookDto) {
     const actor = this.requireActor(request);
     return this.outboundWebhooksService.createEndpoint(actor.tenantId, actor.userId, actor.role, dto);

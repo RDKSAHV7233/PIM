@@ -6,7 +6,9 @@ export type PlanResource =
   | "storage_gb"
   | "connectors_installations"
   | "connector_accounts"
-  | "users";
+  | "users"
+  | "api_keys"
+  | "outbound_webhooks";
 
 export const PLAN_RESOURCE_KEY = "plan_resource";
 

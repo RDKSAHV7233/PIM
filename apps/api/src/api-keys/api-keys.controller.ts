@@ -7,12 +7,15 @@ import {
   Post,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
 import { type AppRole, Roles } from "../common/rbac/roles";
+import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
+import { PlanGuard } from "../billing/plan-guard.guard";
 import { ApiKeysService } from "./api-keys.service";
 import { CreateApiKeyDto } from "./dto/create-api-key.dto";
 
@@ -42,6 +45,8 @@ export class ApiKeysController {
   }
 
   @Post()
+  @UseGuards(PlanGuard)
+  @RequirePlanLimit("api_keys")
   createKey(@Req() request: AuthenticatedRequest, @Body() dto: CreateApiKeyDto) {
     const actor = this.requireActor(request);
     return this.apiKeysService.createKey(actor.tenantId, actor.userId, actor.role, dto);

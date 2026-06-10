@@ -6465,6 +6465,7 @@
           "planTier": {
             "type": "string",
             "enum": [
+              "TRIAL",
               "STARTER",
               "GROWTH",
               "ENTERPRISE"
@@ -6477,7 +6478,8 @@
               "trial",
               "active_paid",
               "past_due",
-              "cancelled"
+              "cancelled",
+              "expired"
             ],
             "example": "trial"
           },
@@ -6567,6 +6569,7 @@
           "planTier": {
             "type": "string",
             "enum": [
+              "TRIAL",
               "STARTER",
               "GROWTH",
               "ENTERPRISE"
@@ -6579,7 +6582,8 @@
               "trial",
               "active_paid",
               "past_due",
-              "cancelled"
+              "cancelled",
+              "expired"
             ],
             "example": "trial"
           },
@@ -6686,6 +6690,7 @@
           "currentPlanTier": {
             "type": "string",
             "enum": [
+              "TRIAL",
               "STARTER",
               "GROWTH",
               "ENTERPRISE"

@@ -65,6 +65,10 @@ export class StripeService implements OnModuleInit {
     if (!this.isEnabled()) {
       return;
     }
+    const planTier = String(input.planTier ?? "TRIAL").toUpperCase();
+    if (planTier === "TRIAL") {
+      return;
+    }
     const tenantKey = normalizeTenantKey(input.tenantKey);
     try {
       const stripe = this.getClient();
@@ -81,7 +85,6 @@ export class StripeService implements OnModuleInit {
         customerId = customer.id;
       }
 
-      const planTier = String(input.planTier ?? "STARTER").toUpperCase();
       const priceIdEnvKey = PLAN_TIER_TO_PRICE_ID_ENV[planTier] ?? PLAN_TIER_TO_PRICE_ID_ENV["STARTER"];
       const priceId = String(process.env[priceIdEnvKey] ?? "").trim();
 

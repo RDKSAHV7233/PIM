@@ -8,8 +8,10 @@ import {
   Post,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { PlanGuard } from "../billing/plan-guard.guard";
 import { PlanUsageService } from "../billing/plan-usage.service";
 import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
@@ -75,6 +77,7 @@ export class WorkspaceUsersController {
   }
 
   @Post()
+  @UseGuards(PlanGuard)
   @RequirePlanLimit("users")
   createUser(
     @Body() dto: CreateWorkspaceUserDto,

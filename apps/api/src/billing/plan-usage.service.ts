@@ -11,8 +11,8 @@ import { PlanResource } from "./require-plan-limit.decorator";
 /** Plan profiles change only on admin billing operations — 5-minute TTL is safe. */
 const PLAN_PROFILE_CACHE_TTL_SECONDS = 300;
 
-const PLAN_TIERS = ["STARTER", "GROWTH", "ENTERPRISE"] as const;
-const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled"] as const;
+const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"] as const;
+const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled", "expired"] as const;
 const ACCESS_STATUSES = ["active", "suspended"] as const;
 const USAGE_SUMMARY_TTL_MS = 60_000;
 
@@ -28,6 +28,9 @@ interface PlanLimitsRow {
   maxStorageGb: number;
   maxConnectorInstallations: number;
   maxAccountsPerConnector: number;
+  maxApiKeys: number;
+  maxOutboundWebhooks: number;
+  maxImportRowsPerJob: number;
 }
 
 interface UsageRow {
@@ -62,6 +65,9 @@ interface UsageSummaryReadRow {
   maxStorageGb: number;
   maxConnectorInstallations: number;
   maxAccountsPerConnector: number;
+  maxApiKeys: number;
+  maxOutboundWebhooks: number;
+  maxImportRowsPerJob: number;
   profileTenantKey: string | null;
   profilePlanTier: string | null;
   profileBillingStatus: string | null;
@@ -119,6 +125,7 @@ interface CommercialOverviewRow {
   totalTenants: number;
   activeWorkspaces: number;
   inactiveWorkspaces: number;
+  trialPlanTenants: number;
   starterTenants: number;
   growthTenants: number;
   enterpriseTenants: number;
@@ -149,7 +156,7 @@ interface ConnectorCountsRow {
 
 export interface PlanCheckResult {
   allowed: boolean;
-  resource: "skus" | "submissions" | "storage_gb" | "connectors_installations" | "connector_accounts" | "users";
+  resource: "skus" | "submissions" | "storage_gb" | "connectors_installations" | "connector_accounts" | "users" | "api_keys" | "outbound_webhooks";
   limit: number;
   current: number;
 }
@@ -228,6 +235,7 @@ export interface CommercialTenantOverview {
   activeWorkspaces: number;
   inactiveWorkspaces: number;
   planTierCounts: {
+    trial: number;
     starter: number;
     growth: number;
     enterprise: number;
@@ -305,6 +313,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           "maxStorageGb",
           "maxConnectorInstallations",
           "maxAccountsPerConnector",
+          "maxApiKeys",
+          "maxOutboundWebhooks",
+          "maxImportRowsPerJob",
           "createdAt",
           "updatedAt"
         )
@@ -317,6 +328,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           ${item.maxStorageGb},
           ${item.maxConnectorInstallations},
           ${item.maxAccountsPerConnector},
+          ${item.maxApiKeys},
+          ${item.maxOutboundWebhooks},
+          ${item.maxImportRowsPerJob},
           NOW(),
           NOW()
         )
@@ -328,6 +342,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           "maxStorageGb" = EXCLUDED."maxStorageGb",
           "maxConnectorInstallations" = EXCLUDED."maxConnectorInstallations",
           "maxAccountsPerConnector" = EXCLUDED."maxAccountsPerConnector",
+          "maxApiKeys" = EXCLUDED."maxApiKeys",
+          "maxOutboundWebhooks" = EXCLUDED."maxOutboundWebhooks",
+          "maxImportRowsPerJob" = EXCLUDED."maxImportRowsPerJob",
           "updatedAt" = NOW()
       `);
     }
@@ -346,7 +363,14 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         where: { tenantKey },
         select: { planTier: true },
       });
-    return this.normalizePlanTier(profile?.planTier ?? "STARTER");
+    return this.normalizePlanTier(profile?.planTier ?? "TRIAL");
+  }
+
+  async getImportRowLimit(tenantKeyInput: string): Promise<number> {
+    const tenantKey = normalizeTenantKey(tenantKeyInput);
+    const planTier = await this.getTenantPlanTier(tenantKey);
+    const limits = await this.getPlanLimits(planTier);
+    return limits.maxImportRowsPerJob;
   }
 
   async checkLimit(
@@ -356,6 +380,14 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     options?: { connectorSlug?: string },
   ): Promise<PlanCheckResult> {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
+
+    // Expired workspaces (trial ended without upgrade) are hard-blocked from all
+    // resource creation — returning limit=0 / current=1 so the guard throws 402.
+    const profile = await this.getOrCreateTenantPlanProfile(tenantKey);
+    if (profile.billingStatus === "expired") {
+      return { allowed: false, resource, limit: 0, current: 1 };
+    }
+
     const usage = await this.recomputeUsage(tenantKey);
     const limits = await this.getPlanLimits(usage.planTier);
 
@@ -414,6 +446,32 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         allowed: current <= limits.maxUsers,
         resource: "users",
         limit: limits.maxUsers,
+        current,
+      };
+    }
+
+    if (resource === "api_keys") {
+      const liveCount = await this.prisma.tenant(tenantKey).apiAccessKey.count({
+        where: { revokedAt: null },
+      });
+      const current = liveCount + requestDelta;
+      return {
+        allowed: current <= limits.maxApiKeys,
+        resource: "api_keys",
+        limit: limits.maxApiKeys,
+        current,
+      };
+    }
+
+    if (resource === "outbound_webhooks") {
+      const liveCount = await this.prisma.tenant(tenantKey).outboundWebhookEndpoint.count({
+        where: { isActive: true },
+      });
+      const current = liveCount + requestDelta;
+      return {
+        allowed: current <= limits.maxOutboundWebhooks,
+        resource: "outbound_webhooks",
+        limit: limits.maxOutboundWebhooks,
         current,
       };
     }
@@ -847,8 +905,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         } else {
           acc.inactiveWorkspaces += 1;
         }
-        const planTier = this.normalizePlanTier(item.planTier ?? "STARTER");
-        if (planTier === "STARTER") {
+        const planTier = this.normalizePlanTier(item.planTier ?? "TRIAL");
+        if (planTier === "TRIAL") {
+          acc.trialPlanTenants += 1;
+        } else if (planTier === "STARTER") {
           acc.starterTenants += 1;
         } else if (planTier === "GROWTH") {
           acc.growthTenants += 1;
@@ -877,6 +937,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         totalTenants: 0,
         activeWorkspaces: 0,
         inactiveWorkspaces: 0,
+        trialPlanTenants: 0,
         starterTenants: 0,
         growthTenants: 0,
         enterpriseTenants: 0,
@@ -893,6 +954,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       activeWorkspaces: Number(row.activeWorkspaces ?? 0),
       inactiveWorkspaces: Number(row.inactiveWorkspaces ?? 0),
       planTierCounts: {
+        trial: Number(row.trialPlanTenants ?? 0),
         starter: Number(row.starterTenants ?? 0),
         growth: Number(row.growthTenants ?? 0),
         enterprise: Number(row.enterpriseTenants ?? 0),
@@ -1057,7 +1119,10 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         "maxUsers" AS "maxUsers",
         "maxStorageGb" AS "maxStorageGb",
         "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
+        "maxAccountsPerConnector" AS "maxAccountsPerConnector",
+        "maxApiKeys" AS "maxApiKeys",
+        "maxOutboundWebhooks" AS "maxOutboundWebhooks",
+        "maxImportRowsPerJob" AS "maxImportRowsPerJob"
       FROM "PlanLimits"
       WHERE "planTier" = ${planTier}
       LIMIT 1
@@ -1074,9 +1139,12 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         "maxUsers" AS "maxUsers",
         "maxStorageGb" AS "maxStorageGb",
         "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
+        "maxAccountsPerConnector" AS "maxAccountsPerConnector",
+        "maxApiKeys" AS "maxApiKeys",
+        "maxOutboundWebhooks" AS "maxOutboundWebhooks",
+        "maxImportRowsPerJob" AS "maxImportRowsPerJob"
       FROM "PlanLimits"
-      WHERE "planTier" = 'STARTER'
+      WHERE "planTier" = 'TRIAL'
       LIMIT 1
     `);
     if (fallback[0]) {
@@ -1092,13 +1160,16 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         "maxUsers" AS "maxUsers",
         "maxStorageGb" AS "maxStorageGb",
         "maxConnectorInstallations" AS "maxConnectorInstallations",
-        "maxAccountsPerConnector" AS "maxAccountsPerConnector"
+        "maxAccountsPerConnector" AS "maxAccountsPerConnector",
+        "maxApiKeys" AS "maxApiKeys",
+        "maxOutboundWebhooks" AS "maxOutboundWebhooks",
+        "maxImportRowsPerJob" AS "maxImportRowsPerJob"
       FROM "PlanLimits"
-      WHERE "planTier" = 'STARTER'
+      WHERE "planTier" = 'TRIAL'
       LIMIT 1
     `);
     if (!seeded[0]) {
-      throw new Error("PlanLimits seed missing STARTER tier");
+      throw new Error("PlanLimits seed missing TRIAL tier");
     }
     return seeded[0];
   }
@@ -1151,7 +1222,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       ORDER BY "month" DESC, "updatedAt" DESC
       LIMIT 1
     `);
-    const seedPlanTier = this.normalizePlanTier(latestUsageRows[0]?.planTier ?? "STARTER");
+    const seedPlanTier = this.normalizePlanTier(latestUsageRows[0]?.planTier ?? "TRIAL");
     const seedBillingStatus = this.normalizeBillingStatus(null, seedPlanTier);
     const seedTrialEndsAt = seedBillingStatus === "trial" ? this.buildTrialEndsAt() : null;
 
@@ -1226,21 +1297,21 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   private normalizePlanTier(value: string): PlanTier {
     const normalized = String(value ?? "").trim().toUpperCase();
-    if (normalized === "GROWTH" || normalized === "ENTERPRISE") {
+    if (normalized === "STARTER" || normalized === "GROWTH" || normalized === "ENTERPRISE") {
       return normalized;
     }
-    return "STARTER";
+    return "TRIAL";
   }
 
   private normalizeBillingStatus(value: string | null | undefined, planTier: PlanTier): BillingStatus {
     const normalized = String(value ?? "").trim().toLowerCase();
-    if (normalized === "active_paid" || normalized === "past_due" || normalized === "cancelled") {
+    if (normalized === "active_paid" || normalized === "past_due" || normalized === "cancelled" || normalized === "expired") {
       return normalized;
     }
     if (normalized === "trial") {
       return "trial";
     }
-    return planTier === "STARTER" ? "trial" : "active_paid";
+    return planTier === "TRIAL" || planTier === "STARTER" ? "trial" : "active_paid";
   }
 
   private normalizeAccessStatus(value: string | null | undefined): AccessStatus {
@@ -1438,7 +1509,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         workspaceSlug: workspace.workspaceSlug,
         displayName: workspace.displayName,
         workspaceIsActive: workspace.workspaceIsActive,
-        planTier: profile?.planTier ?? latestUsageMap.get(tenantKey) ?? "STARTER",
+        planTier: profile?.planTier ?? latestUsageMap.get(tenantKey) ?? "TRIAL",
         billingStatus: profile?.billingStatus ?? null,
         accessStatus: profile?.accessStatus ?? null,
         trialEndsAt: profile?.trialEndsAt ?? null,
@@ -1465,7 +1536,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private mapCommercialTenantSearchRow(row: CommercialTenantSearchRow): CommercialTenantSearchResult {
-    const planTier = this.normalizePlanTier(row.planTier ?? "STARTER");
+    const planTier = this.normalizePlanTier(row.planTier ?? "TRIAL");
     return {
       tenantKey: normalizeTenantKey(row.tenantKey),
       workspaceSlug: String(row.workspaceSlug ?? "").trim(),
@@ -1581,6 +1652,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         limits."maxStorageGb" AS "maxStorageGb",
         limits."maxConnectorInstallations" AS "maxConnectorInstallations",
         limits."maxAccountsPerConnector" AS "maxAccountsPerConnector",
+        limits."maxApiKeys" AS "maxApiKeys",
+        limits."maxOutboundWebhooks" AS "maxOutboundWebhooks",
+        limits."maxImportRowsPerJob" AS "maxImportRowsPerJob",
         profile."tenantKey" AS "profileTenantKey",
         profile."planTier" AS "profilePlanTier",
         profile."billingStatus" AS "profileBillingStatus",
@@ -1657,6 +1731,9 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       maxStorageGb: row.maxStorageGb,
       maxConnectorInstallations: row.maxConnectorInstallations,
       maxAccountsPerConnector: row.maxAccountsPerConnector,
+      maxApiKeys: row.maxApiKeys,
+      maxOutboundWebhooks: row.maxOutboundWebhooks,
+      maxImportRowsPerJob: row.maxImportRowsPerJob,
     };
   }
 

@@ -3829,6 +3829,7 @@ components:
         planTier:
           type: string
           enum:
+            - TRIAL
             - STARTER
             - GROWTH
             - ENTERPRISE
@@ -3840,6 +3841,7 @@ components:
             - active_paid
             - past_due
             - cancelled
+            - expired
           example: trial
         accessStatus:
           type: string
@@ -3911,6 +3913,7 @@ components:
         planTier:
           type: string
           enum:
+            - TRIAL
             - STARTER
             - GROWTH
             - ENTERPRISE
@@ -3922,6 +3925,7 @@ components:
             - active_paid
             - past_due
             - cancelled
+            - expired
           example: trial
         accessStatus:
           type: string
@@ -4002,6 +4006,7 @@ components:
         currentPlanTier:
           type: string
           enum:
+            - TRIAL
             - STARTER
             - GROWTH
             - ENTERPRISE
