@@ -60,6 +60,17 @@ function main() {
   const lineHeavySummary = summarizeScope([{ additions: 2600, deletions: 1, file: "apps/api/src/catalog/catalog.service.ts" }]);
   assert.match(evaluateScope(lineHeavySummary, false).reasons.join("\n"), /2500-line review bound/);
 
+  const generatedSummary = summarizeScope([
+    { additions: 100, deletions: 10, file: "scripts/generate-postman-collection.cjs" },
+    { additions: 9000, deletions: 200, file: "docs/openapi.json" },
+    { additions: 6000, deletions: 100, file: "docs/openapi.yaml" },
+    { additions: 8000, deletions: 0, file: "docs/vexa-pim.postman_collection.json" },
+  ]);
+  assert.equal(generatedSummary.changedLines, 110, "only non-generated lines counted");
+  assert.equal(generatedSummary.generatedFilesExcluded, 3, "3 generated files excluded");
+  assert.equal(generatedSummary.changedFiles, 4, "all files still counted for file limit");
+  assert.equal(evaluateScope(generatedSummary, false).ok, true, "passes with generated files excluded");
+
   assert.equal(hasLargePrApproval([LARGE_PR_APPROVAL_LABEL], {}), true);
   assert.equal(hasLargePrApproval([], { PR_SCOPE_ALLOW_LARGE: "true" }), true);
   assert.equal(hasLargePrApproval([], {}), false);

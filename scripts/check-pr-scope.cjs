@@ -12,6 +12,12 @@ const MAX_CHANGED_LINES = 2500;
 const MAX_CROSS_DOMAIN_FILES = 25;
 const MAX_RISK_DOMAINS = 3;
 
+const GENERATED_FILE_PATTERNS = [
+  "docs/openapi.json",
+  "docs/openapi.yaml",
+  "docs/vexa-pim.postman_collection.json",
+];
+
 const RISK_DOMAIN_MATCHERS = [
   ["ci", (file) => file.startsWith(".github/") || file.startsWith("scripts/")],
   ["api-auth", (file) => file.startsWith("apps/api/src/auth/")],
@@ -55,12 +61,19 @@ function classifyDomains(files) {
   return Array.from(domains).sort();
 }
 
+function isGenerated(file) {
+  return GENERATED_FILE_PATTERNS.some((pattern) => normalizePath(file) === pattern);
+}
+
 function summarizeScope(entries) {
   const files = entries.map((entry) => normalizePath(entry.file)).filter(Boolean);
-  const changedLines = entries.reduce((total, entry) => total + entry.additions + entry.deletions, 0);
+  const reviewableEntries = entries.filter((entry) => !isGenerated(entry.file));
+  const changedLines = reviewableEntries.reduce((total, entry) => total + entry.additions + entry.deletions, 0);
+  const generatedLines = entries.length - reviewableEntries.length;
   return {
     changedFiles: files.length,
     changedLines,
+    generatedFilesExcluded: generatedLines,
     domains: classifyDomains(files),
   };
 }
@@ -131,8 +144,11 @@ function main(env = process.env) {
   const labels = readApprovalLabels(env.GITHUB_EVENT_PATH);
   const evaluation = evaluateScope(summary, hasLargePrApproval(labels, env));
 
+  const genNote = summary.generatedFilesExcluded > 0
+    ? ` (${summary.generatedFilesExcluded} generated file(s) excluded from line count)`
+    : "";
   console.log(
-    `[pr-scope] files=${summary.changedFiles} lines=${summary.changedLines} domains=${summary.domains.join(",") || "none"}`,
+    `[pr-scope] files=${summary.changedFiles} lines=${summary.changedLines} domains=${summary.domains.join(",") || "none"}${genNote}`,
   );
 
   if (evaluation.ok) {
