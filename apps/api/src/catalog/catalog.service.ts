@@ -831,6 +831,8 @@ export class CatalogService {
     const mergedDescription = dto.description ?? current.description;
     const mergedBrand = dto.brand ?? current.brand;
     const mergedCategoryId = dto.categoryId ?? current.categoryId;
+    const mergedHsnCode = dto.hsnCode !== undefined ? (dto.hsnCode.trim() || null) : current.hsnCode;
+    const mergedGstRate = dto.gstRate !== undefined ? dto.gstRate : current.gstRate;
     await this.requireCategory(mergedCategoryId);
     await this.accessPolicy.assertRequestedProductScopeAllowed(this.toPolicyActor(actor), "edit", {
         resource: "Product",
@@ -846,9 +848,13 @@ export class CatalogService {
     this.assertProductContentMutationAllowed(current, dto);
     await this.accessPolicy.assertProductAttributeWriteAllowed(this.toPolicyActor(actor), {
         resourceId: productId,
-        changedAttributePaths: this.collectChangedRestrictedProductAttributeFields(current.attributes, dto.attributes ?? {}),
+        changedAttributePaths: dto.attributes !== undefined
+          ? this.collectChangedRestrictedProductAttributeFields(current.attributes, dto.attributes)
+          : [],
       });
-    const attributes = this.normalizeProductAttributes(dto.attributes ?? {});
+    const mergedAttributes = dto.attributes !== undefined
+      ? this.normalizeProductAttributes(dto.attributes)
+      : this.asRecord(current.attributes);
 
     // Resolve SLA deadline when transitioning to in_review.
     let slaDeadlineAt: Date | null = null;
@@ -879,9 +885,9 @@ export class CatalogService {
           brand: mergedBrand.trim(),
           categoryId: mergedCategoryId,
           vendorScopeKey: requestedVendorScopeKey,
-          hsnCode: dto.hsnCode?.trim() || null,
-          gstRate: dto.gstRate ?? null,
-          attributes: attributes as Prisma.JsonObject,
+          hsnCode: mergedHsnCode,
+          gstRate: mergedGstRate,
+          attributes: mergedAttributes as Prisma.JsonObject,
           status: nextStatus,
           version: { increment: 1 },
           ...(slaDeadlineAt !== null ? { slaDeadlineAt } : {}),
@@ -917,9 +923,9 @@ export class CatalogService {
       brand: mergedBrand.trim(),
       categoryId: mergedCategoryId,
       vendorScopeKey: requestedVendorScopeKey,
-      hsnCode: dto.hsnCode?.trim() || null,
-      gstRate: dto.gstRate ?? null,
-      attributes,
+      hsnCode: mergedHsnCode,
+      gstRate: mergedGstRate,
+      attributes: mergedAttributes,
       status: nextStatus,
     });
     if (changedFields.length > 0) {
@@ -1594,7 +1600,9 @@ export class CatalogService {
       return;
     }
 
-    const nextAttributes = this.normalizeProductAttributes(dto.attributes ?? {});
+    const nextAttributes = dto.attributes !== undefined
+      ? this.normalizeProductAttributes(dto.attributes)
+      : this.normalizeProductAttributes(this.asRecord(current.attributes));
     const currentAttributes = this.normalizeProductAttributes(this.asRecord(current.attributes));
     const nextVendorScopeKey =
       dto.vendorScopeKey === undefined
@@ -1606,8 +1614,8 @@ export class CatalogService {
       current.brand !== (dto.brand ?? current.brand).trim() ||
       current.categoryId !== (dto.categoryId ?? current.categoryId) ||
       this.normalizeVendorScopeKey(current.vendorScopeKey) !== nextVendorScopeKey ||
-      (current.hsnCode ?? null) !== (dto.hsnCode?.trim() || null) ||
-      (current.gstRate ?? null) !== (dto.gstRate ?? null) ||
+      (current.hsnCode ?? null) !== (dto.hsnCode !== undefined ? (dto.hsnCode.trim() || null) : current.hsnCode) ||
+      (current.gstRate ?? null) !== (dto.gstRate !== undefined ? dto.gstRate : current.gstRate) ||
       !this.recordsEqual(currentAttributes, nextAttributes);
 
     if (!contentChanged) {
