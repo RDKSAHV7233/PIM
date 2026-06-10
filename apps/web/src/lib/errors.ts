@@ -170,6 +170,54 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     action: "Choose a value from the allowed list in the product editor.",
   },
 
+  // ── Validation issues — compliance (GST/HSN rule codes emitted by compliance service) ──
+  GST_HSN_REQUIRED: {
+    title: "HSN code required",
+    description: "Every product needs an HSN code for GST compliance.",
+    action: "Add the 4, 6, or 8-digit HSN code in the product editor.",
+  },
+  GST_HSN_FORMAT: {
+    title: "Invalid HSN format",
+    description: "HSN codes must be exactly 4, 6, or 8 digits.",
+    action: "Use the GST portal (cbic-gst.gov.in) to find the correct HSN code for this category.",
+  },
+  GST_RATE_REQUIRED: {
+    title: "GST rate required",
+    description: "A GST rate must be set before the product can be exported.",
+    action: "Set the GST rate in the product editor. Common slabs: 0, 5, 12, 18, 28.",
+  },
+  GST_RATE_UNCOMMON: {
+    title: "Unusual GST rate",
+    description: "This GST rate is not a standard Indian GST slab (0%, 3%, 5%, 12%, 18%, 28%).",
+    action: "Verify the rate is correct. If unsure, check with your CA or tax advisor.",
+  },
+
+  // ── Validation issues — pricing (emitted by compliance service pricing check) ──
+  PRICING_NO_DEFAULT_PRICES: {
+    title: "No prices set",
+    description: "None of this product's variants have prices in the default price list.",
+    action: "Open Settings → Pricing, find the default price list, and set MRP and selling price for all variants.",
+  },
+  PRICING_INCOMPLETE: {
+    title: "Pricing incomplete",
+    description: "Some variants are missing prices in the default price list.",
+    action: "Open Settings → Pricing and set prices for the unpriced variants before exporting.",
+  },
+
+  // ── Validation issues — international tax codes (emitted by connector validation) ──
+  TAX_CODE_MISSING: {
+    title: "Tax code missing",
+    description: "A marketplace-required tax code is not set for this product. Listings in that market may be rejected.",
+    action: "Open the product editor → Content tab → International Tax Codes section and enter the required code.",
+  },
+  HS_CODE_MISSING: {
+    title: "HS / commodity code not set",
+    description:
+      "No harmonized system code (HS code or commodity code) is set for this product. Shopify uses this for customs declarations on international shipments.",
+    action:
+      "Open the product editor → Content tab → International Tax Codes section and add an AE HS code, UK commodity code, or AU commodity code.",
+  },
+
   // ── Validation issues — pricing ──────────────────────────────────────────────
   SELLING_PRICE_ZERO_OR_MISSING: {
     title: "Selling price missing or zero",
@@ -308,6 +356,258 @@ const ERROR_MAP: Record<string, UserFacingError> = {
     description: "The connected app does not have permission to perform this action.",
     action: "Re-install the connector or check the app's permission scopes.",
   },
+  CONNECTOR_LAUNCH_STAGE_PLANNED: {
+    title: "Connector not yet available",
+    description: "This connector is on the roadmap but has not been released yet.",
+    action: "Check the changelog for release updates or contact support for an ETA.",
+  },
+  CONNECTOR_PRODUCT_TYPE_SCHEMA_UNSUPPORTED: {
+    title: "Product type not supported",
+    description: "The selected product type does not have a schema defined for this connector.",
+    action: "Choose a different product type or contact support to request schema support.",
+  },
+  MEESHO_CREDENTIALS_INCOMPLETE: {
+    title: "Meesho credentials incomplete",
+    description: "The Meesho connector is missing required API credentials.",
+    action: "Go to Channels → Meesho → Settings and enter the API key and secret provided by Meesho.",
+  },
+  CONNECTOR_PERMISSION_DENIED: {
+    title: "Connector permission denied",
+    description: "You do not have permission to perform this action on the connector.",
+    action: "Contact your workspace admin to request the required connector permissions.",
+  },
+  CONNECTOR_PERMISSION_INVALID_ROLE: {
+    title: "Invalid role for connector access",
+    description: "The role assigned does not grant access to this connector action.",
+    action: "Ask your admin to assign a role that includes connector permissions.",
+  },
+  CONNECTOR_PERMISSION_USER_REQUIRED: {
+    title: "User required for connector permission",
+    description: "A specific user must be selected to grant this connector permission.",
+    action: "Select a user from the list before saving the permission.",
+  },
+  CONNECTOR_PERMISSION_USER_NOT_FOUND: {
+    title: "User not found",
+    description: "The user specified for this connector permission could not be found.",
+    action: "Check that the user exists in the workspace and try again.",
+  },
+  CONNECTOR_OAUTH_CALLBACK_UNSUPPORTED: {
+    title: "OAuth not supported",
+    description: "This connector does not support OAuth-based authentication.",
+    action: "Use API key credentials for this connector instead.",
+  },
+  PRODUCT_TYPE_REQUIRED: {
+    title: "Product type required",
+    description: "A product type must be selected before using this connector feature.",
+    action: "Choose a product type from the dropdown and try again.",
+  },
+
+  // ── Auth / session ────────────────────────────────────────────────────────────
+  IP_RATE_LIMITED: {
+    title: "Too many login attempts",
+    description: "Too many requests have been made from this IP address. Access is temporarily blocked.",
+    action: "Wait a few minutes before trying again. If this continues, contact support.",
+  },
+  ACCOUNT_LOCKED: {
+    title: "Account locked",
+    description: "This account has been locked after too many failed login attempts.",
+    action: "Contact your workspace admin to unlock the account.",
+  },
+  TOKEN_REVOKED: {
+    title: "Session expired",
+    description: "Your session token has been revoked. You need to sign in again.",
+    action: "Return to the login page and sign in with your credentials.",
+  },
+  CREDENTIALS_CHANGED: {
+    title: "Credentials changed",
+    description: "Your account credentials have been updated. You need to sign in again.",
+    action: "Return to the login page and sign in with your new credentials.",
+  },
+  USER_INACTIVE: {
+    title: "Account inactive",
+    description: "This account has been deactivated and cannot be used to sign in.",
+    action: "Contact your workspace admin to reactivate the account.",
+  },
+  USER_LOCKED: {
+    title: "Account locked",
+    description: "This account has been locked by an administrator.",
+    action: "Contact your workspace admin to unlock the account.",
+  },
+  CONSENT_REQUIRED: {
+    title: "Consent required",
+    description: "You must accept the terms of service before continuing.",
+    action: "Review and accept the terms of service to proceed.",
+  },
+  DELETE_CONFIRMATION_REQUIRED: {
+    title: "Confirmation required",
+    description: "You must confirm this action before it can be processed.",
+    action: "Re-submit the request with the required confirmation token.",
+  },
+  AUTH_CREDENTIAL_MIGRATION_INCOMPLETE: {
+    title: "Account migration incomplete",
+    description: "Your account credentials have not been fully migrated to the current authentication system.",
+    action: "Contact support to complete the account migration.",
+  },
+  MFA_ENROLLMENT_REQUIRED: {
+    title: "Multi-factor authentication required",
+    description: "Your workspace requires MFA to be enabled before you can continue.",
+    action: "Go to account settings and enrol in multi-factor authentication.",
+  },
+  MFA_IDENTITY_NOT_FOUND: {
+    title: "MFA identity not found",
+    description: "No MFA identity was found for this account.",
+    action: "Set up multi-factor authentication in account settings.",
+  },
+  MFA_ENROLLMENT_NOT_STARTED: {
+    title: "MFA enrollment not started",
+    description: "Multi-factor authentication enrollment has not been initiated.",
+    action: "Start the MFA enrollment process in your account settings.",
+  },
+  MFA_NOT_ENABLED: {
+    title: "MFA not enabled",
+    description: "Multi-factor authentication is not enabled for this account.",
+    action: "Enable MFA in account settings to use this feature.",
+  },
+
+  // ── Signup ────────────────────────────────────────────────────────────────────
+  SIGNUP_RATE_LIMITED: {
+    title: "Too many signup attempts",
+    description: "You have submitted too many signup requests in a short period.",
+    action: "Wait a few minutes and try again.",
+  },
+  SIGNUP_INTERNAL_ERROR: {
+    title: "Signup failed",
+    description: "An internal error occurred while creating your account.",
+    action: "Try again in a few minutes. If the problem continues, contact support.",
+  },
+
+  // ── API key management ────────────────────────────────────────────────────────
+  API_KEY_LABEL_REQUIRED: {
+    title: "API key label required",
+    description: "A descriptive label is required when creating an API key.",
+    action: "Enter a label that identifies what this key will be used for.",
+  },
+  API_KEY_ADMIN_ROLE_FORBIDDEN: {
+    title: "Admin role not allowed",
+    description: "API keys cannot be created with the admin role.",
+    action: "Choose a non-admin role for this API key.",
+  },
+  API_KEY_ID_REQUIRED: {
+    title: "API key ID required",
+    description: "An API key ID must be provided for this operation.",
+    action: "Include the key ID and try again.",
+  },
+  API_KEY_NOT_FOUND: {
+    title: "API key not found",
+    description: "The specified API key does not exist or has already been deleted.",
+    action: "Check the key ID and try again, or create a new API key.",
+  },
+  API_KEY_EXPIRY_INVALID: {
+    title: "Invalid expiry date",
+    description: "The expiry date format is not valid.",
+    action: "Enter the expiry date in the correct format (YYYY-MM-DD).",
+  },
+  API_KEY_EXPIRY_IN_PAST: {
+    title: "Expiry date is in the past",
+    description: "The API key expiry date must be in the future.",
+    action: "Choose a future expiry date.",
+  },
+
+  // ── User / RBAC management ────────────────────────────────────────────────────
+  ADMIN_ROLE_REQUIRES_ADMIN: {
+    title: "Admin base role required",
+    description: "Only users with the admin base role can be assigned admin-level roles.",
+    action: "Change the user's base role to admin before assigning admin-level access.",
+  },
+  CANNOT_CHANGE_OWN_ROLE: {
+    title: "Cannot change your own role",
+    description: "Administrators cannot change their own role to prevent accidental lock-out.",
+    action: "Ask another admin to update your role.",
+  },
+  CANNOT_LOCK_SELF: {
+    title: "Cannot lock your own account",
+    description: "You cannot lock your own account.",
+    action: "Ask another admin to lock the account if needed.",
+  },
+  CANNOT_DEACTIVATE_SELF: {
+    title: "Cannot deactivate your own account",
+    description: "You cannot deactivate your own account.",
+    action: "Ask another admin to deactivate the account if needed.",
+  },
+  INVALID_ASSIGNED_ROLES: {
+    title: "Invalid role assignment",
+    description: "One or more of the selected roles are not valid for this user.",
+    action: "Review the role list and remove any invalid selections.",
+  },
+  MULTI_ASSIGNED_ROLE_SET_NOT_SUPPORTED: {
+    title: "Multiple role sets not supported",
+    description: "This user configuration does not support multiple assigned role sets.",
+    action: "Assign a single role set and try again.",
+  },
+  ASSIGNED_ROLE_DOES_NOT_WIDEN_BASE_ROLE: {
+    title: "Assigned role too narrow",
+    description: "The assigned role must grant permissions equal to or broader than the base role.",
+    action: "Choose an assigned role that is compatible with the user's base role.",
+  },
+  ADMIN_BOUNDARY_ASSIGNED_ROLE_REQUIRES_ADMIN_BASE_ROLE: {
+    title: "Admin base role required for this assignment",
+    description: "Roles that cross the admin boundary can only be assigned to users with an admin base role.",
+    action: "Set the user's base role to admin before assigning this role.",
+  },
+  MANAGED_ASSIGNED_ROLE_NOT_SUPPORTED: {
+    title: "Managed role not supported",
+    description: "This type of managed role assignment is not supported in the current configuration.",
+    action: "Contact support if you need this role assignment.",
+  },
+
+  // ── Access scope ──────────────────────────────────────────────────────────────
+  ACCESS_SCOPE_ACTION_INVALID: {
+    title: "Invalid scope action",
+    description: "The action specified for this access scope is not recognised.",
+    action: "Choose a valid action from the allowed list.",
+  },
+  ACCESS_SCOPE_SUBJECT_REQUIRED: {
+    title: "Scope subject required",
+    description: "A subject (user or API key) must be specified for this access scope.",
+    action: "Select a subject before saving the scope.",
+  },
+  ACCESS_SCOPE_DIMENSION_REQUIRES_ENFORCEMENT: {
+    title: "Scope enforcement required",
+    description: "This access scope dimension requires enforcement to be enabled.",
+    action: "Enable enforcement for this dimension in the access policy settings.",
+  },
+  ACCESS_SCOPE_CATEGORY_REQUIRED: {
+    title: "Category scope required",
+    description: "This access policy requires a category to be specified.",
+    action: "Select a category to scope this access rule.",
+  },
+  ACCESS_SCOPE_BRAND_REQUIRED: {
+    title: "Brand scope required",
+    description: "This access policy requires a brand to be specified.",
+    action: "Enter a brand to scope this access rule.",
+  },
+  ACCESS_SCOPE_VENDOR_REQUIRED: {
+    title: "Vendor scope required",
+    description: "This access policy requires a vendor to be specified.",
+    action: "Enter a vendor key to scope this access rule.",
+  },
+  ACCESS_SCOPE_CONNECTOR_ACCOUNT_REQUIRED: {
+    title: "Connector account scope required",
+    description: "This access policy requires a connector account to be specified.",
+    action: "Select a connector account to scope this access rule.",
+  },
+  ACCESS_SCOPE_CATALOG_REQUIRED: {
+    title: "Catalog scope required",
+    description: "This access policy requires a catalog to be specified.",
+    action: "Select a catalog to scope this access rule.",
+  },
+
+  // ── Billing / upgrade ─────────────────────────────────────────────────────────
+  UPGRADE_REQUEST_STATUS_UPDATE_FAILED: {
+    title: "Upgrade request update failed",
+    description: "The status of the upgrade request could not be updated.",
+    action: "Refresh the page and try again. If the problem persists, contact support.",
+  },
 
   // ── Fallback ─────────────────────────────────────────────────────────────────
   UNKNOWN_ERROR: {
@@ -321,13 +621,50 @@ export function translateError(code: string | undefined | null): UserFacingError
   if (!code) {
     return ERROR_MAP.UNKNOWN_ERROR;
   }
-  return (
-    ERROR_MAP[code] ?? {
-      title: "Something went wrong",
-      description: "An unexpected error occurred.",
-      action: "Try again or contact support.",
-    }
-  );
+  const exact = ERROR_MAP[code];
+  if (exact) {
+    return exact;
+  }
+
+  // Dynamic compliance rule codes — generated from attribute/rule keys at runtime.
+  if (code.startsWith("ATTR_REQUIRED_")) {
+    const key = code.slice("ATTR_REQUIRED_".length).toLowerCase();
+    return {
+      title: "Required attribute missing",
+      description: `The "${key}" attribute is required but has no value.`,
+      action: `Add a value for "${key}" in the product editor's Attributes section.`,
+    };
+  }
+  if (code.startsWith("ATTR_TYPE_")) {
+    const key = code.slice("ATTR_TYPE_".length).toLowerCase();
+    return {
+      title: "Invalid attribute value",
+      description: `The value for "${key}" is the wrong data type.`,
+      action: `Correct the "${key}" value to match the expected format in the Attributes section.`,
+    };
+  }
+  if (code.startsWith("ATTR_ALLOWED_")) {
+    const key = code.slice("ATTR_ALLOWED_".length).toLowerCase();
+    return {
+      title: "Attribute value not in allowed list",
+      description: `The value for "${key}" is not in the accepted options.`,
+      action: `Choose one of the allowed values for "${key}" in the Attributes section.`,
+    };
+  }
+  // Admin-configured compliance rules
+  if (code.startsWith("RULE_")) {
+    return {
+      title: "Custom rule violation",
+      description: "This product does not satisfy a configured compliance rule.",
+      action: "Review the rule message and update the relevant field.",
+    };
+  }
+
+  return {
+    title: "Something went wrong",
+    description: "An unexpected error occurred.",
+    action: "Try again or contact support.",
+  };
 }
 
 export function extractErrorCode(input: string | undefined | null): string {
@@ -358,6 +695,14 @@ export function extractErrorCode(input: string | undefined | null): string {
     "INVALID_GST_RATE",
     "GST_RATE_INVALID",
     "HSN_CODE_RECOMMENDED",
+    "GST_HSN_REQUIRED",
+    "GST_HSN_FORMAT",
+    "GST_RATE_REQUIRED",
+    "GST_RATE_UNCOMMON",
+    "PRICING_NO_DEFAULT_PRICES",
+    "PRICING_INCOMPLETE",
+    "TAX_CODE_MISSING",
+    "HS_CODE_MISSING",
     "TITLE_REQUIRED",
     "TITLE_TOO_LONG",
     "DESCRIPTION_WHITESPACE_ONLY",
@@ -391,6 +736,62 @@ export function extractErrorCode(input: string | undefined | null): string {
     "FLIPKART_OVERWRITE_WARNING",
     "RATE_LIMITED",
     "PERMISSION_DENIED",
+    // Connector
+    "CONNECTOR_LAUNCH_STAGE_PLANNED",
+    "CONNECTOR_PRODUCT_TYPE_SCHEMA_UNSUPPORTED",
+    "MEESHO_CREDENTIALS_INCOMPLETE",
+    "CONNECTOR_PERMISSION_DENIED",
+    "CONNECTOR_PERMISSION_INVALID_ROLE",
+    "CONNECTOR_PERMISSION_USER_REQUIRED",
+    "CONNECTOR_PERMISSION_USER_NOT_FOUND",
+    "CONNECTOR_OAUTH_CALLBACK_UNSUPPORTED",
+    "PRODUCT_TYPE_REQUIRED",
+    // Auth / session
+    "IP_RATE_LIMITED",
+    "ACCOUNT_LOCKED",
+    "TOKEN_REVOKED",
+    "CREDENTIALS_CHANGED",
+    "USER_INACTIVE",
+    "USER_LOCKED",
+    "CONSENT_REQUIRED",
+    "DELETE_CONFIRMATION_REQUIRED",
+    "AUTH_CREDENTIAL_MIGRATION_INCOMPLETE",
+    "MFA_ENROLLMENT_REQUIRED",
+    "MFA_IDENTITY_NOT_FOUND",
+    "MFA_ENROLLMENT_NOT_STARTED",
+    "MFA_NOT_ENABLED",
+    // Signup
+    "SIGNUP_RATE_LIMITED",
+    "SIGNUP_INTERNAL_ERROR",
+    // API key management
+    "API_KEY_LABEL_REQUIRED",
+    "API_KEY_ADMIN_ROLE_FORBIDDEN",
+    "API_KEY_ID_REQUIRED",
+    "API_KEY_NOT_FOUND",
+    "API_KEY_EXPIRY_INVALID",
+    "API_KEY_EXPIRY_IN_PAST",
+    // User / RBAC management
+    "ADMIN_ROLE_REQUIRES_ADMIN",
+    "CANNOT_CHANGE_OWN_ROLE",
+    "CANNOT_LOCK_SELF",
+    "CANNOT_DEACTIVATE_SELF",
+    "INVALID_ASSIGNED_ROLES",
+    "MULTI_ASSIGNED_ROLE_SET_NOT_SUPPORTED",
+    "ASSIGNED_ROLE_DOES_NOT_WIDEN_BASE_ROLE",
+    "ADMIN_BOUNDARY_ASSIGNED_ROLE_REQUIRES_ADMIN_BASE_ROLE",
+    "MANAGED_ASSIGNED_ROLE_NOT_SUPPORTED",
+    // Access scope
+    "ACCESS_SCOPE_ACTION_INVALID",
+    "ACCESS_SCOPE_SUBJECT_REQUIRED",
+    "ACCESS_SCOPE_DIMENSION_REQUIRES_ENFORCEMENT",
+    "ACCESS_SCOPE_CATEGORY_REQUIRED",
+    "ACCESS_SCOPE_BRAND_REQUIRED",
+    "ACCESS_SCOPE_VENDOR_REQUIRED",
+    "ACCESS_SCOPE_CONNECTOR_ACCOUNT_REQUIRED",
+    "ACCESS_SCOPE_CATALOG_REQUIRED",
+    // Billing / upgrade
+    "UPGRADE_REQUEST_STATUS_UPDATE_FAILED",
+    // Import row states
     "dead_letter",
     "retrying",
     "skipped",

@@ -1,8 +1,8 @@
 # Staging Unblock — Ops Runbook
 
-**Priority**: These 6 items block the pilot tenant launch. Do them in order.
-**Date written**: 2026-06-02
-**Time estimate**: ~3 hours total
+**Priority**: These 8 items block the pilot tenant launch. Do them in order.
+**Date written**: 2026-06-02 · **Last updated**: 2026-06-10
+**Time estimate**: ~4 hours total
 
 ---
 
@@ -147,9 +147,54 @@
 
 ---
 
+## 7. Deploy Tax Attributes migration + seed (30 min — added 2026-06-09)
+
+**Why**: Migration `20260609000001_add_tax_regime_product_tax_code` adds the `tax_regimes` and
+`product_tax_codes` tables. Without the seed step, any product create/update with `taxCodes`
+will throw "Unknown tax regime" because `TaxRegime` rows don't exist yet.
+
+**Steps** (after item #1 so staging has a working DB):
+
+1. `prisma migrate deploy` runs automatically on deploy — no manual step needed if using the
+   standard CI/CD pipeline. Verify the migration appears in `prisma migrate status`.
+
+2. Seed the TaxRegime registry (idempotent — safe to run multiple times):
+   ```
+   DATABASE_URL=<staging-db-url> node scripts/seed-tax-regimes.cjs
+   ```
+   Expected output: `[seed-tax-regimes] Done — 5 created / 0 updated.`
+
+3. (Optional) Backfill existing products' `hsnCode`/`gstRate` into `ProductTaxCode` rows:
+   ```
+   DATABASE_URL=<staging-db-url> npx ts-node scripts/backfill-tax-codes.ts --dry-run
+   # Review counts, then:
+   DATABASE_URL=<staging-db-url> npx ts-node scripts/backfill-tax-codes.ts
+   ```
+   Expected: One `ProductTaxCode` row per product that had a non-null `hsnCode`.
+
+**Verify**: `SELECT COUNT(*) FROM tax_regimes;` returns 5. Product create via API with
+`taxCodes: [{ regimeKey: "IN", key: "HSN_CODE", value: "62044200" }]` succeeds.
+
+---
+
+## 8. Fix daily E2E signup check noise (5 min)
+
+**Why**: `capture-daily-rollout-evidence.yml` checks the staging signup page but the check
+expects a 404 when signup is live on staging. This produces a false-positive failure every day
+until the env var is set. The workflow's broken `git push` step has already been fixed (this PR).
+
+**Steps**:
+
+1. GitHub → Settings → Secrets and variables → Actions → `staging` environment
+2. Add secret: `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true`
+
+**Verify**: Next daily run of `capture-daily-rollout-evidence` workflow exits 0.
+
+---
+
 ## Post-completion verification
 
-After all 6 items:
+After all 8 items:
 
 ```
 npm run test:e2e:smoke -- --base-url=<staging-url>
@@ -157,6 +202,8 @@ node scripts/performance-baseline.cjs
 ```
 
 All 5 smoke spec files should pass. Performance baseline should be recorded. Gate is open for first pilot tenant.
+
+---
 
 ## Status tracker
 
@@ -168,4 +215,5 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
 | 6 | Clear failed job + configure R2 | Ops | ❌ Pending | |
-| 7 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in GitHub `staging` env secrets | Ops | ❌ Pending (fixes daily E2E noise) | |
+| 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ❌ Blocked on #1 | |
+| 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |

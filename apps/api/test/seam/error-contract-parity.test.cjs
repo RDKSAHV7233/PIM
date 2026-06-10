@@ -43,6 +43,29 @@ const INTERNAL_ONLY_CODES = new Set([
   // Shadow-mode / access policy internals
   "PLAN_CONNECTOR_INSTALLATIONS_LIMIT_EXCEEDED",
   "PLAN_CONNECTOR_ACCOUNTS_LIMIT_EXCEEDED",
+  // Auth token routing — handled by middleware redirect, not the web error handler
+  "REFRESH_TOKEN_MISSING",
+  "REFRESH_TOKEN_INVALID",
+  "REFRESH_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN",
+  "STEP_UP_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN",
+  "MFA_PENDING_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN",
+  "MFA_ENROLLMENT_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN",
+  // Machine-to-machine auth — never reach a browser user
+  "INVALID_API_KEY",
+  "INTERNAL_TOKEN_RATE_LIMITED",
+  "INTERNAL_TOKEN_REQUIRED",
+  "CONNECTOR_WEBHOOK_RELAY_TOKEN_REQUIRED",
+  // Commercial / platform-admin internals — not user-facing
+  "COMMERCIAL_MUTATION_INTERNAL_ONLY",
+  "COMMERCIAL_TENANT_SEARCH_FAILED",
+  "COMMERCIAL_OPS_TOKEN_REQUIRED",
+  "NO_AUTH_POLICY_CHANGES",
+  "PLATFORM_ADMIN_TOKEN_REQUIRED",
+  "TENANT_PROVISIONING_FAILED",
+  // Connector install internals — never surface directly to the web UI
+  "CONNECTOR_SLUG_MISMATCH",
+  // Network-level error code (not a structured API response body)
+  "ECONNRESET",
 ]);
 
 function findFilesRecursive(dir, pattern) {
