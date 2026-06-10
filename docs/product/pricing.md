@@ -2,7 +2,7 @@
 title: Pricing Page / Tier Definitions
 audience: sellers
 status: approved — PO sign-off 2026-05-27 (Atharva); Legal review pending before public publish
-last_updated: 2026-05-28
+last_updated: 2026-06-10
 owner: Product + Legal
 ---
 
@@ -12,7 +12,40 @@ owner: Product + Legal
 
 ## Plan Tiers
 
-Vexa PIM offers three plans. All plans include core catalog management, bulk import, and quality management features.
+Vexa PIM offers four plans. All paid plans include core catalog management, bulk import, and quality management features. Every new workspace starts on a free 14-day TRIAL tier.
+
+### TRIAL
+
+**Free** · 14-day timer · No credit card required
+
+| Limit | Value |
+|-------|-------|
+| Products (SKUs) | 100 |
+| Users | 2 |
+| Bulk import rows per job | 500 |
+| API keys | 0 |
+| Outbound webhooks | 0 |
+
+Included:
+- Catalog management (draft → in review → approved → published workflow)
+- Bulk CSV import (up to 500 rows per job)
+- Quality rules and basic validation
+- Amazon India connector (1 installation)
+- 8-role RBAC (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
+
+Trial limits and expiry:
+- After 14 days without an active commercial plan, the workspace is **suspended** (`billingStatus: expired`). All write operations return an upgrade-required error until a paid plan is activated.
+- All catalog data is retained for 90 days after suspension before permanent deletion.
+- Upgrade to any paid plan to restore full access immediately.
+
+Not included:
+- API key access (GROWTH and above)
+- Outbound webhooks (GROWTH and above)
+- Auth policy configuration (GROWTH and above)
+- Bulk import above 500 rows per job
+- Shopify, Meesho, and additional connectors
+
+---
 
 ### STARTER
 
@@ -26,19 +59,23 @@ Vexa PIM offers three plans. All plans include core catalog management, bulk imp
 | Storage | 5 GB |
 | Connector installations | 2 |
 | Accounts per connector | 1 |
-| Bulk import rows per job | 30,000 |
+| Bulk import rows per job | 2,000 |
+| API keys | 0 |
+| Outbound webhooks | 0 |
 | API rate limit | 300 req / min |
 
 Included:
 - Catalog management (draft → in review → approved → published workflow)
-- Bulk CSV import (up to 30,000 rows)
+- Bulk CSV import (up to 2,000 rows per job)
 - Quality rules, validation, and rejection intelligence
 - Amazon India and Flipkart connectors
-- Outbound webhooks (import / publish events)
+- Meesho connector (Excel export)
 - 8-role RBAC (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
-- 14-day free trial — no credit card required
 
 Not included:
+- API key access (GROWTH and above)
+- Outbound webhooks (GROWTH and above)
+- Auth policy configuration (GROWTH and above)
 - Shopify connector (GROWTH and above)
 - Advanced analytics
 - Priority support
@@ -55,17 +92,22 @@ Everything in STARTER, plus:
 
 | Limit | Value |
 |-------|-------|
-| Products (SKUs) | 5,000 |
+| Products (SKUs) | 10,000 |
 | Users | 20 |
-| Bulk submissions / month | 5,000 |
+| Bulk submissions / month | 10,000 |
 | Storage | 50 GB |
 | Connector installations | 10 |
 | Accounts per connector | 3 |
+| Bulk import rows per job | 10,000 |
+| API keys | 3 |
+| Outbound webhooks | 3 |
 
 Additional features:
 - Shopify connector
 - API key access (machine credentials + REST API)
-- Advanced webhook controls
+- Outbound webhooks (import / publish events)
+- Auth policy configuration — session timeout setting
+- MFA support — TOTP available, optional enrollment (enforcement on ENTERPRISE)
 - AI-assisted product enrichment (Smart Suggestions)
 - ONDC expansion tools (when generally available)
 - Standard support — 2 business day response
@@ -80,15 +122,20 @@ Everything in GROWTH, plus:
 
 | Limit | Value |
 |-------|-------|
-| Products (SKUs) | Up to 99,999 (custom above) |
+| Products (SKUs) | 100,000 (custom above) |
 | Users | Up to 999 (custom above) |
-| Bulk submissions / month | Up to 99,999 (custom above) |
+| Bulk submissions / month | 100,000 (custom above) |
 | Storage | Up to 500 GB (custom above) |
 | Connector installations | Up to 100 (custom above) |
 | Accounts per connector | Up to 20 (custom above) |
+| Bulk import rows per job | 30,000 |
+| API keys | 50 (custom above) |
+| Outbound webhooks | 50 (custom above) |
 
 Additional features:
-- OIDC SSO (self-serve IdP configuration)
+- Full auth policy configuration (session timeout, MFA enforcement, external identity mode, allowed sign-in methods)
+- MFA enforcement — TOTP required for all users, configurable grace period
+- OIDC SSO (self-serve IdP configuration — Enterprise configuration, available where implemented and verified)
 - Custom SLA agreement
 - Dedicated onboarding and implementation support
 - MSA / custom data processing agreement available
@@ -110,8 +157,11 @@ Yes — annual billing saves approximately 2 months of subscription cost compare
 **Can I change plans?**
 Upgrades take effect immediately; the new plan limits apply from the next billing cycle. Downgrades take effect at the end of the current billing period. Plan changes are managed through the Vexa commercial ops workflow — submit a request from the Plan & Usage page.
 
+**What is the TRIAL tier?**
+Every new Vexa workspace starts on a free 14-day TRIAL. The TRIAL tier includes 100 SKUs, 2 users, 1 connector installation, and up to 500 bulk import rows per job — no credit card required. API key access and outbound webhooks are not available on TRIAL. Upgrade to any paid plan at any time to access full features.
+
 **What happens when my trial ends?**
-At the end of your 14-day free trial, your workspace access is suspended if no commercial plan is active. All catalog data is retained. Contact Vexa to activate a plan and restore access. Data retention after suspension: 90 days before permanent deletion.
+At the end of your 14-day TRIAL, your workspace is suspended if no commercial plan is active. All catalog data is retained for 90 days before permanent deletion. Upgrade to STARTER, GROWTH, or ENTERPRISE to restore access immediately.
 
 **What payment methods do you accept?**
 Credit and debit cards via Stripe (Visa, Mastercard, RuPay). Bank transfer / NEFT available for annual Enterprise plans.
@@ -120,7 +170,10 @@ Credit and debit cards via Stripe (Visa, Mastercard, RuPay). Bank transfer / NEF
 ONDC expansion tools are included in GROWTH and above as a preview feature, subject to availability and feature-flag activation. General availability TBD.
 
 **Is there a free tier?**
-There is no permanent free tier. A 14-day free trial is available on all plans with no credit card required.
+There is no permanent free tier. Every new workspace starts with a 14-day TRIAL (100 SKUs, 2 users, no credit card required). After the trial period, a paid plan is required to continue. Upgrade at any time during or after the trial to avoid suspension.
+
+**What auth policy controls are available?**
+GROWTH plans can configure session timeout. ENTERPRISE plans have full auth policy controls: session timeout, MFA enforcement (TOTP), external identity mode, and allowed sign-in methods (password / OIDC). Auth policy configuration is not available on TRIAL or STARTER.
 
 ---
 
@@ -130,6 +183,7 @@ There is no permanent free tier. A 14-day free trial is available on all plans w
 |----------|-------|--------|
 | Price points (STARTER, GROWTH) | PO (Atharva) | ✅ Approved 2026-05-27 |
 | Tier limits (SKUs, users, storage) | Engineering | ✅ Set — see plan-limits.seed.ts |
+| TRIAL tier definition | Product + Engineering | ✅ Approved 2026-06-10 — 100 SKUs, 2 users, 14-day, non-billable |
 | Annual discount depth | GTM | ⏳ Pending |
 | CTO infra cost validation | CTO | ⏳ Pending |
 | CFO LTV/CAC model | CFO | ⏳ Pending |

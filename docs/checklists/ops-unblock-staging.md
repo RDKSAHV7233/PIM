@@ -192,6 +192,54 @@ until the env var is set. The workflow's broken `git push` step has already been
 
 ---
 
+## 9. Run plan-limits seed after pricing-tier migration deploys (10 min — added 2026-06-10)
+
+**Why**: Migration `20260610000001_plan_limits_trial_tier_and_new_resources` adds three columns to
+`PlanLimits` and inserts a TRIAL tier row. The migration itself backfills all four tiers with the
+correct values. However, if the seed has never been run on staging (e.g. the STARTER/GROWTH/ENTERPRISE
+rows were inserted by a previous seed that predates this migration), run the seed to guarantee all
+values are correct.
+
+**Steps** (after item #1 so staging has a working DB):
+
+1. Verify the migration deployed:
+   ```
+   DATABASE_URL=<staging-db-url> npx prisma migrate status
+   ```
+   Confirm `20260610000001_plan_limits_trial_tier_and_new_resources` shows as Applied.
+
+2. Re-run the plan-limits seed (idempotent — safe to run any time):
+   ```
+   DATABASE_URL=<staging-db-url> npx ts-node -e "
+     const { PlanUsageService } = require('./apps/api/src/billing/plan-usage.service');
+     // Or trigger via the admin bootstrap endpoint: POST /api/v1/admin/seed/plan-limits
+   "
+   ```
+   Easier path — call the admin seed endpoint if available, or confirm DB values directly:
+   ```sql
+   SELECT "planTier", "maxSkus", "maxUsers", "maxApiKeys", "maxOutboundWebhooks", "maxImportRowsPerJob"
+   FROM "PlanLimits"
+   ORDER BY "planTier";
+   ```
+   Expected rows:
+   | planTier   | maxSkus | maxUsers | maxApiKeys | maxOutboundWebhooks | maxImportRowsPerJob |
+   |------------|---------|----------|------------|---------------------|---------------------|
+   | ENTERPRISE | 100000  | 999      | 50         | 50                  | 30000               |
+   | GROWTH     | 10000   | 20       | 3          | 3                   | 10000               |
+   | STARTER    | 500     | 3        | 0          | 0                   | 2000                |
+   | TRIAL      | 100     | 2        | 0          | 0                   | 500                 |
+
+3. Confirm new tenants default to TRIAL:
+   ```sql
+   SELECT column_default FROM information_schema.columns
+   WHERE table_name = 'TenantPlanProfile' AND column_name = 'planTier';
+   ```
+   Expected: `'TRIAL'`
+
+**Verify**: The 4 rows above match. Any new signup lands on TRIAL (not STARTER).
+
+---
+
 ## Post-completion verification
 
 After all 8 items:
@@ -217,3 +265,4 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 6 | Clear failed job + configure R2 | Ops | ❌ Pending | |
 | 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ❌ Blocked on #1 | |
 | 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |
+| 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ❌ Blocked on #1 | |
