@@ -78,7 +78,9 @@ function assertStatus(result, expected, context) {
 async function main() {
   const apiBaseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
   const webBaseUrl = optionalEnv("STAGING_WEB_URL").replace(/\/+$/, "");
-  const expectedEnabled = boolEnv("STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED", false);
+  const signupEnabledRaw = String(process.env.STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED ?? "").trim();
+  const signupExpectationConfigured = signupEnabledRaw !== "";
+  const expectedEnabled = signupExpectationConfigured ? signupEnabledRaw.toLowerCase() === "true" : false;
   const expectedEnv = String(process.env.STAGING_EXPECTED_ENV ?? "staging").trim();
   const probeSlug = `tej-signup-probe-${Date.now().toString().slice(-8)}`;
   const probeEmail = `staging-signup-probe-${Date.now()}@example.com`;
@@ -95,6 +97,36 @@ async function main() {
     "health_status_ok",
     "health_env_matches_expected",
   ];
+
+  // When the secret is not set, probe the endpoint and log the state but do not
+  // assert — the staging environment may be in a transitional state while ops
+  // item #8 (STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED) is pending configuration.
+  if (!signupExpectationConfigured) {
+    const availability = await request(
+      apiBaseUrl,
+      `/api/v1/signup/workspace/availability?workspaceSlug=${encodeURIComponent(probeSlug)}`,
+      { retries: 2 },
+    );
+    const actuallyEnabled = availability.status === 200;
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          mode: "signup_detection_only",
+          warning:
+            "STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED is not set — signup state observed but not enforced. " +
+            "Set this secret (ops runbook item #8) to enable strict assertion.",
+          detectedEnabled: actuallyEnabled,
+          availabilityStatus: availability.status,
+          validated,
+          checkedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
 
   if (!expectedEnabled) {
     const availability = await request(
