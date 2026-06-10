@@ -155,7 +155,7 @@ export class CommercialRequestsService {
         status: "open",
         requestedBy: String(input.requestedBy ?? "").trim(),
         requesterRole: String(input.requesterRole ?? "").trim() || "admin",
-        currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "STARTER",
+        currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
         currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
         currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
         notes: this.normalizeOptionalText(input.notes, 1000),
