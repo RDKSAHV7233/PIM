@@ -1297,7 +1297,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   private normalizePlanTier(value: string): PlanTier {
     const normalized = String(value ?? "").trim().toUpperCase();
-    if (normalized === "STARTER" || normalized === "GROWTH" || normalized === "ENTERPRISE") {
+    if (normalized === "TRIAL" || normalized === "STARTER" || normalized === "GROWTH" || normalized === "ENTERPRISE") {
       return normalized;
     }
     return "TRIAL";
