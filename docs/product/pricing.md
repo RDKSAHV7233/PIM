@@ -1,18 +1,18 @@
 ---
 title: Pricing Page / Tier Definitions
 audience: sellers
-status: approved — PO sign-off 2026-05-27 (Atharva); Legal review pending before public publish
-last_updated: 2026-06-10
+status: approved — PO sign-off 2026-05-27 (Atharva); Pricing ladder revised 2026-06-11 (CTO); Legal review pending before public publish
+last_updated: 2026-06-11
 owner: Product + Legal
 ---
 
-> **Status:** Price points and tier limits approved by PO (Atharva, 2026-05-27). Remaining sign-offs required before external publish: CTO (infra cost validation), CFO (LTV/CAC model), GTM (annual discount depth). Legal must review before any public-facing copy goes live.
+> **Status:** Price points and tier limits approved by PO (Atharva, 2026-05-27). Pricing ladder revised by CTO 2026-06-11: added BUSINESS tier, updated STARTER/GROWTH/ENTERPRISE prices and setup fees. Remaining sign-offs: CFO (LTV/CAC model), GTM (annual discount depth). Legal must review before any public-facing copy goes live.
 
 ---
 
 ## Plan Tiers
 
-Vexa PIM offers four plans. All paid plans include core catalog management, bulk import, and quality management features. Every new workspace starts on a free 14-day TRIAL tier.
+Vexa PIM offers five plans. All paid plans include core catalog management, bulk import, and quality management features. Every new workspace starts on a free 14-day TRIAL tier.
 
 ### TRIAL
 
@@ -49,7 +49,7 @@ Not included:
 
 ### STARTER
 
-**₹4,499 / month** · ₹44,990 / year (save ~2 months)
+**₹9,999 / month** · Setup fee: ₹15,000–₹25,000 (optional)
 
 | Limit | Value |
 |-------|-------|
@@ -86,7 +86,7 @@ Not included:
 
 ### GROWTH
 
-**₹11,999 / month** · ₹1,19,990 / year (save ~2 months)
+**₹29,999 / month** · Setup fee: ₹75,000–₹1,50,000
 
 Everything in STARTER, plus:
 
@@ -114,11 +114,39 @@ Additional features:
 
 ---
 
-### ENTERPRISE
+### BUSINESS
 
-**Custom pricing** — [Contact Vexa sales](mailto:sales@vexa.in)
+**₹69,999 / month** · Setup fee: ₹1,50,000–₹3,00,000
 
 Everything in GROWTH, plus:
+
+| Limit | Value |
+|-------|-------|
+| Products (SKUs) | 50,000 |
+| Users | 100 |
+| Bulk submissions / month | 50,000 |
+| Storage | 200 GB |
+| Connector installations | 50 |
+| Accounts per connector | 10 |
+| Bulk import rows per job | 20,000 |
+| API keys | 20 |
+| Outbound webhooks | 20 |
+
+Additional features:
+- All 8 RBAC roles (admin, editor, publisher, approver, channel_manager, connector_admin, reviewer, viewer)
+- 50 connector installations with 10 accounts each
+- 20 API keys & outbound webhooks
+- Bulk import up to 20K rows per job
+- 200 GB storage
+- Dedicated support
+
+---
+
+### ENTERPRISE
+
+**Custom pricing — from ₹1,49,999 / month** · [Contact Vexa sales](mailto:sales@vexa.in)
+
+Everything in BUSINESS, plus:
 
 | Limit | Value |
 |-------|-------|
@@ -152,7 +180,7 @@ Additional features:
 All prices are in Indian Rupees (INR) and include GST. USD billing available for international customers on request.
 
 **Is there an annual billing discount?**
-Yes — annual billing saves approximately 2 months of subscription cost compared to monthly billing (STARTER: save ₹9,000/year; GROWTH: save ₹24,000/year). Annual plans are billed upfront. GTM team to confirm exact annual discount framing before publish.
+Annual billing discounts to be confirmed by GTM. Annual plans are billed upfront.
 
 **Can I change plans?**
 Upgrades take effect immediately; the new plan limits apply from the next billing cycle. Downgrades take effect at the end of the current billing period. Plan changes are managed through the Vexa commercial ops workflow — submit a request from the Plan & Usage page.
@@ -161,7 +189,7 @@ Upgrades take effect immediately; the new plan limits apply from the next billin
 Every new Vexa workspace starts on a free 14-day TRIAL. The TRIAL tier includes 100 SKUs, 2 users, 1 connector installation, and up to 500 bulk import rows per job — no credit card required. API key access and outbound webhooks are not available on TRIAL. Upgrade to any paid plan at any time to access full features.
 
 **What happens when my trial ends?**
-At the end of your 14-day TRIAL, your workspace is suspended if no commercial plan is active. All catalog data is retained for 90 days before permanent deletion. Upgrade to STARTER, GROWTH, or ENTERPRISE to restore access immediately.
+At the end of your 14-day TRIAL, your workspace is suspended if no commercial plan is active. All catalog data is retained for 90 days before permanent deletion. Upgrade to STARTER, GROWTH, BUSINESS, or ENTERPRISE to restore access immediately.
 
 **What payment methods do you accept?**
 Credit and debit cards via Stripe (Visa, Mastercard, RuPay). Bank transfer / NEFT available for annual Enterprise plans.
@@ -181,7 +209,7 @@ GROWTH plans can configure session timeout. ENTERPRISE plans have full auth poli
 
 | Decision | Owner | Status |
 |----------|-------|--------|
-| Price points (STARTER, GROWTH) | PO (Atharva) | ✅ Approved 2026-05-27 |
+| Price points (STARTER, GROWTH, BUSINESS, ENTERPRISE) | PO (Atharva) + CTO | ✅ Original PO approval 2026-05-27; Pricing ladder revised by CTO 2026-06-11 |
 | Tier limits (SKUs, users, storage) | Engineering | ✅ Set — see plan-limits.seed.ts |
 | TRIAL tier definition | Product + Engineering | ✅ Approved 2026-06-10 — 100 SKUs, 2 users, 14-day, non-billable |
 | Annual discount depth | GTM | ⏳ Pending |

@@ -10,10 +10,36 @@ import { StatusChip } from "@/components/ui/status-chip";
  */
 const PLAN_TIERS = [
   {
+    tier: "TRIAL",
+    label: "Trial",
+    price: "Free for 14 days",
+    setupFee: null,
+    tagline: "Explore Vexa PIM before you commit",
+    limits: {
+      skus: 100,
+      submissions: 100,
+      users: 2,
+      roles: "3 (admin, editor, viewer)",
+      storageGb: 1,
+      connectorInstallations: 1,
+      accountsPerConnector: 1,
+      apiKeys: 0,
+      outboundWebhooks: 0,
+      importRowsPerJob: 500,
+    },
+    features: [
+      "Product catalog management",
+      "Bulk import (up to 500 rows)",
+      "Quality validation",
+      "1 marketplace connector",
+    ],
+  },
+  {
     tier: "STARTER",
     label: "Starter",
-    price: "Free during trial",
-    tagline: "Get started with core PIM features",
+    price: "₹9,999/month",
+    setupFee: "₹15,000–₹25,000 (optional)",
+    tagline: "Small serious seller",
     limits: {
       skus: 500,
       submissions: 500,
@@ -22,33 +48,41 @@ const PLAN_TIERS = [
       storageGb: 5,
       connectorInstallations: 2,
       accountsPerConnector: 1,
+      apiKeys: 0,
+      outboundWebhooks: 0,
+      importRowsPerJob: 2000,
     },
     features: [
       "Product catalog management",
-      "Bulk import & repair",
+      "Bulk import & repair (up to 2K rows)",
       "Quality validation",
-      "1 marketplace connector",
+      "2 marketplace connectors",
       "Community support",
     ],
   },
   {
     tier: "GROWTH",
     label: "Growth",
-    price: "Contact sales",
+    price: "₹29,999/month",
+    setupFee: "₹75,000–₹1,50,000",
     tagline: "Scale your catalog across channels",
     limits: {
-      skus: 5000,
-      submissions: 5000,
+      skus: 10000,
+      submissions: 10000,
       users: 20,
       roles: "6 (+reviewer, approver, publisher)",
       storageGb: 50,
       connectorInstallations: 10,
       accountsPerConnector: 3,
+      apiKeys: 3,
+      outboundWebhooks: 3,
+      importRowsPerJob: 10000,
     },
     features: [
       "Everything in Starter",
       "Approval workflow",
-      "10x catalog & submission limits",
+      "API keys & outbound webhooks",
+      "Bulk import up to 10K rows",
       "Multi-account connectors",
       "Priority support",
       "Bulk edit operations",
@@ -56,22 +90,56 @@ const PLAN_TIERS = [
     ],
   },
   {
+    tier: "BUSINESS",
+    label: "Business",
+    price: "₹69,999/month",
+    setupFee: "₹1,50,000–₹3,00,000",
+    tagline: "Large catalog operations at scale",
+    limits: {
+      skus: 50000,
+      submissions: 50000,
+      users: 100,
+      roles: "8 (all roles)",
+      storageGb: 200,
+      connectorInstallations: 50,
+      accountsPerConnector: 10,
+      apiKeys: 20,
+      outboundWebhooks: 20,
+      importRowsPerJob: 20000,
+    },
+    features: [
+      "Everything in Growth",
+      "50K SKUs & submissions",
+      "100 users, all 8 roles",
+      "20 API keys & webhooks",
+      "Bulk import up to 20K rows",
+      "200 GB storage",
+      "Dedicated support",
+    ],
+  },
+  {
     tier: "ENTERPRISE",
     label: "Enterprise",
-    price: "Custom",
+    price: "From ₹1,49,999/month",
+    setupFee: "Custom",
     tagline: "Unlimited scale with dedicated support",
     limits: {
-      skus: 99999,
-      submissions: 99999,
+      skus: 100000,
+      submissions: 100000,
       users: 999,
       roles: "8 (all roles)",
       storageGb: 500,
       connectorInstallations: 100,
       accountsPerConnector: 20,
+      apiKeys: 50,
+      outboundWebhooks: 50,
+      importRowsPerJob: 30000,
     },
     features: [
-      "Everything in Growth",
-      "Unlimited SKUs & submissions",
+      "Everything in Business",
+      "100K SKUs & submissions",
+      "50 API keys & outbound webhooks",
+      "Bulk import up to 30K rows",
       "Dedicated account manager",
       "Custom SLA & onboarding",
       "SSO / OIDC integration",
@@ -112,7 +180,7 @@ export function PlanComparison({
         {billingStatus === "trial" ? " Upgrade anytime during your trial." : ""}
       </p>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
+      <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {PLAN_TIERS.map((plan, index) => {
           const isCurrent = plan.tier === normalizedCurrent;
           const isUpgrade = index > tierIndex;
@@ -136,6 +204,9 @@ export function PlanComparison({
               <div className="mt-1">
                 <h3 className="text-lg font-semibold text-slate-900">{plan.label}</h3>
                 <p className="mt-1 text-sm font-medium text-indigo-600">{plan.price}</p>
+                {plan.setupFee && (
+                  <p className="mt-0.5 text-xs text-slate-500">Setup: {plan.setupFee}</p>
+                )}
                 <p className="mt-1 text-xs text-slate-500">{plan.tagline}</p>
               </div>
 
@@ -167,6 +238,18 @@ export function PlanComparison({
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Accounts / connector</span>
                   <span className="font-medium text-slate-900">{formatLimit(plan.limits.accountsPerConnector)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">API keys</span>
+                  <span className="font-medium text-slate-900">{plan.limits.apiKeys === 0 ? "—" : formatLimit(plan.limits.apiKeys)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Outbound webhooks</span>
+                  <span className="font-medium text-slate-900">{plan.limits.outboundWebhooks === 0 ? "—" : formatLimit(plan.limits.outboundWebhooks)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Import rows / job</span>
+                  <span className="font-medium text-slate-900">{formatLimit(plan.limits.importRowsPerJob)}</span>
                 </div>
               </div>
 

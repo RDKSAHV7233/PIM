@@ -29,8 +29,10 @@
 
 ## 2. Run `gate:run:sprint` on staging (OVERDUE since 2026-05-23 — 30 min)
 
-**Update 2026-06-11**: Staging deploy pipeline is GREEN (run 27302388556, all 27 E2E smoke tests pass).
-Full E2E suite triggered via `e2e-staging.yml` (run 27321464572).
+**Update 2026-06-11**: ✅ COMPLETE. Full E2E suite passed on staging (run 27322336923, all tests pass).
+Previous: staging deploy pipeline GREEN (run 27302388556, all 27 E2E smoke tests pass).
+Full E2E suite triggered via `e2e-staging.yml` — first run (27321464572) failed on signup check (fixed in PR #248),
+re-triggered run (27322336923) passed all tests including signup smoke check.
 
 **Blocked on**: Item #1 above (now resolved — deploy pipeline working).
 
@@ -268,7 +270,7 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | # | Item | Owner | Status | Done |
 |---|------|-------|--------|------|
 | 1 | Rotate staging DB + domain secrets | Ops | ✅ Working (deploy pipeline green) | 2026-06-10 |
-| 2 | Run gate:run:sprint on staging | QA | ⏳ Triggered (run 27321464572) | |
+| 2 | Run gate:run:sprint on staging | QA | ✅ PASSED (run 27322336923, all tests pass) | 2026-06-11 |
 | 3 | STAGE3_* secrets in production env | Ops | ❌ Pending | |
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |

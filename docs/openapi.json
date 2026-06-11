@@ -6470,6 +6470,18 @@
           "limit"
         ]
       },
+      "PlanUsageLimitOnlyDto": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "example": 2000
+          }
+        },
+        "required": [
+          "limit"
+        ]
+      },
       "PlanProfileSummaryDto": {
         "type": "object",
         "properties": {
@@ -6483,6 +6495,7 @@
               "TRIAL",
               "STARTER",
               "GROWTH",
+              "BUSINESS",
               "ENTERPRISE"
             ],
             "example": "STARTER"
@@ -6587,6 +6600,7 @@
               "TRIAL",
               "STARTER",
               "GROWTH",
+              "BUSINESS",
               "ENTERPRISE"
             ],
             "example": "STARTER"
@@ -6636,6 +6650,15 @@
           "connectorAccounts": {
             "$ref": "#/components/schemas/PlanUsageCounterDto"
           },
+          "apiKeys": {
+            "$ref": "#/components/schemas/PlanUsageCounterDto"
+          },
+          "outboundWebhooks": {
+            "$ref": "#/components/schemas/PlanUsageCounterDto"
+          },
+          "importRowsPerJob": {
+            "$ref": "#/components/schemas/PlanUsageLimitOnlyDto"
+          },
           "profile": {
             "$ref": "#/components/schemas/PlanProfileSummaryDto"
           }
@@ -6652,6 +6675,9 @@
           "users",
           "connectorsInstallations",
           "connectorAccounts",
+          "apiKeys",
+          "outboundWebhooks",
+          "importRowsPerJob",
           "profile"
         ]
       },
@@ -6708,6 +6734,7 @@
               "TRIAL",
               "STARTER",
               "GROWTH",
+              "BUSINESS",
               "ENTERPRISE"
             ],
             "example": "STARTER"

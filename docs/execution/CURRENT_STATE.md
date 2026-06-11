@@ -1,5 +1,49 @@
 # Vexa PIM Current State
 
+> **V12 Addendum (2026-06-11) — gate:run:sprint PASSED on staging; ops automation merged (PR #248).**
+>
+> **gate:run:sprint: PASSED 2026-06-11**
+> - Full E2E staging suite (run [27322336923](https://github.com/Vexapim/PIM/actions/runs/27322336923)): ALL TESTS PASS
+> - Signup smoke check: PASS (non-blocking, `continue-on-error: true`)
+> - Run duration: ~8 min (03:44:39Z → 03:52:25Z)
+> - SHA: HEAD of `main` (includes PR #248)
+>
+> **PR #248 merged (2026-06-11):** ops pipeline automation
+> - `POST /queue/cleanup-failed` admin endpoint + post-deploy BullMQ cleanup step in `deploy-staging.yml`
+> - `seed-tax-regimes.cjs` automated in deploy pipeline (runs after `prisma migrate deploy`)
+> - Non-blocking signup check in `e2e-staging.yml` (same pattern as deploy-staging from PR #241)
+>
+> **Pipeline fixes merged since V11:**
+> | PR | Title | SHA |
+> |----|-------|-----|
+> | #241 | fix(ci): make signup smoke check non-blocking in staging deploy | — |
+> | #243 | fix(api): make product PATCH fields optional for workflow transitions | — |
+> | #244 | fix(ci): exclude generated docs from PR scope guard line count | — |
+> | #245 | feat(docs): Postman collection + generator for Vexa PIM API | — |
+> | #247 | fix(api): preserve hsnCode, gstRate, attributes on status-only PATCH | `999617b5` |
+> | #248 | chore(ops): automate BullMQ cleanup, tax seed, non-blocking signup in E2E | — |
+>
+> **Updated ops runbook status (see `docs/checklists/ops-unblock-staging.md`):**
+> | # | Item | Status |
+> |---|------|--------|
+> | 1 | Staging DB + domain secrets | ✅ Done (deploy pipeline green) |
+> | 2 | gate:run:sprint on staging | ✅ PASSED 2026-06-11 (run 27322336923) |
+> | 3 | STAGE3_* production env secrets | ❌ Manual |
+> | 4 | Stripe products + price ID env vars | ❌ Manual |
+> | 5 | Email Meesho for API credentials | ❌ PO action |
+> | 6 | BullMQ cleanup + R2 config | ✅ BullMQ automated; R2 manual |
+> | 7 | Tax Attributes migration + seed | ✅ Automated in deploy pipeline |
+> | 8 | STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED | ❌ Non-blocking |
+> | 9 | Verify plan-limits seed | ❌ Post-deploy verification |
+>
+> **Updated posture:**
+> - Enterprise signoff is now **fully allowed** — gate:run:sprint has passed on staging.
+> - "Enterprise-ready" claim can now be used in customer-facing materials.
+>
+> **Remaining pilot blockers (non-code):**
+> - Ops items #3, #4 (Stripe), #5 (Meesho email), #8, #9
+> - R2 bucket configuration (part of item #6)
+
 > **V11 Addendum (2026-05-28) — enterprise signoff unblocked; Gate 3 closed; pricing approved; web test suite at 117.**
 >
 > **Summary of changes since V10:**

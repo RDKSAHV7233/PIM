@@ -49,6 +49,18 @@ export const PLAN_LIMITS: PlanLimitSeed[] = [
     maxImportRowsPerJob: 10000,
   },
   {
+    planTier: "BUSINESS",
+    maxSkus: 50000,
+    maxSubmissionsPerMonth: 50000,
+    maxUsers: 100,
+    maxStorageGb: 200,
+    maxConnectorInstallations: 50,
+    maxAccountsPerConnector: 10,
+    maxApiKeys: 20,
+    maxOutboundWebhooks: 20,
+    maxImportRowsPerJob: 20000,
+  },
+  {
     planTier: "ENTERPRISE",
     maxSkus: 100000,
     maxSubmissionsPerMonth: 100000,

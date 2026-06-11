@@ -27,13 +27,14 @@ export const ENTERPRISE_ROLE_CAPABILITIES: Record<AppRole, string> = {
 
 export const Roles = (...roles: AppRole[]) => SetMetadata(ROLES_KEY, roles);
 
-export const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"] as const;
+export const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
 export const ROLE_AVAILABILITY_BY_TIER: Record<PlanTier, readonly AppRole[]> = {
   TRIAL: ["admin", "editor", "viewer"],
   STARTER: ["admin", "editor", "viewer"],
   GROWTH: ["admin", "editor", "publisher", "approver", "reviewer", "viewer"],
+  BUSINESS: APP_ROLES,
   ENTERPRISE: APP_ROLES,
 };
 

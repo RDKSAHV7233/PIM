@@ -7,6 +7,6 @@ export class InternalSetTenantPlanTierDto {
   tenantKey!: string;
 
   @IsString()
-  @IsIn(["STARTER", "GROWTH", "ENTERPRISE"])
-  planTier!: "STARTER" | "GROWTH" | "ENTERPRISE";
+  @IsIn(["STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"])
+  planTier!: "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE";
 }

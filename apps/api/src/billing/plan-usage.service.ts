@@ -11,7 +11,7 @@ import { PlanResource } from "./require-plan-limit.decorator";
 /** Plan profiles change only on admin billing operations — 5-minute TTL is safe. */
 const PLAN_PROFILE_CACHE_TTL_SECONDS = 300;
 
-const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "ENTERPRISE"] as const;
+const PLAN_TIERS = ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"] as const;
 const BILLING_STATUSES = ["trial", "active_paid", "past_due", "cancelled", "expired"] as const;
 const ACCESS_STATUSES = ["active", "suspended"] as const;
 const USAGE_SUMMARY_TTL_MS = 60_000;
@@ -207,6 +207,17 @@ export interface PlanUsageSummary {
   };
   connectorAccounts: {
     current: number;
+    limit: number;
+  };
+  apiKeys: {
+    current: number;
+    limit: number;
+  };
+  outboundWebhooks: {
+    current: number;
+    limit: number;
+  };
+  importRowsPerJob: {
     limit: number;
   };
   profile: PlanProfileSummary;
@@ -529,14 +540,20 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
     const tenantKey = normalizeTenantKey(tenantKeyInput ?? getTenantKeyFromContext());
     const month = this.getMonthKey();
 
-    // Run the cache read and the live user-count in parallel — the user count is
-    // never stored in PlanUsage (no column), so we always fetch it fresh here.
-    const [warmSummaryRow, liveUserCount] = await Promise.all([
+    const [warmSummaryRow, liveUserCount, liveApiKeyCount, liveWebhookCount] = await Promise.all([
       this.getUsageSummaryRow(tenantKey, month),
       this.prisma
         .tenant(tenantKey)
         .authIdentity.count({ where: { isActive: true } })
         .catch(() => 1),
+      this.prisma
+        .tenant(tenantKey)
+        .apiAccessKey.count({ where: { revokedAt: null } })
+        .catch(() => 0),
+      this.prisma
+        .tenant(tenantKey)
+        .outboundWebhookEndpoint.count({ where: { isActive: true } })
+        .catch(() => 0),
     ]);
 
     let summary: PlanUsageSummary;
@@ -559,8 +576,12 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       summary = this.buildUsageSummary(tenantKey, usage, limits, profile);
     }
 
-    // Inject the live user count — overrides the placeholder 1 from buildUsageSummary.
-    return { ...summary, users: { current: liveUserCount, limit: summary.users.limit } };
+    return {
+      ...summary,
+      users: { current: liveUserCount, limit: summary.users.limit },
+      apiKeys: { current: liveApiKeyCount, limit: summary.apiKeys.limit },
+      outboundWebhooks: { current: liveWebhookCount, limit: summary.outboundWebhooks.limit },
+    };
   }
 
   async getTenantPlanProfile(tenantKeyInput?: string): Promise<PlanProfileSummary> {
@@ -1297,7 +1318,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
 
   private normalizePlanTier(value: string): PlanTier {
     const normalized = String(value ?? "").trim().toUpperCase();
-    if (normalized === "TRIAL" || normalized === "STARTER" || normalized === "GROWTH" || normalized === "ENTERPRISE") {
+    if (normalized === "TRIAL" || normalized === "STARTER" || normalized === "GROWTH" || normalized === "BUSINESS" || normalized === "ENTERPRISE") {
       return normalized;
     }
     return "TRIAL";
@@ -1793,6 +1814,17 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       connectorAccounts: {
         current: usage.connectorAccountsCount,
         limit: limits.maxAccountsPerConnector,
+      },
+      apiKeys: {
+        current: 0,
+        limit: limits.maxApiKeys,
+      },
+      outboundWebhooks: {
+        current: 0,
+        limit: limits.maxOutboundWebhooks,
+      },
+      importRowsPerJob: {
+        limit: limits.maxImportRowsPerJob,
       },
       profile: {
         tenantKey,

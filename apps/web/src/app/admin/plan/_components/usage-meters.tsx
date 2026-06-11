@@ -58,6 +58,8 @@ function getUsageAlerts(usage: PlanUsageResponse): string[] {
   check("Storage", Number(usage.storageGb.current.toFixed(2)), usage.storageGb.limit);
   check("Connector Installations", usage.connectorsInstallations.current, usage.connectorsInstallations.limit);
   check("Accounts Per Connector", usage.connectorAccounts.current, usage.connectorAccounts.limit);
+  if (usage.apiKeys?.limit > 0) check("API Keys", usage.apiKeys.current, usage.apiKeys.limit);
+  if (usage.outboundWebhooks?.limit > 0) check("Outbound Webhooks", usage.outboundWebhooks.current, usage.outboundWebhooks.limit);
   return alerts;
 }
 
@@ -107,6 +109,21 @@ export function UsageMeters({ usage }: UsageMetersProps) {
           current={usage.connectorAccounts.current}
           limit={usage.connectorAccounts.limit}
         />
+        {usage.apiKeys?.limit > 0 && (
+          <Meter label="API Keys" current={usage.apiKeys.current} limit={usage.apiKeys.limit} />
+        )}
+        {usage.outboundWebhooks?.limit > 0 && (
+          <Meter label="Outbound Webhooks" current={usage.outboundWebhooks.current} limit={usage.outboundWebhooks.limit} />
+        )}
+        {usage.importRowsPerJob?.limit > 0 && (
+          <div className="space-y-1 rounded-md border border-slate-200 p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium text-slate-800">Import Rows / Job</span>
+              <span className="text-slate-600">{usage.importRowsPerJob.limit.toLocaleString()}</span>
+            </div>
+            <p className="text-xs text-slate-500">Maximum rows per import job</p>
+          </div>
+        )}
       </div>
     </Card>
   );

@@ -52,6 +52,7 @@ export interface ValidatedEnv {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID_STARTER?: string;
   STRIPE_PRICE_ID_GROWTH?: string;
+  STRIPE_PRICE_ID_BUSINESS?: string;
   STRIPE_PRICE_ID_ENTERPRISE?: string;
   QUEUE_BACKEND: QueueBackend;
   QUEUE_WORKER_ENABLED: BoolText;
@@ -135,6 +136,7 @@ const EnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: OptionalTrimmedText,
   STRIPE_PRICE_ID_STARTER: OptionalTrimmedText,
   STRIPE_PRICE_ID_GROWTH: OptionalTrimmedText,
+  STRIPE_PRICE_ID_BUSINESS: OptionalTrimmedText,
   STRIPE_PRICE_ID_ENTERPRISE: OptionalTrimmedText,
   QUEUE_BACKEND: z.enum(["memory", "bullmq"] as const).default("memory"),
   QUEUE_WORKER_ENABLED: z.enum(["true", "false"] as const).default("true"),

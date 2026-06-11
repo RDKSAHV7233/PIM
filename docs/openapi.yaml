@@ -3829,6 +3829,14 @@ components:
       required:
         - current
         - limit
+    PlanUsageLimitOnlyDto:
+      type: object
+      properties:
+        limit:
+          type: number
+          example: 2000
+      required:
+        - limit
     PlanProfileSummaryDto:
       type: object
       properties:
@@ -3841,6 +3849,7 @@ components:
             - TRIAL
             - STARTER
             - GROWTH
+            - BUSINESS
             - ENTERPRISE
           example: STARTER
         billingStatus:
@@ -3925,6 +3934,7 @@ components:
             - TRIAL
             - STARTER
             - GROWTH
+            - BUSINESS
             - ENTERPRISE
           example: STARTER
         billingStatus:
@@ -3960,6 +3970,12 @@ components:
           $ref: "#/components/schemas/PlanUsageCounterDto"
         connectorAccounts:
           $ref: "#/components/schemas/PlanUsageCounterDto"
+        apiKeys:
+          $ref: "#/components/schemas/PlanUsageCounterDto"
+        outboundWebhooks:
+          $ref: "#/components/schemas/PlanUsageCounterDto"
+        importRowsPerJob:
+          $ref: "#/components/schemas/PlanUsageLimitOnlyDto"
         profile:
           $ref: "#/components/schemas/PlanProfileSummaryDto"
       required:
@@ -3974,6 +3990,9 @@ components:
         - users
         - connectorsInstallations
         - connectorAccounts
+        - apiKeys
+        - outboundWebhooks
+        - importRowsPerJob
         - profile
     UpdateBillingContactDto:
       type: object
@@ -4018,6 +4037,7 @@ components:
             - TRIAL
             - STARTER
             - GROWTH
+            - BUSINESS
             - ENTERPRISE
           example: STARTER
         currentBillingStatus:
