@@ -119,6 +119,21 @@
         ]
       }
     },
+    "/api/v1/queue/cleanup-failed": {
+      "post": {
+        "operationId": "AppController_cleanupFailedQueueJobs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Per-queue count of removed failed jobs"
+          }
+        },
+        "summary": "Remove all failed BullMQ jobs from every queue (admin only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/health/metrics": {
       "get": {
         "operationId": "AppController_healthMetrics",

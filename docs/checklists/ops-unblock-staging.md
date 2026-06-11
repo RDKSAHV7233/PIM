@@ -29,7 +29,10 @@
 
 ## 2. Run `gate:run:sprint` on staging (OVERDUE since 2026-05-23 — 30 min)
 
-**Blocked on**: Item #1 above.
+**Update 2026-06-11**: Staging deploy pipeline is GREEN (run 27302388556, all 27 E2E smoke tests pass).
+Full E2E suite triggered via `e2e-staging.yml` (run 27321464572).
+
+**Blocked on**: Item #1 above (now resolved — deploy pipeline working).
 
 **Steps** (after #1 is done):
 
@@ -120,6 +123,9 @@
 
 ## 6. Clear failed `account-export` job + configure R2 on staging (30 min)
 
+**Update 2026-06-11**: BullMQ failed-job cleanup is now automated in `deploy-staging.yml` (runs
+`POST /queue/cleanup-failed` after each deploy). Only R2 configuration remains manual.
+
 **Why**: A failed BullMQ job is stuck in the queue, causing noise in staging logs. R2 (Cloudflare storage) is needed for media upload to work on staging.
 
 **Steps — Clear failed job**:
@@ -148,6 +154,9 @@
 ---
 
 ## 7. Deploy Tax Attributes migration + seed (30 min — added 2026-06-09)
+
+**Update 2026-06-11**: `seed-tax-regimes.cjs` is now automated in `deploy-staging.yml` — runs
+after `prisma migrate deploy` on every staging deploy. No manual step needed.
 
 **Why**: Migration `20260609000001_add_tax_regime_product_tax_code` adds the `tax_regimes` and
 `product_tax_codes` tables. Without the seed step, any product create/update with `taxCodes`
@@ -258,12 +267,12 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 
 | # | Item | Owner | Status | Done |
 |---|------|-------|--------|------|
-| 1 | Rotate staging DB + domain secrets | Ops | ❌ Blocking | |
-| 2 | Run gate:run:sprint on staging | QA | ❌ Blocked on #1 | |
+| 1 | Rotate staging DB + domain secrets | Ops | ✅ Working (deploy pipeline green) | 2026-06-10 |
+| 2 | Run gate:run:sprint on staging | QA | ⏳ Triggered (run 27321464572) | |
 | 3 | STAGE3_* secrets in production env | Ops | ❌ Pending | |
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
-| 6 | Clear failed job + configure R2 | Ops | ❌ Pending | |
-| 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ❌ Blocked on #1 | |
+| 6 | Clear failed job + configure R2 | Ops | ✅ BullMQ cleanup automated in deploy pipeline; R2 config still manual | |
+| 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ✅ Seed automated in deploy pipeline | |
 | 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |
 | 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ❌ Blocked on #1 | |

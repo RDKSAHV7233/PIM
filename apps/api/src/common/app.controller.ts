@@ -108,6 +108,18 @@ export class AppController {
   }
 
   @DisallowApiClient()
+  @AdminBoundaryAccess({ capability: "manage_security" })
+  @Roles("admin")
+  @Post("queue/cleanup-failed")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Remove all failed BullMQ jobs from every queue (admin only)" })
+  @ApiResponse({ status: 200, description: "Per-queue count of removed failed jobs" })
+  async cleanupFailedQueueJobs() {
+    const cleaned = await this.queueService.cleanAllFailedJobs();
+    return { cleaned };
+  }
+
+  @DisallowApiClient()
   @AuthenticatedReadRoute({ classification: "admin_only", responseHandling: "none", apiClientPolicy: "denied_human_only" })
   @AdminBoundaryAccess({ capability: "manage_security" })
   @Roles("admin")

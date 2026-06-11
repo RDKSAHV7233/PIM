@@ -580,6 +580,20 @@ export class QueueService implements OnModuleDestroy {
     return failedJobs.length;
   }
 
+  async cleanAllFailedJobs(): Promise<Record<string, number>> {
+    const result: Record<string, number> = {};
+    for (const [queueName, registration] of this.registrations) {
+      if (registration.kind !== "bullmq") continue;
+      let total = 0;
+      for (const [, lane] of registration.lanes) {
+        const removed = await lane.queue.clean(0, 1000, "failed");
+        total += removed.length;
+      }
+      if (total > 0) result[queueName] = total;
+    }
+    return result;
+  }
+
   async listFailedJobs(queueName: string, laneKey: string, limit = 20): Promise<QueueFailedJobSummary[]> {
     const registration = this.registrations.get(queueName);
     if (registration?.kind !== "bullmq") {

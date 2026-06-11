@@ -215,6 +215,31 @@
           }
         },
         {
+          "name": "Remove all failed BullMQ jobs from every queue (admin only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/queue/cleanup-failed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "queue",
+                "cleanup-failed"
+              ]
+            },
+            "description": "Remove all failed BullMQ jobs from every queue (admin only)"
+          }
+        },
+        {
           "name": "Prometheus-format process metrics (admin only)",
           "request": {
             "method": "GET",
