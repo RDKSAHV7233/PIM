@@ -17,9 +17,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.AMAZON) {
     return {
-      launchStage: "live",
+      launchStage: "planned",
       launchNote:
-        "Amazon India supports seller install, credential validation, publish, status sync, and webhook relay handling. Install with seller ID plus Amazon LWA credentials.",
+        "Amazon India is in experimental preview. Seller install and credential validation are available; publish and status sync are under active validation. Not recommended for production catalogues.",
       surfacedCapabilities: capabilities,
     };
   }

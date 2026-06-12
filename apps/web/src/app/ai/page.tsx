@@ -65,6 +65,10 @@ export default async function AiPage({ searchParams }: AiPageProps) {
         </p>
       </header>
 
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <strong>Labs — Experimental.</strong> This feature is under active development and is not available to workspace users. Results are rule-based only and should not be presented as AI-powered enrichment. Not for production catalogues.
+      </div>
+
       <div className="flex flex-wrap gap-2 text-sm">
         <Link className="rounded-md border border-border px-3 py-2" href={`/`}>
           Dashboard

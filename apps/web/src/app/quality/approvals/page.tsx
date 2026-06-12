@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
 import { createChangeRequestAction, resolveChangeRequestAction } from "@/app/quality-actions";
-import { ApiHttpError, getAllProductsSlim, getApprovalComments, getIssueInbox, getStats } from "@/lib/api";
+import { ApiHttpError, getAllProductsSlim, getApprovalComments, getIssueInbox, getStats, getBillingPlanProfile } from "@/lib/api";
 import { getChangeRequests, getWorkflowSla, getOverdueCount } from "@/lib/api/catalog";
 import { SlaBadge } from "@/components/ui/sla-badge";
 import type { ProductRevision } from "@/lib/api";
@@ -51,6 +51,40 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   }
 
   try {
+    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+
+    if (planTier === "TRIAL" || planTier === "STARTER") {
+      return (
+        <div className="space-y-5">
+          <PageHeader
+            title="Approval Queue"
+            description="Review and approve product changes before they are published to channels."
+            breadcrumb={
+              <>
+                Dashboard / Quality / <span className="font-semibold text-slate-700">Approvals</span>
+              </>
+            }
+          />
+          <Card>
+            <CardTitle>Plan Upgrade Required</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              The approval workflow is available on the Growth plan and above. Upgrade to enable reviewer and
+              approver roles, SLA-tracked review queues, and approval evidence trails.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/plan"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                View Plan &amp; Upgrade
+              </Link>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
     const [stats, inbox, products, slaConfig, overdueCount] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(

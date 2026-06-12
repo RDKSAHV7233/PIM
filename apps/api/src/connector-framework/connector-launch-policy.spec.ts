@@ -5,9 +5,9 @@ describe("resolveConnectorLaunchPolicy", () => {
   const allCaps: ConnectorCap[] = ["VALIDATE", "PUBLISH", "STATUS_SYNC", "WEBHOOK_RECEIVE", "EXCEL_EXPORT"];
 
   describe("amazon-in", () => {
-    it("is live", () => {
+    it("is planned (experimental preview, not yet production-recommended)", () => {
       const policy = resolveConnectorLaunchPolicy("amazon-in", allCaps);
-      expect(policy.launchStage).toBe("live");
+      expect(policy.launchStage).toBe("planned");
     });
 
     it("surfaces all capabilities", () => {

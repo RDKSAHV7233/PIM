@@ -9,6 +9,7 @@ interface AccountSecurityClientProps {
   mfaRequired: boolean;
   role: string;
   assignedRoles: string[];
+  planTier: string;
 }
 
 const ROLE_CAPABILITY_MAP: Record<string, string> = {
@@ -18,7 +19,8 @@ const ROLE_CAPABILITY_MAP: Record<string, string> = {
   viewer: "Read-only access across catalog, channels, and operations.",
 };
 
-export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRoles }: AccountSecurityClientProps) {
+export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRoles, planTier }: AccountSecurityClientProps) {
+  const mfaAvailable = planTier !== "TRIAL" && planTier !== "STARTER";
   const enrolled = mfaStatus?.enrollmentStatus === "active";
   const [regenCode, setRegenCode] = useState("");
   const [regenSubmitting, setRegenSubmitting] = useState(false);
@@ -138,7 +140,7 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
           </p>
         )}
 
-        {!enrolled && (
+        {!enrolled && mfaAvailable && (
           <div className="mt-4">
             <button
               type="button"
@@ -153,6 +155,15 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
               <p className="mt-2 text-sm text-red-700">{setupError}</p>
             )}
           </div>
+        )}
+
+        {!enrolled && !mfaAvailable && (
+          <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Two-factor authentication is available on the Growth plan and above.{" "}
+            <a href="/admin/plan" className="font-medium text-blue-700 hover:underline">
+              View plans
+            </a>
+          </p>
         )}
 
         {enrolled && mfaStatus && (

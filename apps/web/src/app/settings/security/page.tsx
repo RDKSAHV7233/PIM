@@ -2,7 +2,7 @@ import { AccountSecurityClient } from "@/components/settings/account-security-cl
 import { redirect } from "next/navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
-import { getMfaStatus, getTenantAuthPolicy } from "@/lib/api";
+import { getMfaStatus, getTenantAuthPolicy, getBillingPlanProfile } from "@/lib/api";
 import { ApiHttpError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,7 @@ export default async function AccountSecurityPage() {
 
   let mfaStatus = null;
   let mfaRequired = false;
+  let planTier = "TRIAL";
 
   try {
     mfaStatus = await getMfaStatus(requestOptions);
@@ -33,12 +34,20 @@ export default async function AccountSecurityPage() {
     // policy unavailable — continue without it
   }
 
+  try {
+    const planProfile = await getBillingPlanProfile(requestOptions);
+    planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+  } catch {
+    // billing unavailable — default to TRIAL gate (safest)
+  }
+
   return (
     <AccountSecurityClient
       mfaStatus={mfaStatus}
       mfaRequired={mfaRequired}
       role={actorRole}
       assignedRoles={(claims?.assignedRoles ?? []) as string[]}
+      planTier={planTier}
     />
   );
 }

@@ -127,35 +127,54 @@ re-triggered run (27322336923) passed all tests including signup smoke check.
 
 ---
 
-## 6. Clear failed `account-export` job + configure R2 on staging (30 min)
+## 6. Configure media storage on staging (30 min)
 
-**Update 2026-06-11**: BullMQ failed-job cleanup is now automated in `deploy-staging.yml` (runs
-`POST /queue/cleanup-failed` after each deploy). Only R2 configuration remains manual.
+**Update 2026-06-12**: BullMQ failed-job cleanup is automated. `MEDIA_LOCAL_FALLBACK` env var
+added to API — Option B (local filesystem) is now the quick path; Option A (R2) is the permanent path.
 
-**Why**: A failed BullMQ job is stuck in the queue, causing noise in staging logs. R2 (Cloudflare storage) is needed for media upload to work on staging.
+**Why**: Media file upload fails on staging because `APP_ENV=staging` forces R2 mode by default,
+and R2 credentials were never set. `media-storage.service.ts` now respects `MEDIA_LOCAL_FALLBACK=true`
+to write uploads to the container filesystem instead.
 
-**Steps — Clear failed job**:
+---
 
-1. On staging: trigger a one-time job cleanup via admin CLI or Redis:
-   ```
-   redis-cli -u <REDIS_URL> DEL bull:account-export:failed
-   ```
-   Or via Railway CLI: `railway run --environment staging redis-cli ...`
-2. Alternatively, if a BullMQ dashboard is accessible, use "Clean → Failed" for the `account-export` queue.
+### Option B — Local filesystem (quick, no R2 needed) ✅ CURRENT CHOICE
 
-**Steps — Configure R2**:
+**Steps**:
+
+1. Railway dashboard → PIM project → staging environment → **API service** → **Settings → Volumes**
+2. Add volume:
+   - Mount path: `/app/storage/media`
+   - Size: 1 GB (enough for staging demos)
+   - Name: `pim-staging-media`
+3. Railway dashboard → API service → **Variables**
+4. Add variable: `MEDIA_LOCAL_FALLBACK=true`
+5. Redeploy the API service (Railway triggers automatically on variable change)
+
+**Verify**: Upload a test image via `/catalog/media` → image appears in the media library without error.
+
+**Limitation**: Uploaded files live in the Railway volume only. Not accessible via CDN URL — `resolveDownloadUrl` returns `null` for local paths (the media library will not show preview thumbnails unless you also set `R2_PUBLIC_URL` to a reverse-proxy of the volume). Acceptable for staging QA; not suitable for investor demo or pilot.
+
+---
+
+### Option A — Cloudflare R2 (permanent, CDN-backed)
+
+Use this when staging is upgraded to pilot/investor-demo quality or when Option B becomes a friction point.
+
+**Steps**:
 
 1. Open Cloudflare dashboard → R2 → Create bucket → `pim-staging`
-2. Create API token with R2 read/write access for the `pim-staging` bucket
-3. Set in GitHub `staging` environment:
-   - `R2_ACCOUNT_ID` = Cloudflare account ID
-   - `R2_ACCESS_KEY_ID` = R2 API token key ID
-   - `R2_SECRET_ACCESS_KEY` = R2 API token secret
+2. Create R2 API token: Cloudflare → My Profile → API Tokens → Create Token → R2 Edit template → scope to `pim-staging` bucket
+3. Set in **Railway dashboard → API service → Variables** (or GitHub `staging` environment secrets if using CI/CD deploy):
+   - `MEDIA_LOCAL_FALLBACK=false` (or delete the variable)
+   - `R2_ACCOUNT_ID` = Cloudflare account ID (found at dash.cloudflare.com → right sidebar)
+   - `R2_ACCESS_KEY_ID` = R2 token key ID
+   - `R2_SECRET_ACCESS_KEY` = R2 token secret
    - `R2_BUCKET_NAME=pim-staging`
-   - `R2_PUBLIC_URL` = R2 public URL for the bucket (or a custom domain)
-4. Redeploy staging
+   - `R2_PUBLIC_URL` = public bucket URL (enable in R2 bucket settings → Public access → R2.dev subdomain, or use a custom domain)
+4. Redeploy API service
 
-**Verify**: Upload a test image via the media upload UI on staging → image appears in the media library.
+**Verify**: Upload a test image → image appears with a thumbnail URL (not null) in media library.
 
 ---
 
@@ -279,7 +298,7 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 3 | STAGE3_* secrets in production env | Ops | ❌ Pending | |
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
-| 6 | Clear failed job + configure R2 | Ops | ✅ BullMQ cleanup automated in deploy pipeline; R2 config still manual | |
+| 6 | Configure media storage | Ops | ⚠️ Option B (MEDIA_LOCAL_FALLBACK) code-ready — **mount Railway volume at /app/storage/media + set MEDIA_LOCAL_FALLBACK=true in Railway vars** | |
 | 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ✅ Seed automated in deploy pipeline | |
 | 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |
 | 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ❌ Blocked on #1 | |

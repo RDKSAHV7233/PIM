@@ -15,6 +15,7 @@ import {
   ApiHttpError,
   getOutboundWebhookDeliveries,
   getOutboundWebhookEndpoints,
+  getBillingPlanProfile,
 } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
@@ -70,10 +71,44 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
   const webhookFieldErrors = resolveWebhookFieldErrors(errorMessage);
 
   try {
-    const [endpoints, deliveries] = await Promise.all([
+    const [endpoints, deliveries, planProfile] = await Promise.all([
       getOutboundWebhookEndpoints({ role, authHeader }),
       getOutboundWebhookDeliveries({ limit: 20 }, { role, authHeader }),
+      getBillingPlanProfile({ role, authHeader }),
     ]);
+    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+
+    if (planTier === "TRIAL" || planTier === "STARTER") {
+      return (
+        <div className="space-y-5">
+          <PageHeader
+            title="Outbound Webhooks"
+            description="Send Vexa notification events to tenant-managed HTTP endpoints."
+            breadcrumb={
+              <>
+                Dashboard / Admin / <span className="font-semibold text-slate-700">Outbound Webhooks</span>
+              </>
+            }
+          />
+          <Card>
+            <CardTitle>Plan Upgrade Required</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              Outbound webhooks are available on the Growth plan and above. Upgrade to deliver HMAC-signed
+              import and publish event notifications to your own HTTP endpoints.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/plan"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                View Plan &amp; Upgrade
+              </Link>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
     const nowMs = Date.now();
     const last24HoursMs = 24 * 60 * 60 * 1000;
     const activeEndpoints = endpoints.filter((endpoint) => endpoint.isActive).length;

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ApiKeyCreatePanel } from "./api-key-create-panel";
 import { revokeApiAccessKeyAction } from "./actions";
-import { ApiHttpError, getApiAccessKeys, type ApiAccessKey } from "@/lib/api";
+import { ApiHttpError, getApiAccessKeys, getBillingPlanProfile, type ApiAccessKey } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { API_SCOPE_LEGEND } from "@/lib/constants/api-scopes";
 import { getServerSession } from "@/lib/server-session";
@@ -56,19 +56,50 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const confirmRevokeKeyId = String(query.confirmRevoke ?? "").trim();
 
   try {
-    const keys = await getApiAccessKeys({ role, authHeader });
+    const [keys, planProfile] = await Promise.all([
+      getApiAccessKeys({ role, authHeader }),
+      getBillingPlanProfile({ role, authHeader }),
+    ]);
+    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+
+    const pageHeader = (
+      <PageHeader
+        title="API Keys"
+        description="Tenant-scoped machine credentials for integrations using the public API."
+        breadcrumb={
+          <>
+            Dashboard / Admin / <span className="font-semibold text-slate-700">API Keys</span>
+          </>
+        }
+      />
+    );
+
+    if (planTier === "TRIAL" || planTier === "STARTER") {
+      return (
+        <div className="space-y-5">
+          {pageHeader}
+          <Card>
+            <CardTitle>Plan Upgrade Required</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              API keys for machine credentials are available on the Growth plan and above. Upgrade to create
+              tenant-scoped tokens for programmatic access and integrations.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/plan"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                View Plan &amp; Upgrade
+              </Link>
+            </div>
+          </Card>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-5">
-        <PageHeader
-          title="API Keys"
-          description="Tenant-scoped machine credentials for integrations using the public API."
-          breadcrumb={
-            <>
-              Dashboard / Admin / <span className="font-semibold text-slate-700">API Keys</span>
-            </>
-          }
-        />
+        {pageHeader}
 
         {status === "api-key-revoked" ? (
           <InlineAlert tone="success" message="API key revoked." />
