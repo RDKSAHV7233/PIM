@@ -120,20 +120,20 @@ function run() {
     "Internal commercial ops actions must route status updates and preserve operator feedback and selected request state.",
   );
   assert(
-    exportRouteSource.includes("getServerActorRole") &&
-      exportRouteSource.includes("getServerSessionClaims") &&
+    exportRouteSource.includes("getServerSessionClaims") &&
+      exportRouteSource.includes("adminBoundaryRoles") &&
       exportRouteSource.includes("/billing/internal/upgrade-requests/export") &&
       exportRouteSource.includes('"x-pim-commercial-ops-token"') &&
       exportRouteSource.includes('"Content-Disposition"'),
-    "Internal commercial export route must enforce admin session context and proxy the hidden CSV endpoint.",
+    "Internal commercial export route must enforce ops boundary role and proxy the hidden CSV endpoint.",
   );
   assert(
-    tenantExportRouteSource.includes("getServerActorRole") &&
-      tenantExportRouteSource.includes("getServerSessionClaims") &&
+    tenantExportRouteSource.includes("getServerSessionClaims") &&
+      tenantExportRouteSource.includes("adminBoundaryRoles") &&
       tenantExportRouteSource.includes("/billing/internal/tenants/export") &&
       tenantExportRouteSource.includes('"x-pim-commercial-ops-token"') &&
       tenantExportRouteSource.includes('"Content-Disposition"'),
-    "Internal commercial tenant export route must enforce admin session context and proxy the hidden CSV endpoint.",
+    "Internal commercial tenant export route must enforce ops boundary role and proxy the hidden CSV endpoint.",
   );
   assert(
     apiSource.includes("/billing/internal/overview") &&

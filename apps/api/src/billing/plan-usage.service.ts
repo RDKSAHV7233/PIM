@@ -128,6 +128,7 @@ interface CommercialOverviewRow {
   trialPlanTenants: number;
   starterTenants: number;
   growthTenants: number;
+  businessTenants: number;
   enterpriseTenants: number;
   trialTenants: number;
   paidTenants: number;
@@ -249,6 +250,7 @@ export interface CommercialTenantOverview {
     trial: number;
     starter: number;
     growth: number;
+    business: number;
     enterprise: number;
   };
   billingStatusCounts: {
@@ -933,6 +935,8 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
           acc.starterTenants += 1;
         } else if (planTier === "GROWTH") {
           acc.growthTenants += 1;
+        } else if (planTier === "BUSINESS") {
+          acc.businessTenants += 1;
         } else {
           acc.enterpriseTenants += 1;
         }
@@ -961,6 +965,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         trialPlanTenants: 0,
         starterTenants: 0,
         growthTenants: 0,
+        businessTenants: 0,
         enterpriseTenants: 0,
         trialTenants: 0,
         paidTenants: 0,
@@ -978,6 +983,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         trial: Number(row.trialPlanTenants ?? 0),
         starter: Number(row.starterTenants ?? 0),
         growth: Number(row.growthTenants ?? 0),
+        business: Number(row.businessTenants ?? 0),
         enterprise: Number(row.enterpriseTenants ?? 0),
       },
       billingStatusCounts: {

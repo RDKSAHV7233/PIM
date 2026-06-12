@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSessionClaims } from "@/lib/server-session";
+
+const OPS_BOUNDARY_ROLES = ["product_admin", "system_admin", "super_admin"];
 
 export async function GET(request: Request) {
-  const role = await getServerActorRole();
   const claims = await getServerSessionClaims();
-  if (!claims?.sub || role !== "admin" || process.env.APP_ENV === "production") {
+  const role = String(claims?.role ?? "").trim();
+  const boundaryRoles = claims?.adminBoundaryRoles ?? [];
+  const isOpsOperator = boundaryRoles.some((r) => OPS_BOUNDARY_ROLES.includes(r));
+
+  if (!claims?.sub || role !== "admin" || !isOpsOperator || process.env.APP_ENV === "production") {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 

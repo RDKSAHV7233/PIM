@@ -20,6 +20,7 @@ import {
   normalizeWorkspaceSlug,
 } from "../common/tenant/tenant.constants";
 import { PrismaService } from "../prisma/prisma.service";
+import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { QUEUE_NAMES } from "../queue/queue.constants";
 import { QueueService } from "../queue/queue.service";
 import { AuthEmailService } from "./auth-email.service";
@@ -377,6 +378,7 @@ export class AuthService implements OnModuleDestroy {
   constructor(
     private readonly jwtBlocklistService: JwtBlocklistService,
     private readonly prisma: PrismaService,
+    private readonly prismaDirect: PrismaDirectService,
     private readonly auditService: AuditService,
     private readonly tenantDirectoryService: TenantDirectoryService,
     private readonly queueService: QueueService,
@@ -887,7 +889,7 @@ export class AuthService implements OnModuleDestroy {
     let identityFound = false;
 
     if (this.isDbAuthMode()) {
-      const identity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findUnique({
+      const identity = await this.prismaDirect.getClient().authIdentity.findFirst({
         where: {
           userId: normalizedEmail,
         },
@@ -954,7 +956,8 @@ export class AuthService implements OnModuleDestroy {
       throw new BadRequestException({ error: "PASSWORD_TOO_SHORT", minLength: 8 });
     }
 
-    const recoveryToken = await this.prisma.tenant(DEFAULT_TENANT_KEY).authRecoveryToken.findUnique({
+    const directPrisma = this.prismaDirect.getClient();
+    const recoveryToken = await directPrisma.authRecoveryToken.findUnique({
       where: {
         tokenHash: this.hashRecoveryToken(token),
       },
@@ -975,7 +978,7 @@ export class AuthService implements OnModuleDestroy {
     const userId = this.normalizeUserKey(recoveryToken.userId);
     const passwordHash = await bcrypt.hash(normalizedPassword, 12);
 
-    const identity = await this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.findFirst({
+    const identity = await directPrisma.authIdentity.findFirst({
       where: {
         tenantKey: tenantId,
         userId,
@@ -988,8 +991,8 @@ export class AuthService implements OnModuleDestroy {
       throw new UnauthorizedException({ error: "PASSWORD_RESET_TOKEN_INVALID" });
     }
 
-    await this.prisma.tenant(DEFAULT_TENANT_KEY).$transaction([
-      this.prisma.tenant(DEFAULT_TENANT_KEY).authIdentity.update({
+    await directPrisma.$transaction([
+      directPrisma.authIdentity.update({
         where: {
           id: identity.id,
         },
@@ -998,7 +1001,7 @@ export class AuthService implements OnModuleDestroy {
           lockedUntil: null,
         },
       }),
-      this.prisma.tenant(DEFAULT_TENANT_KEY).authRecoveryToken.update({
+      directPrisma.authRecoveryToken.update({
         where: {
           id: recoveryToken.id,
         },

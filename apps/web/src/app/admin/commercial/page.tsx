@@ -23,6 +23,7 @@ interface CommercialPageProps {
 function formatTierBadge(tier: string | null) {
   const t = String(tier ?? "").toUpperCase();
   if (t === "ENTERPRISE") return "bg-purple-100 text-purple-800";
+  if (t === "BUSINESS") return "bg-indigo-100 text-indigo-800";
   if (t === "GROWTH") return "bg-blue-100 text-blue-800";
   return "bg-slate-100 text-slate-700";
 }
@@ -38,12 +39,12 @@ function formatStatus(status: string | null) {
 
 export default async function CommercialOpsPage({ searchParams }: CommercialPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
 
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/commercial", 401));
   }
-  if (actorRole !== "admin") {
+  if (actorRole !== "admin" || !adminBoundaryRoles.some((r) => ["product_admin", "system_admin", "super_admin"].includes(r))) {
     redirect("/admin");
   }
   if (!isOpsTokenConfigured()) {
@@ -118,17 +119,19 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">By tier</div>
           <div className="mt-1 space-y-1 text-sm">
-            <div>Starter: <span className="font-semibold">{t.starterTenants}</span></div>
-            <div>Growth: <span className="font-semibold">{t.growthTenants}</span></div>
-            <div>Enterprise: <span className="font-semibold">{t.enterpriseTenants}</span></div>
+            <div>Trial: <span className="font-semibold">{t.planTierCounts.trial}</span></div>
+            <div>Starter: <span className="font-semibold">{t.planTierCounts.starter}</span></div>
+            <div>Growth: <span className="font-semibold">{t.planTierCounts.growth}</span></div>
+            <div>Business: <span className="font-semibold">{t.planTierCounts.business}</span></div>
+            <div>Enterprise: <span className="font-semibold">{t.planTierCounts.enterprise}</span></div>
           </div>
         </Card>
         <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Billing</div>
           <div className="mt-1 space-y-1 text-sm">
-            <div>Trial: <span className="font-semibold">{t.trialTenants}</span></div>
-            <div>Paid: <span className="font-semibold">{t.paidTenants}</span></div>
-            <div>Past due: <span className="font-semibold text-amber-600">{t.pastDueTenants}</span></div>
+            <div>Trial: <span className="font-semibold">{t.billingStatusCounts.trial}</span></div>
+            <div>Paid: <span className="font-semibold">{t.billingStatusCounts.activePaid}</span></div>
+            <div>Past due: <span className="font-semibold text-amber-600">{t.billingStatusCounts.pastDue}</span></div>
           </div>
         </Card>
         <Card>
@@ -171,8 +174,9 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             >
               <option value="STARTER">STARTER — 500 SKUs, 3 users</option>
-              <option value="GROWTH">GROWTH — 5,000 SKUs, 20 users</option>
-              <option value="ENTERPRISE">ENTERPRISE — 99,999 SKUs, 999 users</option>
+              <option value="GROWTH">GROWTH — 10,000 SKUs, 20 users</option>
+              <option value="BUSINESS">BUSINESS — 50,000 SKUs, 100 users</option>
+              <option value="ENTERPRISE">ENTERPRISE — 100,000 SKUs, 999 users</option>
             </select>
             <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
               Apply
@@ -241,6 +245,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                         >
                           <option value="STARTER">STARTER</option>
                           <option value="GROWTH">GROWTH</option>
+                          <option value="BUSINESS">BUSINESS</option>
                           <option value="ENTERPRISE">ENTERPRISE</option>
                         </select>
                         <button type="submit" className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800">

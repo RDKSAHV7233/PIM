@@ -9,8 +9,10 @@ import {
 } from "@/lib/api/commercial-ops";
 
 async function requireAdmin(): Promise<string> {
-  const { actorRole } = await getServerSession();
-  if (actorRole !== "admin") throw new Error("Admin role required");
+  const { actorRole, adminBoundaryRoles } = await getServerSession();
+  if (actorRole !== "admin" || !adminBoundaryRoles.some((r) => ["product_admin", "system_admin", "super_admin"].includes(r))) {
+    throw new Error("Commercial ops requires product_admin or system_admin role");
+  }
   return actorRole;
 }
 
@@ -24,7 +26,7 @@ export async function changePlanTierAction(formData: FormData) {
   const planTier = String(formData.get("planTier") ?? "").trim().toUpperCase();
   const operatorId = resolveOperatorId(formData);
 
-  if (!tenantKey || !["STARTER", "GROWTH", "ENTERPRISE"].includes(planTier)) {
+  if (!tenantKey || !["STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(planTier)) {
     redirect("/admin/commercial?error=invalid_input");
     return;
   }

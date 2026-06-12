@@ -34,6 +34,7 @@ export interface CommercialOverviewResponse {
       trial: number;
       starter: number;
       growth: number;
+      business: number;
       enterprise: number;
     };
     billingStatusCounts: {

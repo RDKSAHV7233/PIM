@@ -66,16 +66,19 @@ re-triggered run (27322336923) passed all tests including signup smoke check.
 
 ---
 
-## 4. Create Stripe products and set price ID env vars (30 min)
+## 4. Create Stripe products and set price ID env vars (45 min — UPDATED 2026-06-11)
+
+**Update 2026-06-11**: PR #249 added BUSINESS tier. New price ladder is STARTER ₹9,999, GROWTH ₹29,999, BUSINESS ₹69,999, ENTERPRISE custom.
 
 **Why**: `GracePeriodEscalationService` and checkout flows are blocked until Stripe products exist. StripeService now warns on startup if these are missing.
 
 **Steps**:
 
 1. Open Stripe dashboard → Test mode
-2. Create 3 products:
-   - **STARTER**: ₹4,499/month → note `price_xxx` ID → set as `STRIPE_PRICE_ID_STARTER`
-   - **GROWTH**: ₹11,999/month → note ID → set as `STRIPE_PRICE_ID_GROWTH`
+2. Create 4 products with the NEW prices:
+   - **STARTER**: ₹9,999/month → note `price_xxx` ID → set as `STRIPE_PRICE_ID_STARTER`
+   - **GROWTH**: ₹29,999/month → note ID → set as `STRIPE_PRICE_ID_GROWTH`
+   - **BUSINESS** (NEW): ₹69,999/month → note ID → set as `STRIPE_PRICE_ID_BUSINESS`
    - **ENTERPRISE**: ₹1/month placeholder → note ID → set as `STRIPE_PRICE_ID_ENTERPRISE`
 3. Get test secret key: Stripe dashboard → Developers → API keys → Secret key
 4. Create webhook endpoint pointing to staging: `https://<staging-api-url>/api/v1/stripe/webhook`
@@ -86,11 +89,12 @@ re-triggered run (27322336923) passed all tests including signup smoke check.
    - `STRIPE_WEBHOOK_SECRET` = webhook signing secret
    - `STRIPE_PRICE_ID_STARTER`
    - `STRIPE_PRICE_ID_GROWTH`
+   - `STRIPE_PRICE_ID_BUSINESS` (NEW)
    - `STRIPE_PRICE_ID_ENTERPRISE`
    - `FEATURE_STRIPE_BILLING_ENABLED=true`
 6. Redeploy staging
 
-**Verify**: `POST <staging-api>/api/v1/billing/checkout-session` with `{ planTier: "GROWTH" }` returns a Stripe checkout URL.
+**Verify**: `POST <staging-api>/api/v1/billing/checkout-session` with `{ planTier: "BUSINESS" }` returns a Stripe checkout URL.
 
 ---
 
@@ -233,9 +237,10 @@ values are correct.
    FROM "PlanLimits"
    ORDER BY "planTier";
    ```
-   Expected rows:
+   Expected rows (updated 2026-06-11 — added BUSINESS tier):
    | planTier   | maxSkus | maxUsers | maxApiKeys | maxOutboundWebhooks | maxImportRowsPerJob |
    |------------|---------|----------|------------|---------------------|---------------------|
+   | BUSINESS   | 50000   | 100      | 20         | 20                  | 20000               |
    | ENTERPRISE | 100000  | 999      | 50         | 50                  | 30000               |
    | GROWTH     | 10000   | 20       | 3          | 3                   | 10000               |
    | STARTER    | 500     | 3        | 0          | 0                   | 2000                |

@@ -16,13 +16,23 @@ interface CommercialTenant {
 interface CommercialOverview {
   tenantOverview: {
     totalTenants: number;
-    starterTenants: number;
-    growthTenants: number;
-    enterpriseTenants: number;
-    trialTenants: number;
-    paidTenants: number;
-    pastDueTenants: number;
-    suspendedTenants: number;
+    planTierCounts: {
+      trial: number;
+      starter: number;
+      growth: number;
+      business: number;
+      enterprise: number;
+    };
+    billingStatusCounts: {
+      trial: number;
+      activePaid: number;
+      pastDue: number;
+      cancelled: number;
+    };
+    accessStatusCounts: {
+      active: number;
+      suspended: number;
+    };
   };
   requestOverview: {
     totalRequests: number;

@@ -1,5 +1,22 @@
 # Vexa PIM Current State
 
+> **V13 Addendum (2026-06-11) — BUSINESS tier + pricing ladder shipped (PR #249); E2E validation passed.**
+>
+> **PR #249 merged to main (2026-06-11):**
+> - New BUSINESS tier: 50K SKUs, 100 users, ₹69,999/month, all 8 RBAC roles
+> - Revised pricing: Starter ₹9,999, Growth ₹29,999, Business ₹69,999, Enterprise from ₹1,49,999
+> - Setup fee display in plan comparison UI (display-only; enforcement deferred)
+> - E2E staging validation: run [27369657782](https://github.com/Vexapim/PIM/actions/runs/27369657782) **PASSED**
+> - RBAC, Stripe mapping, seed, DTOs, OpenAPI specs all updated
+> - **Ops action required:** Create `STRIPE_PRICE_ID_BUSINESS` Stripe product/price (69,999 INR), set env var staging + production
+>
+> **Summary of commits:**
+> | PR | Title | Merged | Status |
+> |----|-------|--------|--------|
+> | #249 | feat(billing): add BUSINESS tier + revised pricing ladder | 2026-06-11 | ✅ Live on main |
+>
+> ---
+
 > **V12 Addendum (2026-06-11) — gate:run:sprint PASSED on staging; ops automation merged (PR #248).**
 >
 > **gate:run:sprint: PASSED 2026-06-11**

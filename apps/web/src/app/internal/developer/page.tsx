@@ -12,7 +12,7 @@ import {
   type CommercialOverviewResponse,
   type CommercialTenantSearchResult,
 } from "@/lib/api/internal-billing";
-import { getServerActorRole, getServerSessionClaims } from "@/lib/server-session";
+import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { updateUpgradeRequestStatusAction } from "./actions";
 
@@ -317,8 +317,12 @@ function OverviewMetric({
 }
 
 export default async function DeveloperPage({ searchParams }: DeveloperPageProps) {
-  const actorRole = await getServerActorRole();
-  if (actorRole !== "admin" || process.env.APP_ENV === "production") {
+  const { actorRole, adminBoundaryRoles } = await getServerSession();
+  if (
+    actorRole !== "admin" ||
+    process.env.APP_ENV === "production" ||
+    !adminBoundaryRoles.some((r) => ["product_admin", "system_admin", "super_admin"].includes(r))
+  ) {
     notFound();
   }
 
@@ -442,7 +446,7 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
                   Workspace activity: {overview.tenantOverview.activeWorkspaces} active / {overview.tenantOverview.inactiveWorkspaces} inactive
                 </div>
                 <div className="mt-1">
-                  Plans: {overview.tenantOverview.planTierCounts.trial} trial, {overview.tenantOverview.planTierCounts.starter} starter, {overview.tenantOverview.planTierCounts.growth} growth, {overview.tenantOverview.planTierCounts.enterprise} enterprise
+                  Plans: {overview.tenantOverview.planTierCounts.trial} trial, {overview.tenantOverview.planTierCounts.starter} starter, {overview.tenantOverview.planTierCounts.growth} growth, {overview.tenantOverview.planTierCounts.business} business, {overview.tenantOverview.planTierCounts.enterprise} enterprise
                 </div>
                 <div className="mt-1">
                   Request queue: {overview.requestOverview.openRequests} open, {overview.requestOverview.acknowledgedRequests} acknowledged, {overview.requestOverview.resolvedRequests} resolved, {overview.requestOverview.cancelledRequests} cancelled
