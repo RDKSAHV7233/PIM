@@ -1,5 +1,32 @@
 # Vexa PIM Current State
 
+> **V14 Addendum (2026-06-12) — Staging 56-TC browser test complete; Sprint 1/2/3 fixes merged to branch.**
+>
+> **56-TC browser test completed on TRIAL workspace (app.vexapim.com, 2026-06-12):**
+> - 16 findings identified; 15 closed in code; 1 infra-only (RSC 503s, pod instability)
+>
+> **Sprint 1 — P0/P1 fixes (committed 2026-06-12):**
+> - FIX-P0-A: Amazon India changed to "Experimental" (`connector-launch-policy.ts`)
+> - FIX-P0-B: `/ai` page shows "Labs — Experimental" banner; no tier gate removal
+> - FIX-P1-A through F: 6 pages now enforce frontend tier gates (api-keys, webhooks, approvals, bulk-edit, OIDC, MFA)
+> - F-17: Media upload fixed — `MEDIA_LOCAL_FALLBACK` env var + Railway volume (ops complete)
+>
+> **Sprint 2 — P2 fixes (committed 2026-06-12, this branch):**
+> - FIX-P2-D: `POST /auth/password/change` endpoint + Next.js proxy + frontend form in `/settings/security`
+> - FIX-P2-B: Audit CSV export raised from 200-row cap to 5,000-row direct Prisma query
+>
+> **Sprint 3 — P3 fixes (committed 2026-06-12, this branch):**
+> - FIX-P3-B: `/settings` profile page implemented (email, role, workspace display + preference quick links)
+> - FIX-P3-A: Password reset confirmation confirmed as false positive — code correct
+> - FIX-P3-C: RSC prefetch 503s — infra/pod only, no code fix
+> - FIX-P2-A: ENTERPRISE "Unlimited" display — auto-fixes on next deploy via `seedPlanLimits()`
+> - FIX-P2-C: Seed staging DB with products — ops task, use Import workflow at `/operations/imports`
+>
+> **Remaining pilot blockers (non-code):**
+> - Ops items #3 (STAGE3_* secrets), #4 (Stripe BUSINESS price + all tiers), #5 (Meesho email), #8 (signup env secret), #9 (plan-limits seed verify post-deploy)
+>
+> ---
+
 > **V13 Addendum (2026-06-11) — BUSINESS tier + pricing ladder shipped (PR #249); E2E validation passed.**
 >
 > **PR #249 merged to main (2026-06-11):**

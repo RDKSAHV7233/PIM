@@ -278,14 +278,40 @@ values are correct.
 
 ## Post-completion verification
 
-After all 8 items:
+After all items:
 
 ```
 npm run test:e2e:smoke -- --base-url=<staging-url>
 node scripts/performance-baseline.cjs
+node apps/web/test/integration/internal-commercial-ops-ui.test.cjs
 ```
 
 All 5 smoke spec files should pass. Performance baseline should be recorded. Gate is open for first pilot tenant.
+
+---
+
+## Sprint 2 + 3 code fixes (2026-06-12) — deployed in this branch
+
+The following staging findings from the 56-TC browser test have been addressed in code:
+
+| Fix ID | Severity | Description |
+|---|---|---|
+| FIX-P0-A | Critical | Amazon India label changed to "Experimental" (`connector-launch-policy.ts`) |
+| FIX-P0-B | Critical | `/ai` page shows Labs banner — not marketed as production feature |
+| FIX-P1-A | Critical | API keys page gated at GROWTH+ (TRIAL/STARTER see upgrade card) |
+| FIX-P1-B | Critical | Webhooks page gated at GROWTH+ |
+| FIX-P1-C | Critical | Approval queue gated at GROWTH+ |
+| FIX-P1-D | Critical | Bulk edit gated at GROWTH+ |
+| FIX-P1-E | Critical | OIDC config gated at ENTERPRISE only |
+| FIX-P1-F | High | MFA enrollment gated at GROWTH+ |
+| F-17 | Critical | Media upload: `MEDIA_LOCAL_FALLBACK=true` + Railway volume (ops done 2026-06-12) |
+| FIX-P2-D | Medium | Password change form added to `/settings/security` + new API endpoint |
+| FIX-P2-B | Medium | Audit CSV export now returns up to 5 000 rows (was capped at 200 via cursor limit) |
+| FIX-P3-B | Low | `/settings` profile page implemented (was redirect to /admin) |
+| FIX-P3-A | Low | Password reset confirmation verified as false positive — code correct |
+| FIX-P2-A | Low | ENTERPRISE "Unlimited" display — auto-fixes on next deploy via seedPlanLimits() |
+| FIX-P2-C | Low | Seed staging DB with products via Import workflow (ops task — no code) |
+| FIX-P3-C | Low | RSC prefetch 503s — infra/pod stability, no code fix |
 
 ---
 
@@ -296,9 +322,9 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 1 | Rotate staging DB + domain secrets | Ops | ✅ Working (deploy pipeline green) | 2026-06-10 |
 | 2 | Run gate:run:sprint on staging | QA | ✅ PASSED (run 27322336923, all tests pass) | 2026-06-11 |
 | 3 | STAGE3_* secrets in production env | Ops | ❌ Pending | |
-| 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
+| 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending (BUSINESS tier `STRIPE_PRICE_ID_BUSINESS` now required — see item #4 steps) | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
 | 6 | Configure media storage | Ops | ✅ Option B active — volume at /app/storage/media + MEDIA_LOCAL_FALLBACK=true set in Railway | 2026-06-12 |
 | 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ✅ Seed automated in deploy pipeline | |
 | 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |
-| 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ❌ Blocked on #1 | |
+| 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ⚠️ seedPlanLimits() runs on startup — verify on next deploy. Expected: TRIAL, STARTER, GROWTH, BUSINESS, ENTERPRISE rows all correct. | |
