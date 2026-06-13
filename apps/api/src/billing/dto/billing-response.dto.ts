@@ -52,12 +52,6 @@ export class PlanMetadataDto {
   @ApiProperty({ example: "Starter" })
   label!: string;
 
-  @ApiProperty({ example: "₹9,999/month" })
-  price!: string;
-
-  @ApiProperty({ example: "₹15,000-₹25,000 optional", nullable: true })
-  setupFee!: string | null;
-
   @ApiProperty({ example: "Small serious seller" })
   tagline!: string;
 

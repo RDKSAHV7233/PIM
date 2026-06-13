@@ -557,8 +557,6 @@ export interface PlanUsageResponse {
 export interface PlanMetadata {
   tier: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string;
   label: string;
-  price: string;
-  setupFee: string | null;
   tagline: string;
   limits: {
     skus: number;

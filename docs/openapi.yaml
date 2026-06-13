@@ -4093,13 +4093,6 @@ components:
         label:
           type: string
           example: Starter
-        price:
-          type: string
-          example: ₹9,999/month
-        setupFee:
-          type: object
-          example: ₹15,000-₹25,000 optional
-          nullable: true
         tagline:
           type: string
           example: Small serious seller
@@ -4117,8 +4110,6 @@ components:
       required:
         - tier
         - label
-        - price
-        - setupFee
         - tagline
         - limits
         - unlimited

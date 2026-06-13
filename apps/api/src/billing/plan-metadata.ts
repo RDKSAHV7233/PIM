@@ -3,8 +3,6 @@ import { PLAN_LIMITS } from "./plan-limits.seed";
 export interface PlanMetadata {
   tier: string;
   label: string;
-  price: string;
-  setupFee: string | null;
   tagline: string;
   limits: {
     skus: number;
@@ -26,8 +24,6 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
   TRIAL: {
     tier: "TRIAL",
     label: "Trial",
-    price: "Free for 14 days",
-    setupFee: null,
     tagline: "Explore Vexa PIM before you commit",
     features: [
       "Product catalog management",
@@ -39,8 +35,6 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
   STARTER: {
     tier: "STARTER",
     label: "Starter",
-    price: "₹9,999/month",
-    setupFee: "₹15,000-₹25,000 optional",
     tagline: "Small serious seller",
     features: [
       "Product catalog management",
@@ -53,8 +47,6 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
   GROWTH: {
     tier: "GROWTH",
     label: "Growth",
-    price: "₹29,999/month",
-    setupFee: "₹75,000-₹1,50,000",
     tagline: "Scale your catalog across channels",
     features: [
       "Everything in Starter",
@@ -70,8 +62,6 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
   BUSINESS: {
     tier: "BUSINESS",
     label: "Business",
-    price: "₹69,999/month",
-    setupFee: "₹1,50,000-₹3,00,000",
     tagline: "Large catalog operations at scale",
     features: [
       "Everything in Growth",
@@ -86,8 +76,6 @@ const PLAN_COPY: Record<string, Omit<PlanMetadata, "limits" | "unlimited">> = {
   ENTERPRISE: {
     tier: "ENTERPRISE",
     label: "Enterprise",
-    price: "From ₹1,49,999/month",
-    setupFee: "Custom",
     tagline: "Dedicated scale with white-glove support",
     features: [
       "Everything in Business",

@@ -60,8 +60,6 @@ export function PlanComparison({
 
               <div className="mt-1">
                 <h3 className="text-lg font-semibold text-slate-900">{plan.label}</h3>
-                <p className="mt-1 text-sm font-medium text-indigo-600">{plan.price}</p>
-                {plan.setupFee ? <p className="mt-0.5 text-xs text-slate-500">Setup: {plan.setupFee}</p> : null}
                 <p className="mt-1 text-xs text-slate-500">{plan.tagline}</p>
               </div>
 
