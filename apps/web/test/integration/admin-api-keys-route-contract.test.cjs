@@ -20,7 +20,8 @@ function run() {
     "Admin API keys must derive shared server auth/session context before loading data.",
   );
   assert(
-    source.includes("const keys = await getApiAccessKeys({ role, authHeader });"),
+    source.includes("const [keys, planProfile] = await Promise.all([") &&
+      source.includes("getApiAccessKeys({ role, authHeader })"),
     "Admin API keys must fetch tenant-scoped API keys through the shared API client and auth context.",
   );
   assert(

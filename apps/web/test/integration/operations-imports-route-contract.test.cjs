@@ -37,10 +37,9 @@ function run() {
     "Operations imports must rely on the shared editor-capable workspace write rule.",
   );
   assert(
-    (source.includes("const [jobs, categories] = await Promise.all([") ||
-      source.includes("const [jobsResult, categoriesResult] = await Promise.allSettled([")) &&
+    source.includes("await Promise.allSettled([") &&
       source.includes("getBulkImportJobs({ role: actorRole, authHeader })") &&
-      source.includes("getCategoryTree({ all: true }, { role: actorRole, authHeader"),
+      source.includes("getCachedCategoryTree({ all: true }, { role: actorRole, authHeader"),
     "Operations imports must load import jobs and categories together from the shared auth context.",
   );
   assert(
@@ -50,9 +49,9 @@ function run() {
     "Operations imports must filter test data first and then apply the normalized status filter.",
   );
   assert(
-    source.includes("const selectedRows = selectedBulkJobId") &&
-      source.includes("getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })") &&
-      source.includes(": [];"),
+    source.includes("getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })") &&
+      source.includes("selectedBulkJobId") &&
+      (source.includes(": [];") || source.includes(": Promise.resolve(")),
     "Operations imports must only fetch row detail when a bulkJobId is selected.",
   );
   assert(

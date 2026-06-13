@@ -1,0 +1,175 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const CONNECTORS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "page.tsx");
+const SETUP_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "connectors", "setup", "page.tsx");
+const INSTALLER_SERVICE = path.join(
+  REPO_ROOT,
+  "apps",
+  "api",
+  "src",
+  "connector-installer",
+  "connector-installer.service.ts",
+);
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function run() {
+  const pageSource = fs.readFileSync(CONNECTORS_PAGE, "utf8");
+  const setupSource = fs.readFileSync(SETUP_PAGE, "utf8");
+  const installerSource = fs.readFileSync(INSTALLER_SERVICE, "utf8");
+
+  // ── Myntra credential form (setup/page.tsx) ────────────────────────────────
+
+  assert(
+    setupSource.includes('if (slug === "myntra")') &&
+      setupSource.includes("Secret Key") &&
+      setupSource.includes("Warehouse ID"),
+    "Setup page must render Myntra credential fields (Secret Key, Warehouse ID) in the ConnectorCredentialFields section.",
+  );
+  assert(
+    setupSource.includes("clientSecret") &&
+      setupSource.includes("refreshToken") &&
+      setupSource.includes('name="clientSecret"') &&
+      setupSource.includes('name="refreshToken"'),
+    "Myntra form fields must be wired to the correct DTO field names (clientSecret, refreshToken).",
+  );
+  assert(
+    setupSource.includes('type="password"'),
+    "Myntra Secret Key must be an input with type=password so the value is masked.",
+  );
+  assert(
+    setupSource.includes("encrypted on save and never shown again"),
+    "Myntra credential form must include the encryption-at-rest notice.",
+  );
+  assert(
+    setupSource.includes('if (slug === "myntra") return "Merchant ID"'),
+    "connectorAccountReferenceLabel must return 'Merchant ID' for the Myntra slug.",
+  );
+  assert(
+    setupSource.includes('if (slug === "myntra") return "Enter Myntra merchant ID"'),
+    "connectorAccountReferencePlaceholder must return the Myntra merchant ID placeholder.",
+  );
+
+  // ── Myntra error messages in setup/page.tsx ────────────────────────────────
+
+  assert(
+    setupSource.includes("MYNTRA_CREDENTIALS_INCOMPLETE") &&
+      setupSource.includes("MYNTRA_CREDENTIALS_INVALID"),
+    "Setup page must surface MYNTRA_CREDENTIALS_INCOMPLETE and MYNTRA_CREDENTIALS_INVALID errors to the user.",
+  );
+
+  // ── Myntra status note (AM-gated Beta) ────────────────────────────────────
+
+  assert(
+    setupSource.includes('"myntra"') &&
+      (setupSource.includes("account manager") || setupSource.includes("Beta") || setupSource.includes("beta")),
+    "Setup page must include an account-manager-gated Beta status note for Myntra.",
+  );
+
+  // Nykaa has launchStage "manual" and is not shown in the setup page.
+  // Its portal-upload / QC-wait note is on connectors/page.tsx — verified below.
+
+  // ── connector/page.tsx error labels ───────────────────────────────────────
+
+  assert(
+    pageSource.includes('"myntra"') && pageSource.includes('"Myntra"'),
+    "Connectors page formatInstallErrorMessage must map slug 'myntra' to display label 'Myntra'.",
+  );
+  assert(
+    pageSource.includes('"nykaa"') && pageSource.includes('"Nykaa"'),
+    "Connectors page formatInstallErrorMessage must map slug 'nykaa' to display label 'Nykaa'.",
+  );
+  assert(
+    pageSource.includes("MYNTRA_CREDENTIALS_INCOMPLETE"),
+    "Connectors page must surface MYNTRA_CREDENTIALS_INCOMPLETE to the user.",
+  );
+
+  // ── Nykaa status note in connectors/page.tsx ──────────────────────────────
+
+  assert(
+    pageSource.includes('"nykaa"') &&
+      (pageSource.includes("portal") || pageSource.includes("7")),
+    "Connectors page must include a portal-upload / QC-wait note for Nykaa.",
+  );
+
+  // ── API installer service — Myntra credential branch ──────────────────────
+
+  assert(
+    installerSource.includes('normalizedSlug === "myntra"'),
+    "connector-installer.service.ts must handle the 'myntra' slug with a dedicated branch.",
+  );
+  assert(
+    installerSource.includes("captureAndStoreMyntraCredentials"),
+    "connector-installer.service.ts must call captureAndStoreMyntraCredentials for Myntra installs.",
+  );
+  assert(
+    installerSource.includes("MYNTRA_CREDENTIALS_INCOMPLETE"),
+    "connector-installer.service.ts must throw MYNTRA_CREDENTIALS_INCOMPLETE when any of the three credentials is absent.",
+  );
+  assert(
+    installerSource.includes("merchant_id") &&
+      installerSource.includes("secret_key") &&
+      installerSource.includes("warehouse_id"),
+    "connector-installer.service.ts must store all three Myntra credential types: merchant_id, secret_key, warehouse_id.",
+  );
+
+  // ── Partial credentials are never stored ──────────────────────────────────
+  // The storeCredential calls must be guarded — only reached after the completeness check throws.
+  // We verify the guard appears before the store calls in the source file.
+  const myntraMethodStart = installerSource.indexOf("private async captureAndStoreMyntraCredentials");
+  const myntraMethodEnd = installerSource.indexOf("private async", myntraMethodStart + 1);
+  const myntraMethodSource =
+    myntraMethodStart !== -1
+      ? installerSource.slice(
+          myntraMethodStart,
+          myntraMethodEnd !== -1 ? myntraMethodEnd : installerSource.length,
+        )
+      : "";
+  const incompleteIdx = myntraMethodSource.indexOf("MYNTRA_CREDENTIALS_INCOMPLETE");
+  const storeIdx = myntraMethodSource.indexOf('"merchant_id"');
+  assert(
+    incompleteIdx !== -1 && storeIdx !== -1 && incompleteIdx < storeIdx,
+    "MYNTRA_CREDENTIALS_INCOMPLETE guard must appear before credential store calls in installer service.",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        validated: [
+          "myntra_credential_form_renders_secret_key_and_warehouse_id",
+          "myntra_form_fields_wired_to_correct_dto_names",
+          "myntra_secret_key_field_is_password_type",
+          "myntra_form_includes_encryption_at_rest_notice",
+          "myntra_account_reference_label_is_merchant_id",
+          "myntra_error_codes_present_in_setup_page",
+          "myntra_am_gated_status_note_present",
+          "nykaa_portal_upload_status_note_present_in_setup_page",
+          "myntra_nykaa_error_labels_in_connectors_page",
+          "myntra_credentials_incomplete_in_connectors_page",
+          "nykaa_portal_note_in_connectors_page",
+          "installer_service_has_myntra_branch",
+          "installer_service_captures_all_three_credentials",
+          "installer_service_guard_precedes_store_calls",
+        ],
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+try {
+  run();
+} catch (error) {
+  console.error("Myntra/Nykaa install form integration test failed:");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}

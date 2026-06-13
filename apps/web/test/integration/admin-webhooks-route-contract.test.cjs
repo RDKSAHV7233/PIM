@@ -24,7 +24,7 @@ function run() {
     "Admin webhooks must derive shared server auth/session context before loading data.",
   );
   assert(
-    source.includes("const [endpoints, deliveries] = await Promise.all([") &&
+    source.includes("const [endpoints, deliveries, planProfile] = await Promise.all([") &&
       source.includes("getOutboundWebhookEndpoints({ role, authHeader })") &&
       source.includes("getOutboundWebhookDeliveries({ limit: 20 }, { role, authHeader })"),
     "Admin webhooks must load configured endpoints and recent deliveries together from the shared auth context.",

@@ -30,7 +30,8 @@ function run() {
   assert(
     page.includes("await getServerSession();") &&
       page.includes('redirect(buildLoginRedirect("/admin/auth-policy", 401));') &&
-      page.includes('const policy = await getTenantAuthPolicy({ role: actorRole, authHeader });'),
+      page.includes("const [policy, planProfile] = await Promise.all([") &&
+      page.includes("getTenantAuthPolicy({ role: actorRole, authHeader })"),
     "Admin auth policy page must derive shared server auth/session context and load the tenant auth policy from the API.",
   );
 

@@ -1,0 +1,46 @@
+# WooCommerce — Vexa `_vexa_*` meta_data schema
+
+Vexa PIM writes the following `meta_data` keys to every WooCommerce product and variation it manages. These keys serve as idempotency anchors, sync timestamps, and structured GST/HSN fields that Indian tax plugins can read.
+
+## Key definitions
+
+| Key | Type | Written on | Description |
+|-----|------|-----------|-------------|
+| `_vexa_pim_product_id` | string | product + variation | Vexa internal SKU. **Idempotency anchor.** Used by `findExistingProductId` to detect re-publishes and perform PUT instead of POST. Never changes for a given SKU. |
+| `_vexa_pim_sync_ts` | ISO-8601 string | product + variation | UTC timestamp of the last Vexa sync. Updated on every publishProduct / updateProduct call. |
+| `_vexa_hsn_code` | string (digits) | product only | 6–8 digit HSN (Harmonised System of Nomenclature) code. Written when `product.hsnCode` is set. Absent when not provided. |
+| `_vexa_gst_rate` | string (number) | product only | GST rate percentage as a string (e.g. `"18"`, `"5"`, `"0"`). Written when `product.gstRate` is set. Absent when not provided. |
+| `_vexa_gst_applicable` | `"yes"` | product + variation | Written as `"yes"` whenever `gstRate` is set (including 0% GST-exempt). Absent when `gstRate` is not provided (non-India context). Never set to `"no"` — absence means unknown. |
+
+## GST plugin configuration notes
+
+### Woo GST India (WPBrigade)
+
+Plugin: `woo-gst-india` — free, 10k+ active installs.
+
+Vexa does not conflict with this plugin. To surface Vexa's GST values in the plugin UI:
+- Set `_wgsti_gst_enabled` to `1` on each product via a one-time migration script if you want the plugin's own checkbox to show as "enabled."
+- The plugin reads its own `_wgsti_hsn_code` and `_wgsti_gst_rate` keys. If you want the plugin to display the same values as Vexa, map them in a `woocommerce_product_after_variable_attributes` hook (read `_vexa_hsn_code` → write `_wgsti_hsn_code`).
+- Vexa's `_vexa_gst_rate` stores a numeric percentage. `_wgsti_gst_rate` expects the same format.
+
+### WooCommerce GST Suite (Webkul)
+
+Plugin: `woo-gst-suite` — paid, widely used in India.
+
+- The plugin reads `_wc_gst_status` (`applicable` / `not_applicable`) and `_wc_hsn_code`.
+- Vexa's `_vexa_gst_applicable = 'yes'` maps to `_wc_gst_status = 'applicable'`. Sync via a `save_post_product` hook or a migration script.
+- Webkul also stores per-slab rates. Vexa's flat `_vexa_gst_rate` maps to the base rate slab.
+
+### WooTax (TaxJar / WooTax plugin)
+
+Designed primarily for US sales-tax; not recommended for India. Use one of the plugins above for Indian GST compliance.
+
+### YITH WooCommerce Points and Rewards / custom tax plugins
+
+Any plugin that reads `meta_data` from the WooCommerce REST API response will see all `_vexa_*` keys. They are safe to ignore — WooCommerce does not act on unknown `meta_data` keys.
+
+## Reconciliation and idempotency guarantees
+
+- **Re-publish safety:** `findExistingProductId` queries `?meta_key=_vexa_pim_product_id&meta_value={sku}` before every publish. If a product with this meta_data exists, Vexa performs `PUT /products/{id}` instead of `POST /products`. This makes repeated publishes fully idempotent.
+- **Timestamp freshness:** `_vexa_pim_sync_ts` is always updated, even on idempotent re-publishes, so merchants can tell when Vexa last touched the product.
+- **GST flag stability:** `_vexa_gst_applicable` is written on every publish; it will be absent after a manual WooCommerce edit that strips meta_data. The W6 reconciliation job will re-write it on the next drift pass.

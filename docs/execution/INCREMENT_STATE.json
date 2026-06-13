@@ -2,7 +2,7 @@
   "meta": {
     "project": "Vexa PIM",
     "purpose": "Prevent execution loops and track delivery by functional increments",
-    "lastUpdated": "2026-05-17",
+    "lastUpdated": "2026-06-12T20:10",
     "schemaVersion": "1.1",
     "executionPack": "docs/execution/AI_TO_CODE_INCREMENT_EXECUTION_PACK.md"
   },
@@ -1372,7 +1372,7 @@
           "storyId": "ST-FK-RUNTIME-003",
           "title": "Implement Flipkart credential runtime foundation",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "codex",
           "commit": "4486eab",
           "reopened_by": "codex",
@@ -1405,7 +1405,7 @@
           "storyId": "ST-FK-PUBLISH-004",
           "title": "Route queued Flipkart jobs through the real connector publish path",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "codex",
           "commit": "1a03ec3",
           "reopened_by": "codex",
@@ -1437,7 +1437,7 @@
           "storyId": "ST-FK-STATUS-005",
           "title": "Add manual Flipkart submission status sync on top of the live publish path",
           "status": "completed",
-          "locked": false,
+          "locked": true,
           "owner": "codex",
           "commit": "ccf5ff7",
           "reopened_by": "codex",
@@ -3049,6 +3049,524 @@
       ],
       "evidence": [
         "PR #71 merged 2026-05-17"
+      ]
+    },
+    {
+      "incrementId": "INC-40",
+      "name": "Myntra v1 — Publish Connector (PUBLISH + VALIDATE + STATUS_SYNC)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-MYNTRA-001",
+          "title": "Scaffold MyntraConnector: credential capture, fashion validation rules, publishProduct, syncSubmissionStatus, normaliseError",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        },
+        {
+          "storyId": "ST-MYNTRA-002",
+          "title": "Register MyntraConnector in ConnectorRegistry + module, seed ConnectorDefinition row, add launch-policy entry, add CONNECTOR_SLUGS.MYNTRA constant",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        },
+        {
+          "storyId": "ST-MYNTRA-003",
+          "title": "Web: ConnectorCredentialFields for myntra (Merchant ID label, Secret Key, Warehouse ID); connectorStatusNote AM-gated note; MYNTRA error messages in setup/page.tsx and connectors/page.tsx; API: captureAndStoreMyntraCredentials in ConnectorInstallerService",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api",
+            "tsc --noEmit (apps/web)"
+          ]
+        },
+        {
+          "storyId": "ST-MYNTRA-004",
+          "title": "Integration tests: myntra-runtime-foundation.test.cjs (13 assertions: validateProduct fashion rules, normaliseError contract, validateCredentials with stub server 200/401/no-creds); fix getPlainCredential to use parseCredentialKeyVersion instead of parseInt",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "node apps/api/test/integration/myntra-runtime-foundation.test.cjs — 13/13 ok",
+            "npm run build --workspace @pim1/api"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-41",
+      "name": "Nykaa v1 — Export/Manual Connector (VALIDATE + EXCEL_EXPORT)",
+      "status": "completed",
+      "stories": [
+        {
+          "storyId": "ST-NYKAA-001",
+          "title": "Scaffold NykaaConnector: beauty/personal-care category templates, validation rules, XLSX export mirroring Meesho pattern",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        },
+        {
+          "storyId": "ST-NYKAA-002",
+          "title": "Register NykaaConnector in ConnectorRegistry + module, seed ConnectorDefinition row, add launch-policy entry, add CONNECTOR_SLUGS.NYKAA constant",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "npm run build --workspace @pim1/api"
+          ]
+        },
+        {
+          "storyId": "ST-NYKAA-003",
+          "title": "Web: connectorStatusNote for nykaa (portal-upload, 7–10 day QC) and nykaa error label in connectors/page.tsx",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "tsc --noEmit (apps/web)"
+          ]
+        },
+        {
+          "storyId": "ST-NYKAA-004",
+          "title": "Integration tests: nykaa-runtime-foundation.test.cjs (20 assertions: validateProduct beauty rules, normaliseError contract, generateExportFile XLSX structure/sheets/headers/hint-row/Upload Guide); myntra-nykaa-install-form.test.cjs (14 static assertions across setup/page.tsx, connectors/page.tsx, installer service)",
+          "status": "completed",
+          "locked": true,
+          "owner": "claude",
+          "commit": "HEAD",
+          "tests_passed": [
+            "node apps/api/test/integration/nykaa-runtime-foundation.test.cjs — 20/20 ok",
+            "node apps/web/test/integration/myntra-nykaa-install-form.test.cjs — 14/14 ok"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-42",
+      "name": "WooCommerce v1 — Connector Scaffold + Credential Model + App-Auth + Preflight + Local Validate",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs",
+        "prisma/seed/connector-definitions.sql"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-001",
+          "title": "WooCommerce connector scaffold: slug, capabilities, launchStage=manual, HTTPS-only site_url validation",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "89cf9629",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-002",
+          "title": "WooCommerce credential model: site_url + consumer_key + consumer_secret + webhook_secret; installer branch + HTTPS guard",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "89cf9629",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-003",
+          "title": "WooCommerce W1: validateProduct (local rules), normaliseError (9 codes), parseWebhookEvent (HMAC-SHA256), handleOAuthCallback (app-auth), _vexa_* meta_data keys",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "89cf9629",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-43",
+      "name": "WooCommerce W2 — Idempotent product push + category/tag resolution + additionalImages + updateProduct",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-004",
+          "title": "WooCommerce W2: idempotent upsert via _vexa_pim_product_id meta_key lookup; PUT on existing, POST on new",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "3c12038a",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-005",
+          "title": "WooCommerce W2: category + tag resolve-or-create via resolveTermIds; productType → WC category; product.tags → WC tags",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "3c12038a",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-006",
+          "title": "WooCommerce W2: updateProduct(ctx, product, externalRef); additionalImageUrls (up to 8); DRAFT status mapping",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "3c12038a",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-44",
+      "name": "WooCommerce W3+W4 — Variable products + tax class + IN market price",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-007",
+          "title": "WooCommerce W3: variable product type, buildVariationAttributes, upsertVariations (idempotent by SKU), per-variation _vexa_pim_product_id",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "3f51e954",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-008",
+          "title": "WooCommerce W4: resolveTaxClass (gstRate → zero-rate/reduced-rate/standard), resolvePricing (IN market price preferred), tax_class on product + variation",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "e7e43ded",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-009",
+          "title": "WooCommerce W3 validation: variant SKU uniqueness, price > 0, price ≤ MRP, HTTPS image per variation",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "b38add2f",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-45",
+      "name": "WooCommerce W5a — Per-installation HMAC + framework ctx extension",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connector-framework/connector.interface.ts",
+        "apps/api/src/connector-framework/connector-webhook-ingestion.service.ts",
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-010",
+          "title": "Framework: parseWebhookEvent interface accepts optional ctx?: { installationId: string }; ingestion service passes it",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "9dd4be70",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-011",
+          "title": "WooCommerce W5a: per-installation webhook_secret lookup via fetchCredentialPlaintext; fallback to PIM_WOOCOMMERCE_WEBHOOK_SECRET env var",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "9dd4be70",
+          "tests_passed": [
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-46",
+      "name": "WooCommerce CI fixture — Docker Compose + runtime foundation test",
+      "status": "completed",
+      "evidence": [
+        "docker/woocommerce/compose.yml",
+        "docker/woocommerce/setup.sh",
+        "apps/api/test/integration/woocommerce-runtime-foundation.test.cjs",
+        ".github/workflows/ci.yml",
+        "package.json"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-012",
+          "title": "Docker Compose WooCommerce fixture (MySQL 8 + WordPress 6.5 + wp-cli sidecar) with setup.sh: install WooCommerce, create REST API key pair, output WC_TEST_* env vars",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "d47a8227",
+          "tests_passed": [
+            "git diff HEAD~1 -- docker/woocommerce/"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-013",
+          "title": "WooCommerce runtime foundation test: 31 assertions via in-process HTTP stub — validateProduct (7), normaliseError (4), validateCredentials HTTPS guard (2), publishProduct POST/PUT idempotence (6), syncSubmissionStatus (4), parseWebhookEvent HMAC (5 + order-topic DPDP guard)",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "d47a8227",
+          "tests_passed": [
+            "node apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+          ]
+        },
+        {
+          "storyId": "ST-WOO-014",
+          "title": "CI: Myntra + Nykaa + WooCommerce runtime foundation tests added to build-and-verify job; web install-form tests added to DevOps contract block; woocommerce-integration job added (workflow_dispatch, unblocks W5b-W8)",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "d47a8227",
+          "tests_passed": [
+            "git diff HEAD~1 -- .github/workflows/ci.yml"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-47",
+      "name": "WooCommerce W5b — webhook health guard (disabled-webhook alarm)",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs",
+        "apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-015",
+          "title": "W5b: requiresWebhookSignatureVerification = true + checkWebhookHealth: query connectorWebhookEvent.findFirst, return WOO_WEBHOOK_POSSIBLY_DISABLED (severity: warning) when last event is >12h ago; new-install path returns null; syncSubmissionStatus appends warning to channelErrors on SUCCESS",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "83d0f244",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs",
+            "node apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-48",
+      "name": "WooCommerce W6 — pim_wins reconciliation job",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce-reconciliation.service.ts",
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/api/src/connector-framework/connector-framework.module.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-016",
+          "title": "W6: WooCommerceReconciliationService — 4h interval poller, queries SUCCESS submissions, reconcileSubmission drift detection (title/status/regular_price), re-publishes via updateProduct on drift. WOO_RECONCILE_DISABLED env guard. 7 new static assertions (39 total).",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "35f511ee",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-49",
+      "name": "WooCommerce W9 — _vexa_gst_applicable meta_data + schema doc",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "docs/connectors/woocommerce-vexa-meta-schema.md",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs",
+        "apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-017",
+          "title": "W9: _vexa_gst_applicable='yes' on product+variation meta_data when gstRate set. docs/connectors/woocommerce-vexa-meta-schema.md documents all 5 _vexa_* keys + Woo GST India / Webkul config notes. 5 new static assertions (44 total), 2 new runtime assertions (35 total). Phase 11 runtime test captures POST body and verifies meta_data keys.",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "9f8486b5",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-54",
+      "name": "WooCommerce W8 — brownfield import runtime phase 15",
+      "status": "completed",
+      "evidence": [
+        "apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-022",
+          "title": "Phase 15 (W8): listProductsPage stub handler (GET /products?page=N&per_page=N&status=any, X-WP-TotalPages header). Category→Product→Variant raw SQL inserts. importExistingProducts: linked=1 (primary _vexa_pim_product_id match), skuLinked=1 (WC sku fallback), total=2, unmatched=0. BROWNFIELD ConnectorSubmission row verified. 5 new runtime assertions (49 total). Zero TS errors.",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "c53218e8",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-53",
+      "name": "WooCommerce runtime phases 12-14 — W6/W10/W7 in-process coverage",
+      "status": "completed",
+      "evidence": [
+        "apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-021",
+          "title": "Phase 12 (W6): reconcileSubmission no-drift + title-drift. Phase 13 (W10): getInstallationHealth shape — credentialsValid:bool, webhookHealthIssue:null|{code}, recentSubmissions:{counts}. Phase 14 (W7): executeBulkPublish success=2 + checkpoint skips both on re-run. Stub extended with setProductExtraFields. Total runtime assertions: 44 (was 35). Zero TS errors.",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "dd985870",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/api/test/integration/woocommerce-runtime-foundation.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-52",
+      "name": "WooCommerce W8 — brownfield import + listProductsPage",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce-brownfield-import.service.ts",
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/api/src/connector-framework/connector-framework.module.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-020",
+          "title": "W8 static path: WooCommerceBrownfieldImportService BROWNFIELD_PAGE_SIZE=100, importExistingProducts(ctx, installationId, tenantKey) paginates via listProductsPage(X-WP-TotalPages), primary match _vexa_pim_product_id→Variant.skuCode, fallback WC sku→Variant.skuCode, idempotent upsert ConnectorSubmission(source=BROWNFIELD,status=SUCCESS). Module registered. 7 new static assertions (59 total). Docker pre-seeded WC product runtime tests remain gated on CI fixture.",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "ff74d010",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-51",
+      "name": "WooCommerce W7 — resumable bulk publish service",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce-bulk-publish.service.ts",
+        "apps/api/src/connector-framework/connector-framework.module.ts",
+        "apps/api/src/marketplace/marketplace.service.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-019",
+          "title": "W7 static path: WooCommerceBulkPublishService with BULK_BATCH_SIZE=100, executeBulkPublish(ctx, installationId, tenantKey, products), checkpoint via ConnectorSubmission(woo:pub:{productId}+SUCCESS), fault-isolated per-item errors. Lane policy woocommerce:{concurrency:2,minIntervalMs:400} in MarketplaceService. Module registered. 6 new static assertions (52 total). Docker fault-inject runtime tests remain gated on DevOps CI fixture.",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "bafc7d15",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
+      ]
+    },
+    {
+      "incrementId": "INC-50",
+      "name": "WooCommerce W10 — installation health summary",
+      "status": "completed",
+      "evidence": [
+        "apps/api/src/connectors/woocommerce/woocommerce.connector.ts",
+        "apps/web/test/integration/woocommerce-install-form.test.cjs"
+      ],
+      "stories": [
+        {
+          "storyId": "ST-WOO-018",
+          "title": "W10: getInstallationHealth(ctx) aggregates credentialsValid + webhookHealthIssue (W5b) + recentSubmissions (48h, success/error/pending/lastSyncAt). loadRecentSubmissionSummary queries connector_submissions.findMany. Non-fatal sub-checks. 2 new static assertions (46 total). Admin UI dashboard deferred (DevOps fixture required).",
+          "status": "completed",
+          "locked": true,
+          "owner": "codex",
+          "commit": "a679d7e5",
+          "tests_passed": [
+            "npx tsc -p apps/api/tsconfig.build.json --noEmit",
+            "node apps/web/test/integration/woocommerce-install-form.test.cjs"
+          ]
+        }
       ]
     }
   ]

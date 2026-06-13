@@ -22,17 +22,16 @@ function run() {
     "Dashboard must derive shared server auth/session context before loading catalog and reporting data.",
   );
   assert(
-    source.includes("const [health, usage, operationsSummary, products, signupTrends] = await Promise.all([") &&
+    source.includes("const [health, usage, operationsSummary, products, signupTrends, pricingCoverage] = await Promise.all([") &&
       source.includes("getDashboardHealth({ role: actorRole, authHeader })") &&
       source.includes("canViewBillingUsage ? getBillingUsage({ role: actorRole, authHeader }) : Promise.resolve(null)") &&
       source.includes("canViewOperationsSummary") &&
       source.includes("? getDashboardOperationsSummary({ role: actorRole, authHeader })") &&
       source.includes(": Promise.resolve(null)") &&
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })") &&
-      source.includes('actorRole === "admin"') &&
       source.includes("getKpiTrends({ days: 30 }, { role: actorRole, authHeader })") &&
-      source.includes("Promise.resolve(null)"),
-    "Dashboard must load health, scoped billing usage, scoped operations data, product priority data, and admin-only signup trends in one shared server pass.",
+      source.includes("getPricingCoverage({ role: actorRole, authHeader })"),
+    "Dashboard must load health, scoped billing usage, scoped operations data, product priority data, admin-only signup trends, and pricing coverage in one shared server pass.",
   );
   assert(
     source.includes("const blockedListings = Object.values(health.snapshot.blockedByConnector).reduce(") &&

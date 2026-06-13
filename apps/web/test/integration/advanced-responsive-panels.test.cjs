@@ -29,7 +29,7 @@ function run() {
   );
   assert(
     validationSource.includes("mobileHide: true") &&
-      validationSource.includes("`${issue.fieldPath}: ${issue.message}`") &&
+      validationSource.includes("humaniseFieldPath(issue.fieldPath)") &&
       validationSource.includes("Tap the message to jump to the affected field."),
     "Validation issue panel must fold field context into the mobile message action so the field column can be safely hidden on smaller screens.",
   );

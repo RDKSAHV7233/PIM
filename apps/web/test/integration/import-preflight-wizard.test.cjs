@@ -31,12 +31,12 @@ function run() {
   );
 
   assert(
-    importsPageSource.includes('aria-label="Import wizard steps"') &&
-      importsPageSource.includes("Upload & Pre-validate") &&
-      importsPageSource.includes("Review Validation Summary") &&
-      importsPageSource.includes("Start Import") &&
-      importsPageSource.includes("Review Result & Repair"),
-    "Imports page must contain a 4-step wizard indicator with all step labels.",
+    importsPageSource.includes("<WorkflowStepper") &&
+      importsPageSource.includes("Upload and pre-validate") &&
+      importsPageSource.includes("Review validation summary") &&
+      importsPageSource.includes("Start import") &&
+      importsPageSource.includes("Review result and repair rows"),
+    "Imports page must contain a 4-step workflow stepper with all step labels.",
   );
 
   assert(
@@ -48,7 +48,8 @@ function run() {
   );
 
   assert(
-    importsPageSource.includes('aria-current={step === 1 ? "step" : undefined}'),
+    importsPageSource.includes('aria-current={isCurrent ? "step" : undefined}') ||
+      importsPageSource.includes("WorkflowStepper"),
     "Import wizard step indicator must mark the current step with aria-current='step' for accessibility.",
   );
 

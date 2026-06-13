@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const ADMIN_USERS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "page.tsx");
+const ADMIN_USERS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "users", "_components", "admin-users-page-content.tsx");
 const ADMIN_WEBHOOKS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "webhooks", "page.tsx");
 
 function assert(condition, message) {
