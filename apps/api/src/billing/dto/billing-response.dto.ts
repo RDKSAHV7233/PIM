@@ -13,6 +13,69 @@ class PlanUsageLimitOnlyDto {
   limit!: number;
 }
 
+class PlanMetadataLimitsDto {
+  @ApiProperty({ example: 500 })
+  skus!: number;
+
+  @ApiProperty({ example: 500 })
+  submissions!: number;
+
+  @ApiProperty({ example: 3 })
+  users!: number;
+
+  @ApiProperty({ example: "3 (admin, editor, viewer)" })
+  roles!: string;
+
+  @ApiProperty({ example: 5 })
+  storageGb!: number;
+
+  @ApiProperty({ example: 2 })
+  connectorInstallations!: number;
+
+  @ApiProperty({ example: 1 })
+  accountsPerConnector!: number;
+
+  @ApiProperty({ example: 0 })
+  apiKeys!: number;
+
+  @ApiProperty({ example: 0 })
+  outboundWebhooks!: number;
+
+  @ApiProperty({ example: 2000 })
+  importRowsPerJob!: number;
+}
+
+export class PlanMetadataDto {
+  @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"], example: "STARTER" })
+  tier!: string;
+
+  @ApiProperty({ example: "Starter" })
+  label!: string;
+
+  @ApiProperty({ example: "₹9,999/month" })
+  price!: string;
+
+  @ApiProperty({ example: "₹15,000-₹25,000 optional", nullable: true })
+  setupFee!: string | null;
+
+  @ApiProperty({ example: "Small serious seller" })
+  tagline!: string;
+
+  @ApiProperty({ type: () => PlanMetadataLimitsDto })
+  limits!: PlanMetadataLimitsDto;
+
+  @ApiProperty({ type: Object, example: {} })
+  unlimited!: Record<string, boolean>;
+
+  @ApiProperty({ type: [String], example: ["Product catalog management"] })
+  features!: string[];
+}
+
+export class PlanMetadataListDto {
+  @ApiProperty({ type: () => [PlanMetadataDto] })
+  items!: PlanMetadataDto[];
+}
+
 export class PlanProfileSummaryDto {
   @ApiProperty({ example: "vexa-demo" })
   tenantKey!: string;
@@ -135,6 +198,9 @@ export class PlanUpgradeRequestSummaryDto {
   @ApiProperty({ enum: ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"], example: "STARTER" })
   currentPlanTier!: string;
 
+  @ApiProperty({ enum: ["STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"], example: "GROWTH", nullable: true })
+  requestedPlanTier!: string | null;
+
   @ApiProperty({ enum: ["trial", "active_paid", "past_due", "cancelled"], example: "trial" })
   currentBillingStatus!: string;
 
@@ -146,6 +212,9 @@ export class PlanUpgradeRequestSummaryDto {
 
   @ApiProperty({ example: "admin_plan" })
   source!: string;
+
+  @ApiProperty({ type: Object, nullable: true })
+  usageSnapshot!: Record<string, unknown> | null;
 
   @ApiProperty({ example: null, nullable: true })
   resolvedAt!: string | null;

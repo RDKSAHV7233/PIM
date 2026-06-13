@@ -98,6 +98,10 @@ function DashboardUnavailableState() {
   );
 }
 
+function hasSignupAnalyticsAccess(adminBoundaryRoles: readonly string[]): boolean {
+  return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+}
+
 function formatPercent(value: number): string {
   if (!Number.isFinite(value)) {
     return "0%";
@@ -225,9 +229,10 @@ function buildSignupSparklineRows(signupTrends: NonNullable<Awaited<ReturnType<t
 }
 
 export default async function DashboardPage() {
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   const canViewOperationsSummary = canEditWorkspace(actorRole);
   const canViewBillingUsage = canViewOperationsSummary;
+  const canViewSignupAnalytics = hasSignupAnalyticsAccess(adminBoundaryRoles);
 
   try {
     const [health, usage, operationsSummary, products, signupTrends, pricingCoverage] = await Promise.all([
@@ -237,7 +242,7 @@ export default async function DashboardPage() {
         ? getDashboardOperationsSummary({ role: actorRole, authHeader })
         : Promise.resolve(null),
       getProductList({ slim: true }, { role: actorRole, authHeader }),
-      actorRole === "admin"
+      canViewSignupAnalytics
         ? getKpiTrends({ days: 30 }, { role: actorRole, authHeader })
         : Promise.resolve(null),
       // Non-fatal: pricing may not be configured yet; null = skip the KPI card.
@@ -290,8 +295,8 @@ export default async function DashboardPage() {
       : null;
     const signupSparklineRows = signupTrends ? buildSignupSparklineRows(signupTrends) : [];
     const signupDrilldownHref = signupTrends
-      ? `/admin/plan?days=${signupTrends.rangeDays}#signup-conversion`
-      : "/admin/plan";
+      ? `/admin/commercial?days=${signupTrends.rangeDays}#signup-conversion`
+      : "/admin/commercial";
     // Pricing coverage — null when pricing is not yet configured.
     const pricingConfigured = pricingCoverage !== null && pricingCoverage.totalActivePriceLists > 0;
     const pricingCoveragePercent = pricingCoverage?.defaultListCoverage ?? 0;
@@ -664,7 +669,7 @@ export default async function DashboardPage() {
           </section>
         ) : null}
 
-        {actorRole === "admin" && signupTrends ? (
+        {canViewSignupAnalytics && signupTrends ? (
           <section className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>

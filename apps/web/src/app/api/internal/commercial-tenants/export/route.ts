@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 import { getServerSessionClaims } from "@/lib/server-session";
 
-const OPS_BOUNDARY_ROLES = ["product_admin", "system_admin", "super_admin"];
-
 export async function GET(request: Request) {
   const claims = await getServerSessionClaims();
   const role = String(claims?.role ?? "").trim();
   const boundaryRoles = claims?.adminBoundaryRoles ?? [];
-  const isOpsOperator = boundaryRoles.some((r) => OPS_BOUNDARY_ROLES.includes(r));
+  const isOpsOperator = boundaryRoles.includes("system_admin") || boundaryRoles.includes("super_admin");
 
   if (!claims?.sub || role !== "admin" || !isOpsOperator || process.env.APP_ENV === "production") {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
@@ -33,7 +31,7 @@ export async function GET(request: Request) {
       Accept: "text/csv",
       "x-pim-commercial-ops-token": commercialOpsToken,
       "x-pim-operator-id": claims.sub,
-      "x-pim-operator-role": role,
+      "x-pim-operator-role": boundaryRoles.includes("super_admin") ? "super_admin" : "system_admin",
     },
     cache: "no-store",
   });

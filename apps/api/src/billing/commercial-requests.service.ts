@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
 import { PrismaDirectService } from "../prisma/prisma-direct.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -8,6 +9,7 @@ const ACTIVE_COMMERCIAL_REQUEST_STATUSES = ["open", "acknowledged"] as const;
 
 type CommercialRequestStatus = (typeof COMMERCIAL_REQUEST_STATUSES)[number];
 type CommercialRequestSlaFilter = "attention";
+type RequestedPlanTier = "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE";
 
 export interface CommercialRequestSummary {
   id: string;
@@ -19,10 +21,12 @@ export interface CommercialRequestSummary {
   requestedBy: string;
   requesterRole: string;
   currentPlanTier: string;
+  requestedPlanTier: string | null;
   currentBillingStatus: string;
   currentAccessStatus: string;
   notes: string | null;
   source: string;
+  usageSnapshot: Record<string, unknown> | null;
   resolvedAt: string | null;
   resolvedBy: string | null;
   createdAt: string;
@@ -33,8 +37,10 @@ export interface CreateUpgradeRequestInput {
   requestedBy: string;
   requesterRole: string;
   currentPlanTier: string;
+  requestedPlanTier?: string | null;
   currentBillingStatus: string;
   currentAccessStatus: string;
+  usageSnapshot?: Record<string, unknown> | null;
   notes?: string | null;
   source?: string | null;
 }
@@ -84,8 +90,10 @@ interface CommercialRequestListRow {
   requestedBy: string;
   requesterRole: string;
   currentPlanTier: string;
+  requestedPlanTier: string | null;
   currentBillingStatus: string;
   currentAccessStatus: string;
+  usageSnapshot: Prisma.JsonValue | null;
   notes: string | null;
   source: string;
   resolvedAt: Date | string | null;
@@ -102,8 +110,10 @@ interface CommercialRequestRow {
   requestedBy: string;
   requesterRole: string;
   currentPlanTier: string;
+  requestedPlanTier: string | null;
   currentBillingStatus: string;
   currentAccessStatus: string;
+  usageSnapshot: Prisma.JsonValue | null;
   notes: string | null;
   source: string;
   resolvedAt: Date | null;
@@ -148,6 +158,7 @@ export class CommercialRequestsService {
       return { item: existing, created: false };
     }
 
+    const usageSnapshot = this.normalizeUsageSnapshot(input.usageSnapshot);
     const created = await this.prisma.tenant(tenantKey).tenantCommercialRequest.create({
       data: {
         tenantKey,
@@ -156,8 +167,10 @@ export class CommercialRequestsService {
         requestedBy: String(input.requestedBy ?? "").trim(),
         requesterRole: String(input.requesterRole ?? "").trim() || "admin",
         currentPlanTier: String(input.currentPlanTier ?? "").trim().toUpperCase() || "TRIAL",
+        requestedPlanTier: this.normalizeRequestedPlanTier(input.requestedPlanTier),
         currentBillingStatus: String(input.currentBillingStatus ?? "").trim().toLowerCase() || "trial",
         currentAccessStatus: String(input.currentAccessStatus ?? "").trim().toLowerCase() || "active",
+        ...(usageSnapshot ? { usageSnapshot } : {}),
         notes: this.normalizeOptionalText(input.notes, 1000),
         source: this.normalizeSource(input.source),
       },
@@ -211,8 +224,10 @@ export class CommercialRequestsService {
         requestedBy: true,
         requesterRole: true,
         currentPlanTier: true,
+        requestedPlanTier: true,
         currentBillingStatus: true,
         currentAccessStatus: true,
+        usageSnapshot: true,
         notes: true,
         source: true,
         resolvedAt: true,
@@ -401,8 +416,10 @@ export class CommercialRequestsService {
         "requestedBy",
         "requesterRole",
         "currentPlanTier",
+        "requestedPlanTier",
         "currentBillingStatus",
         "currentAccessStatus",
+        "usageSnapshot",
         "source",
         "createdAt",
         "updatedAt",
@@ -420,8 +437,10 @@ export class CommercialRequestsService {
           item.requestedBy,
           item.requesterRole,
           item.currentPlanTier,
+          item.requestedPlanTier ?? "",
           item.currentBillingStatus,
           item.currentAccessStatus,
+          item.usageSnapshot ? JSON.stringify(item.usageSnapshot) : "",
           item.source,
           item.createdAt,
           item.updatedAt,
@@ -457,12 +476,14 @@ export class CommercialRequestsService {
       requestedBy: String(record.requestedBy ?? "").trim(),
       requesterRole: String(record.requesterRole ?? "").trim() || "admin",
       currentPlanTier: String(record.currentPlanTier ?? "STARTER").trim().toUpperCase() || "STARTER",
+      requestedPlanTier: this.normalizeRequestedPlanTier(record.requestedPlanTier),
       currentBillingStatus:
         String(record.currentBillingStatus ?? "trial").trim().toLowerCase() || "trial",
       currentAccessStatus:
         String(record.currentAccessStatus ?? "active").trim().toLowerCase() || "active",
       notes: this.normalizeOptionalText(record.notes, 1000),
       source: this.normalizeSource(record.source),
+      usageSnapshot: this.normalizeUsageSnapshotForOutput(record.usageSnapshot),
       resolvedAt: record.resolvedAt ? record.resolvedAt.toISOString() : null,
       resolvedBy: this.normalizeOptionalText(record.resolvedBy, 200),
       createdAt: record.createdAt.toISOString(),
@@ -481,12 +502,14 @@ export class CommercialRequestsService {
       requestedBy: String(row.requestedBy ?? "").trim(),
       requesterRole: String(row.requesterRole ?? "").trim() || "admin",
       currentPlanTier: String(row.currentPlanTier ?? "STARTER").trim().toUpperCase() || "STARTER",
+      requestedPlanTier: this.normalizeRequestedPlanTier(row.requestedPlanTier),
       currentBillingStatus:
         String(row.currentBillingStatus ?? "trial").trim().toLowerCase() || "trial",
       currentAccessStatus:
         String(row.currentAccessStatus ?? "active").trim().toLowerCase() || "active",
       notes: this.normalizeOptionalText(row.notes, 1000),
       source: this.normalizeSource(row.source),
+      usageSnapshot: this.normalizeUsageSnapshotForOutput(row.usageSnapshot),
       resolvedAt: this.toIsoString(row.resolvedAt),
       resolvedBy: this.normalizeOptionalText(row.resolvedBy, 200),
       createdAt: this.toIsoString(row.createdAt) ?? new Date(0).toISOString(),
@@ -523,6 +546,27 @@ export class CommercialRequestsService {
     return normalized ? normalized.slice(0, 80) : "admin_plan";
   }
 
+  private normalizeRequestedPlanTier(value: string | null | undefined): RequestedPlanTier | null {
+    const normalized = String(value ?? "").trim().toUpperCase();
+    return ["STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(normalized)
+      ? (normalized as RequestedPlanTier)
+      : null;
+  }
+
+  private normalizeUsageSnapshot(value: Record<string, unknown> | null | undefined): Prisma.JsonObject | undefined {
+    if (!value || Array.isArray(value) || typeof value !== "object") {
+      return undefined;
+    }
+    return value as Prisma.JsonObject;
+  }
+
+  private normalizeUsageSnapshotForOutput(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+    if (!value || Array.isArray(value) || typeof value !== "object") {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
   private toIsoString(value: Date | string | null | undefined): string | null {
     if (!value) {
       return null;
@@ -544,8 +588,10 @@ export class CommercialRequestsService {
         requestedBy: true,
         requesterRole: true,
         currentPlanTier: true,
+        requestedPlanTier: true,
         currentBillingStatus: true,
         currentAccessStatus: true,
+        usageSnapshot: true,
         notes: true,
         source: true,
         resolvedAt: true,

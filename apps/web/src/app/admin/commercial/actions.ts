@@ -8,12 +8,11 @@ import {
   updateUpgradeRequestStatus,
 } from "@/lib/api/commercial-ops";
 
-async function requireAdmin(): Promise<string> {
-  const { actorRole, adminBoundaryRoles } = await getServerSession();
-  if (actorRole !== "admin" || !adminBoundaryRoles.some((r) => ["product_admin", "system_admin", "super_admin"].includes(r))) {
-    throw new Error("Commercial ops requires product_admin or system_admin role");
+async function requireCommercialOpsAdmin(): Promise<void> {
+  const { adminBoundaryRoles } = await getServerSession();
+  if (!adminBoundaryRoles.includes("system_admin") && !adminBoundaryRoles.includes("super_admin")) {
+    throw new Error("System admin boundary role required");
   }
-  return actorRole;
 }
 
 function resolveOperatorId(formData: FormData): string {
@@ -21,7 +20,7 @@ function resolveOperatorId(formData: FormData): string {
 }
 
 export async function changePlanTierAction(formData: FormData) {
-  await requireAdmin();
+  await requireCommercialOpsAdmin();
   const tenantKey = String(formData.get("tenantKey") ?? "").trim();
   const planTier = String(formData.get("planTier") ?? "").trim().toUpperCase();
   const operatorId = resolveOperatorId(formData);
@@ -43,7 +42,7 @@ export async function changePlanTierAction(formData: FormData) {
 }
 
 export async function resolveUpgradeRequestAction(formData: FormData) {
-  await requireAdmin();
+  await requireCommercialOpsAdmin();
   const requestId = String(formData.get("requestId") ?? "").trim();
   const status = String(formData.get("status") ?? "resolved").trim();
   const operatorId = resolveOperatorId(formData);

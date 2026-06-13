@@ -298,7 +298,7 @@ All 5 smoke spec files should pass. Performance baseline should be recorded. Gat
 | 3 | STAGE3_* secrets in production env | Ops | ❌ Pending | |
 | 4 | Stripe products + price ID env vars | Ops/PO | ❌ Pending | |
 | 5 | Email Meesho for API credentials | PO | ❌ Pending | |
-| 6 | Configure media storage | Ops | ⚠️ Option B (MEDIA_LOCAL_FALLBACK) code-ready — **mount Railway volume at /app/storage/media + set MEDIA_LOCAL_FALLBACK=true in Railway vars** | |
+| 6 | Configure media storage | Ops | ✅ Option B active — volume at /app/storage/media + MEDIA_LOCAL_FALLBACK=true set in Railway | 2026-06-12 |
 | 7 | Deploy Tax Attributes migration + seed-tax-regimes | Ops | ✅ Seed automated in deploy pipeline | |
 | 8 | Set `STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED=true` in staging secrets | Ops | ❌ Pending | |
 | 9 | Verify plan-limits seed post-migration (TRIAL row + correct limits) | Ops | ❌ Blocked on #1 | |

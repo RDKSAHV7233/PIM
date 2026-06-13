@@ -47,9 +47,12 @@ interface UpgradeRequest {
   tenantKey: string;
   status: string;
   currentPlanTier: string;
+  requestedPlanTier: string | null;
   currentBillingStatus: string;
+  currentAccessStatus: string;
   requestedBy: string;
   notes: string | null;
+  usageSnapshot: Record<string, unknown> | null;
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;

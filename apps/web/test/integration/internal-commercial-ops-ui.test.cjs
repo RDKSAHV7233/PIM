@@ -121,19 +121,21 @@ function run() {
   );
   assert(
     exportRouteSource.includes("getServerSessionClaims") &&
-      exportRouteSource.includes("adminBoundaryRoles") &&
+      exportRouteSource.includes('boundaryRoles.includes("system_admin")') &&
+      exportRouteSource.includes('boundaryRoles.includes("super_admin")') &&
       exportRouteSource.includes("/billing/internal/upgrade-requests/export") &&
       exportRouteSource.includes('"x-pim-commercial-ops-token"') &&
       exportRouteSource.includes('"Content-Disposition"'),
-    "Internal commercial export route must enforce ops boundary role and proxy the hidden CSV endpoint.",
+    "Internal commercial export route must enforce system/super admin boundary role and proxy the hidden CSV endpoint.",
   );
   assert(
     tenantExportRouteSource.includes("getServerSessionClaims") &&
-      tenantExportRouteSource.includes("adminBoundaryRoles") &&
+      tenantExportRouteSource.includes('boundaryRoles.includes("system_admin")') &&
+      tenantExportRouteSource.includes('boundaryRoles.includes("super_admin")') &&
       tenantExportRouteSource.includes("/billing/internal/tenants/export") &&
       tenantExportRouteSource.includes('"x-pim-commercial-ops-token"') &&
       tenantExportRouteSource.includes('"Content-Disposition"'),
-    "Internal commercial tenant export route must enforce ops boundary role and proxy the hidden CSV endpoint.",
+    "Internal commercial tenant export route must enforce system/super admin boundary role and proxy the hidden CSV endpoint.",
   );
   assert(
     apiSource.includes("/billing/internal/overview") &&
@@ -161,8 +163,8 @@ function run() {
             "internal_commercial_ops_page_exposes_search_and_queue_controls",
             "internal_commercial_ops_page_exposes_request_lifecycle_actions",
             "internal_commercial_ops_actions_preserve_feedback_state",
-            "internal_commercial_export_route_proxies_hidden_csv_endpoint",
-            "internal_commercial_tenant_export_route_proxies_hidden_csv_endpoint",
+            "internal_commercial_export_route_requires_boundary_role",
+            "internal_commercial_tenant_export_route_requires_boundary_role",
             "internal_billing_api_helper_exposes_commercial_overview_endpoint",
             "internal_billing_api_helper_targets_hidden_ops_endpoints",
           ],

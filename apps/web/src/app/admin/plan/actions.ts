@@ -30,6 +30,7 @@ function withStatus(basePath: string, key: string, status: string) {
 }
 
 export async function requestPlanUpgradeAction(formData: FormData) {
+  const requestedPlanTier = String(formData.get("requestedPlanTier") ?? "").trim().toUpperCase();
   const notes = String(formData.get("notes") ?? "").trim();
   const source = String(formData.get("source") ?? "admin_plan").trim();
   const returnTo = resolveReturnTo(formData);
@@ -37,6 +38,7 @@ export async function requestPlanUpgradeAction(formData: FormData) {
   try {
     const response = await createBillingUpgradeRequest(
       {
+        requestedPlanTier: requestedPlanTier || undefined,
         notes: notes || undefined,
         source: source || "admin_plan",
       },

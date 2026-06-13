@@ -484,6 +484,19 @@ paths:
       summary: Get current tenant plan usage
       tags: &a8
         - Billing
+  /api/v1/billing/plans:
+    get:
+      operationId: BillingController_plans
+      parameters: []
+      responses:
+        "200":
+          description: Plan metadata fetched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanMetadataListDto"
+      summary: Get plan metadata and commercial limits
+      tags: *a8
   /api/v1/billing/plan-profile:
     get:
       operationId: BillingController_planProfile
@@ -3994,6 +4007,104 @@ components:
         - outboundWebhooks
         - importRowsPerJob
         - profile
+    PlanMetadataLimitsDto:
+      type: object
+      properties:
+        skus:
+          type: number
+          example: 500
+        submissions:
+          type: number
+          example: 500
+        users:
+          type: number
+          example: 3
+        roles:
+          type: string
+          example: 3 (admin, editor, viewer)
+        storageGb:
+          type: number
+          example: 5
+        connectorInstallations:
+          type: number
+          example: 2
+        accountsPerConnector:
+          type: number
+          example: 1
+        apiKeys:
+          type: number
+          example: 0
+        outboundWebhooks:
+          type: number
+          example: 0
+        importRowsPerJob:
+          type: number
+          example: 2000
+      required:
+        - skus
+        - submissions
+        - users
+        - roles
+        - storageGb
+        - connectorInstallations
+        - accountsPerConnector
+        - apiKeys
+        - outboundWebhooks
+        - importRowsPerJob
+    PlanMetadataDto:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum:
+            - TRIAL
+            - STARTER
+            - GROWTH
+            - BUSINESS
+            - ENTERPRISE
+          example: STARTER
+        label:
+          type: string
+          example: Starter
+        price:
+          type: string
+          example: ₹9,999/month
+        setupFee:
+          type: object
+          example: ₹15,000-₹25,000 optional
+          nullable: true
+        tagline:
+          type: string
+          example: Small serious seller
+        limits:
+          $ref: "#/components/schemas/PlanMetadataLimitsDto"
+        unlimited:
+          type: object
+          example: {}
+        features:
+          example:
+            - Product catalog management
+          type: array
+          items:
+            type: string
+      required:
+        - tier
+        - label
+        - price
+        - setupFee
+        - tagline
+        - limits
+        - unlimited
+        - features
+    PlanMetadataListDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanMetadataDto"
+      required:
+        - items
     UpdateBillingContactDto:
       type: object
       properties: {}
@@ -4040,6 +4151,15 @@ components:
             - BUSINESS
             - ENTERPRISE
           example: STARTER
+        requestedPlanTier:
+          type: string
+          enum:
+            - STARTER
+            - GROWTH
+            - BUSINESS
+            - ENTERPRISE
+          example: GROWTH
+          nullable: true
         currentBillingStatus:
           type: string
           enum:
@@ -4061,6 +4181,9 @@ components:
         source:
           type: string
           example: admin_plan
+        usageSnapshot:
+          type: object
+          nullable: true
         resolvedAt:
           type: object
           example: null
@@ -4085,10 +4208,12 @@ components:
         - requestedBy
         - requesterRole
         - currentPlanTier
+        - requestedPlanTier
         - currentBillingStatus
         - currentAccessStatus
         - notes
         - source
+        - usageSnapshot
         - resolvedAt
         - resolvedBy
         - createdAt

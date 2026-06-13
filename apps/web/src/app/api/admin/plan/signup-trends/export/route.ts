@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getKpiTrends } from "@/lib/api";
-import { getServerActorRole } from "@/lib/server-session";
+import { getServerSession } from "@/lib/server-session";
 import { resolveBearerToken } from "../../../../_auth";
 
 function resolveTrendDays(input: string | null): number {
@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "MISSING_AUTH_TOKEN" }, { status: 401 });
   }
 
-  const role = await getServerActorRole();
-  if (role !== "admin") {
+  const { actorRole: role, adminBoundaryRoles } = await getServerSession();
+  if (!adminBoundaryRoles.includes("system_admin") && !adminBoundaryRoles.includes("super_admin")) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 

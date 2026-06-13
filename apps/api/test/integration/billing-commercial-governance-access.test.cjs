@@ -295,6 +295,30 @@ async function run() {
     const token = String(loginResult.payload?.accessToken ?? "");
     assert(token.length > 10, "expected access token before suspension");
 
+    const paidPlanPromotion = await apiRequest(
+      baseUrl,
+      "POST",
+      "/billing/internal/plan-tier",
+      null,
+      {
+        tenantKey: tenantId,
+        planTier: "GROWTH",
+      },
+      {
+        "x-pim-commercial-ops-token": commercialToken,
+        "x-pim-operator-id": "ops-commercial",
+        "x-pim-operator-role": "commercial_ops",
+      },
+    );
+    assert(
+      paidPlanPromotion.status === 200 || paidPlanPromotion.status === 201,
+      `paid plan promotion failed: ${JSON.stringify(paidPlanPromotion)}`,
+    );
+    assert(
+      String(paidPlanPromotion.payload?.planTier ?? "") === "GROWTH",
+      `expected paid plan promotion payload=${JSON.stringify(paidPlanPromotion.payload)}`,
+    );
+
     const apiKeyCreate = await apiRequest(baseUrl, "POST", "/admin/api-keys", token, {
       label: `governance-${runId}`,
       role: "viewer",

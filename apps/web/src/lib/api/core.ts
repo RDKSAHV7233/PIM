@@ -554,6 +554,32 @@ export interface PlanUsageResponse {
   };
 }
 
+export interface PlanMetadata {
+  tier: "TRIAL" | "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string;
+  label: string;
+  price: string;
+  setupFee: string | null;
+  tagline: string;
+  limits: {
+    skus: number;
+    submissions: number;
+    users: number;
+    roles: string;
+    storageGb: number;
+    connectorInstallations: number;
+    accountsPerConnector: number;
+    apiKeys: number;
+    outboundWebhooks: number;
+    importRowsPerJob: number;
+  };
+  unlimited: Record<string, boolean>;
+  features: string[];
+}
+
+export interface PlanMetadataListResponse {
+  items: PlanMetadata[];
+}
+
 export interface PlanUpgradeRequest {
   id: string;
   tenantKey: string;
@@ -563,11 +589,13 @@ export interface PlanUpgradeRequest {
   status: "open" | "acknowledged" | "resolved" | "cancelled" | string;
   requestedBy: string;
   requesterRole: AppRole | string;
-  currentPlanTier: "STARTER" | "GROWTH" | "ENTERPRISE" | string;
+  currentPlanTier: "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string;
+  requestedPlanTier: "STARTER" | "GROWTH" | "BUSINESS" | "ENTERPRISE" | string | null;
   currentBillingStatus: "trial" | "active_paid" | "past_due" | "cancelled" | string;
   currentAccessStatus: "active" | "suspended" | string;
   notes: string | null;
   source: string;
+  usageSnapshot: Record<string, unknown> | null;
   resolvedAt: string | null;
   resolvedBy: string | null;
   createdAt: string;

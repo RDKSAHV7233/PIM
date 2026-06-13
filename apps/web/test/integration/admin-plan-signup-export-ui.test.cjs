@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const PLAN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "plan", "page.tsx");
+const COMMERCIAL_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "commercial", "page.tsx");
 const SIGNUP_CONVERSION = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "plan", "_components", "signup-conversion.tsx");
 const EXPORT_ROUTE = path.join(
   REPO_ROOT,
@@ -27,19 +27,21 @@ function assert(condition, message) {
 }
 
 function run() {
-  const planSource = fs.readFileSync(PLAN_PAGE, "utf8");
+  const commercialSource = fs.readFileSync(COMMERCIAL_PAGE, "utf8");
   const conversionSource = fs.readFileSync(SIGNUP_CONVERSION, "utf8");
   const routeSource = fs.readFileSync(EXPORT_ROUTE, "utf8");
 
   assert(
-    planSource.includes("const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;") &&
+    commercialSource.includes("const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;") &&
       conversionSource.includes("Export CSV"),
-    "Plan page must expose the signup trends CSV export link.",
+    "Commercial Ops page must expose the signup trends CSV export link.",
   );
   assert(
-    routeSource.includes('if (role !== "admin")') &&
+    routeSource.includes("getServerSession") &&
+      routeSource.includes('adminBoundaryRoles.includes("system_admin")') &&
+      routeSource.includes('adminBoundaryRoles.includes("super_admin")') &&
       routeSource.includes('return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });'),
-    "Signup trend export route must require admin role.",
+    "Signup trend export route must require system/super admin boundary role.",
   );
   assert(
     routeSource.includes("date,signups,verified,verification_rate,median_verify_hours") &&
@@ -52,8 +54,8 @@ function run() {
       {
         status: "ok",
         validated: [
-          "plan_page_links_signup_trend_csv_export",
-          "signup_trend_export_route_is_admin_guarded",
+          "commercial_ops_links_signup_trend_csv_export",
+          "signup_trend_export_route_is_boundary_guarded",
           "signup_trend_export_route_emits_expected_csv_shape",
         ],
         checkedAt: new Date().toISOString(),
@@ -67,7 +69,7 @@ function run() {
 try {
   run();
 } catch (error) {
-  console.error("Admin plan signup export UI test failed:");
+  console.error("Admin signup export UI test failed:");
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }

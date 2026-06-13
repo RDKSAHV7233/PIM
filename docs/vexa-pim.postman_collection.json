@@ -1153,6 +1153,31 @@
           }
         },
         {
+          "name": "Get plan metadata and commercial limits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/billing/plans",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "billing",
+                "plans"
+              ]
+            },
+            "description": "Get plan metadata and commercial limits"
+          }
+        },
+        {
           "name": "Get current tenant plan profile",
           "request": {
             "method": "GET",

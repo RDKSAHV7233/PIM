@@ -26,7 +26,7 @@ export function canViewAdminNavigationItem(
     return role === "admin" || role === "editor" || role === "connector_admin" || isSystemAdmin || isProductAdmin;
   }
   if (audience === "system_admin_gated") {
-    return role === "admin" || isSystemAdmin;
+    return isSystemAdmin;
   }
   // "admin"
   return role === "admin" || isSystemAdmin;

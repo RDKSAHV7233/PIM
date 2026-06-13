@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type {
   ApiRequestOptions,
+  PlanMetadataListResponse,
   PlanUpgradeRequestCreateResponse,
   PlanUpgradeRequestLookupResponse,
   PlanUsageResponse,
@@ -15,12 +16,16 @@ export async function getBillingPlanProfile(options?: ApiRequestOptions) {
   return fetchJson<PlanUsageResponse["profile"]>("/billing/plan-profile", undefined, options);
 }
 
+export async function getBillingPlans(options?: ApiRequestOptions) {
+  return fetchJson<PlanMetadataListResponse>("/billing/plans", undefined, options);
+}
+
 export async function getBillingUpgradeRequest(options?: ApiRequestOptions) {
   return fetchJson<PlanUpgradeRequestLookupResponse>("/billing/upgrade-request", undefined, options);
 }
 
 export async function createBillingUpgradeRequest(
-  body: { notes?: string; source?: string },
+  body: { requestedPlanTier?: string; notes?: string; source?: string },
   options?: ApiRequestOptions,
 ) {
   return postJson<PlanUpgradeRequestCreateResponse>("/billing/upgrade-request", body, options);

@@ -10,6 +10,7 @@ interface UpgradeRequest {
   status: string;
   notes?: string | null;
   requestedBy: string;
+  requestedPlanTier?: string | null;
   createdAt: string;
 }
 
@@ -48,6 +49,15 @@ function describeUpgradeRequest(request: UpgradeRequest) {
   };
 }
 
+function resolveNextPlanTier(currentTier: string): string | null {
+  const tiers = ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"];
+  const index = tiers.indexOf(String(currentTier ?? "").trim().toUpperCase());
+  if (index < 0 || index >= tiers.length - 1) {
+    return null;
+  }
+  return tiers[index + 1];
+}
+
 export function PlanManagementSection({
   usage,
   upgradeRequest,
@@ -57,6 +67,7 @@ export function PlanManagementSection({
   commercialContact,
 }: PlanManagementProps) {
   const descriptor = upgradeRequest ? describeUpgradeRequest(upgradeRequest) : null;
+  const nextPlanTier = resolveNextPlanTier(usage.planTier);
 
   return (
     <Card>
@@ -121,6 +132,7 @@ export function PlanManagementSection({
             <div className="font-semibold">{descriptor?.title}</div>
             <div className="mt-1">
               Submitted on {new Date(upgradeRequest.createdAt).toLocaleString("en-IN")} by {upgradeRequest.requestedBy}. {descriptor?.body}
+              {upgradeRequest.requestedPlanTier ? ` Requested plan: ${upgradeRequest.requestedPlanTier}.` : ""}
             </div>
             {upgradeRequest.notes ? (
               <div className="mt-2 rounded-md border border-sky-100 bg-white/70 px-3 py-2 text-xs text-sky-950">
@@ -132,6 +144,7 @@ export function PlanManagementSection({
         ) : usage.planTier === "ENTERPRISE" ? null : (
           <form action={requestPlanUpgradeAction} className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
             <input type="hidden" name="source" value="admin_plan" />
+            {nextPlanTier ? <input type="hidden" name="requestedPlanTier" value={nextPlanTier} /> : null}
             <input type="hidden" name="days" value={String(signupTrendDays)} />
             <div>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="upgrade-request-notes">Request notes</label>
@@ -146,7 +159,9 @@ export function PlanManagementSection({
               />
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Request upgrade</button>
+              <button type="submit" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">
+                {nextPlanTier ? `Request ${nextPlanTier}` : "Request upgrade"}
+              </button>
               <p className="text-xs text-slate-500">Vexa commercial ops will review and follow up with the right plan change.</p>
             </div>
           </form>

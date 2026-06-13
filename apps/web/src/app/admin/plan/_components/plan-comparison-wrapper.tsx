@@ -1,43 +1,28 @@
-"use client";
-
-import { useCallback, useState } from "react";
+import type { PlanMetadata } from "@/lib/api";
 import { PlanComparison } from "./plan-comparison";
-import { createCheckoutSessionAction } from "../actions";
 
 interface PlanComparisonWrapperProps {
+  plans: PlanMetadata[];
   currentTier: string;
   billingStatus: string;
-  stripeEnabled: boolean;
+  hasOpenUpgradeRequest: boolean;
+  canRequestUpgrade: boolean;
 }
 
 export function PlanComparisonWrapper({
+  plans,
   currentTier,
   billingStatus,
-  stripeEnabled,
+  hasOpenUpgradeRequest,
+  canRequestUpgrade,
 }: PlanComparisonWrapperProps) {
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
-
-  const handleUpgrade = useCallback(async (planTier: string) => {
-    setUpgradeLoading(true);
-    const formData = new FormData();
-    formData.set("planTier", planTier);
-    formData.set("days", "30");
-
-    try {
-      await createCheckoutSessionAction(formData);
-    } catch (error) {
-      setUpgradeLoading(false);
-      console.error("Checkout failed:", error);
-    }
-  }, []);
-
   return (
     <PlanComparison
+      plans={plans}
       currentTier={currentTier}
       billingStatus={billingStatus}
-      stripeEnabled={stripeEnabled}
-      onUpgrade={handleUpgrade}
-      upgradeLoading={upgradeLoading}
+      hasOpenUpgradeRequest={hasOpenUpgradeRequest}
+      canRequestUpgrade={canRequestUpgrade}
     />
   );
 }

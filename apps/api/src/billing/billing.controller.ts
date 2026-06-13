@@ -15,6 +15,7 @@ import { PlanUsageService } from "./plan-usage.service";
 import { StripeService } from "./stripe.service";
 import { CreatePlanUpgradeRequestDto } from "./dto/create-plan-upgrade-request.dto";
 import {
+  PlanMetadataListDto,
   PlanProfileSummaryDto,
   PlanUpgradeRequestCreateDto,
   PlanUpgradeRequestLookupDto,
@@ -28,11 +29,35 @@ import { SearchCommercialTenantsDto } from "./dto/search-commercial-tenants.dto"
 import { SetTenantPlanTierDto } from "./dto/set-tenant-plan-tier.dto";
 import { UpdateBillingContactDto } from "./dto/update-billing-contact.dto";
 import { UpdatePlanUpgradeRequestStatusDto } from "./dto/update-plan-upgrade-request-status.dto";
+import { getPlanMetadata } from "./plan-metadata";
 
 type AuthenticatedRequest = Request & {
   pimUserId?: string;
   pimRole?: AppRole;
 };
+
+type UsageSummary = Awaited<ReturnType<PlanUsageService["getUsageSummary"]>>;
+
+function buildUpgradeUsageSnapshot(usage: UsageSummary): Record<string, unknown> {
+  return {
+    capturedAt: new Date().toISOString(),
+    planTier: usage.planTier,
+    billingStatus: usage.billingStatus,
+    accessStatus: usage.accessStatus,
+    billingCycleResetAt: usage.billingCycleResetAt,
+    resources: {
+      skus: usage.skus,
+      submissions: usage.submissions,
+      users: usage.users,
+      storageGb: usage.storageGb,
+      connectorInstallations: usage.connectorsInstallations,
+      connectorAccounts: usage.connectorAccounts,
+      apiKeys: usage.apiKeys,
+      outboundWebhooks: usage.outboundWebhooks,
+      importRowsPerJob: usage.importRowsPerJob,
+    },
+  };
+}
 
 @Controller("billing")
 @DisallowApiClient()
@@ -56,6 +81,15 @@ export class BillingController {
   @ApiResponse({ status: 200, description: "Plan usage fetched", type: PlanUsageSummaryDto })
   usage() {
     return this.planUsageService.getUsageSummary();
+  }
+
+  @Get("plans")
+  @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
+  @Roles("admin", "editor")
+  @ApiOperation({ summary: "Get plan metadata and commercial limits" })
+  @ApiResponse({ status: 200, description: "Plan metadata fetched", type: PlanMetadataListDto })
+  plans() {
+    return { items: getPlanMetadata() };
   }
 
   @Get("plan-profile")
@@ -135,8 +169,10 @@ export class BillingController {
       requestedBy: actorId,
       requesterRole: actorRole,
       currentPlanTier: usage.planTier,
+      requestedPlanTier: dto.requestedPlanTier,
       currentBillingStatus: usage.billingStatus,
       currentAccessStatus: usage.accessStatus,
+      usageSnapshot: buildUpgradeUsageSnapshot(usage),
       notes: dto.notes,
       source: dto.source,
     });
@@ -152,6 +188,7 @@ export class BillingController {
         event: result.created ? "commercial_upgrade_request_created" : "commercial_upgrade_request_reused",
         tenantKey: result.item.tenantKey,
         currentPlanTier: result.item.currentPlanTier,
+        requestedPlanTier: result.item.requestedPlanTier,
         currentBillingStatus: result.item.currentBillingStatus,
         currentAccessStatus: result.item.currentAccessStatus,
         source: result.item.source,

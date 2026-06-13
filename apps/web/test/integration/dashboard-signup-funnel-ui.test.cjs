@@ -19,12 +19,15 @@ function run() {
 
   assert(
     dashboardApiSource.includes("export async function getKpiTrends"),
-    "Dashboard API client must expose getKpiTrends for dashboard KPI visibility.",
+    "Dashboard API client must expose getKpiTrends for internal KPI visibility.",
   );
   assert(
-    dashboardPageSource.includes('actorRole === "admin"') &&
+    dashboardPageSource.includes("hasSignupAnalyticsAccess") &&
+      dashboardPageSource.includes('adminBoundaryRoles.includes("system_admin")') &&
+      dashboardPageSource.includes('adminBoundaryRoles.includes("super_admin")') &&
+      dashboardPageSource.includes("canViewSignupAnalytics") &&
       dashboardPageSource.includes('getKpiTrends({ days: 30 }, { role: actorRole, authHeader })'),
-    "Dashboard must load signup KPIs for admins from the metrics trends API.",
+    "Dashboard must load signup KPIs only for system/super admin boundary roles.",
   );
   assert(
     dashboardPageSource.includes("Signup Funnel") &&
@@ -32,36 +35,23 @@ function run() {
       dashboardPageSource.includes('label="Verified Workspaces"') &&
       dashboardPageSource.includes('label="Verification Rate"') &&
       dashboardPageSource.includes('label="Median Verify Time"'),
-    "Dashboard must render the signup funnel KPI labels.",
+    "Dashboard must preserve the signup funnel KPI labels for internal operators.",
   );
   assert(
     dashboardPageSource.includes("resolveSignupHealthAlert") &&
       dashboardPageSource.includes("Signup verification needs attention") &&
       dashboardPageSource.includes("Signup verification is slowing down") &&
       dashboardPageSource.includes("Signup conversion looks healthy") &&
-      dashboardPageSource.includes("const signupDrilldownHref = signupTrends") &&
+      dashboardPageSource.includes("/admin/commercial?days=${signupTrends.rangeDays}#signup-conversion") &&
       dashboardPageSource.includes("Open signup trends"),
-    "Dashboard must expose a signup health alert and a drill-down link to the admin signup trends view.",
+    "Dashboard must drill signup analytics into Commercial Ops, not tenant Plan & Usage.",
   );
   assert(
     dashboardPageSource.includes("Signup Trend Snapshot") &&
       dashboardPageSource.includes("dashboard signups") &&
-      dashboardPageSource.includes("dashboard verified workspaces"),
-    "Dashboard must expose a compact signup trend snapshot for admins.",
-  );
-  assert(
-    dashboardPageSource.includes("Pending Verification Backlog") &&
-      dashboardPageSource.includes("Review backlog") &&
-      dashboardPageSource.includes("Use the admin trend view to spot the slowest days."),
-    "Dashboard must expose a window-scoped pending verification backlog signal for admins.",
-  );
-  assert(
-    dashboardPageSource.includes('href={signupDrilldownHref}') &&
-      dashboardPageSource.includes('label="Workspace Signups"') &&
-      dashboardPageSource.includes('label="Verified Workspaces"') &&
-      dashboardPageSource.includes('label="Verification Rate"') &&
-      dashboardPageSource.includes('label="Median Verify Time"'),
-    "Dashboard signup KPI cards must drill into the admin signup conversion view.",
+      dashboardPageSource.includes("dashboard verified workspaces") &&
+      dashboardPageSource.includes("Pending Verification Backlog"),
+    "Dashboard must preserve compact signup trend and backlog signals for internal operators.",
   );
 
   console.log(
@@ -70,12 +60,10 @@ function run() {
         status: "ok",
         validated: [
           "dashboard_api_exposes_signup_kpi_trends",
-          "dashboard_loads_signup_kpis_for_admins",
+          "dashboard_loads_signup_kpis_for_boundary_admins",
           "dashboard_renders_signup_funnel_cards",
-          "dashboard_exposes_signup_health_alert_and_admin_link",
+          "dashboard_drills_into_commercial_ops",
           "dashboard_exposes_signup_trend_snapshot",
-          "dashboard_exposes_pending_verification_backlog_signal",
-          "dashboard_signup_cards_drill_into_admin_conversion_view",
         ],
         checkedAt: new Date().toISOString(),
       },
@@ -92,4 +80,3 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-

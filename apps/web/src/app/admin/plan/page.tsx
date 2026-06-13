@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Card, CardTitle } from "@/components/ui/card";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
-import { ApiHttpError, getBillingUpgradeRequest, getBillingUsage, getKpiTrends } from "@/lib/api";
+import { ApiHttpError, getBillingPlans, getBillingUpgradeRequest, getBillingUsage } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
-import { requestPlanUpgradeAction, updateBillingContactAction } from "./actions";
 import { UsageMeters } from "./_components/usage-meters";
-import { SignupConversionSection } from "./_components/signup-conversion";
 import { PlanManagementSection } from "./_components/plan-management";
 import { PlanComparisonWrapper } from "./_components/plan-comparison-wrapper";
 
@@ -17,26 +14,6 @@ export const dynamic = "force-dynamic";
 
 interface PlanPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
-}
-
-const SIGNUP_TREND_WINDOWS = [7, 30, 90] as const;
-
-function sumTrendValues(points: Array<{ value: number }>): number {
-  return points.reduce((sum, p) => sum + (Number.isFinite(p.value) ? p.value : 0), 0);
-}
-
-function latestTrendValue(points: Array<{ value: number }>): number {
-  for (let i = points.length - 1; i >= 0; i--) {
-    const v = points[i]?.value;
-    if (Number.isFinite(v)) return Number(v);
-  }
-  return 0;
-}
-
-function formatHours(value: number): string {
-  if (!Number.isFinite(value)) return "-";
-  if (value === 0) return "0h";
-  return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
 }
 
 function formatCommercialStatus(value: string): string {
@@ -50,13 +27,6 @@ function formatCommercialStatus(value: string): string {
 
 function formatAccessStatus(value: string): string {
   return String(value ?? "").trim().toLowerCase() === "suspended" ? "Suspended" : "Active";
-}
-
-function resolveSignupTrendDays(input: string | undefined): (typeof SIGNUP_TREND_WINDOWS)[number] {
-  const parsed = Number.parseInt(String(input ?? ""), 10);
-  return SIGNUP_TREND_WINDOWS.includes(parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
-    ? (parsed as (typeof SIGNUP_TREND_WINDOWS)[number])
-    : 30;
 }
 
 function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBillingUsage>>["profile"]) {
@@ -89,30 +59,19 @@ function resolveBillingContactStatusAlert(statusInput: string | undefined, billi
   return null;
 }
 
-
-
-function resolveSignupHealthAlert({ rangeDays, requests, verifications, verificationRate, medianVerifyHours }: { rangeDays: number; requests: number; verifications: number; verificationRate: number; medianVerifyHours: number }) {
-  const pending = Math.max(requests - verifications, 0);
-  if (requests < 3) return null;
-  if (verificationRate < 40) return { tone: "border-red-200 bg-red-50 text-red-900", title: "Verification rate needs attention", body: `${pending} teams are still unverified in the last ${rangeDays} days. Check email delivery and the verification path.` };
-  if (medianVerifyHours >= 24) return { tone: "border-amber-200 bg-amber-50 text-amber-900", title: "Verification is slowing down", body: `Median verification time is ${formatHours(medianVerifyHours)} in the last ${rangeDays} days. Review the onboarding email.` };
-  return { tone: "border-emerald-200 bg-emerald-50 text-emerald-900", title: "Signup conversion looks healthy", body: `${verifications} of ${requests} signup requests verified in the last ${rangeDays} days.` };
-}
-
 export default async function PlanPage({ searchParams }: PlanPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole: role } = await getServerSession();
   const claims = await getServerSessionClaims();
-  const signupTrendDays = resolveSignupTrendDays(query.days);
 
   let usage: Awaited<ReturnType<typeof getBillingUsage>>;
-  let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
+  let plans: Awaited<ReturnType<typeof getBillingPlans>>["items"] = [];
   let upgradeRequest: Awaited<ReturnType<typeof getBillingUpgradeRequest>>["item"] = null;
 
   try {
-    [usage, signupTrends, upgradeRequest] = await Promise.all([
+    [usage, plans, upgradeRequest] = await Promise.all([
       getBillingUsage({ role, authHeader }),
-      role === "admin" ? getKpiTrends({ days: signupTrendDays }, { role, authHeader }).catch((err: unknown) => { if (err instanceof ApiHttpError && err.status === 404) return null; throw err; }) : Promise.resolve(null),
+      getBillingPlans({ role, authHeader }).then((response) => response.items),
       role === "admin" ? getBillingUpgradeRequest({ role, authHeader }).then((r) => r.item) : Promise.resolve(null),
     ]);
   } catch (error: unknown) {
@@ -122,17 +81,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     throw error;
   }
 
-  const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
-  const signupVerifications = signupTrends ? Math.round(sumTrendValues(signupTrends.signupVerifications)) : 0;
-  const signupPendingBacklog = Math.max(signupRequests - signupVerifications, 0);
-  const signupVerificationRate = signupTrends ? latestTrendValue(signupTrends.signupVerificationRate) : 0;
-  const signupMedianVerifyHours = signupTrends ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours) : 0;
-
   const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);
   const upgradeRequestStatusAlert = resolveUpgradeRequestStatusAlert(query.requestStatus);
   const billingContactStatusAlert = resolveBillingContactStatusAlert(query.billingContactStatus, usage.profile.billingContactEmail);
-  const signupHealthAlert = signupTrends ? resolveSignupHealthAlert({ rangeDays: signupTrends.rangeDays, requests: signupRequests, verifications: signupVerifications, verificationRate: signupVerificationRate, medianVerifyHours: signupMedianVerifyHours }) : null;
-  const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
   const commercialContact = resolveCommercialContactTarget({ tenantKey: usage.profile.tenantKey, planTier: usage.planTier, requesterId: claims?.sub ?? null, source: "admin_plan" });
 
   return (
@@ -161,24 +112,11 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
         </div>
       ) : null}
 
-      {role === "admin" && signupTrends ? (
-        <SignupConversionSection
-          signupTrends={signupTrends}
-          signupRequests={signupRequests}
-          signupVerifications={signupVerifications}
-          signupPendingBacklog={signupPendingBacklog}
-          signupVerificationRate={signupVerificationRate}
-          signupMedianVerifyHours={signupMedianVerifyHours}
-          signupHealthAlert={signupHealthAlert}
-          signupExportHref={signupExportHref}
-        />
-      ) : null}
-
       {role === "admin" ? (
         <PlanManagementSection
           usage={usage}
           upgradeRequest={upgradeRequest}
-          signupTrendDays={signupTrendDays}
+          signupTrendDays={30}
           billingContactStatusAlert={billingContactStatusAlert}
           upgradeRequestStatusAlert={upgradeRequestStatusAlert}
           commercialContact={commercialContact}
@@ -186,20 +124,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       ) : null}
 
       <PlanComparisonWrapper
+        plans={plans}
         currentTier={usage.planTier}
         billingStatus={usage.billingStatus}
-        stripeEnabled={false}
+        hasOpenUpgradeRequest={Boolean(upgradeRequest)}
+        canRequestUpgrade={role === "admin"}
       />
-
-      {role === "admin" ? (
-        <Card>
-          <CardTitle>Commercial operations</CardTitle>
-          <p className="text-sm text-slate-600">Change tenant plan tiers, process upgrade requests, and view commercial overview across all workspaces.</p>
-          <Link href="/admin/commercial" className="mt-3 inline-flex rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-            Open commercial ops
-          </Link>
-        </Card>
-      ) : null}
     </div>
   );
 }

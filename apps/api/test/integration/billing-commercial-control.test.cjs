@@ -386,16 +386,6 @@ async function run() {
       `expected usage profile to clear billingContactEmail payload=${JSON.stringify(usageAfterBillingContactClear.payload)}`,
     );
 
-    const legacyLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
-      workspaceSlug: legacyWorkspaceSlug,
-      userId: legacyAdminUser,
-      password: "vexa-pim-demo-password",
-      expiresInMinutes: 30,
-    });
-    assertStatus(legacyLogin, 201, "legacy admin login");
-    const legacyToken = String(legacyLogin.payload?.accessToken ?? "");
-    assert(legacyToken.length > 10, "missing legacy admin token");
-
     const month = new Date().toISOString().slice(0, 7);
     await prisma.$executeRawUnsafe(`DELETE FROM "TenantPlanProfile" WHERE "tenantKey" = $1`, legacyTenantId);
     await prisma.$executeRawUnsafe(`DELETE FROM "PlanUsage" WHERE "tenantKey" = $1`, legacyTenantId);
@@ -410,6 +400,16 @@ async function run() {
       legacyTenantId,
       month,
     );
+
+    const legacyLogin = await apiRequest(baseUrl, "POST", "/auth/login", null, {
+      workspaceSlug: legacyWorkspaceSlug,
+      userId: legacyAdminUser,
+      password: "vexa-pim-demo-password",
+      expiresInMinutes: 30,
+    });
+    assertStatus(legacyLogin, 201, "legacy admin login");
+    const legacyToken = String(legacyLogin.payload?.accessToken ?? "");
+    assert(legacyToken.length > 10, "missing legacy admin token");
 
     const legacyPlanProfile = await apiRequest(baseUrl, "GET", "/billing/plan-profile", legacyToken);
     assertStatus(legacyPlanProfile, 200, "legacy plan profile bootstrap");

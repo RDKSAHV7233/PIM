@@ -25,7 +25,8 @@ export class CommercialNotificationsService {
     event: CommercialNotificationEvent;
     profile: PlanProfileSummary;
   }): Promise<{ recipientCount: number }> {
-    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+    const tenantDb = this.prisma.tenant(input.tenantKey);
+    const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: {
         tenantKey: input.tenantKey,
       },
@@ -35,7 +36,7 @@ export class CommercialNotificationsService {
       },
     });
 
-    const recipients = await this.resolveRecipients(input.tenantKey, input.profile.billingContactEmail);
+    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, input.profile.billingContactEmail);
     if (recipients.length === 0) {
       this.logger.warn(`No active tenant admins available for commercial notification tenant=${input.tenantKey}`);
       return { recipientCount: 0 };
@@ -80,11 +81,12 @@ export class CommercialNotificationsService {
   }
 
   async notifyPaymentFailed(input: { tenantKey: string; profile: PlanProfileSummary }): Promise<{ recipientCount: number }> {
-    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+    const tenantDb = this.prisma.tenant(input.tenantKey);
+    const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: { tenantKey: input.tenantKey },
       select: { workspaceSlug: true, displayName: true },
     });
-    const recipients = await this.resolveRecipients(input.tenantKey, input.profile.billingContactEmail);
+    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, input.profile.billingContactEmail);
     if (recipients.length === 0) {
       return { recipientCount: 0 };
     }
@@ -125,11 +127,12 @@ export class CommercialNotificationsService {
     profile: PlanProfileSummary;
     daysRemaining: number;
   }): Promise<{ recipientCount: number }> {
-    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+    const tenantDb = this.prisma.tenant(input.tenantKey);
+    const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: { tenantKey: input.tenantKey },
       select: { workspaceSlug: true, displayName: true },
     });
-    const recipients = await this.resolveRecipients(input.tenantKey, input.profile.billingContactEmail);
+    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, input.profile.billingContactEmail);
     if (recipients.length === 0) {
       return { recipientCount: 0 };
     }
@@ -188,6 +191,7 @@ export class CommercialNotificationsService {
       `Workspace slug: ${workspaceSlug}`,
       `Tenant key: ${input.tenantKey}`,
       `Current plan tier: ${input.request.currentPlanTier}`,
+      `Requested plan tier: ${input.request.requestedPlanTier ?? "not specified"}`,
       `Current billing status: ${input.request.currentBillingStatus}`,
       `Current access status: ${input.request.currentAccessStatus}`,
       `Requester role: ${input.request.requesterRole}`,
@@ -206,6 +210,7 @@ export class CommercialNotificationsService {
       `<tr><td><strong>Workspace slug</strong></td><td>${this.escapeHtml(workspaceSlug)}</td></tr>`,
       `<tr><td><strong>Tenant key</strong></td><td>${this.escapeHtml(input.tenantKey)}</td></tr>`,
       `<tr><td><strong>Current plan tier</strong></td><td>${this.escapeHtml(input.request.currentPlanTier)}</td></tr>`,
+      `<tr><td><strong>Requested plan tier</strong></td><td>${this.escapeHtml(input.request.requestedPlanTier ?? "not specified")}</td></tr>`,
       `<tr><td><strong>Current billing status</strong></td><td>${this.escapeHtml(input.request.currentBillingStatus)}</td></tr>`,
       `<tr><td><strong>Current access status</strong></td><td>${this.escapeHtml(input.request.currentAccessStatus)}</td></tr>`,
       `<tr><td><strong>Requester</strong></td><td>${this.escapeHtml(input.request.requestedBy)}</td></tr>`,
@@ -242,7 +247,8 @@ export class CommercialNotificationsService {
     tenantKey: string;
     request: CommercialRequestSummary;
   }): Promise<{ recipientCount: number }> {
-    const workspace = await this.prisma.tenant().workspaceDirectory.findUnique({
+    const tenantDb = this.prisma.tenant(input.tenantKey);
+    const workspace = await tenantDb.workspaceDirectory.findUnique({
       where: {
         tenantKey: input.tenantKey,
       },
@@ -251,7 +257,7 @@ export class CommercialNotificationsService {
         displayName: true,
       },
     });
-    const profile = await this.prisma.tenant().tenantPlanProfile.findUnique({
+    const profile = await tenantDb.tenantPlanProfile.findUnique({
       where: {
         tenantKey: input.tenantKey,
       },
@@ -260,7 +266,7 @@ export class CommercialNotificationsService {
       },
     });
 
-    const recipients = await this.resolveRecipients(input.tenantKey, profile?.billingContactEmail ?? null);
+    const recipients = await this.resolveRecipients(tenantDb, input.tenantKey, profile?.billingContactEmail ?? null);
     if (recipients.length === 0) {
       return { recipientCount: 0 };
     }
@@ -328,13 +334,17 @@ export class CommercialNotificationsService {
     return { recipientCount: recipients.length };
   }
 
-  private async resolveRecipients(tenantKey: string, billingContactEmail: string | null): Promise<string[]> {
+  private async resolveRecipients(
+    tenantDb: ReturnType<PrismaService["tenant"]>,
+    tenantKey: string,
+    billingContactEmail: string | null,
+  ): Promise<string[]> {
     const explicitContact = String(billingContactEmail ?? "").trim().toLowerCase();
     if (explicitContact) {
       return [explicitContact];
     }
 
-    const admins = await this.prisma.tenant().authIdentity.findMany({
+    const admins = await tenantDb.authIdentity.findMany({
       where: {
         tenantKey,
         role: "admin",

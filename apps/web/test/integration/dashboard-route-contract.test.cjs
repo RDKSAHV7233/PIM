@@ -29,6 +29,7 @@ function run() {
       source.includes("? getDashboardOperationsSummary({ role: actorRole, authHeader })") &&
       source.includes(": Promise.resolve(null)") &&
       source.includes("getProductList({ slim: true }, { role: actorRole, authHeader })") &&
+      source.includes("canViewSignupAnalytics") &&
       source.includes("getKpiTrends({ days: 30 }, { role: actorRole, authHeader })") &&
       source.includes("getPricingCoverage({ role: actorRole, authHeader })"),
     "Dashboard must load health, scoped billing usage, scoped operations data, product priority data, admin-only signup trends, and pricing coverage in one shared server pass.",

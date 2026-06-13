@@ -706,7 +706,7 @@ model PlanUsage {
 model TenantPlanProfile {
   id                     String   @id @default(cuid())
   tenantKey              String   @unique
-  planTier               String   @default("TRIAL")
+  planTier               String   @default("STARTER")
   billingStatus          String   @default("trial")
   accessStatus           String   @default("active")
   effectiveFrom          DateTime?
@@ -789,8 +789,10 @@ model TenantCommercialRequest {
   requestedBy          String   @map("requested_by")
   requesterRole        String   @map("requester_role")
   currentPlanTier      String   @map("current_plan_tier")
+  requestedPlanTier    String?  @map("requested_plan_tier")
   currentBillingStatus String   @map("current_billing_status")
   currentAccessStatus  String   @map("current_access_status")
+  usageSnapshot        Json?    @map("usage_snapshot")
   notes                String?
   source               String   @default("admin_plan")
   resolvedAt           DateTime? @map("resolved_at")

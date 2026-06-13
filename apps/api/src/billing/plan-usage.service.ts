@@ -1249,7 +1249,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
       ORDER BY "month" DESC, "updatedAt" DESC
       LIMIT 1
     `);
-    const seedPlanTier = this.normalizePlanTier(latestUsageRows[0]?.planTier ?? "TRIAL");
+    const seedPlanTier = this.normalizePlanTier(latestUsageRows[0]?.planTier ?? "STARTER");
     const seedBillingStatus = this.normalizeBillingStatus(null, seedPlanTier);
     const seedTrialEndsAt = seedBillingStatus === "trial" ? this.buildTrialEndsAt() : null;
 

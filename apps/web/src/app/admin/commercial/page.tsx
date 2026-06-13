@@ -5,7 +5,7 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
-import { ApiHttpError, getBillingUsage } from "@/lib/api";
+import { ApiHttpError, getBillingUsage, getKpiTrends } from "@/lib/api";
 import {
   getCommercialOverview,
   listUpgradeRequests,
@@ -13,6 +13,7 @@ import {
   isOpsTokenConfigured,
 } from "@/lib/api/commercial-ops";
 import { changePlanTierAction, resolveUpgradeRequestAction } from "./actions";
+import { SignupConversionSection } from "../plan/_components/signup-conversion";
 
 export const dynamic = "force-dynamic";
 
@@ -37,14 +38,70 @@ function formatStatus(status: string | null) {
   return "Trial";
 }
 
+function hasCommercialOpsAccess(adminBoundaryRoles: readonly string[]): boolean {
+  return adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+}
+
+function resolveOperatorRole(adminBoundaryRoles: readonly string[]): string {
+  return adminBoundaryRoles.includes("super_admin") ? "super_admin" : "system_admin";
+}
+
+function sumTrendValues(points: Array<{ value: number }>): number {
+  return points.reduce((sum, point) => sum + (Number.isFinite(point.value) ? point.value : 0), 0);
+}
+
+function latestTrendValue(points: Array<{ value: number }>): number {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const value = points[index]?.value;
+    if (Number.isFinite(value)) return Number(value);
+  }
+  return 0;
+}
+
+function formatHours(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+  if (value === 0) return "0h";
+  return `${value.toFixed(value >= 10 ? 0 : 1)}h`;
+}
+
+function resolveSignupTrendDays(input: string | undefined): 7 | 30 | 90 {
+  const parsed = Number.parseInt(String(input ?? ""), 10);
+  return parsed === 7 || parsed === 90 ? parsed : 30;
+}
+
+function resolveSignupHealthAlert({ rangeDays, requests, verifications, verificationRate, medianVerifyHours }: { rangeDays: number; requests: number; verifications: number; verificationRate: number; medianVerifyHours: number }) {
+  const pending = Math.max(requests - verifications, 0);
+  if (requests < 3) return null;
+  if (verificationRate < 40) return { tone: "border-red-200 bg-red-50 text-red-900", title: "Verification rate needs attention", body: `${pending} teams are still unverified in the last ${rangeDays} days. Check email delivery and the verification path.` };
+  if (medianVerifyHours >= 24) return { tone: "border-amber-200 bg-amber-50 text-amber-900", title: "Verification is slowing down", body: `Median verification time is ${formatHours(medianVerifyHours)} in the last ${rangeDays} days. Review the onboarding email.` };
+  return { tone: "border-emerald-200 bg-emerald-50 text-emerald-900", title: "Signup conversion looks healthy", body: `${verifications} of ${requests} signup requests verified in the last ${rangeDays} days.` };
+}
+
+function formatSnapshotUsage(snapshot: Record<string, unknown> | null): string {
+  const resources = snapshot?.resources;
+  if (!resources || typeof resources !== "object" || Array.isArray(resources)) {
+    return "No usage snapshot captured";
+  }
+  const resourceRecord = resources as Record<string, { current?: unknown; limit?: unknown }>;
+  const skus = resourceRecord.skus;
+  const users = resourceRecord.users;
+  const connectors = resourceRecord.connectorInstallations;
+  return [
+    skus ? `SKUs ${skus.current ?? "-"} / ${skus.limit ?? "-"}` : null,
+    users ? `Users ${users.current ?? "-"} / ${users.limit ?? "-"}` : null,
+    connectors ? `Connectors ${connectors.current ?? "-"} / ${connectors.limit ?? "-"}` : null,
+  ].filter(Boolean).join(" | ") || "Usage snapshot captured";
+}
+
 export default async function CommercialOpsPage({ searchParams }: CommercialPageProps) {
   const query = await searchParams;
   const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
+  const signupTrendDays = resolveSignupTrendDays(query.days);
 
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/commercial", 401));
   }
-  if (actorRole !== "admin" || !adminBoundaryRoles.some((r) => ["product_admin", "system_admin", "super_admin"].includes(r))) {
+  if (actorRole !== "admin" || !hasCommercialOpsAccess(adminBoundaryRoles)) {
     redirect("/admin");
   }
   if (!isOpsTokenConfigured()) {
@@ -61,17 +118,23 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
   }
 
   const operatorId = "web-admin";
+  const operatorRole = resolveOperatorRole(adminBoundaryRoles);
   let overview;
   let requests;
   let currentUsage;
+  let signupTrends: Awaited<ReturnType<typeof getKpiTrends>> | null = null;
   let searchResults = null as Awaited<ReturnType<typeof searchCommercialTenants>> | null;
   const searchQuery = String(query.q ?? "").trim();
 
   try {
-    [overview, requests, currentUsage] = await Promise.all([
+    [overview, requests, currentUsage, signupTrends] = await Promise.all([
       getCommercialOverview(operatorId),
       listUpgradeRequests(operatorId, "open"),
       getBillingUsage({ role: actorRole, authHeader }),
+      getKpiTrends({ days: signupTrendDays }, { role: actorRole, authHeader }).catch((err: unknown) => {
+        if (err instanceof ApiHttpError && err.status === 404) return null;
+        throw err;
+      }),
     ]);
     if (searchQuery.length >= 2) {
       searchResults = await searchCommercialTenants(searchQuery, operatorId);
@@ -98,6 +161,13 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         : null;
 
   const t = overview.tenantOverview;
+  const signupRequests = signupTrends ? Math.round(sumTrendValues(signupTrends.signupRequests)) : 0;
+  const signupVerifications = signupTrends ? Math.round(sumTrendValues(signupTrends.signupVerifications)) : 0;
+  const signupPendingBacklog = Math.max(signupRequests - signupVerifications, 0);
+  const signupVerificationRate = signupTrends ? latestTrendValue(signupTrends.signupVerificationRate) : 0;
+  const signupMedianVerifyHours = signupTrends ? latestTrendValue(signupTrends.signupMedianTimeToVerifyHours) : 0;
+  const signupHealthAlert = signupTrends ? resolveSignupHealthAlert({ rangeDays: signupTrends.rangeDays, requests: signupRequests, verifications: signupVerifications, verificationRate: signupVerificationRate, medianVerifyHours: signupMedianVerifyHours }) : null;
+  const signupExportHref = `/api/admin/plan/signup-trends/export?days=${signupTrendDays}`;
 
   return (
     <div className="space-y-5">
@@ -109,6 +179,9 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
 
       {successMessage ? <InlineAlert tone="success" message={successMessage} /> : null}
       {query.error ? <InlineAlert tone="error" title="Error" message={decodeURIComponent(query.error)} /> : null}
+      {operatorRole !== "system_admin" ? (
+        <InlineAlert tone="info" message={`Commercial Ops session is running as ${operatorRole}.`} />
+      ) : null}
 
       {/* Overview */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -140,6 +213,19 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
           <div className="mt-1 text-xs text-slate-500">{overview.requestOverview.acknowledgedRequests} acknowledged</div>
         </Card>
       </div>
+
+      {signupTrends ? (
+        <SignupConversionSection
+          signupTrends={signupTrends}
+          signupRequests={signupRequests}
+          signupVerifications={signupVerifications}
+          signupPendingBacklog={signupPendingBacklog}
+          signupVerificationRate={signupVerificationRate}
+          signupMedianVerifyHours={signupMedianVerifyHours}
+          signupHealthAlert={signupHealthAlert}
+          signupExportHref={signupExportHref}
+        />
+      ) : null}
 
       {/* Current Tenant — always visible, no search needed */}
       {currentUsage ? (
@@ -273,7 +359,9 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                 <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <th className="pb-2 pr-4">Tenant</th>
                   <th className="pb-2 pr-4">Current tier</th>
+                  <th className="pb-2 pr-4">Requested tier</th>
                   <th className="pb-2 pr-4">Requested by</th>
+                  <th className="pb-2 pr-4">Usage snapshot</th>
                   <th className="pb-2 pr-4">Notes</th>
                   <th className="pb-2 pr-4">Date</th>
                   <th className="pb-2">Actions</th>
@@ -288,7 +376,13 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
                         {req.currentPlanTier}
                       </span>
                     </td>
+                    <td className="py-3 pr-4">
+                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${formatTierBadge(req.requestedPlanTier)}`}>
+                        {req.requestedPlanTier ?? "Not specified"}
+                      </span>
+                    </td>
                     <td className="py-3 pr-4 text-xs">{req.requestedBy}</td>
+                    <td className="py-3 pr-4 text-xs text-slate-600">{formatSnapshotUsage(req.usageSnapshot)}</td>
                     <td className="py-3 pr-4 text-xs text-slate-600">{req.notes ?? "—"}</td>
                     <td className="py-3 pr-4 text-xs text-slate-500">{new Date(req.createdAt).toLocaleDateString("en-IN")}</td>
                     <td className="py-3">

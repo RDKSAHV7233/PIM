@@ -230,6 +230,15 @@ async function run() {
     const adminToken = String(login.payload?.accessToken ?? "");
     assert(adminToken.length > 10, "missing admin token");
 
+    const planMetadata = await apiRequest(baseUrl, "GET", "/billing/plans", adminToken);
+    assertStatus(planMetadata, 200, "billing plan metadata");
+    assert(
+      Array.isArray(planMetadata.payload?.items) &&
+        planMetadata.payload.items.some((plan) => String(plan?.tier ?? "") === "GROWTH") &&
+        planMetadata.payload.items.some((plan) => String(plan?.tier ?? "") === "BUSINESS"),
+      `expected API-backed plan metadata payload=${JSON.stringify(planMetadata.payload)}`,
+    );
+
     const initialLookup = await apiRequest(baseUrl, "GET", "/billing/upgrade-request", adminToken);
     assertStatus(initialLookup, 200, "initial upgrade request lookup");
     assert(initialLookup.payload?.item === null, `expected no open upgrade request payload=${JSON.stringify(initialLookup.payload)}`);
@@ -259,6 +268,7 @@ async function run() {
     );
 
     const createRequest = await apiRequest(baseUrl, "POST", "/billing/upgrade-request", adminToken, {
+      requestedPlanTier: "GROWTH",
       notes: "We need more users and a paid-plan review before trial end.",
       source: "admin_plan",
     });
@@ -278,9 +288,18 @@ async function run() {
     );
     assert(
       String(createRequest.payload?.item?.currentPlanTier ?? "") === "STARTER" &&
+        String(createRequest.payload?.item?.requestedPlanTier ?? "") === "GROWTH" &&
         String(createRequest.payload?.item?.currentBillingStatus ?? "") === "trial" &&
         String(createRequest.payload?.item?.currentAccessStatus ?? "") === "active",
-      `expected current commercial state snapshot payload=${JSON.stringify(createRequest.payload)}`,
+      `expected current and requested commercial state snapshot payload=${JSON.stringify(createRequest.payload)}`,
+    );
+    assert(
+      String(createRequest.payload?.item?.usageSnapshot?.planTier ?? "") === "STARTER" &&
+        String(createRequest.payload?.item?.usageSnapshot?.billingStatus ?? "") === "trial" &&
+        String(createRequest.payload?.item?.usageSnapshot?.accessStatus ?? "") === "active" &&
+        String(createRequest.payload?.item?.usageSnapshot?.capturedAt ?? "").length > 10 &&
+        Number.isFinite(Number(createRequest.payload?.item?.usageSnapshot?.resources?.skus?.limit)),
+      `expected usage snapshot to persist payload=${JSON.stringify(createRequest.payload)}`,
     );
     assert(
       String(createRequest.payload?.item?.notes ?? "") === "We need more users and a paid-plan review before trial end.",
@@ -359,6 +378,11 @@ async function run() {
       String(internalList.payload?.items?.[0]?.id ?? "") === requestId,
       `expected listed request to match created request payload=${JSON.stringify(internalList.payload)}`,
     );
+    assert(
+      String(internalList.payload?.items?.[0]?.requestedPlanTier ?? "") === "GROWTH" &&
+        String(internalList.payload?.items?.[0]?.usageSnapshot?.planTier ?? "") === "STARTER",
+      `expected listed request to include requested plan and usage snapshot payload=${JSON.stringify(internalList.payload)}`,
+    );
 
     const exportResult = await apiRequest(
       baseUrl,
@@ -376,13 +400,15 @@ async function run() {
     assertStatus(exportResult, 200, "internal upgrade request export");
     const exportCsv = String(exportResult.payload ?? "");
     assert(
-      exportCsv.includes("id,tenantKey,workspaceSlug,displayName,status,requestedBy,requesterRole"),
+      exportCsv.includes("id,tenantKey,workspaceSlug,displayName,status,requestedBy,requesterRole,currentPlanTier,requestedPlanTier") &&
+        exportCsv.includes("usageSnapshot"),
       `expected csv header row payload=${exportCsv}`,
     );
     assert(
       exportCsv.includes(`"${requestId}"`) &&
         exportCsv.includes(`"${tenantId}"`) &&
         exportCsv.includes(`"${workspaceSlug}"`) &&
+        exportCsv.includes('"GROWTH"') &&
         exportCsv.includes('"open"'),
       `expected created open request in csv export payload=${exportCsv}`,
     );
