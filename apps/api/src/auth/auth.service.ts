@@ -946,6 +946,37 @@ export class AuthService implements OnModuleDestroy {
     };
   }
 
+  async changePassword(
+    userId: string,
+    tenantId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: true }> {
+    const identity = await this.resolveLoginIdentity(userId, tenantId);
+    if (!identity) {
+      throw new UnauthorizedException({ error: "INVALID_CREDENTIALS" });
+    }
+    const credentialOk = await this.verifyPasswordForIdentity(currentPassword, identity);
+    if (!credentialOk) {
+      throw new UnauthorizedException({ error: "INVALID_CREDENTIALS" });
+    }
+    const normalizedNew = newPassword.normalize("NFC");
+    const passwordHash = await bcrypt.hash(normalizedNew, 12);
+    await this.prisma.tenant(tenantId).authIdentity.updateMany({
+      where: { userId: identity.userId, tenantKey: tenantId },
+      data: { passwordHash },
+    });
+    await this.auditService.record({
+      actorId: identity.userId,
+      actorRole: identity.role,
+      action: "auth.password_changed",
+      resource: "auth.identity",
+      tenantKey: tenantId,
+      metadata: {},
+    });
+    return { ok: true };
+  }
+
   async confirmPasswordReset(token: string, password: string): Promise<{
     ok: true;
     reset: true;

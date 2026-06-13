@@ -13,10 +13,12 @@ import {
   Res,
   UnauthorizedException,
 } from "@nestjs/common";
+import { ApiOperation } from "@nestjs/swagger";
 import type { Request } from "express";
 import type { Response } from "express";
 import { AuthService, LoginResponse } from "./auth.service";
 import { AllowSuspendedTenant } from "./allow-suspended.decorator";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -334,6 +336,15 @@ export class AuthController {
       scope: dto.scope,
       ipAddress: request.ip ?? "unknown",
     });
+  }
+
+  @Post("password/change")
+  @Roles(...APP_ROLES)
+  @HttpCode(200)
+  @ApiOperation({ summary: "Change the authenticated user's password" })
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() request: AuthenticatedRequest) {
+    const actor = this.requireActor(request);
+    return this.authService.changePassword(actor.userId, actor.tenantId, dto.currentPassword, dto.newPassword);
   }
 
   private requireActor(request: AuthenticatedRequest): { userId: string; tenantId: string; role: AppRole } {

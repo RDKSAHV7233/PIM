@@ -28,6 +28,12 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
   const [newBackupCodes, setNewBackupCodes] = useState<string[] | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState("");
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSubmitting, setPwSubmitting] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
 
   async function onRegenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -88,6 +94,45 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
     }
   }
 
+  async function onChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPwError("");
+    setPwSuccess(false);
+    if (pwNew !== pwConfirm) {
+      setPwError("New passwords do not match.");
+      return;
+    }
+    if (pwNew.length < 8) {
+      setPwError("New password must be at least 8 characters.");
+      return;
+    }
+    setPwSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/password/change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+      });
+      if (response.ok) {
+        setPwSuccess(true);
+        setPwCurrent("");
+        setPwNew("");
+        setPwConfirm("");
+        return;
+      }
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (response.status === 401) {
+        setPwError("Current password is incorrect.");
+        return;
+      }
+      setPwError(payload.error ?? "Unable to change password. Please try again.");
+    } catch {
+      setPwError("Network error. Check your connection and try again.");
+    } finally {
+      setPwSubmitting(false);
+    }
+  }
+
   const roleCapability = ROLE_CAPABILITY_MAP[role] ?? "Access defined by assigned role.";
   const displayRole = role ? `${role.charAt(0).toUpperCase()}${role.slice(1)}` : "Unknown";
   const foundationRole = assignedRoles.length > 0 ? assignedRoles[0] : null;
@@ -112,6 +157,73 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
           ) : null}
         </div>
         <p className="mt-2 text-sm text-slate-600">{roleCapability}</p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">Change Password</h2>
+        <p className="mt-1 text-sm text-slate-500">Enter your current password to set a new one.</p>
+        {pwSuccess ? (
+          <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            Password updated successfully.
+          </p>
+        ) : (
+          <form className="mt-4 space-y-4" onSubmit={onChangePassword}>
+            <div className="space-y-1.5">
+              <label htmlFor="pw-current" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Current password
+              </label>
+              <input
+                id="pw-current"
+                type="password"
+                autoComplete="current-password"
+                value={pwCurrent}
+                onChange={(e) => setPwCurrent(e.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="pw-new" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                New password
+              </label>
+              <input
+                id="pw-new"
+                type="password"
+                autoComplete="new-password"
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                required
+                minLength={8}
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="pw-confirm" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Confirm new password
+              </label>
+              <input
+                id="pw-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={pwConfirm}
+                onChange={(e) => setPwConfirm(e.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+            {pwError && (
+              <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800">{pwError}</p>
+            )}
+            <button
+              type="submit"
+              disabled={pwSubmitting}
+              suppressHydrationWarning
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+            >
+              {pwSubmitting ? "Updating…" : "Update password"}
+            </button>
+          </form>
+        )}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

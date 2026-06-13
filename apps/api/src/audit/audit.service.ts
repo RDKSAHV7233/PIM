@@ -284,6 +284,17 @@ export class AuditService {
     return this.renderEventsCsv(result.items);
   }
 
+  async queryEventsForExport(query: ListAuditEventsDto): Promise<AuditExplorerRow[]> {
+    const where = this.buildExplorerWhere(query, null, null);
+    const rows = await this.prisma.tenant().auditLog.findMany({
+      where,
+      orderBy: AUDIT_ORDER_BY,
+      take: 5000,
+      select: AUDIT_SELECT,
+    });
+    return rows.map((row) => this.normalizeExplorerRow(row));
+  }
+
   renderEventsCsv(items: AuditExplorerRow[]) {
     const lines = [
       [

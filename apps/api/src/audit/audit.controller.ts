@@ -70,11 +70,11 @@ export class AuditController {
   ) {
     const stamp = new Date().toISOString().slice(0, 10);
     response.header("Content-Disposition", `attachment; filename="vexa-pim-audit-events-${stamp}.csv"`);
-    const result = await this.auditService.listEvents(query);
+    const items = await this.auditService.queryEventsForExport(query);
     const visible = this.accessPolicyService.applyReadResponsePolicy(
       this.resolveActor(request),
       "audit_events_governance_redacted",
-      result,
+      { items, limit: items.length, nextCursor: null },
     );
     return this.auditService.renderEventsCsv(visible.items);
   }
