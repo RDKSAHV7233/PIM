@@ -359,6 +359,30 @@ export class ConnectorInstallerService {
           await this.cleanupInstallationArtifacts(tenantKey, installationId);
           throw error;
         }
+      } else if (normalizedSlug === "myntra") {
+        try {
+          await this.captureAndStoreMyntraCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
+      } else if (normalizedSlug === "woocommerce") {
+        try {
+          await this.captureAndStoreWooCommerceCredentials({
+            tenantKey,
+            installationId,
+            externalAccountRef,
+            dto,
+          });
+        } catch (error) {
+          await this.cleanupInstallationArtifacts(tenantKey, installationId);
+          throw error;
+        }
       }
 
       const installed = await this.listInstalled(
@@ -1276,6 +1300,143 @@ export class ConnectorInstallerService {
       metadata: { source: "install_form" },
     });
     // Live validation deferred to Phase M-2 (RD-MEESHO-1).
+  }
+
+  /**
+   * Capture and store Myntra Merchant ID, Secret Key, and Warehouse ID.
+   *
+   * Live credential validation is deferred — Myntra auth scheme and endpoint
+   * contract are [NEEDS_PARTNER_CONFIRMATION] until the account-manager kickoff
+   * provides the Postman collection and sandbox credentials.
+   * All three fields are required because Myntra is a live publish connector.
+   *
+   * Field mapping from InstallConnectorDto:
+   *   externalAccountRef → merchant_id (also stored as installation.externalAccountRef)
+   *   clientSecret       → secret_key
+   *   refreshToken       → warehouse_id
+   */
+  private async captureAndStoreMyntraCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const merchantId  = String(input.externalAccountRef ?? "").trim();
+    const secretKey   = String(input.dto.clientSecret ?? "").trim();
+    const warehouseId = String(input.dto.refreshToken ?? "").trim();
+
+    if (!merchantId || !secretKey || !warehouseId) {
+      const missing = [
+        !merchantId  && "Merchant ID",
+        !secretKey   && "Secret Key",
+        !warehouseId && "Warehouse ID",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "MYNTRA_CREDENTIALS_INCOMPLETE",
+        message: `Myntra installation requires Merchant ID, Secret Key, and Warehouse ID. Missing: ${missing}.`,
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "merchant_id",
+      plainValue: merchantId,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "secret_key",
+      plainValue: secretKey,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "warehouse_id",
+      plainValue: warehouseId,
+      metadata: { source: "install_form" },
+    });
+    // Live validation deferred — enable after AM kickoff confirms Myntra
+    // Listing Management API endpoint URL, auth scheme, and sandbox creds.
+  }
+
+  /**
+   * Store WooCommerce manual-key credentials (W1 install path).
+   *
+   * Field mapping from InstallConnectorDto:
+   *   externalAccountRef → site_url   (store URL, also the installation account ref)
+   *   clientId           → consumer_key
+   *   clientSecret       → consumer_secret
+   *   refreshToken       → webhook_secret  (used for HMAC webhook verification)
+   *
+   * App-auth install path (handleOAuthCallback) stores consumer_key and consumer_secret
+   * when the WC /wc-auth/v1/authorize callback returns. site_url + webhook_secret are
+   * captured here at install-start for both paths.
+   */
+  private async captureAndStoreWooCommerceCredentials(input: {
+    tenantKey: string;
+    installationId: string;
+    externalAccountRef: string | null;
+    dto: InstallConnectorDto;
+  }): Promise<void> {
+    const siteUrl       = String(input.externalAccountRef ?? "").trim();
+    const consumerKey   = String(input.dto.clientId      ?? "").trim();
+    const consumerSecret = String(input.dto.clientSecret ?? "").trim();
+    const webhookSecret  = String(input.dto.refreshToken ?? "").trim();
+
+    if (!siteUrl || !consumerKey || !consumerSecret) {
+      const missing = [
+        !siteUrl        && "Site URL",
+        !consumerKey    && "Consumer Key",
+        !consumerSecret && "Consumer Secret",
+      ].filter(Boolean).join(", ");
+      throw new BadRequestException({
+        error: "WOOCOMMERCE_CREDENTIALS_INCOMPLETE",
+        message: `WooCommerce installation requires Site URL, Consumer Key, and Consumer Secret. Missing: ${missing}.`,
+      });
+    }
+
+    if (!siteUrl.startsWith("https://")) {
+      throw new BadRequestException({
+        error: "WOOCOMMERCE_SITE_URL_NOT_HTTPS",
+        message: "WooCommerce Site URL must use HTTPS.",
+      });
+    }
+
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "site_url",
+      plainValue: siteUrl,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "consumer_key",
+      plainValue: consumerKey,
+      metadata: { source: "install_form" },
+    });
+    await this.credentialEncryptionService.storeCredential({
+      tenantKey: input.tenantKey,
+      installationId: input.installationId,
+      credentialType: "consumer_secret",
+      plainValue: consumerSecret,
+      metadata: { source: "install_form" },
+    });
+    if (webhookSecret) {
+      await this.credentialEncryptionService.storeCredential({
+        tenantKey: input.tenantKey,
+        installationId: input.installationId,
+        credentialType: "webhook_secret",
+        plainValue: webhookSecret,
+        metadata: { source: "install_form" },
+      });
+    }
+    // Live preflight (HTTPS + /wp-json/wc/v3 reachability) deferred to
+    // validateCredentials heartbeat — Docker WooCommerce CI fixture required.
   }
 
   /**

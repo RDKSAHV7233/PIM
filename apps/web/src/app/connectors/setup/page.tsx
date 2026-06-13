@@ -57,7 +57,9 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
           ? "Meesho"
           : connectorSlug === "shopify"
             ? "Shopify"
-            : "connector";
+            : connectorSlug === "myntra"
+              ? "Myntra"
+              : "connector";
 
   if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
     return `${connectorLabel} install requires client ID, client secret, and refresh token together.`;
@@ -71,6 +73,12 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   if (value === "AMAZON_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
   }
+  if (value === "MYNTRA_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires Merchant ID, Secret Key, and Warehouse ID together.`;
+  }
+  if (value === "MYNTRA_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the Merchant ID, Secret Key, and Warehouse ID from your Myntra account manager.`;
+  }
   if (value === "SHOPIFY_SHOP_DOMAIN_REQUIRED") {
     return "Shopify install requires the store domain before the connector account can be created.";
   }
@@ -81,13 +89,14 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
 }
 
 function connectorAccountReferenceLabel(slug: string): string {
-  return slug === "amazon-in" ? "Seller ID" : "External Account Ref";
+  if (slug === "amazon-in") return "Seller ID";
+  if (slug === "myntra") return "Merchant ID";
+  return "External Account Ref";
 }
 
 function connectorAccountReferencePlaceholder(slug: string): string {
-  if (slug === "amazon-in") {
-    return "Enter Amazon seller ID";
-  }
+  if (slug === "amazon-in") return "Enter Amazon seller ID";
+  if (slug === "myntra") return "Enter Myntra merchant ID";
   return "Optional";
 }
 
@@ -130,6 +139,9 @@ function connectorStatusNote(
   if (implementationStatus === "partial") {
     if (slug === "meesho") {
       return "Meesho uses Excel export only. After exporting, upload the file manually in Meesho Supplier Panel. Direct publish is not supported by Meesho.";
+    }
+    if (slug === "myntra") {
+      return "Myntra API access is account-manager gated. Credentials (Merchant ID, Secret Key, Warehouse ID) are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff and Postman collection receipt.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
@@ -381,6 +393,39 @@ function ConnectorCredentialFields({ definitionId, slug }: { definitionId: strin
             name="clientId"
             autoComplete="off"
             placeholder="Leave blank for custom app / SHPAT installs"
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === "myntra") {
+    return (
+      <>
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          Myntra credentials are issued by your Myntra account manager (PPMP/Listing Management API access). Enter the Merchant ID in the field above, then Secret Key and Warehouse ID below. All three are required. Values are encrypted on save and never shown again.
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-client-secret-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Secret Key
+          </label>
+          <Input
+            id={`install-client-secret-${definitionId}`}
+            name="clientSecret"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter Myntra secret key"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor={`install-warehouse-id-${definitionId}`} className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Warehouse ID
+          </label>
+          <Input
+            id={`install-warehouse-id-${definitionId}`}
+            name="refreshToken"
+            autoComplete="off"
+            placeholder="Enter Myntra warehouse ID"
           />
         </div>
       </>

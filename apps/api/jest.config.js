@@ -16,6 +16,7 @@ module.exports = {
     "**/audit/audit.service.spec.ts",
     "**/connector-framework/connector-launch-policy.spec.ts",
     "**/connector-framework/connector-framework.service.spec.ts",
+    "**/connector-framework/connector-http-client.spec.ts",
     "**/bulk-import/bulk-import.service.spec.ts",
     "**/marketplace/marketplace.service.spec.ts",
     "**/connectors/amazon/amazon-validation.spec.ts",

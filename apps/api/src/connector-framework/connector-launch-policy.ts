@@ -33,11 +33,38 @@ export function resolveConnectorLaunchPolicy(
     };
   }
 
+  if (slug === CONNECTOR_SLUGS.MYNTRA) {
+    return {
+      launchStage: "live",
+      launchNote:
+        "Myntra supports publish, validation, and listing-status sync via the Myntra Listing Management API. API access requires account-manager enablement. Enter Merchant ID, Secret Key, and Warehouse ID from your Myntra seller account.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
+  if (slug === CONNECTOR_SLUGS.NYKAA) {
+    return {
+      launchStage: "manual",
+      launchNote:
+        "Nykaa is an export-only connector. Generate a category-specific Excel file and upload it to seller.nykaa.com → Catalogue Management → Catalogue Upload. Nykaa reviews listings within 7–10 business days. Direct API publishing requires Nykaa platform-partner credentials (not yet available).",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
   if (slug === CONNECTOR_SLUGS.SHOPIFY) {
     return {
       launchStage: "live",
       launchNote:
         "Shopify supports managed install, expiring offline token exchange, publication target selection, publish, status sync, and webhook relay handling.",
+      surfacedCapabilities: capabilities,
+    };
+  }
+
+  if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
+    return {
+      launchStage: "manual",
+      launchNote:
+        "WooCommerce supports publish, validation, status sync, and webhook relay. Install via manual REST API keys (Consumer Key + Consumer Secret from WooCommerce → Settings → Advanced → REST API). App-auth install (/wc-auth/v1/authorize) is available for partners. Docker WooCommerce CI fixture required before full integration test suite is enabled.",
       surfacedCapabilities: capabilities,
     };
   }

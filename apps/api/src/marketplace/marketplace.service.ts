@@ -1427,6 +1427,12 @@ export class MarketplaceService implements OnModuleInit {
             concurrency: 3,
             minIntervalMs: 300,
           },
+          // WooCommerce has no published rate-limit contract; 2 concurrent writes at 400ms minimum
+          // is conservative and matches the default policy used for new connectors.
+          woocommerce: {
+            concurrency: 2,
+            minIntervalMs: 400,
+          },
         },
         onCircuitOpen: (event) => {
           this.logger.warn("Connector worker circuit opened", { ...event });

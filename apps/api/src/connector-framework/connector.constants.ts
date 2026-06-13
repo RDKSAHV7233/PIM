@@ -8,7 +8,10 @@ export const CONNECTOR_SLUGS = {
   AMAZON: "amazon-in",
   FLIPKART: "flipkart",
   MEESHO: "meesho",
+  MYNTRA: "myntra",
+  NYKAA: "nykaa",
   SHOPIFY: "shopify",
+  WOOCOMMERCE: "woocommerce",
 } as const;
 
 export type ConnectorSlug = (typeof CONNECTOR_SLUGS)[keyof typeof CONNECTOR_SLUGS];

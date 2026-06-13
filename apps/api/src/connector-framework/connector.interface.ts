@@ -316,10 +316,16 @@ export interface ConnectorInterface {
    * Verify webhook signature and parse to internal event.
    * MUST verify HMAC signature before parsing body. Return null on invalid signature.
    * Never return a non-null result from an unverified payload.
+   *
+   * ctx.installationId is passed by the ingestion service from the inbound request context.
+   * Connectors that support per-installation HMAC secrets (e.g. WooCommerce W5+) use it
+   * to look up the stored webhook_secret for this installation. Connectors using a
+   * shared app-level secret (e.g. Shopify, WooCommerce W1) may ignore ctx.
    */
   parseWebhookEvent?(
     rawBody: Buffer,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    ctx?: { installationId: string }
   ): Promise<ParsedWebhookEvent | null>;
 
   /**

@@ -70,7 +70,11 @@ export class ConnectorWebhookIngestionService {
       });
     }
 
-    const parsedEvent = await connector.parseWebhookEvent(input.rawBody, input.headers);
+    const parsedEvent = await connector.parseWebhookEvent(
+      input.rawBody,
+      input.headers,
+      { installationId: input.installationId },
+    );
     if (!parsedEvent) {
       this.logger.warn("connector.webhook.rejected", {
         slug: installation.slug,

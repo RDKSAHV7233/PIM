@@ -81,6 +81,12 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
       ? "Amazon India"
       : connectorSlug === "meesho"
       ? "Meesho"
+      : connectorSlug === "myntra"
+      ? "Myntra"
+      : connectorSlug === "nykaa"
+      ? "Nykaa"
+      : connectorSlug === "woocommerce"
+      ? "WooCommerce"
       : "connector";
 
   if (value === "FLIPKART_CREDENTIALS_INCOMPLETE") {
@@ -94,6 +100,21 @@ function formatInstallErrorMessage(raw: string, connectorSlug?: string): string 
   }
   if (value === "AMAZON_CREDENTIALS_INVALID") {
     return `${connectorLabel} credentials could not be validated. Check the seller ID, client ID, client secret, and refresh token.`;
+  }
+  if (value === "MYNTRA_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires Merchant ID, Secret Key, and Warehouse ID together.`;
+  }
+  if (value === "MYNTRA_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the Merchant ID, Secret Key, and Warehouse ID from your Myntra account manager.`;
+  }
+  if (value === "WOOCOMMERCE_CREDENTIALS_INCOMPLETE") {
+    return `${connectorLabel} install requires Site URL, Consumer Key, and Consumer Secret together.`;
+  }
+  if (value === "WOOCOMMERCE_CREDENTIALS_INVALID") {
+    return `${connectorLabel} credentials could not be validated. Check the Site URL, Consumer Key, and Consumer Secret in WooCommerce → Settings → Advanced → REST API.`;
+  }
+  if (value === "WOOCOMMERCE_SITE_URL_NOT_HTTPS") {
+    return `${connectorLabel} Site URL must use HTTPS. Update the store URL and retry.`;
   }
   return `${connectorLabel} install failed: ${value}`;
 }
@@ -137,6 +158,12 @@ function connectorStatusNote(
   if (implementationStatus === "partial") {
     if (slug === "meesho") {
       return "Meesho is an export-only connector. Download a category-specific Excel file and upload it to Meesho Supplier Panel. Credential validation is pending API access. Direct publish is not supported by Meesho.";
+    }
+    if (slug === "nykaa") {
+      return "Nykaa is an export-only connector. Download a category-specific Excel file and upload it to seller.nykaa.com → Catalogue Management → Catalogue Upload. Nykaa reviews listings within 7–10 business days. Direct API publishing requires Nykaa platform-partner credentials (not yet available).";
+    }
+    if (slug === "myntra") {
+      return "Myntra API access is account-manager gated. Credentials are issued by your Myntra account manager. Beta — live credential validation enabled after AM kickoff.";
     }
     return "This connector has limited functionality. Check the channel guide for details.";
   }
