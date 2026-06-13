@@ -2,8 +2,7 @@ import { AccountSecurityClient } from "@/components/settings/account-security-cl
 import { redirect } from "next/navigation";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
-import { getMfaStatus, getTenantAuthPolicy, getBillingPlanProfile } from "@/lib/api";
-import { ApiHttpError } from "@/lib/api";
+import { ApiHttpError, getBillingPlanProfile, getMfaStatus, getTenantAuthPolicy } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +37,7 @@ export default async function AccountSecurityPage() {
     const planProfile = await getBillingPlanProfile(requestOptions);
     planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
   } catch {
-    // billing unavailable — default to TRIAL gate (safest)
+    // plan profile unavailable — default to TRIAL (gated)
   }
 
   return (

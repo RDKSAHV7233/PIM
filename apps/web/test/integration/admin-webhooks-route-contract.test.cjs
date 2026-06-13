@@ -98,6 +98,12 @@ function run() {
       source.includes('redirect(buildLoginRedirect("/admin/webhooks", error));'),
     "Admin webhooks must link to audit evidence and redirect auth failures through the shared login helper.",
   );
+  assert(
+    source.includes("getBillingPlanProfile(") &&
+      source.includes('planTier === "TRIAL" || planTier === "STARTER"') &&
+      source.includes("Plan Upgrade Required"),
+    "Admin webhooks must gate the page behind a GROWTH+ plan check and show an upgrade card to TRIAL/STARTER workspaces.",
+  );
 
   console.log(
     JSON.stringify(

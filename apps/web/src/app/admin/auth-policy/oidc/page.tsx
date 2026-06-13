@@ -4,7 +4,7 @@ import {
   deleteOidcConfigAction,
   upsertOidcConfigAction,
 } from "@/app/admin/auth-policy/oidc/actions";
-import { ApiHttpError, getOidcConfig, getBillingPlanProfile, type OidcConfigView } from "@/lib/api";
+import { ApiHttpError, getBillingPlanProfile, getOidcConfig, type OidcConfigView } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { formatDateTime } from "@/lib/format";
@@ -78,16 +78,15 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
 
   const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
   const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
-
   if (planTier !== "ENTERPRISE") {
     return (
       <div className="space-y-5">
         <PageHeader
           title="OIDC SSO Configuration"
-          description="Connect your identity provider for workspace sign-in."
+          description="Tenant OIDC identity provider configuration is limited to workspace admins."
           breadcrumb={
             <>
-              Dashboard / Admin / <Link className="underline" href="/admin/auth-policy">Auth Policy</Link> /{" "}
+              Dashboard / Admin / Auth Policy /{" "}
               <span className="font-semibold text-slate-700">OIDC</span>
             </>
           }
@@ -95,8 +94,9 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
         <Card>
           <CardTitle>Enterprise Plan Required</CardTitle>
           <p className="mt-2 text-sm text-slate-600">
-            OIDC / SSO self-serve configuration is available on the Enterprise plan only. Upgrade to connect
-            Okta, Azure AD, Google Workspace, Auth0, or another identity provider for workspace sign-in.
+            OIDC / SSO configuration requires the Enterprise plan. Upgrade to configure your
+            identity provider, enforce external authentication, and manage sign-in methods
+            centrally.
           </p>
           <div className="mt-4">
             <Link

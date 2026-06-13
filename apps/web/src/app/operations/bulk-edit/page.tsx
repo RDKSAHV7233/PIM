@@ -4,6 +4,7 @@ import { applyBulkEditAction } from "@/app/actions";
 import { BulkEditDiffPreview } from "@/components/bulk-edit/bulk-edit-diff-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
 import { JsonPreview } from "@/components/ui/json-preview";
@@ -11,13 +12,12 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
+  getBillingPlanProfile,
   getBulkEditOperations,
   getBulkEditPreview,
   getCategoryTree,
   getProducts,
-  getBillingPlanProfile,
 } from "@/lib/api";
-import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { extractErrorCode, translateError, translateJobStatus } from "@/lib/errors";
 import { canEditWorkspace } from "@/lib/role-capabilities";
@@ -164,13 +164,12 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
   try {
     const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
     const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
-
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
         <div className="space-y-5">
           <PageHeader
             title="Bulk Edit"
-            description="Apply a single field change across many products at once."
+            description="Apply field changes across multiple products in a single operation."
             breadcrumb={
               <>
                 Dashboard / Operations / <span className="font-semibold text-slate-700">Bulk Edit</span>
@@ -180,8 +179,8 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
           <Card>
             <CardTitle>Plan Upgrade Required</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              Bulk edit is available on the Growth plan and above. Upgrade to apply field changes across
-              hundreds of products at once with full history and rollback support.
+              Bulk edit is available on the Growth plan and above. Upgrade to modify status, brand,
+              title, or other fields across hundreds of products in a single operation.
             </p>
             <div className="mt-4">
               <Link
@@ -195,7 +194,6 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
         </div>
       );
     }
-
     const [operations, categories, products] = await Promise.all([
       getBulkEditOperations(100, { role: actorRole, authHeader }),
       getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),

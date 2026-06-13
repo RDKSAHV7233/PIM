@@ -175,7 +175,7 @@ type AmazonFeedResultDocument = {
 export class AmazonConnector implements ConnectorInterface {
   readonly slug = "amazon-in";
   readonly displayName = "Amazon India";
-  readonly implementationStatus = "full" as const;
+  readonly implementationStatus = "stub" as const;
 
   get capabilities(): ConnectorCap[] {
     const caps: ConnectorCap[] = ["PUBLISH", "VALIDATE", "STATUS_SYNC", "WEBHOOK_RECEIVE"];

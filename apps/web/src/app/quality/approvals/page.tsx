@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { addApprovalCommentAction, decideProductReviewAction } from "@/app/actions";
 import { createChangeRequestAction, resolveChangeRequestAction } from "@/app/quality-actions";
-import { ApiHttpError, getAllProductsSlim, getApprovalComments, getIssueInbox, getStats, getBillingPlanProfile } from "@/lib/api";
+import { ApiHttpError, getAllProductsSlim, getApprovalComments, getBillingPlanProfile, getIssueInbox, getStats } from "@/lib/api";
 import { getChangeRequests, getWorkflowSla, getOverdueCount } from "@/lib/api/catalog";
 import { SlaBadge } from "@/components/ui/sla-badge";
 import type { ProductRevision } from "@/lib/api";
@@ -53,24 +53,23 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
   try {
     const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
     const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
-
     if (planTier === "TRIAL" || planTier === "STARTER") {
       return (
         <div className="space-y-5">
           <PageHeader
             title="Approval Queue"
-            description="Review and approve product changes before they are published to channels."
+            description="Review products in workflow review and resolve remaining publish-readiness blockers."
             breadcrumb={
               <>
-                Dashboard / Quality / <span className="font-semibold text-slate-700">Approvals</span>
+                Dashboard / Quality / <span className="font-semibold text-slate-700">Approval Queue</span>
               </>
             }
           />
           <Card>
             <CardTitle>Plan Upgrade Required</CardTitle>
             <p className="mt-2 text-sm text-slate-600">
-              The approval workflow is available on the Growth plan and above. Upgrade to enable reviewer and
-              approver roles, SLA-tracked review queues, and approval evidence trails.
+              Approval workflow is available on the Growth plan and above. Upgrade to review product
+              submissions, assign approvers, and enforce sign-off before publish.
             </p>
             <div className="mt-4">
               <Link
@@ -84,7 +83,6 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
         </div>
       );
     }
-
     const [stats, inbox, products, slaConfig, overdueCount] = await Promise.all([
       getStats({ role: actorRole, authHeader }),
       getIssueInbox(

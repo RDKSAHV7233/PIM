@@ -10,9 +10,11 @@ import {
   AppRole,
   getAiAttributeEnrichment,
   getAiCategorySuggestion,
+  getBillingPlanProfile,
   getProductList,
   getAiTitleSuggestion,
 } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { getServerSession } from "@/lib/server-session";
 import { filterTestData } from "@/lib/test-data-filter";
@@ -35,6 +37,41 @@ export default async function AiPage({ searchParams }: AiPageProps) {
   if (actorRole !== "admin" || process.env.APP_ENV === "production") {
     notFound();
   }
+
+  try {
+    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+    const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+    if (planTier === "TRIAL" || planTier === "STARTER") {
+      return (
+        <div className="space-y-5">
+          <PageHeader
+            title="AI Labs"
+            description="Experimental enrichment tools for catalog operators."
+            breadcrumb={<>Dashboard / <span className="font-semibold text-slate-700">AI Labs</span></>}
+          />
+          <Card>
+            <CardTitle>Growth Plan Required</CardTitle>
+            <p className="mt-2 text-sm text-slate-600">
+              AI enrichment tools are available on the Growth plan and above. These features are
+              experimental and intended for internal evaluation — not for production catalog
+              operations.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/plan"
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                View Plan &amp; Upgrade
+              </Link>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+  } catch {
+    notFound();
+  }
+
   const productId = String(query.productId ?? "").trim();
   const repairStatus = String(query.repairStatus ?? "").trim();
 

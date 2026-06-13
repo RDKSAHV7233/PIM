@@ -69,6 +69,12 @@ function run() {
     source.includes('redirect(buildLoginRedirect("/admin/api-keys", error));'),
     "Admin API keys must redirect expired or forbidden sessions through the shared login helper.",
   );
+  assert(
+    source.includes("getBillingPlanProfile(") &&
+      source.includes('planTier === "TRIAL" || planTier === "STARTER"') &&
+      source.includes("Plan Upgrade Required"),
+    "Admin API keys must gate the page behind a GROWTH+ plan check and show an upgrade card to TRIAL/STARTER workspaces.",
+  );
 
   console.log(
     JSON.stringify(
