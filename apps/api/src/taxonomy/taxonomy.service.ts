@@ -207,9 +207,19 @@ export class TaxonomyService {
       throw new BadRequestException("Cannot delete category with attached products");
     }
 
-    const importJobCount = await this.prisma.tenant().bulkImportJob.count({ where: { categoryId: id } });
+    const [importJobCount, importRunCount, exportJobCount] = await Promise.all([
+      this.prisma.tenant().bulkImportJob.count({ where: { categoryId: id } }),
+      this.prisma.tenant().bulkImportRun.count({ where: { categoryId: id } }),
+      this.prisma.tenant().marketplaceExportJob.count({ where: { categoryId: id } }),
+    ]);
     if (importJobCount > 0) {
       throw new BadRequestException("Cannot delete category with existing import jobs. Archive or remove the import jobs first.");
+    }
+    if (importRunCount > 0) {
+      throw new BadRequestException("Cannot delete category with existing import runs. Archive or remove the import runs first.");
+    }
+    if (exportJobCount > 0) {
+      throw new BadRequestException("Cannot delete category with existing export jobs. Remove the export jobs first.");
     }
 
     await this.prisma.tenant().category.delete({ where: { id } });
