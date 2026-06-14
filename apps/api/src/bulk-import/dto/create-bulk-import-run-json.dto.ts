@@ -18,10 +18,12 @@ export class CreateBulkImportRunJsonDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(10_000_000)
   csvContent?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(13_500_000)
   fileContentBase64?: string;
 
   @IsOptional()

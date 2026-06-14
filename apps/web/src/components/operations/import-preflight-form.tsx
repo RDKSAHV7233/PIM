@@ -79,7 +79,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
     return "success";
   }, [stagedRun]);
   const mappedFieldCount = useMemo(
-    () => Object.keys((stagedRun?.preflightSummary?.mapping as Record<string, string> | undefined) ?? {}).length,
+    () => Object.keys(stagedRun?.preflightSummary?.mapping ?? {}).length,
     [stagedRun],
   );
   const hasBlockingIssues = (stagedRun?.blockingIssueCount ?? 0) > 0;
@@ -207,9 +207,16 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         headers,
         body: JSON.stringify(body),
       });
-      const uploadPayload = (await uploadResponse.json()) as { id?: string; message?: string; error?: string };
+      const uploadPayload = await uploadResponse.json();
       if (!uploadResponse.ok || !uploadPayload.id) {
-        throw new Error(String(uploadPayload.message ?? uploadPayload.error ?? "Failed to stage import run."));
+        const serverMsg = uploadPayload.message ?? uploadPayload.error;
+        throw new Error(
+          serverMsg
+            ? String(serverMsg)
+            : uploadResponse.status >= 500
+              ? "The import file is too large to process. Try reducing the number of rows or using a smaller file."
+              : "Failed to stage import run.",
+        );
       }
       const runId = uploadPayload.id;
 
@@ -219,15 +226,10 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         headers,
         body: "{}",
       });
-      const validatePayload = (await validateResponse.json()) as BulkImportRun | { message?: string; error?: string };
+      const validatePayload = await validateResponse.json();
       if (!validateResponse.ok) {
-        throw new Error(
-          String(
-            (validatePayload as { message?: string }).message ??
-              (validatePayload as { error?: string }).error ??
-              "Import validation failed.",
-          ),
-        );
+        const serverMsg = (validatePayload as { message?: string }).message ?? (validatePayload as { error?: string }).error;
+        throw new Error(serverMsg ? String(serverMsg) : "Import validation failed.");
       }
       setStagedRun(validatePayload as BulkImportRun);
     } catch (error) {
@@ -237,6 +239,10 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       setValidating(false);
     }
   }
+
+  const unmappedFields = stagedRun?.preflightSummary?.unmappedFields ?? [];
+  const unusedHeaders = stagedRun?.preflightSummary?.unusedHeaders ?? [];
+  const sampleIssues = stagedRun?.preflightSummary?.sampleIssues ?? [];
 
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
@@ -463,36 +469,36 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
               <p><span className="font-medium">Warnings:</span> {stagedRun.warningCount ?? 0}</p>
               <p><span className="font-medium">Accepted rows:</span> {stagedRun.acceptedRows ?? 0}</p>
               <p><span className="font-medium">Failed rows:</span> {stagedRun.failedRows ?? 0}</p>
-              <p><span className="font-medium">Category:</span> {stagedRun.category?.path ?? ""}</p>
+              <p><span className="font-medium">Category:</span> {stagedRun.category?.path ?? stagedRun.categoryId}</p>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <p><span className="font-medium">Mapped fields:</span> {mappedFieldCount}</p>
-              <p><span className="font-medium">Unmapped source fields:</span> {(stagedRun.preflightSummary?.unmappedFields ?? []).length}</p>
-              <p><span className="font-medium">Unused headers:</span> {(stagedRun.preflightSummary?.unusedHeaders ?? []).length}</p>
+              <p><span className="font-medium">Unmapped source fields:</span> {unmappedFields.length}</p>
+              <p><span className="font-medium">Unused headers:</span> {unusedHeaders.length}</p>
             </div>
-            {(stagedRun.preflightSummary?.unmappedFields ?? []).length > 0 || (stagedRun.preflightSummary?.unusedHeaders ?? []).length > 0 ? (
+            {unmappedFields.length > 0 || unusedHeaders.length > 0 ? (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-900">Unmapped fields</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {(stagedRun.preflightSummary?.unmappedFields ?? []).length > 0 ? (stagedRun.preflightSummary?.unmappedFields ?? []).join(", ") : "None"}
+                    {unmappedFields.length > 0 ? unmappedFields.join(", ") : "None"}
                   </p>
                 </div>
                 <div>
                   <p className="font-medium text-slate-900">Unused headers</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {(stagedRun.preflightSummary?.unusedHeaders ?? []).length > 0 ? (stagedRun.preflightSummary?.unusedHeaders ?? []).join(", ") : "None"}
+                    {unusedHeaders.length > 0 ? unusedHeaders.join(", ") : "None"}
                   </p>
                 </div>
               </div>
             ) : null}
-            {(stagedRun.preflightSummary?.sampleIssues ?? []).length > 0 ? (
+            {sampleIssues.length > 0 ? (
               <div className="mt-3 space-y-2">
                 <p className="font-medium text-slate-900">Representative issues</p>
                 <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {(stagedRun.preflightSummary?.sampleIssues ?? []).map((issue, index) => (
+                  {sampleIssues.map((issue, index) => (
                     <li key={`issue-${issue.rowNumber}-${index}`}>
-                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{(issue.issues ?? []).join("; ")}
+                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{issue.message ?? issue.code ?? ""}
                     </li>
                   ))}
                 </ul>

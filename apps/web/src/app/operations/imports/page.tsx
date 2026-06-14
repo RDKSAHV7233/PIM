@@ -188,20 +188,29 @@ export default async function OperationsImportsPage({ searchParams }: Operations
     // parallel up front. URL params (selectedBulkJobId, selectedBulkRunId) are known
     // immediately, so there is no reason to wait for the jobs list before fetching rows.
     const [jobsResult, categoriesResult, runsResult, selectedRowsResult, selectedRunResult, selectedRunRowsResult] =
-      await Promise.allSettled([
-        getBulkImportJobs({ role: actorRole, authHeader }),
-        getCachedCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-        getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader }),
-        selectedBulkJobId
-          ? getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
-          : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportJobRows>>),
-        selectedBulkRunId
-          ? getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader })
-          : Promise.resolve(null),
-        selectedBulkRunId
-          ? getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader })
-          : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportRunRows>>),
-      ]);
+      canWrite
+        ? await Promise.allSettled([
+            getBulkImportJobs({ role: actorRole, authHeader }),
+            getCachedCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
+            getBulkImportRuns(undefined, undefined, { role: actorRole, authHeader }),
+            selectedBulkJobId
+              ? getBulkImportJobRows(selectedBulkJobId, undefined, 200, { role: actorRole, authHeader })
+              : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportJobRows>>),
+            selectedBulkRunId
+              ? getBulkImportRun(selectedBulkRunId, { role: actorRole, authHeader })
+              : Promise.resolve(null),
+            selectedBulkRunId
+              ? getBulkImportRunRows(selectedBulkRunId, undefined, undefined, { role: actorRole, authHeader })
+              : Promise.resolve([] as Awaited<ReturnType<typeof getBulkImportRunRows>>),
+          ])
+        : [
+            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportJobs>> },
+            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getCachedCategoryTree>> },
+            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportRuns>> },
+            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportJobRows>> },
+            { status: "fulfilled" as const, value: null as Awaited<ReturnType<typeof getBulkImportRun>> | null },
+            { status: "fulfilled" as const, value: [] as Awaited<ReturnType<typeof getBulkImportRunRows>> },
+          ];
 
     // Re-throw 401/403 from any slot so the outer catch can redirect to login.
     // Previously, runs/run-rows sat inside the outer try/catch and would naturally
@@ -748,7 +757,10 @@ export default async function OperationsImportsPage({ searchParams }: Operations
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
+      redirect(buildLoginRedirect("/operations/imports", error));
+    }
+    if (error instanceof ApiHttpError && error.status === 403 && canWrite) {
       redirect(buildLoginRedirect("/operations/imports", error));
     }
     throw error;
