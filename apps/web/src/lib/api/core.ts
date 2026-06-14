@@ -1193,7 +1193,7 @@ export interface BulkImportRun {
     mapping?: Record<string, string>;
     unmappedFields?: string[];
     unusedHeaders?: string[];
-    sampleIssues?: Array<{ rowNumber: number; issues: string[]; severity: string }>;
+    sampleIssues?: BulkImportValidationIssue[];
     canImport?: boolean;
     skuCodeSummary?: { duplicateCount: number; collisionCount: number } | null;
     mvpCeilingExceeded?: boolean;

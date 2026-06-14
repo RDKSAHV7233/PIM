@@ -498,7 +498,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
                 <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
                   {sampleIssues.map((issue, index) => (
                     <li key={`issue-${issue.rowNumber}-${index}`}>
-                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{(issue.issues ?? []).join("; ")}
+                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{issue.message ?? issue.code ?? ""}
                     </li>
                   ))}
                 </ul>
