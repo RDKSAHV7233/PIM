@@ -3,6 +3,8 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const bcrypt = require("bcryptjs");
+const { PrismaClient } = require("@prisma/client");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
@@ -32,6 +34,156 @@ function withConnectionLimit(databaseUrl, connectionLimit) {
     return parsed.toString();
   } catch {
     return databaseUrl;
+  }
+}
+
+const PLAYWRIGHT_DEMO_USERS = {
+  admin: () => process.env.PLAYWRIGHT_ADMIN_USER || "admin@vexa-pim.local",
+  editor: () => process.env.PLAYWRIGHT_EDITOR_USER || "editor@vexa-pim.local",
+  publisher: () => process.env.PLAYWRIGHT_PUBLISHER_USER || "publisher@vexa-pim.local",
+  approver: () => process.env.PLAYWRIGHT_APPROVER_USER || "approver@vexa-pim.local",
+  channel_manager: () => process.env.PLAYWRIGHT_CHANNEL_MANAGER_USER || "channel_manager@vexa-pim.local",
+  connector_admin: () => process.env.PLAYWRIGHT_CONNECTOR_ADMIN_USER || "connector_admin@vexa-pim.local",
+  reviewer: () => process.env.PLAYWRIGHT_REVIEWER_USER || "reviewer@vexa-pim.local",
+  viewer: () => process.env.PLAYWRIGHT_VIEWER_USER || "viewer@vexa-pim.local",
+};
+
+function normalizeSeedValue(value, fallback) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized || fallback;
+}
+
+function normalizePlanTier(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return ["TRIAL", "STARTER", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(normalized)
+    ? normalized
+    : "ENTERPRISE";
+}
+
+function buildWorkspaceDisplayName(workspaceSlug) {
+  const explicit = String(process.env.PLAYWRIGHT_WORKSPACE_NAME ?? "").trim();
+  if (explicit) {
+    return explicit;
+  }
+  if (workspaceSlug === "default") {
+    return "Default";
+  }
+  return "Playwright Workspace";
+}
+
+async function seedPlaywrightFixtures(databaseUrl) {
+  const authMode = String(process.env.PLAYWRIGHT_AUTH_MODE || process.env.AUTH_MODE || "local").trim().toLowerCase() || "local";
+  if (authMode !== "db") {
+    return;
+  }
+
+  const workspaceSlug = normalizeSeedValue(process.env.PLAYWRIGHT_WORKSPACE || process.env.PIM_DEFAULT_WORKSPACE_SLUG, "default");
+  const tenantKey = normalizeSeedValue(process.env.PLAYWRIGHT_TENANT_KEY || process.env.PIM_DEFAULT_TENANT_KEY, workspaceSlug);
+  const planTier = normalizePlanTier(process.env.PLAYWRIGHT_PLAN_TIER || "ENTERPRISE");
+  const billingStatus = planTier === "TRIAL" ? "trial" : "active_paid";
+  const workspaceDisplayName = buildWorkspaceDisplayName(workspaceSlug);
+  const password = String(process.env.PLAYWRIGHT_PASSWORD || "vexa-pim-demo-password").trim() || "vexa-pim-demo-password";
+  const passwordHash = await bcrypt.hash(password, 12);
+  const seededAt = new Date();
+
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+
+  try {
+    await prisma.$connect();
+
+    await prisma.workspaceDirectory.upsert({
+      where: { tenantKey },
+      create: {
+        tenantKey,
+        workspaceSlug,
+        displayName: workspaceDisplayName,
+        isActive: true,
+      },
+      update: {
+        workspaceSlug,
+        displayName: workspaceDisplayName,
+        isActive: true,
+      },
+    });
+
+    await prisma.tenantPlanProfile.upsert({
+      where: { tenantKey },
+      create: {
+        tenantKey,
+        planTier,
+        billingStatus,
+        accessStatus: "active",
+        effectiveFrom: seededAt,
+        trialEndsAt: null,
+        paidThroughAt: null,
+        graceEndsAt: null,
+        cancelledAt: null,
+        suspendedAt: null,
+        suspensionReason: null,
+        billingContactEmail: null,
+        billingProvider: null,
+        externalCustomerId: null,
+        externalSubscriptionId: null,
+        updatedBy: "playwright-bootstrap",
+      },
+      update: {
+        planTier,
+        billingStatus,
+        accessStatus: "active",
+        effectiveFrom: seededAt,
+        trialEndsAt: null,
+        paidThroughAt: null,
+        graceEndsAt: null,
+        cancelledAt: null,
+        suspendedAt: null,
+        suspensionReason: null,
+        billingContactEmail: null,
+        billingProvider: null,
+        externalCustomerId: null,
+        externalSubscriptionId: null,
+        updatedBy: "playwright-bootstrap",
+      },
+    });
+
+    for (const [role, getUserId] of Object.entries(PLAYWRIGHT_DEMO_USERS)) {
+      const userId = String(getUserId()).trim().toLowerCase();
+      await prisma.authIdentity.upsert({
+        where: { userId },
+        create: {
+          tenantKey,
+          userId,
+          role,
+          isActive: true,
+          assignedRoles: [],
+          passwordHash,
+          createdBy: "playwright-bootstrap",
+          lockedUntil: null,
+          lastSignInAt: null,
+        },
+        update: {
+          tenantKey,
+          role,
+          isActive: true,
+          assignedRoles: [],
+          passwordHash,
+          createdBy: "playwright-bootstrap",
+          lockedUntil: null,
+          lastSignInAt: null,
+        },
+      });
+    }
+
+    console.log(
+      `[playwright-bootstrap] Seeded DB auth fixtures for workspace "${workspaceSlug}" (tenant "${tenantKey}", plan ${planTier}).`,
+    );
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
@@ -332,6 +484,8 @@ if (workspaceDirectory !== undefined) {
 }
 
 async function main() {
+  await seedPlaywrightFixtures(databaseUrl);
+
   const enableShopifyStub = String(process.env.PLAYWRIGHT_ENABLE_SHOPIFY_STUB || "").trim() === "1";
   const shopifyStub = enableShopifyStub ? await createShopifyStubServer() : null;
 

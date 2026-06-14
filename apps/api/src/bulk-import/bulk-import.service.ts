@@ -5,6 +5,7 @@ import { AccessPolicyService, PolicyActor } from "../common/access-policy/access
 import { ComplianceService } from "../compliance/compliance.service";
 import { getTenantKeyFromContext } from "../common/tenant/tenant-context";
 import { normalizeTenantKey } from "../common/tenant/tenant.constants";
+import { PlanUsageService } from "../billing/plan-usage.service";
 import {
   CursorPaginationQuery,
   decodeCursorToken,
@@ -75,6 +76,7 @@ const FIELD_ALIASES: Record<(typeof CANONICAL_FIELDS)[number], string[]> = {
 };
 
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+const LARGE_IMPORT_ROW_CEILING = 30_000;
 const TEMPLATE_SOURCE_FORMATS = new Set(["csv", "json"]);
 const TERMINAL_ROW_STATUSES = [
   BulkImportRowStatus.success,
@@ -143,6 +145,7 @@ export class BulkImportService {
     private readonly complianceService: ComplianceService,
     private readonly notificationsService: NotificationsService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly planUsageService: PlanUsageService,
   ) {}
 
   suggestMapping(headers: string[]) {
@@ -366,6 +369,7 @@ export class BulkImportService {
   async validateJobInput(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
     const category = await this.requireCategory(dto.categoryId);
+    const importRowLimit = await this.resolveImportRowLimit(actor);
 
     const sourceRows = this.resolveImportSourceRows(dto);
     const suggestion = this.suggestMappingFromHeaders(sourceRows.headers, dto.mapping);
@@ -388,12 +392,12 @@ export class BulkImportService {
       blockingIssueCount += 1;
     }
 
-    if (normalizedRows.length > 10000) {
+    if (normalizedRows.length > importRowLimit) {
       sampleIssues.push({
         rowNumber: 0,
         severity: "blocking",
         code: "ROW_LIMIT_EXCEEDED",
-        message: "Maximum 10,000 rows per job.",
+        message: `Maximum ${importRowLimit.toLocaleString("en-US")} rows per job.`,
       });
       blockingIssueCount += 1;
     }
@@ -459,6 +463,7 @@ export class BulkImportService {
   async createJob(dto: CreateBulkImportJobDto, actor?: PolicyActor) {
     await this.accessPolicy.assertCategoryAccess(actor ?? {}, "import", dto.categoryId, "BulkImportJob");
     await this.requireCategory(dto.categoryId);
+    const importRowLimit = await this.resolveImportRowLimit(actor);
     const linkedRunId = String(dto.runId ?? "").trim() || null;
     if (linkedRunId) {
       await this.assertLinkedStandardRun(linkedRunId, dto.categoryId, actor);
@@ -485,8 +490,8 @@ export class BulkImportService {
     if (normalizedRows.length === 0) {
       throw new BadRequestException("No import rows detected.");
     }
-    if (normalizedRows.length > 10000) {
-      throw new BadRequestException("Maximum 10,000 rows per job.");
+    if (normalizedRows.length > importRowLimit) {
+      throw new BadRequestException(`Maximum ${importRowLimit.toLocaleString("en-US")} rows per job.`);
     }
 
     const created = await this.prisma.tenant().$transaction(async (tx) => {
@@ -1691,6 +1696,12 @@ export class BulkImportService {
       throw new BadRequestException("tenantKey mismatch with authenticated tenant context.");
     }
     return contextTenantKey;
+  }
+
+  private async resolveImportRowLimit(actor?: PolicyActor) {
+    const tenantKey = this.resolveRequestTenantKey(actor?.tenantId ?? undefined);
+    const planRowLimit = await this.planUsageService.getImportRowLimit(tenantKey);
+    return Math.min(planRowLimit, LARGE_IMPORT_ROW_CEILING);
   }
 
   private parseTemplateSourceFormat(value: string) {

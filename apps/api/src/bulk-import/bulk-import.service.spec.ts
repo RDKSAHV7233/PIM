@@ -3,7 +3,15 @@ import { BulkImportService } from "./bulk-import.service";
 
 const MB = 1024 * 1024;
 
-function makeService() {
+function buildCsv(rowCount: number) {
+  const lines = ["title,description,brand,hsnCode,gstRate,attributes"];
+  for (let index = 0; index < rowCount; index += 1) {
+    lines.push(`Product ${index},Description ${index},Vexa PIM,62046200,18,{}`);
+  }
+  return lines.join("\n");
+}
+
+function makeService(options?: { importRowLimit?: number }) {
   const prisma = {
     tenant: jest.fn().mockReturnValue({
       category: {
@@ -14,13 +22,18 @@ function makeService() {
   const complianceService = {};
   const notificationsService = {};
   const accessPolicy = {
+    assertCategoryAccess: jest.fn().mockResolvedValue(undefined),
     assertBulkImportAccess: jest.fn().mockResolvedValue(undefined),
+  };
+  const planUsageService = {
+    getImportRowLimit: jest.fn().mockResolvedValue(options?.importRowLimit ?? 30_000),
   };
   return new BulkImportService(
     prisma as never,
     complianceService as never,
     notificationsService as never,
     accessPolicy as never,
+    planUsageService as never,
   );
 }
 
@@ -148,6 +161,7 @@ describe("BulkImportService.validateImport", () => {
         {} as never,
         {} as never,
         { assertBulkImportAccess: jest.fn() } as never,
+        { getImportRowLimit: jest.fn().mockResolvedValue(30_000) } as never,
       );
       const result = await svc.validateImport({
         fileName: "products.csv",
@@ -186,6 +200,43 @@ describe("BulkImportService.validateImport", () => {
       expect(mappedFields).toContain("title");
       expect(mappedFields).toContain("brand");
       expect(mappedFields).toContain("status");
+    });
+  });
+
+  describe("validateJobInput row limits", () => {
+    it("allows Enterprise-sized 10001-row CSV imports when the plan limit is 30000", async () => {
+      const svc = makeService({ importRowLimit: 30_000 });
+      const result = await svc.validateJobInput({
+        categoryId: "cat1",
+        sourceFormat: "csv",
+        sourceName: "enterprise-import.csv",
+        csvContent: buildCsv(10_001),
+      });
+
+      expect(result.totalRows).toBe(10_001);
+      expect(result.canImport).toBe(true);
+      expect(result.blockingIssueCount).toBe(0);
+      expect(result.sampleIssues.some((issue) => issue.code === "ROW_LIMIT_EXCEEDED")).toBe(false);
+    });
+
+    it("still blocks rows above the plan limit for smaller plans", async () => {
+      const svc = makeService({ importRowLimit: 2_000 });
+      const result = await svc.validateJobInput({
+        categoryId: "cat1",
+        sourceFormat: "csv",
+        sourceName: "starter-import.csv",
+        csvContent: buildCsv(2_001),
+      });
+
+      expect(result.totalRows).toBe(2_001);
+      expect(result.canImport).toBe(false);
+      expect(result.blockingIssueCount).toBeGreaterThan(0);
+      expect(result.sampleIssues).toContainEqual(
+        expect.objectContaining({
+          code: "ROW_LIMIT_EXCEEDED",
+          message: "Maximum 2,000 rows per job.",
+        }),
+      );
     });
   });
 });
