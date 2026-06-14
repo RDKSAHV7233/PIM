@@ -187,7 +187,8 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
                 >
                   Category Name
                 </label>
-                <Input id="create-category-name" name="name" placeholder="e.g. Men's Shirts" required />
+                <Input id="create-category-name" name="name" placeholder="e.g. Men's Shirts" required minLength={1} maxLength={120} />
+                <p className="text-xs text-slate-500">1–120 characters.</p>
               </div>
               <div className="space-y-1">
                 <label
