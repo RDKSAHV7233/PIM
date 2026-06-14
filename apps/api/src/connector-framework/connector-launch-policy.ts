@@ -62,9 +62,9 @@ export function resolveConnectorLaunchPolicy(
 
   if (slug === CONNECTOR_SLUGS.WOOCOMMERCE) {
     return {
-      launchStage: "manual",
+      launchStage: "planned",
       launchNote:
-        "WooCommerce supports publish, validation, status sync, and webhook relay. Install via manual REST API keys (Consumer Key + Consumer Secret from WooCommerce → Settings → Advanced → REST API). App-auth install (/wc-auth/v1/authorize) is available for partners. Docker WooCommerce CI fixture required before full integration test suite is enabled.",
+        "WooCommerce connector is under active development. Self-serve install and publishing are not yet available. Contact your account manager for early access.",
       surfacedCapabilities: capabilities,
     };
   }
