@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
-import type { BulkImportValidationSummary, Category } from "@/lib/api";
+import type { BulkImportRun, Category } from "@/lib/api";
 
 function readCookie(name: string): string {
   if (typeof document === "undefined") {
@@ -58,44 +58,51 @@ const DEFAULT_MAPPING = JSON.stringify({
 
 export function ImportPreflightForm({ categories, canWrite, submitAction }: ImportPreflightFormProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const [validation, setValidation] = useState<BulkImportValidationSummary | null>(null);
+  const [stagedRun, setStagedRun] = useState<BulkImportRun | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ValidationFieldErrors>({});
   const [validationError, setValidationError] = useState<string>("");
   const [validating, setValidating] = useState(false);
 
   const hasCategories = categories.length > 0;
+  const canImport = stagedRun?.preflightSummary?.canImport ?? false;
+  const isLargeMode = stagedRun?.effectiveMode === "large";
   const validationTone = useMemo(() => {
-    if (!validation) {
+    if (!stagedRun) {
       return null;
     }
-    if (!validation.canImport) {
+    if (stagedRun.status === "preflight_blocked") {
       return "error";
     }
-    if (validation.warningCount > 0) {
+    if ((stagedRun.warningCount ?? 0) > 0) {
       return "warning";
     }
     return "success";
-  }, [validation]);
-  const mappedFieldCount = useMemo(() => Object.keys(validation?.mapping ?? {}).length, [validation]);
-  const hasBlockingIssues = (validation?.blockingIssueCount ?? 0) > 0;
-  const warningOnlyPreflight = Boolean(validation?.canImport && (validation.warningCount ?? 0) > 0);
+  }, [stagedRun]);
+  const mappedFieldCount = useMemo(
+    () => Object.keys((stagedRun?.preflightSummary?.mapping as Record<string, string> | undefined) ?? {}).length,
+    [stagedRun],
+  );
+  const hasBlockingIssues = (stagedRun?.blockingIssueCount ?? 0) > 0;
+  const warningOnlyPreflight = Boolean(canImport && (stagedRun?.warningCount ?? 0) > 0);
   const malformedFileState = /json|csv|array|file|format|parse/i.test(validationError);
   const preflightSteps = useMemo<WorkflowStep[]>(
     () => [
       {
         label: "Upload and pre-validate",
-        tone: validation || validationError ? "complete" : "current",
+        tone: stagedRun || validationError ? "complete" : "current",
         description: "Choose category scope and validate the incoming file before creating a job.",
       },
       {
         label: "Review validation summary",
-        tone: validation ? (hasBlockingIssues ? "current" : "complete") : validationError ? "rejected" : "pending",
+        tone: stagedRun ? (hasBlockingIssues ? "current" : "complete") : validationError ? "rejected" : "pending",
         description: "Check mapping coverage, blocking issues, warnings, and sample row errors.",
       },
       {
         label: "Start import",
-        tone: validation?.canImport ? "current" : "pending",
-        description: "Create the queued import only when preflight is ready or warning-only.",
+        tone: canImport ? "current" : "pending",
+        description: isLargeMode
+          ? "Start the large import run to process all batches asynchronously."
+          : "Create the queued import only when preflight is ready or warning-only.",
       },
       {
         label: "Review result and repair rows",
@@ -103,11 +110,11 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         description: "Open the selected job after import starts to review outcomes and repair failed rows.",
       },
     ],
-    [hasBlockingIssues, validation, validationError],
+    [hasBlockingIssues, stagedRun, validationError, canImport, isLargeMode],
   );
 
   function resetValidationState() {
-    setValidation(null);
+    setStagedRun(null);
     setValidationError("");
   }
 
@@ -142,7 +149,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
 
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
-      setValidation(null);
+      setStagedRun(null);
       setValidationError("");
       return;
     }
@@ -188,26 +195,43 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       }
 
       const csrfToken = readCookie("pim_csrf_token");
-      const response = await fetch("/api/bulk-import/validate", {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+      };
+
+      // Stage the run via the large-run–capable API
+      const uploadResponse = await fetch("/api/bulk-import/runs", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
-        },
+        headers,
         body: JSON.stringify(body),
       });
-      const payload = (await response.json()) as BulkImportValidationSummary | { message?: string; error?: string };
-      if (!response.ok) {
-        const message =
-          typeof payload === "object" && payload
-            ? String((payload as { message?: string; error?: string }).message ?? (payload as { error?: string }).error ?? "Import validation failed.")
-            : "Import validation failed.";
-        throw new Error(message);
+      const uploadPayload = (await uploadResponse.json()) as { id?: string; message?: string; error?: string };
+      if (!uploadResponse.ok || !uploadPayload.id) {
+        throw new Error(String(uploadPayload.message ?? uploadPayload.error ?? "Failed to stage import run."));
       }
-      setValidation(payload as BulkImportValidationSummary);
+      const runId = uploadPayload.id;
+
+      // Validate the staged run — this path supports up to 30k rows
+      const validateResponse = await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
+        method: "POST",
+        headers,
+        body: "{}",
+      });
+      const validatePayload = (await validateResponse.json()) as BulkImportRun | { message?: string; error?: string };
+      if (!validateResponse.ok) {
+        throw new Error(
+          String(
+            (validatePayload as { message?: string }).message ??
+              (validatePayload as { error?: string }).error ??
+              "Import validation failed.",
+          ),
+        );
+      }
+      setStagedRun(validatePayload as BulkImportRun);
     } catch (error) {
-      setValidation(null);
+      setStagedRun(null);
       setValidationError(error instanceof Error ? error.message : "Import validation failed.");
     } finally {
       setValidating(false);
@@ -217,6 +241,7 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   return canWrite ? (
     <form ref={formRef} action={submitAction} className="space-y-4" suppressHydrationWarning>
       <input type="hidden" name="mapping" value={DEFAULT_MAPPING} />
+      {stagedRun?.id ? <input type="hidden" name="stagedRunId" value={stagedRun.id} /> : null}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700">
           <span className="font-medium">Category</span>
@@ -328,12 +353,18 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         </button>
         <PendingSubmitButton
           type="submit"
-          disabled={!hasCategories || validating || !validation?.canImport}
-          idleLabel={validation?.canImport ? "Start validated import" : "Validate before importing"}
+          disabled={!hasCategories || validating || stagedRun?.status !== "preflight_ready"}
+          idleLabel={
+            stagedRun?.status === "preflight_ready"
+              ? isLargeMode
+                ? "Start large import"
+                : "Start validated import"
+              : "Validate before importing"
+          }
           pendingLabel="Uploading and starting import..."
         />
       </div>
-      {!validation && !validationError ? (
+      {!stagedRun && !validationError ? (
         <InlineAlert
           tone="info"
           title="Step 1: validate before creating a job"
@@ -360,37 +391,46 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
           ) : null}
         </div>
       ) : null}
-      {validation && validationTone ? (
+      {stagedRun && validationTone ? (
         <div className="space-y-3">
           <InlineAlert
             tone={validationTone}
             title={
-              !validation.canImport
+              !canImport
                 ? "Preflight needs fixes"
-                : validation.warningCount > 0
+                : (stagedRun.warningCount ?? 0) > 0
                   ? "Preflight warnings to review"
                   : "Preflight passed"
             }
             message={
-              !validation.canImport
+              !canImport
                 ? "Resolve the blocking issues below before creating the import job."
-                : validation.warningCount > 0
+                : (stagedRun.warningCount ?? 0) > 0
                   ? "The file can still be imported, but review the warning context below before you start the job."
-                  : "The file is ready to import. Review the summary below, then start the validated import."
+                  : isLargeMode
+                    ? "Large import mode is ready. Review the batch summary below, then start the import."
+                    : "The file is ready to import. Review the summary below, then start the validated import."
             }
           />
+          {isLargeMode && !hasBlockingIssues ? (
+            <InlineAlert
+              tone="info"
+              title="Large import mode"
+              message={`This file will be processed as ${stagedRun.estimatedBatchCount ?? "multiple"} batch(es) in the background. Enterprise plan supports up to 30,000 rows per import job.`}
+            />
+          ) : null}
           {hasBlockingIssues ? (
             <InlineAlert
               tone="warning"
               title="Start import is disabled"
-              message={`Preflight found ${validation.blockingIssueCount} blocking issue(s). Clear those issues before starting the import job.`}
+              message={`Preflight found ${stagedRun.blockingIssueCount ?? 0} blocking issue(s). Clear those issues before starting the import job.`}
             />
           ) : null}
           {warningOnlyPreflight ? (
             <InlineAlert
               tone="warning"
               title="Warnings reviewed: import can continue"
-              message={`Preflight found ${validation.warningCount} warning(s), but no blocking issues. You can continue into Stage 3 and start the import after reviewing the sample issues below.`}
+              message={`Preflight found ${stagedRun.warningCount ?? 0} warning(s), but no blocking issues. You can continue into Stage 3 and start the import after reviewing the sample issues below.`}
             />
           ) : null}
           <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
@@ -400,14 +440,16 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
                 Step 1 complete: file parsed
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                {validation.canImport ? "Step 2 complete: summary reviewed" : "Step 2 blocked: fix issues first"}
+                {canImport ? "Step 2 complete: summary reviewed" : "Step 2 blocked: fix issues first"}
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                {validation.canImport ? "Step 3 ready: start import" : "Step 3 disabled: blocking issues present"}
+                {canImport ? "Step 3 ready: start import" : "Step 3 disabled: blocking issues present"}
               </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                Step 4 repair queue: {(validation.repairSummary?.failedRows ?? 0) + (validation.repairSummary?.deadLetterRows ?? 0)}
-              </span>
+              {isLargeMode ? (
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                  Large import mode — {stagedRun.estimatedBatchCount ?? "?"} batch(es)
+                </span>
+              ) : null}
             </div>
             <p className="mt-3 text-sm text-slate-600">
               Review the validation summary before creating the job so operators know whether this file is ready to run, warning-only, or still needs source-data cleanup.
@@ -416,41 +458,41 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
           <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
             <p className="font-medium text-slate-900">Validation summary</p>
             <div className="mt-2 grid gap-3 md:grid-cols-3">
-              <p><span className="font-medium">Rows:</span> {validation.totalRows}</p>
-              <p><span className="font-medium">Blocking issues:</span> {validation.blockingIssueCount}</p>
-              <p><span className="font-medium">Warnings:</span> {validation.warningCount}</p>
-              <p><span className="font-medium">Accepted rows:</span> {validation.acceptedRows}</p>
-              <p><span className="font-medium">Failed rows:</span> {validation.failedRows}</p>
-              <p><span className="font-medium">Category:</span> {validation.categoryPath}</p>
+              <p><span className="font-medium">Rows:</span> {stagedRun.totalRows ?? 0}</p>
+              <p><span className="font-medium">Blocking issues:</span> {stagedRun.blockingIssueCount ?? 0}</p>
+              <p><span className="font-medium">Warnings:</span> {stagedRun.warningCount ?? 0}</p>
+              <p><span className="font-medium">Accepted rows:</span> {stagedRun.acceptedRows ?? 0}</p>
+              <p><span className="font-medium">Failed rows:</span> {stagedRun.failedRows ?? 0}</p>
+              <p><span className="font-medium">Category:</span> {stagedRun.category?.path ?? ""}</p>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <p><span className="font-medium">Mapped fields:</span> {mappedFieldCount}</p>
-              <p><span className="font-medium">Unmapped source fields:</span> {(validation.unmappedFields ?? []).length}</p>
-              <p><span className="font-medium">Unused headers:</span> {(validation.unusedHeaders ?? []).length}</p>
+              <p><span className="font-medium">Unmapped source fields:</span> {(stagedRun.preflightSummary?.unmappedFields ?? []).length}</p>
+              <p><span className="font-medium">Unused headers:</span> {(stagedRun.preflightSummary?.unusedHeaders ?? []).length}</p>
             </div>
-            {(validation.unmappedFields ?? []).length > 0 || (validation.unusedHeaders ?? []).length > 0 ? (
+            {(stagedRun.preflightSummary?.unmappedFields ?? []).length > 0 || (stagedRun.preflightSummary?.unusedHeaders ?? []).length > 0 ? (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-900">Unmapped fields</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {(validation.unmappedFields ?? []).length > 0 ? validation.unmappedFields.join(", ") : "None"}
+                    {(stagedRun.preflightSummary?.unmappedFields ?? []).length > 0 ? (stagedRun.preflightSummary?.unmappedFields ?? []).join(", ") : "None"}
                   </p>
                 </div>
                 <div>
                   <p className="font-medium text-slate-900">Unused headers</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {(validation.unusedHeaders ?? []).length > 0 ? validation.unusedHeaders.join(", ") : "None"}
+                    {(stagedRun.preflightSummary?.unusedHeaders ?? []).length > 0 ? (stagedRun.preflightSummary?.unusedHeaders ?? []).join(", ") : "None"}
                   </p>
                 </div>
               </div>
             ) : null}
-            {(validation.sampleIssues ?? []).length > 0 ? (
+            {(stagedRun.preflightSummary?.sampleIssues ?? []).length > 0 ? (
               <div className="mt-3 space-y-2">
                 <p className="font-medium text-slate-900">Representative issues</p>
                 <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {(validation.sampleIssues ?? []).map((issue, index) => (
-                    <li key={`${issue.code}-${issue.rowNumber}-${index}`}>
-                      Row {issue.rowNumber || 0}: {issue.message}
+                  {(stagedRun.preflightSummary?.sampleIssues ?? []).map((issue, index) => (
+                    <li key={`issue-${issue.rowNumber}-${index}`}>
+                      {issue.rowNumber > 0 ? `Row ${issue.rowNumber}: ` : ""}{(issue.issues ?? []).join("; ")}
                     </li>
                   ))}
                 </ul>

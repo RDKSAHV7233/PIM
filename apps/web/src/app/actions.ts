@@ -11,6 +11,7 @@ import {
   applyBulkEdit as applyBulkEditRequest,
   decideProductReview as decideProductReviewRequest,
   deleteJson,
+  getJson,
   getProduct,
   getProductVariants,
   getPlanLimitExceededPayload,
@@ -318,6 +319,10 @@ async function deleteJsonForAction(formData: FormData, path: string) {
   return deleteJson(path, {
     ...(await resolveActionOptions(formData)),
   });
+}
+
+async function getJsonForAction<T>(formData: FormData, path: string): Promise<T> {
+  return getJson<T>(path, await resolveActionOptions(formData));
 }
 
 function appendQueryParams(basePath: string, params: Record<string, string | undefined>): string {
@@ -1540,8 +1545,12 @@ async function uploadBulkImportRun(formData: FormData, categoryId: string, sourc
   });
 }
 
-async function validateBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string }> {
-  return postJsonForAction<{ id: string; status: string }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {});
+async function getBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
+  return getJsonForAction<{ id: string; status: string; effectiveMode: string | null }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}`);
+}
+
+async function validateBulkImportRun(formData: FormData, runId: string): Promise<{ id: string; status: string; effectiveMode: string | null }> {
+  return postJsonForAction<{ id: string; status: string; effectiveMode: string | null }>(formData, `/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {});
 }
 
 async function startBulkImportRun(formData: FormData, runId: string): Promise<void> {
@@ -1614,13 +1623,22 @@ export async function createBulkImportJobAction(formData: FormData) {
     throw new Error("Source format must be csv or json.");
   }
 
-  // Stage and validate the bulk import run before deciding standard vs large mode
-  const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceFormat, sourceName, csvContent, fileContentBase64, rows, mapping, chunkSize, maxRetries);
-  const linkedRunId = stagedRun.id;
-  const validatedRun = await validateBulkImportRun(formData, linkedRunId);
+  // If the browser wizard already staged and validated the run, fetch its current state and skip
+  // re-streaming the file. Re-validating a 30k run would add ~15s with no benefit.
+  const prestagedRunId = String(formData.get("stagedRunId") ?? "").trim();
+  let linkedRunId: string;
+  let validatedRun: { id: string; status: string; effectiveMode: string | null };
+  if (prestagedRunId) {
+    linkedRunId = prestagedRunId;
+    validatedRun = await getBulkImportRun(formData, linkedRunId);
+  } else {
+    const stagedRun = await uploadBulkImportRun(formData, categoryId, sourceFormat, sourceName, csvContent, fileContentBase64, rows, mapping, chunkSize, maxRetries);
+    linkedRunId = stagedRun.id;
+    validatedRun = await validateBulkImportRun(formData, linkedRunId);
+  }
 
   // Large import runs start only after validation
-  if (validatedRun.status === "large") {
+  if (validatedRun.effectiveMode === "large" && validatedRun.status === "preflight_ready") {
     await startBulkImportRun(formData, linkedRunId);
     revalidatePath("/operations/imports");
     redirect(`/operations/imports?bulkRunId=${encodeURIComponent(validatedRun.id)}`);

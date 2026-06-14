@@ -1562,6 +1562,10 @@ export interface StepUpResponse {
   scope: string;
 }
 
+export async function getJson<T>(path: string, options?: ApiRequestOptions) {
+  return fetchJson<T>(path, { method: "GET" }, options);
+}
+
 export async function postJson<T>(path: string, body: unknown, options?: ApiRequestOptions) {
   return fetchJson<T>(path, {
     method: "POST",
