@@ -299,6 +299,20 @@ async function resolveActionOptions(formData: FormData) {
   };
 }
 
+function extractApiErrorMessage(error: ApiHttpError): string {
+  const body = error.body;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const obj = body as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message) {
+      return obj.message;
+    }
+    if (Array.isArray(obj.message) && obj.message.length > 0) {
+      return obj.message.map(String).join("; ");
+    }
+  }
+  return `Request failed (${error.status}).`;
+}
+
 async function postJsonForAction<T>(formData: FormData, path: string, body: unknown, options?: ApiRequestOptions) {
   return postJson<T>(path, body, {
     ...(await resolveActionOptions(formData)),
@@ -611,27 +625,29 @@ export async function addApprovalCommentAction(formData: FormData) {
   revalidatePath(`/products/${productId}`);
 }
 
-export async function createProductAction(formData: FormData) {
+export async function createProductAction(
+  formData: FormData,
+): Promise<{ error: string } | undefined> {
   const title = String(formData.get("title") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   if (!title || !categoryId) {
-    throw new Error("Product title and category are required.");
+    return { error: "Product title and category are required." };
   }
   const baseAttributes = parseJsonObject(formData.get("attributes"), "Product attributes");
   const mrp = parseNumber(formData.get("mrp"));
   const sellingPrice = parseNumber(formData.get("sellingPrice"));
 
   if (mrp !== undefined && mrp < 0) {
-    throw new Error("MRP cannot be negative.");
+    return { error: "MRP cannot be negative." };
   }
   if (sellingPrice !== undefined && sellingPrice < 0) {
-    throw new Error("Selling Price cannot be negative.");
+    return { error: "Selling Price cannot be negative." };
   }
   if (sellingPrice === undefined) {
-    throw new Error("Selling Price is required.");
+    return { error: "Selling Price is required." };
   }
   if (mrp !== undefined && sellingPrice > mrp) {
-    throw new Error("Selling Price cannot exceed MRP.");
+    return { error: "Selling Price cannot exceed MRP." };
   }
 
   const attributes: Record<string, unknown> = { ...baseAttributes };
@@ -670,7 +686,13 @@ export async function createProductAction(formData: FormData) {
     if (redirectPath) {
       redirect(redirectPath);
     }
-    throw error;
+    const message =
+      error instanceof ApiHttpError
+        ? extractApiErrorMessage(error)
+        : error instanceof Error
+          ? error.message
+          : "Unable to create product.";
+    return { error: message };
   }
   revalidatePath("/catalog/products");
   revalidatePath("/dashboard");

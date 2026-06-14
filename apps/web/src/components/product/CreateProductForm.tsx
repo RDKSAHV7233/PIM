@@ -162,7 +162,11 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
     startTransition(async () => {
       setSubmitError("");
       try {
-        await createProductAction(formData);
+        const result = await createProductAction(formData);
+        if (result?.error) {
+          setSubmitError(result.error);
+          return;
+        }
         setSelectedCategoryId("");
         setDefinitions([]);
         setAttributeValues({});
@@ -173,8 +177,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
         if (isRedirectErrorLike(error)) {
           throw error;
         }
-        const message = error instanceof Error ? error.message : "Unable to create product.";
-        setSubmitError(message);
+        setSubmitError("Unable to create product. Please try again.");
       }
     });
   };
