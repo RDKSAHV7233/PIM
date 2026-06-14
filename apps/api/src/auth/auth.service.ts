@@ -516,21 +516,12 @@ export class AuthService implements OnModuleDestroy {
       return { type: "auth_method_not_allowed", allowedMethods: allowedAuthMethods };
     }
 
-    const mfaPolicy = await this.authPolicyService.getEffectiveMfaPolicy(identity.tenantId);
-    if (mfaPolicy.mfaRequired) {
-      const maskedEmail = this.maskIdentity(identity.userId);
-      const hasEnrollment = await this.mfaService.hasActiveEnrollment(identity.userId, identity.tenantId);
-      if (!hasEnrollment) {
-        const enrollmentToken = signPimJwt({
-          sub: identity.userId,
-          tenantId: identity.tenantId,
-          role: identity.role,
-          assignedRoles: identity.assignedRoles,
-          tokenType: "mfa_enrollment",
-          expiresInSeconds: MFA_ENROLLMENT_TOKEN_TTL_SECONDS,
-        });
-        return { type: "mfa_enrollment_required", enrollmentToken, maskedEmail };
-      }
+    const [mfaPolicy, hasActiveEnrollment] = await Promise.all([
+      this.authPolicyService.getEffectiveMfaPolicy(identity.tenantId),
+      this.mfaService.hasActiveEnrollment(identity.userId, identity.tenantId),
+    ]);
+
+    if (hasActiveEnrollment) {
       const pendingToken = signPimJwt({
         sub: identity.userId,
         tenantId: identity.tenantId,
@@ -539,7 +530,19 @@ export class AuthService implements OnModuleDestroy {
         tokenType: "mfa_pending",
         expiresInSeconds: MFA_PENDING_TOKEN_TTL_SECONDS,
       });
-      return { type: "mfa_required", pendingToken, maskedEmail };
+      return { type: "mfa_required", pendingToken, maskedEmail: this.maskIdentity(identity.userId) };
+    }
+
+    if (mfaPolicy.mfaRequired) {
+      const enrollmentToken = signPimJwt({
+        sub: identity.userId,
+        tenantId: identity.tenantId,
+        role: identity.role,
+        assignedRoles: identity.assignedRoles,
+        tokenType: "mfa_enrollment",
+        expiresInSeconds: MFA_ENROLLMENT_TOKEN_TTL_SECONDS,
+      });
+      return { type: "mfa_enrollment_required", enrollmentToken, maskedEmail: this.maskIdentity(identity.userId) };
     }
 
     const policySessionTimeoutMinutes = await this.authPolicyService.getEffectiveSessionTimeoutMinutes(identity.tenantId);
