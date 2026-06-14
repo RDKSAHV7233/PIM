@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { PimLocale } from "@/lib/locale";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { getAuthCopy } from "./auth-copy";
@@ -34,6 +35,7 @@ export function MfaEnrollPageClient({
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
 
   const loginHref = `/login?workspace=${encodeURIComponent(workspaceSlug)}&lang=${encodeURIComponent(locale)}`;
 
@@ -75,6 +77,42 @@ export function MfaEnrollPageClient({
       cancelled = true;
     };
   }, [enrollmentToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function buildQrCode() {
+      if (!enrollData?.otpauthUri) {
+        setQrCodeDataUrl("");
+        return;
+      }
+
+      try {
+        const dataUrl = await QRCode.toDataURL(enrollData.otpauthUri, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 192,
+          color: {
+            dark: "#0f172a",
+            light: "#ffffffff",
+          },
+        });
+        if (!cancelled) {
+          setQrCodeDataUrl(dataUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setQrCodeDataUrl("");
+        }
+      }
+    }
+
+    void buildQrCode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enrollData?.otpauthUri]);
 
   async function onVerify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -185,6 +223,16 @@ export function MfaEnrollPageClient({
         {enrollData && (
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs text-slate-600">{authCopy.mfaEnrollScanInstruction}</p>
+            {qrCodeDataUrl && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Authenticator QR code</p>
+                <img
+                  src={qrCodeDataUrl}
+                  alt="Authenticator QR code for two-factor setup"
+                  className="mx-auto h-48 w-48 rounded-lg border border-slate-200 bg-white p-2"
+                />
+              </div>
+            )}
             {enrollData.otpauthUri && (
               <div className="space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">TOTP URI</p>

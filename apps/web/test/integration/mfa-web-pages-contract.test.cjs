@@ -58,9 +58,11 @@ function run() {
     enrollClient.includes("/api/auth/mfa/enroll") &&
       enrollClient.includes("/api/auth/mfa/verify-enrollment") &&
       enrollClient.includes("otpauthUri") &&
+      enrollClient.includes('QRCode.toDataURL(enrollData.otpauthUri') &&
+      enrollClient.includes("Authenticator QR code") &&
       enrollClient.includes("manualEntryKey") &&
       enrollClient.includes("backupCodes"),
-    "MFA enroll client must load TOTP URI and manual key from enroll endpoint, verify code, and display backup codes.",
+    "MFA enroll client must load TOTP URI, render an authenticator QR code plus manual key, verify code, and display backup codes.",
   );
 
   assert(
