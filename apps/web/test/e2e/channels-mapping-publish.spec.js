@@ -79,6 +79,165 @@ async function submitContainingForm(locator) {
   });
 }
 
+const FALLBACK_SCENARIOS = [
+  {
+    name: "ack required: publish blocked until fallback is acknowledged",
+    fallbackEnabled: true,
+    ackRequired: true,
+    shouldBlock: true,
+  },
+  {
+    name: "fallback without ack requirement: direct publish succeeds",
+    fallbackEnabled: true,
+    ackRequired: false,
+    shouldBlock: false,
+  },
+  {
+    name: "no fallback configured: direct publish succeeds",
+    fallbackEnabled: false,
+    ackRequired: false,
+    shouldBlock: false,
+  },
+];
+
+test.describe("fallback acknowledgement scenarios", () => {
+  for (const scenario of FALLBACK_SCENARIOS) {
+    test(scenario.name, async ({ page }) => {
+      const adminToken = await apiLogin("admin");
+      const category = await createCategory(adminToken, uniqueName("fallback-ack-cat"));
+      const product = await createProduct(adminToken, {
+        title: uniqueName("fallback-ack-product"),
+        brand: "Vexa PIM",
+        description: "fallback ack e2e scenario",
+        categoryId: category.id,
+        status: "draft",
+        hsnCode: "62046200",
+        gstRate: 12,
+        attributes: { color: "blue", size: "L" },
+      });
+      const targetCategoryValue = uniqueName("fk-target").toLowerCase();
+      let versionId = null;
+
+      try {
+        const draft = await apiRequest(
+          "POST",
+          "/marketplace/connectors/flipkart/mappings/versions",
+          adminToken,
+          {
+            categoryScope: String(category.id),
+            mappingLevel: "tenant_connector_category_mapping",
+            connectorDefinitionId: "flipkart",
+            connectorDefinitionVersion: "1.0.0",
+            compatibilityState: "compatible",
+            mappingRules: {
+              field_mappings: {
+                title: "title",
+                hsnCode: "hsnCode",
+                gstRate: "gstRate",
+                "attributes.size": "attributes.size",
+                "attributes.color": "attributes.color",
+              },
+              category: { source: String(category.id), target: targetCategoryValue },
+            },
+            fallbackPolicy: scenario.fallbackEnabled
+              ? { enabled: true, default_category: uniqueName("fk-fallback").toLowerCase() }
+              : { enabled: false },
+            fallbackAckRequired: scenario.ackRequired,
+          },
+        );
+        versionId = String(draft.id);
+
+        await loginViaUi(page, "admin");
+        await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+          waitUntil: "domcontentloaded",
+        });
+
+        const draftRow = page.locator("tbody tr", { hasText: versionId }).first();
+        await expect(draftRow).toBeVisible();
+        await submitContainingForm(draftRow.getByRole("button", { name: "Validate" }));
+
+        await expect.poll(
+          async () => {
+            const versions = await listVersions(adminToken, category.id);
+            const version = Array.isArray(versions)
+              ? versions.find((v) => String(v.id) === String(versionId))
+              : null;
+            return version?.lifecycleState ?? "";
+          },
+          { timeout: 30000 },
+        ).toBe("validated");
+
+        await page.goto(buildMappingsUrl(category.id, product.id, { showHistory: "1" }), {
+          waitUntil: "domcontentloaded",
+        });
+        const validatedRow = page.locator("tbody tr", { hasText: versionId }).first();
+        await expect(validatedRow).toBeVisible();
+
+        const fallbackAckCheckbox = validatedRow.getByRole("checkbox", { name: /Acknowledge fallback/i });
+
+        if (scenario.shouldBlock) {
+          await expect(fallbackAckCheckbox).toBeVisible();
+          await fallbackAckCheckbox.check();
+          await Promise.all([
+            page.waitForURL(/fallbackAcknowledged=true/),
+            validatedRow.getByRole("button", { name: "Save acknowledgement" }).click(),
+          ]);
+          await page.goto(
+            buildMappingsUrl(category.id, product.id, {
+              showHistory: "1",
+              fallbackAcknowledged: "true",
+              fallbackAckVersionId: versionId,
+            }),
+            { waitUntil: "domcontentloaded" },
+          );
+        } else {
+          await expect(fallbackAckCheckbox).toHaveCount(0);
+        }
+
+        const readyRow = page.locator("tbody tr", { hasText: versionId }).first();
+        await expect(readyRow).toBeVisible();
+        await readyRow.locator("summary").filter({ hasText: "Publish" }).click();
+        const publishPanel = readyRow.locator("details[open]").first();
+        await publishPanel.getByLabel("Step-up re-authentication").fill(STEP_UP_PASSWORD);
+        await submitContainingForm(publishPanel.getByRole("button", { name: "Publish" }));
+
+        await expect.poll(
+          async () => {
+            const versions = await listVersions(adminToken, category.id);
+            const version = Array.isArray(versions)
+              ? versions.find((v) => String(v.id) === String(versionId))
+              : null;
+            return version?.lifecycleState ?? "";
+          },
+          { timeout: 30000 },
+        ).toBe("published");
+      } finally {
+        if (versionId) {
+          try {
+            const stepUpToken = await issueStepUpToken(adminToken);
+            await apiRequestWithHeaders(
+              "POST",
+              `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(versionId)}/archive`,
+              adminToken,
+              { reason: "playwright_cleanup_archive" },
+              { [STEP_UP_HEADER]: stepUpToken },
+            );
+          } catch {}
+        }
+        try {
+          await deleteProduct(adminToken, product.id);
+        } catch {}
+        try {
+          await purgeProduct(adminToken, product.id);
+        } catch {}
+        try {
+          await deleteCategory(adminToken, category.id);
+        } catch {}
+      }
+    });
+  }
+});
+
 test("admin can create, validate, and publish a connector mapping version from the browser", async ({ page }) => {
   const adminToken = await apiLogin("admin");
   const category = await createCategory(adminToken, uniqueName("mapping-publish-cat"));

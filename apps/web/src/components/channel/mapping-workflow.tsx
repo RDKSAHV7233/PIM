@@ -139,7 +139,7 @@ export function MappingWorkflowHeader({
           <a href="#mapping-scope" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1</p>
             <p className="mt-1 text-sm font-semibold text-slate-900">Choose scope</p>
-            <p className="mt-1 text-xs text-slate-500">Lock the channel, category, and product context first.</p>
+            <p className="mt-1 text-xs text-slate-500">Lock in the channel, category, product, and connector account. Mapping readiness depends on this account.</p>
           </a>
           <a href="#mapping-draft" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
@@ -167,6 +167,7 @@ export function MappingContextSummaryCard({
   connectorAccountDetail,
   compatibilityLabel,
   matchedVersions,
+  draftAccountMismatch,
 }: {
   product: Product | null;
   productId?: string;
@@ -177,6 +178,7 @@ export function MappingContextSummaryCard({
   connectorAccountDetail?: string;
   compatibilityLabel: string;
   matchedVersions: number;
+  draftAccountMismatch?: boolean;
 }) {
   return (
     <Card>
@@ -222,6 +224,15 @@ export function MappingContextSummaryCard({
           <dd className="mt-1">{matchedVersions}</dd>
         </div>
       </dl>
+      {draftAccountMismatch ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-900">Account mismatch</p>
+          <p className="mt-1 text-xs text-amber-800">
+            This draft was created with a different connector account than the one currently selected.
+            Publish will be blocked until the account matches.
+          </p>
+        </div>
+      ) : null}
       <p className="mt-3 text-xs text-slate-500">
         Saving a draft does not publish anything. Validate the version in history, then review the publish gate before promoting it live.
       </p>

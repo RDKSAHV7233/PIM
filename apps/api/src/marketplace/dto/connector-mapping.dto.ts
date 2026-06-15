@@ -59,12 +59,22 @@ export class CreateConnectorMappingVersionDto {
   @Type(() => Boolean)
   @IsBoolean()
   fallbackAckRequired?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  installationId?: string;
 }
 
 export class PublishConnectorMappingVersionDto {
   @Type(() => Boolean)
   @IsBoolean()
   confirm!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  installationId?: string;
 }
 
 export class RollbackConnectorMappingVersionDto {

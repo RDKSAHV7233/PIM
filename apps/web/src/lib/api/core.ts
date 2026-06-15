@@ -823,6 +823,8 @@ export interface ConnectorMappingVersion {
   id: string;
   tenantKey: string;
   connectorSlug: string;
+  installationId?: string | null;
+  draftInstallationId?: string | null;
   categoryScope: string;
   mappingLevel: ConnectorMappingLevel;
   lifecycleState: ConnectorMappingLifecycle;

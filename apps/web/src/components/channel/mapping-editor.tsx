@@ -15,7 +15,7 @@ import type {
   ConnectorPublishReadiness,
   MarketplaceChannelMapping,
 } from "@/lib/api";
-import { type ConnectorTaxonomyOption, presentCompatibilityState, statusToneForPreflight } from "@/lib/channel-mappings";
+import { type ConnectorTaxonomyOption, describeReadinessCode, presentCompatibilityState, statusToneForPreflight } from "@/lib/channel-mappings";
 
 function RoleHiddenInput({ role }: { role: AppRole }) {
   return <input type="hidden" name="actorRole" value={role} />;
@@ -126,15 +126,15 @@ function renderFieldRows(
             return (
               <div
                 key={row.targetField}
-                className="rounded-lg border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] lg:items-start lg:gap-3"
+                className="overflow-hidden rounded-lg border border-slate-200 bg-white p-3 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto_auto] lg:items-start lg:gap-3"
               >
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Channel field
+                <div className="flex items-baseline gap-1.5 lg:block">
+                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Channel field:
                   </p>
                   <p className="text-sm font-medium text-slate-900">{row.targetField}</p>
                 </div>
-                <div className="mt-3 lg:mt-0">
+                <div className="mt-3 min-w-0 lg:mt-0">
                   <label
                     className="text-xs font-semibold uppercase tracking-wide text-slate-600 lg:hidden"
                     htmlFor={`${fieldInputPrefix}${row.targetField}-field`}
@@ -146,6 +146,7 @@ function renderFieldRows(
                     name={`${fieldInputPrefix}${row.targetField}`}
                     defaultValue={row.selectedSource}
                     aria-describedby={`${samplePreviewId} ${mappingStatusId}`}
+                    className="max-w-full"
                   >
                     <option value="">Select PIM field</option>
                     {sourceFieldOptions.map((option) => (
@@ -156,30 +157,30 @@ function renderFieldRows(
                   </Select>
                 </div>
                 <div className="mt-3 lg:mt-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Sample product value
+                  <p className="flex items-baseline gap-1.5 text-xs text-slate-600 lg:block">
+                    <span className="shrink-0 font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                      Sample:
+                    </span>
+                    <span id={samplePreviewId}>{samplePreview}</span>
                   </p>
-                  <p id={samplePreviewId} className="text-xs text-slate-600">{samplePreview}</p>
                 </div>
-                <div className="mt-3 lg:mt-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Required
+                <div className="mt-3 flex items-center gap-2 lg:mt-0 lg:block">
+                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Required:
                   </p>
                   <StatusChip
                     label={row.required ? "Required" : "Optional"}
                     tone={row.required ? "warning" : "neutral"}
                   />
                 </div>
-                <div className="mt-3 lg:mt-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
-                    Status
+                <div className="mt-3 flex items-center gap-2 lg:mt-0 lg:block" id={mappingStatusId}>
+                  <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
+                    Status:
                   </p>
-                  <div id={mappingStatusId}>
-                    <StatusChip
-                      label={row.selectedSource ? "Mapped" : "Missing"}
-                      tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
-                    />
-                  </div>
+                  <StatusChip
+                    label={row.selectedSource ? "Mapped" : "Missing"}
+                    tone={row.selectedSource ? "success" : row.required ? "danger" : "neutral"}
+                  />
                 </div>
               </div>
             );
@@ -190,24 +191,6 @@ function renderFieldRows(
   ));
 }
 
-function describeReadinessCode(code: string): string {
-  if (code === "fallback_ack_required") {
-    return "Fallback acknowledgement is required before readiness can clear.";
-  }
-  if (code === "fallback_mapping_applied") {
-    return "A tenant fallback mapping is being applied for this category scope.";
-  }
-  if (code === "using_system_default_mapping") {
-    return "This scope is falling back to the system default mapping pack.";
-  }
-  if (code === "required_attribute_mapping_missing") {
-    return "One or more required attribute mappings are still missing.";
-  }
-  if (code === "field_mappings_missing") {
-    return "No field mappings are defined for this scope yet.";
-  }
-  return code.replace(/_/g, " ");
-}
 
 export function MappingStepUpAlert({
   message,
@@ -271,63 +254,70 @@ export function ResolvedMappingSnapshotCard({
   );
 }
 
+export type MappingEditorConnector = {
+  slug: string;
+  definitionId: string;
+  definitionVersion: string;
+};
+
+export type MappingEditorTaxonomy = {
+  matches: ConnectorTaxonomyOption[];
+  unmapped: ConnectorTaxonomyOption[];
+  defaults: string[];
+  categoryOptions: string[];
+};
+
+export type MappingEditorFieldMapping = {
+  required: string[];
+  mappedToSource: Record<string, string>;
+  options: string[];
+};
+
+export type MappingEditorSampleProduct = {
+  label: string | null;
+  mode: "selected" | "category_sample" | "none";
+  fieldOptions: Array<{ value: string; label: string; preview: string | null }>;
+};
+
+export type MappingEditorLabels = {
+  mappingType: string;
+  attributeMapping: string;
+  attributeMappingDescription: string;
+  fieldInputPrefix: string;
+  advancedJson: string;
+  mappingRulesPlaceholder: string;
+};
+
 export function MappingEditorCard({
   actorRole,
   canWrite,
-  connectorSlug,
-  definitionId,
-  definitionVersion,
   redirectTo,
   selectedCategoryId,
   selectedTargetCategory,
-  targetCategoryOptions,
-  taxonomyMatches,
-  unmappedCategories,
-  requiredTargetFields,
-  mappedTargetToSource,
-  targetFieldOptions,
-  sourceFieldOptions,
-  sampleProductLabel,
-  sampleProductMode,
-  taxonomyDefaults,
-  mappingDraftRulesDefault,
   fallbackPolicyDefault,
-  mappingTypeLabel,
-  attributeMappingTitle,
-  attributeMappingDescription,
-  fieldInputPrefix,
-  fallbackTitle,
-  advancedJsonTitle,
-  mappingRulesPlaceholder,
+  connector,
+  taxonomy,
+  fieldMapping,
+  sampleProduct,
+  labels,
 }: {
   actorRole: AppRole;
   canWrite: boolean;
-  connectorSlug: string;
-  definitionId: string;
-  definitionVersion: string;
   redirectTo: string;
   selectedCategoryId: string;
   selectedTargetCategory: string;
-  targetCategoryOptions: string[];
-  taxonomyMatches: ConnectorTaxonomyOption[];
-  unmappedCategories: ConnectorTaxonomyOption[];
-  requiredTargetFields: string[];
-  mappedTargetToSource: Record<string, string>;
-  targetFieldOptions: string[];
-  sourceFieldOptions: Array<{ value: string; label: string; preview: string | null }>;
-  sampleProductLabel: string | null;
-  sampleProductMode: "selected" | "category_sample" | "none";
-  taxonomyDefaults: string[];
-  mappingDraftRulesDefault: string;
   fallbackPolicyDefault: string;
-  mappingTypeLabel: string;
-  attributeMappingTitle: string;
-  attributeMappingDescription: string;
-  fieldInputPrefix: string;
-  fallbackTitle: string;
-  advancedJsonTitle: string;
-  mappingRulesPlaceholder: string;
+  connector: MappingEditorConnector;
+  taxonomy: MappingEditorTaxonomy;
+  fieldMapping: MappingEditorFieldMapping;
+  sampleProduct: MappingEditorSampleProduct;
+  labels: MappingEditorLabels;
 }) {
+  const { slug: connectorSlug, definitionId, definitionVersion } = connector;
+  const { matches: taxonomyMatches, unmapped: unmappedCategories, defaults: taxonomyDefaults, categoryOptions: targetCategoryOptions } = taxonomy;
+  const { required: requiredTargetFields, mappedToSource: mappedTargetToSource, options: targetFieldOptions } = fieldMapping;
+  const { label: sampleProductLabel, mode: sampleProductMode, fieldOptions: sourceFieldOptions } = sampleProduct;
+  const { mappingType: mappingTypeLabel, attributeMapping: attributeMappingTitle, attributeMappingDescription, fieldInputPrefix, advancedJson: advancedJsonTitle, mappingRulesPlaceholder } = labels;
   const rows: MappingFieldRow[] = targetFieldOptions.map((targetField) => ({
     targetField,
     selectedSource: mappedTargetToSource[targetField] ?? "",
@@ -459,49 +449,6 @@ export function MappingEditorCard({
                   <div className="mt-3">{renderFieldRows(optionalRows, fieldInputPrefix, sourceFieldOptions)}</div>
                 </details>
               ) : null}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm font-medium text-slate-900">{fallbackTitle}</p>
-            <p className="mt-1 text-xs text-slate-500">Use fallback only when you want a backup category path during publish.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-enabled">
-                  Allow fallback mapping
-                </label>
-                <Select id="fallback-enabled" name="fallbackEnabled" defaultValue="true">
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-fallback-ack-required">
-                  Fallback confirmation
-                </label>
-                <Select id="mapping-fallback-ack-required" name="fallbackAckRequired" defaultValue="true">
-                  <option value="true">Required</option>
-                  <option value="false">Not required</option>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-default-category">
-                  Default fallback category
-                </label>
-                <Input id="fallback-default-category" name="fallbackDefaultCategory" defaultValue={selectedTargetCategory} placeholder="Optional fallback category id" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-warning-tag">
-                  Fallback label
-                </label>
-                <Input id="fallback-warning-tag" name="fallbackWarningTag" defaultValue="fallback_category_mapping" />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fallback-ack-message">
-                  Confirmation message
-                </label>
-                <Textarea id="fallback-ack-message" name="fallbackAckMessage" rows={3} defaultValue="Fallback category will be used for publish if no explicit mapping exists." />
-              </div>
             </div>
           </div>
 

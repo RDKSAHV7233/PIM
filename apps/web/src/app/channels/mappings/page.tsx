@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LegacyTemplateCompatibilityCard, MappingEditorCard, MappingStepUpAlert, PublishReadinessCard, ResolvedMappingSnapshotCard } from "@/components/channel/mapping-editor";
+import { MappingBlockerBar } from "@/components/channel/mapping-blocker-bar";
+import { MappingFallbackConfigCard } from "@/components/channel/mapping-fallback-config";
 import { MappingContextSummaryCard, MappingWorkflowHeader } from "@/components/channel/mapping-workflow";
+import { MappingCompletionChecklist } from "@/components/channel/mapping-completion-checklist";
 import { MappingsFilterCard, TaxonomyAlignmentCard } from "@/components/channel/taxonomy-search";
 import { VersionManagerCard } from "@/components/channel/version-manager";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -32,6 +35,7 @@ import type { ShopifyStoreConfig } from "@/lib/api/core";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { WorkflowStepper, type WorkflowStep } from "@/components/ui/workflow-stepper";
 import { buildMappingsViewModel, definitionForConnector, mapChannelToConnectorSlug, normalizeChannel, resolveStepUpErrorMessage, type ProtectedMappingActionKind } from "@/lib/channel-mappings";
+import { connectorHealthLabel, connectorHealthTone, resolveInstallationContextDetail, resolveInstallationLabel } from "@/lib/connector-utils";
 import { canManageChannels } from "@/lib/role-capabilities";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
@@ -122,83 +126,7 @@ function DeferredMappingPanelCard({
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
 
-function readMetadataValue(metadata: unknown, key: string): string | null {
-  const value = asRecord(metadata)[key];
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function resolveInstallationLabel(installation: ConnectorInstallation): string {
-  const shopName = readMetadataValue(installation.metadata, "shopName");
-  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
-  const accountContext = shopName || shopDomain || installation.externalAccountRef || installation.accountAlias;
-  return `${installation.accountAlias} (${accountContext})`;
-}
-
-function resolveInstallationContextDetail(installation: ConnectorInstallation): string {
-  const shopName = readMetadataValue(installation.metadata, "shopName");
-  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
-  const externalRef = installation.externalAccountRef;
-  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" | ");
-  const prefix = context.length > 0
-    ? `${installation.displayName} | ${context} | status ${installation.status}`
-    : `${installation.displayName} | status ${installation.status}`;
-  return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
-}
-
-function resolveInstallationDetail(installation: ConnectorInstallation): string {
-  const shopName = readMetadataValue(installation.metadata, "shopName");
-  const shopDomain = readMetadataValue(installation.metadata, "shopDomain");
-  const externalRef = installation.externalAccountRef;
-  const context = [shopName, shopDomain, externalRef].filter(Boolean).join(" | ");
-  const prefix = context.length > 0
-    ? `${installation.displayName} | ${context} | status ${installation.status}`
-    : `${installation.displayName} | status ${installation.status}`;
-  return `${prefix}. Readiness and publish checks now follow the selected connector account in this workbench.`;
-}
-
-function connectorHealthTone(status: string): "neutral" | "success" | "warning" | "danger" {
-  const normalized = String(status ?? "").trim().toUpperCase();
-  if (normalized === "ACTIVE") {
-    return "success";
-  }
-  if (normalized === "CREDENTIAL_EXPIRED" || normalized === "FAILED" || normalized === "ERROR") {
-    return "danger";
-  }
-  if (normalized === "PAUSED" || normalized === "DISABLED" || normalized === "INACTIVE") {
-    return "warning";
-  }
-  return "neutral";
-}
-
-function connectorHealthLabel(status: string): string {
-  const normalized = String(status ?? "").trim().toUpperCase();
-  if (normalized === "ACTIVE") {
-    return "Healthy";
-  }
-  if (normalized === "CREDENTIAL_EXPIRED") {
-    return "Credentials expired";
-  }
-  if (normalized === "PAUSED") {
-    return "Paused";
-  }
-  if (normalized === "DISABLED") {
-    return "Disabled";
-  }
-  if (normalized === "FAILED" || normalized === "ERROR") {
-    return "Needs attention";
-  }
-  return status || "Unknown";
-}
 
 export default async function ChannelsMappingsPage({ searchParams }: ChannelsMappingsPageProps) {
   const query = await searchParams;
@@ -250,8 +178,8 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         ? getShopifyConfig(selectedInstallationId, { role: actorRole, authHeader }).catch(() => null as ShopifyStoreConfig | null)
         : Promise.resolve(null as ShopifyStoreConfig | null),
       // ── Wave 3: history / taxonomy / product context ─────────────────────────
-      showHistory
-        ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId || undefined, includeArchived: true }, { role: actorRole, authHeader })
+      selectedCategoryId
+        ? getConnectorMappingVersions(connectorSlug, { categoryScope: selectedCategoryId, includeArchived: true }, { role: actorRole, authHeader })
         : Promise.resolve([]),
       showResolved && selectedCategoryId
         ? resolveConnectorMapping(connectorSlug, selectedCategoryId, { role: actorRole, authHeader })
@@ -330,6 +258,11 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         : matchingInstallations.length === 0
           ? "No installed connector account is linked to this channel yet."
           : null;
+    const activeDraft = versions.find((v) => v.lifecycleState === "draft");
+    const draftAccountMismatch =
+      selectedInstallationId && activeDraft?.draftInstallationId
+        ? activeDraft.draftInstallationId !== selectedInstallationId
+        : false;
     const readinessSummaryLabel = `${readinessBlockers.length} blockers | ${readinessWarnings.length} warnings`;
     const readyToPublishMessage = "Ready to publish. The current mapping path is clear for this connector account.";
     const connectorHealthHref = selectedInstallationId
@@ -355,6 +288,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
     return (
       <div className="space-y-5">
         <PageHeader title="Mapping Workbench" description="Choose scope, build the draft, then validate and publish with clear readiness gates for each channel." breadcrumb={<>Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span></>} actions={<Link href="/channels/connectors" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Open connector portfolio</Link>} />
+        <MappingBlockerBar blockers={readinessBlockers} warnings={readinessWarnings} />
         <MappingStepUpAlert message={stepUpMessage} />
         <div className="space-y-1.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operator flow</p>
@@ -384,6 +318,18 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           requiredCount={viewModel.requiredTargetFields.length}
           mappedRequiredCount={mappedRequiredCount}
           missingRequiredCount={missingRequiredCount}
+        />
+        <MappingFallbackConfigCard
+          actorRole={actorRole}
+          canWrite={canWrite}
+          connectorSlug={connectorSlug}
+          definitionId={definition?.id ?? connectorSlug}
+          definitionVersion={definition?.connectorVersion ?? "1.0.0"}
+          redirectTo={viewModel.redirectTo}
+          selectedCategoryId={selectedCategoryId}
+          selectedTargetCategory={viewModel.selectedTargetCategory}
+          fallbackPolicyDefault={viewModel.fallbackPolicyDefault}
+          fallbackTitle="Fallback strategy"
         />
         <Card className="border-slate-200 bg-white">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -435,9 +381,43 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
         </Card>
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_380px]">
           <div className="space-y-4">
-            {/* mapTarget:: */}
-            {/* placeholder={mappingDraftRulesDefault} */}
-            <MappingEditorCard actorRole={actorRole} canWrite={canWrite} connectorSlug={connectorSlug} definitionId={definition?.id ?? connectorSlug} definitionVersion={definition?.connectorVersion ?? "1.0.0"} redirectTo={viewModel.redirectTo} selectedCategoryId={selectedCategoryId} selectedTargetCategory={viewModel.selectedTargetCategory} targetCategoryOptions={viewModel.targetCategoryOptions} taxonomyMatches={taxonomyMatches} unmappedCategories={unmappedCategories} requiredTargetFields={viewModel.requiredTargetFields} mappedTargetToSource={viewModel.mappedTargetToSource} targetFieldOptions={viewModel.targetFieldOptions} sourceFieldOptions={viewModel.sourceFieldOptions} sampleProductLabel={sampleProductLabel} sampleProductMode={sampleProductMode} taxonomyDefaults={viewModel.taxonomyDefaults} mappingDraftRulesDefault={viewModel.mappingDraftRulesDefault} fallbackPolicyDefault={viewModel.fallbackPolicyDefault} mappingTypeLabel="Mapping type" attributeMappingTitle="Attribute mapping" attributeMappingDescription="Map your PIM fields to the channel fields needed for publish." fieldInputPrefix="mapTarget::" fallbackTitle="Fallback behavior" advancedJsonTitle="Advanced JSON overrides" mappingRulesPlaceholder={viewModel.mappingDraftRulesDefault} />
+            <MappingEditorCard
+              actorRole={actorRole}
+              canWrite={canWrite}
+              redirectTo={viewModel.redirectTo}
+              selectedCategoryId={selectedCategoryId}
+              selectedTargetCategory={viewModel.selectedTargetCategory}
+              fallbackPolicyDefault={viewModel.fallbackPolicyDefault}
+              connector={{
+                slug: connectorSlug,
+                definitionId: definition?.id ?? connectorSlug,
+                definitionVersion: definition?.connectorVersion ?? "1.0.0",
+              }}
+              taxonomy={{
+                matches: taxonomyMatches,
+                unmapped: unmappedCategories,
+                defaults: viewModel.taxonomyDefaults,
+                categoryOptions: viewModel.targetCategoryOptions,
+              }}
+              fieldMapping={{
+                required: viewModel.requiredTargetFields,
+                mappedToSource: viewModel.mappedTargetToSource,
+                options: viewModel.targetFieldOptions,
+              }}
+              sampleProduct={{
+                label: sampleProductLabel,
+                mode: sampleProductMode,
+                fieldOptions: viewModel.sourceFieldOptions,
+              }}
+              labels={{
+                mappingType: "Mapping type",
+                attributeMapping: "Attribute mapping",
+                attributeMappingDescription: "Map your PIM fields to the channel fields needed for publish.",
+                fieldInputPrefix: "mapTarget::",
+                advancedJson: "Advanced JSON overrides",
+                mappingRulesPlaceholder: viewModel.mappingDraftRulesDefault,
+              }}
+            />
             {connectorSlug === "shopify" && selectedInstallationId && shopifyConfig && shopifyConfig.collections.length > 0 ? (
               <Card id="shopify-collections">
                 <CardTitle>Shopify Collection Mapping</CardTitle>
@@ -591,6 +571,11 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
             )}
           </div>
           <div className="space-y-4">
+            <MappingCompletionChecklist
+              requiredCount={viewModel.requiredTargetFields.length}
+              mappedRequiredCount={mappedRequiredCount}
+              unmappedRequired={viewModel.requiredTargetFields.filter((f) => !viewModel.mappedTargetToSource[f])}
+            />
             {showContext ? (
               <MappingContextSummaryCard
                 product={selectedProduct}
@@ -602,6 +587,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
                 connectorAccountDetail={connectorAccountDetail ?? undefined}
                 compatibilityLabel={definition ? (resolved?.compatibilityState ?? "compatible") : "compatible"}
                 matchedVersions={resolved?.matched?.length ?? 0}
+                draftAccountMismatch={draftAccountMismatch}
               />
             ) : (
               <DeferredMappingPanelCard

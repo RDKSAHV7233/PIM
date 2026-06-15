@@ -908,6 +908,7 @@ model ConnectorMappingVersion {
   tenantKey                  String    @default("default") @map("tenant_key")
   connectorSlug              String    @map("connector_slug")
   installationId             String?   @map("installation_id")
+  draftInstallationId        String?   @map("draft_installation_id")
   categoryScope              String    @map("category_scope")
   mappingLevel               String    @map("mapping_level")
   lifecycleState             String    @map("lifecycle_state")
