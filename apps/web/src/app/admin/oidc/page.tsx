@@ -25,34 +25,16 @@ function StatusBanner({ tone, message }: { tone: "success" | "error"; message: s
 
 export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/oidc", 401));
   }
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (actorRole !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
-
-  if (actorRole !== "admin") {
-    return (
-      <div className="space-y-5">
-        <PageHeader
-          title="OIDC / SSO Configuration"
-          description="Configure your tenant's IdP for OIDC-based single sign-on. Available to workspace admins only."
-          breadcrumb={
-            <>
-              Dashboard / Admin / <span className="font-semibold text-slate-700">OIDC / SSO</span>
-            </>
-          }
-        />
-        <Card>
-          <CardTitle>Admin Role Required</CardTitle>
-          <p className="mt-2 text-sm text-slate-600">
-            OIDC configuration is restricted to workspace admins. Contact your admin to set up or update SSO for this workspace.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   let existingConfig: Awaited<ReturnType<typeof getOidcConfig>> | null = null;
   try {

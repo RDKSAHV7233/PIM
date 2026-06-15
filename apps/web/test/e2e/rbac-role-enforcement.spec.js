@@ -32,6 +32,7 @@ const ADMIN_ONLY_PAGES = [
   "/admin/webhooks",
   "/admin/audit",
   "/admin/auth-policy",
+  "/admin/oidc",
 ];
 
 async function verifyPagesLoad(page, role, pages) {

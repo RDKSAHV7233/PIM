@@ -41,7 +41,11 @@ interface AdminUsersPageProps {
 
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (actorRole !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
   const claims = await getServerSessionClaims();
   const currentUserId = String(claims?.sub ?? "").trim().toLowerCase();
   const canManageUsers = actorRole === "admin";

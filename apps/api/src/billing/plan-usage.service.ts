@@ -59,15 +59,15 @@ interface UsageSummaryReadRow {
   connectorInstallationsCount: number;
   connectorAccountsCount: number;
   usageUpdatedAt: Date | string;
-  maxSkus: number;
-  maxSubmissionsPerMonth: number;
-  maxUsers: number;
-  maxStorageGb: number;
-  maxConnectorInstallations: number;
-  maxAccountsPerConnector: number;
-  maxApiKeys: number;
-  maxOutboundWebhooks: number;
-  maxImportRowsPerJob: number;
+  maxSkus: number | null;
+  maxSubmissionsPerMonth: number | null;
+  maxUsers: number | null;
+  maxStorageGb: number | null;
+  maxConnectorInstallations: number | null;
+  maxAccountsPerConnector: number | null;
+  maxApiKeys: number | null;
+  maxOutboundWebhooks: number | null;
+  maxImportRowsPerJob: number | null;
   profileTenantKey: string | null;
   profilePlanTier: string | null;
   profileBillingStatus: string | null;
@@ -296,9 +296,6 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    if (String(process.env.AUTH_MODE ?? "").trim().toLowerCase() !== "db") {
-      return;
-    }
     await this.seedPlanLimits();
     this.startNightlyRollup();
   }
@@ -1698,7 +1695,7 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
         profile."createdAt" AS "profileCreatedAt",
         profile."updatedAt" AS "profileUpdatedAt"
       FROM "PlanUsage" usage
-      JOIN "PlanLimits" limits
+      LEFT JOIN "PlanLimits" limits
         ON limits."planTier" = usage."planTier"
       LEFT JOIN "TenantPlanProfile" profile
         ON profile."tenantKey" = usage."tenantKey"
@@ -1750,17 +1747,18 @@ export class PlanUsageService implements OnModuleInit, OnModuleDestroy {
   }
 
   private mapUsageSummaryRowToLimits(row: UsageSummaryReadRow): PlanLimitsRow {
+    const fallback = PLAN_LIMITS[0];
     return {
       planTier: row.planTier,
-      maxSkus: row.maxSkus,
-      maxSubmissionsPerMonth: row.maxSubmissionsPerMonth,
-      maxUsers: row.maxUsers,
-      maxStorageGb: row.maxStorageGb,
-      maxConnectorInstallations: row.maxConnectorInstallations,
-      maxAccountsPerConnector: row.maxAccountsPerConnector,
-      maxApiKeys: row.maxApiKeys,
-      maxOutboundWebhooks: row.maxOutboundWebhooks,
-      maxImportRowsPerJob: row.maxImportRowsPerJob,
+      maxSkus: row.maxSkus ?? fallback.maxSkus,
+      maxSubmissionsPerMonth: row.maxSubmissionsPerMonth ?? fallback.maxSubmissionsPerMonth,
+      maxUsers: row.maxUsers ?? fallback.maxUsers,
+      maxStorageGb: row.maxStorageGb ?? fallback.maxStorageGb,
+      maxConnectorInstallations: row.maxConnectorInstallations ?? fallback.maxConnectorInstallations,
+      maxAccountsPerConnector: row.maxAccountsPerConnector ?? fallback.maxAccountsPerConnector,
+      maxApiKeys: row.maxApiKeys ?? fallback.maxApiKeys,
+      maxOutboundWebhooks: row.maxOutboundWebhooks ?? fallback.maxOutboundWebhooks,
+      maxImportRowsPerJob: row.maxImportRowsPerJob ?? fallback.maxImportRowsPerJob,
     };
   }
 

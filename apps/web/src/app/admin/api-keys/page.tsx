@@ -51,7 +51,11 @@ function formatScopes(scopes: ApiAccessKey["scopes"]) {
 
 export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole: role } = await getServerSession();
+  const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (role !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
   const status = String(query.status ?? "").trim();
   const confirmRevokeKeyId = String(query.confirmRevoke ?? "").trim();
 

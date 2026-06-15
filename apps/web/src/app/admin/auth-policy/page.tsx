@@ -84,36 +84,16 @@ function InfoCards({ policy }: { policy: Awaited<ReturnType<typeof getTenantAuth
 
 export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPolicyPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
   if (!authHeader) {
     redirect(buildLoginRedirect("/admin/auth-policy", 401));
   }
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (actorRole !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
-
-  if (actorRole !== "admin") {
-    return (
-      <div className="space-y-5">
-        <PageHeader
-          title="Auth Policy"
-          description="Tenant authentication policy is limited to workspace admins because it controls security posture and future enterprise identity rollout."
-          breadcrumb={
-            <>
-              Dashboard / Admin / <span className="font-semibold text-slate-700">Auth Policy</span>
-            </>
-          }
-        />
-
-        <Card>
-          <CardTitle>Admin Role Required</CardTitle>
-          <p className="mt-2 text-sm text-slate-600">
-            Your current role can review account privacy, but tenant auth policy changes stay admin-only. Ask a workspace
-            admin if MFA posture, session timeout, or external identity planning needs to change.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   try {
     const [policy, planProfile] = await Promise.all([

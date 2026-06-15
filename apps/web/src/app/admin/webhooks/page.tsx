@@ -64,7 +64,11 @@ function resolveWebhookFieldErrors(message: string) {
 
 export default async function WebhookAdminPage({ searchParams }: WebhookAdminPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole: role } = await getServerSession();
+  const { authHeader, actorRole: role, adminBoundaryRoles } = await getServerSession();
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (role !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
   const confirmDeleteEndpointId = String(query.confirmDelete ?? "").trim();

@@ -158,7 +158,11 @@ function summarizeFilterScope(input: {
 
 export default async function AdminAuditPage({ searchParams }: AdminAuditPageProps) {
   const query = await searchParams;
-  const { authHeader, actorRole } = await getServerSession();
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (actorRole !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
 
   const actorId = String(getFirst(query.actorId) ?? "").trim();
   const action = String(getFirst(query.action) ?? "").trim();
