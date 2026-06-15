@@ -1,45 +1,49 @@
 # Architecture
 
-Status: Canonical  
-Last reviewed: 2026-04-25
+Status: Canonical
+Last reviewed: 2026-06-15
 
 ## System Shape
 
 Vexa PIM is a TypeScript monorepo with:
 
-- Next.js web app for product, channel, quality, operations, and admin workflows.
-- NestJS API for domain logic, auth, connectors, marketplace publishing, media, queues, and administration.
-- PostgreSQL accessed through Prisma.
-- Redis/BullMQ for production queue processing.
-- R2-compatible object storage for media assets.
+- Next.js web routes for dashboard, catalog, channels, quality, operations, admin, settings, media, and internal tools
+- NestJS API modules for auth, catalog, taxonomy, marketplace, connectors, media, billing, admin, and notifications
+- PostgreSQL through Prisma
+- queue-backed async processing for imports, publishing, exports, and recovery work
+- object storage integration for media and some export flows
 
-## Request Flow
+## High-Level Flow
 
-1. User interacts with `apps/web`.
-2. Web route handlers and client code call the API.
-3. API modules authenticate, resolve tenant context, validate input, and call domain services.
-4. Domain services use Prisma and connector framework services.
-5. Queue-backed work handles publishing, exports, status sync, and operational jobs.
+1. Users interact with the Next.js app in `apps/web`.
+2. The web app calls API endpoints or internal route handlers.
+3. The API authenticates, resolves tenant context, validates input, and calls domain services.
+4. Domain services use Prisma, connector services, and queue backends.
+5. Long-running work is processed through queue-backed jobs where required.
 
 ## Core Domains
 
-- Catalog: products, variants, completeness, workflow state, and purge/delete flows.
-- Taxonomy: categories, attributes, mappings, and channel alignment.
-- Marketplace: channels, connector mappings, readiness, publish simulation, export jobs, and submissions.
-- Connectors: install, credentials, validation, publish, status sync, webhook relay, and capability checks.
-- Media: assets, validation, approval metadata, and associations.
-- Quality: compliance, issues, approvals, and rejection intelligence.
-- Admin: users, API keys, webhooks, plan/commercial controls, audit, and privacy.
+- Catalog: products, variants, relationships, workflow, and activity
+- Taxonomy: categories and attribute definitions
+- Quality: issues, completeness, approvals, and rejection intelligence
+- Channels and marketplace: mappings, readiness, submissions, and channel-specific workflows
+- Connectors: install, credentials, publish/export behavior, webhook handling, status sync, and recovery
+- Media: upload, validation, governance metadata, and associations
+- Admin and commercial: users, API keys, webhooks, auth policy, privacy, plan, and commercial operations
 
 ## Connector Model
 
-Connectors expose capabilities through a shared interface. UI and API behavior must respect those capabilities:
+Connectors implement a shared capability interface and are then filtered by launch-stage policy.
 
-- Full publish connectors: Amazon India, Flipkart, Shopify.
-- Partial connector: Meesho has validation/export-oriented behavior and does not implement direct publish.
+Current repo-truth examples:
+
+- live launch-stage: Flipkart, Shopify, Myntra
+- manual launch-stage: Meesho, Nykaa
+- planned or preview posture: Amazon India, WooCommerce
+
+Implementation status and launch stage are separate concerns. A connector can exist in code while still being treated as preview or early-access in the UI and documentation.
 
 ## Environment Tiers
 
-- Local: can use local auth and in-memory queue backend.
-- Staging/production: must use DB auth, BullMQ, enabled queue worker, configured CORS, production-safe email settings, and commercial ops configuration.
-
+- Local: can use local auth and fallback queue behavior
+- Staging and production: require DB auth, BullMQ, queue worker enablement, valid CORS, production-safe email config, and commercial ops config

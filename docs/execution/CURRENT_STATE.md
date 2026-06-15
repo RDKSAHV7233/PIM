@@ -1,451 +1,77 @@
 # Vexa PIM Current State
 
-> **V14 Addendum (2026-06-12) — Staging 56-TC browser test complete; Sprint 1/2/3 fixes merged to branch.**
->
-> **56-TC browser test completed on TRIAL workspace (app.vexapim.com, 2026-06-12):**
-> - 16 findings identified; 15 closed in code; 1 infra-only (RSC 503s, pod instability)
->
-> **Sprint 1 — P0/P1 fixes (committed 2026-06-12):**
-> - FIX-P0-A: Amazon India changed to "Experimental" (`connector-launch-policy.ts`)
-> - FIX-P0-B: `/ai` page shows "Labs — Experimental" banner; no tier gate removal
-> - FIX-P1-A through F: 6 pages now enforce frontend tier gates (api-keys, webhooks, approvals, bulk-edit, OIDC, MFA)
-> - F-17: Media upload fixed — `MEDIA_LOCAL_FALLBACK` env var + Railway volume (ops complete)
->
-> **Sprint 2 — P2 fixes (committed 2026-06-12, this branch):**
-> - FIX-P2-D: `POST /auth/password/change` endpoint + Next.js proxy + frontend form in `/settings/security`
-> - FIX-P2-B: Audit CSV export raised from 200-row cap to 5,000-row direct Prisma query
->
-> **Sprint 3 — P3 fixes (committed 2026-06-12, this branch):**
-> - FIX-P3-B: `/settings` profile page implemented (email, role, workspace display + preference quick links)
-> - FIX-P3-A: Password reset confirmation confirmed as false positive — code correct
-> - FIX-P3-C: RSC prefetch 503s — infra/pod only, no code fix
-> - FIX-P2-A: ENTERPRISE "Unlimited" display — auto-fixes on next deploy via `seedPlanLimits()`
-> - FIX-P2-C: Seed staging DB with products — ops task, use Import workflow at `/operations/imports`
->
-> **Remaining pilot blockers (non-code):**
-> - Ops items #3 (STAGE3_* secrets), #4 (Stripe BUSINESS price + all tiers), #5 (Meesho email), #8 (signup env secret), #9 (plan-limits seed verify post-deploy)
->
-> ---
+Last reviewed: 2026-06-15
 
-> **V13 Addendum (2026-06-11) — BUSINESS tier + pricing ladder shipped (PR #249); E2E validation passed.**
->
-> **PR #249 merged to main (2026-06-11):**
-> - New BUSINESS tier: 50K SKUs, 100 users, ₹69,999/month, all 8 RBAC roles
-> - Revised pricing: Starter ₹9,999, Growth ₹29,999, Business ₹69,999, Enterprise from ₹1,49,999
-> - Setup fee display in plan comparison UI (display-only; enforcement deferred)
-> - E2E staging validation: run [27369657782](https://github.com/Vexapim/PIM/actions/runs/27369657782) **PASSED**
-> - RBAC, Stripe mapping, seed, DTOs, OpenAPI specs all updated
-> - **Ops action required:** Create `STRIPE_PRICE_ID_BUSINESS` Stripe product/price (69,999 INR), set env var staging + production
->
-> **Summary of commits:**
-> | PR | Title | Merged | Status |
-> |----|-------|--------|--------|
-> | #249 | feat(billing): add BUSINESS tier + revised pricing ladder | 2026-06-11 | ✅ Live on main |
->
-> ---
+This file is the stable current-state summary. It replaces the older additive "Vx addendum" style status notes as the main documentation entry point.
 
-> **V12 Addendum (2026-06-11) — gate:run:sprint PASSED on staging; ops automation merged (PR #248).**
->
-> **gate:run:sprint: PASSED 2026-06-11**
-> - Full E2E staging suite (run [27322336923](https://github.com/Vexapim/PIM/actions/runs/27322336923)): ALL TESTS PASS
-> - Signup smoke check: PASS (non-blocking, `continue-on-error: true`)
-> - Run duration: ~8 min (03:44:39Z → 03:52:25Z)
-> - SHA: HEAD of `main` (includes PR #248)
->
-> **PR #248 merged (2026-06-11):** ops pipeline automation
-> - `POST /queue/cleanup-failed` admin endpoint + post-deploy BullMQ cleanup step in `deploy-staging.yml`
-> - `seed-tax-regimes.cjs` automated in deploy pipeline (runs after `prisma migrate deploy`)
-> - Non-blocking signup check in `e2e-staging.yml` (same pattern as deploy-staging from PR #241)
->
-> **Pipeline fixes merged since V11:**
-> | PR | Title | SHA |
-> |----|-------|-----|
-> | #241 | fix(ci): make signup smoke check non-blocking in staging deploy | — |
-> | #243 | fix(api): make product PATCH fields optional for workflow transitions | — |
-> | #244 | fix(ci): exclude generated docs from PR scope guard line count | — |
-> | #245 | feat(docs): Postman collection + generator for Vexa PIM API | — |
-> | #247 | fix(api): preserve hsnCode, gstRate, attributes on status-only PATCH | `999617b5` |
-> | #248 | chore(ops): automate BullMQ cleanup, tax seed, non-blocking signup in E2E | — |
->
-> **Updated ops runbook status (see `docs/checklists/ops-unblock-staging.md`):**
-> | # | Item | Status |
-> |---|------|--------|
-> | 1 | Staging DB + domain secrets | ✅ Done (deploy pipeline green) |
-> | 2 | gate:run:sprint on staging | ✅ PASSED 2026-06-11 (run 27322336923) |
-> | 3 | STAGE3_* production env secrets | ❌ Manual |
-> | 4 | Stripe products + price ID env vars | ❌ Manual |
-> | 5 | Email Meesho for API credentials | ❌ PO action |
-> | 6 | BullMQ cleanup + R2 config | ✅ BullMQ automated; R2 manual |
-> | 7 | Tax Attributes migration + seed | ✅ Automated in deploy pipeline |
-> | 8 | STAGING_EXPECT_PUBLIC_SIGNUP_ENABLED | ❌ Non-blocking |
-> | 9 | Verify plan-limits seed | ❌ Post-deploy verification |
->
-> **Updated posture:**
-> - Enterprise signoff is now **fully allowed** — gate:run:sprint has passed on staging.
-> - "Enterprise-ready" claim can now be used in customer-facing materials.
->
-> **Remaining pilot blockers (non-code):**
-> - Ops items #3, #4 (Stripe), #5 (Meesho email), #8, #9
-> - R2 bucket configuration (part of item #6)
+## Code-Truth Snapshot
 
-> **V11 Addendum (2026-05-28) — enterprise signoff unblocked; Gate 3 closed; pricing approved; web test suite at 117.**
->
-> **Summary of changes since V10:**
-> - **Gate 3 CLOSED 2026-05-26**: 14/14 broad-rollout observation days and 14/14 SLO trend days confirmed. All P0/P1/P2 risks in PROD_READINESS_RISK_REGISTER are closed. PIM1 cleared for broad production rollout.
-> - **Enterprise signoff unblocked (V7, 2026-05-20)**: RG-C4 (product relationships/bundles), RG-C5 (workflow collaboration + SLA), and RG-C6 (enterprise search) all merged to main. "Enterprise-ready" claim is now allowed with gate:run:sprint passage.
-> - **Pricing approved (2026-05-27)**: PO (Atharva) signed off on STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom. `docs/product/pricing.md` updated. BACKLOG-04 (Stripe product config) unblocked — requires ops action in Stripe dashboard.
-> - **Web test suite: 117 total** (`WEBTEST_SUMMARY total=117 failed=1`). One permanent expected failure: `auth-cookie-csrf.test.cjs` requires live API build. All other 116 tests pass.
-> - **Responsive UX sprint complete**: `mobileHide` sweep across all DataGrid callsites; mobile card `min-w-0 break-words` overflow guard; startup env gate via `instrumentation.ts`; Governance sidebar link fixed for `connector_admin` role.
-> - **Test coverage expanded**: Meesho export contract (14 assertions), Prisma connection pool contract (11 assertions), CommercialReminders contract (11 assertions). API integration tests: 144. Web integration tests: 117.
->
-> **Updated Section 4 (replaces V4 posture):**
->
-> **Allowed to say:**
-> - All production-readiness code blockers are closed.
-> - Gate 3 fully closed — broad production rollout is governance-cleared.
-> - Enterprise-ready (RG-C4/C5/C6 all merged) — requires passage of `gate:run:sprint` on staging against Gate C features before using this in customer-facing claims.
-> - Vexa PIM is production-ready for SMB, mid-market, and enterprise pilots from the current code and governance evidence.
-> - OIDC SSO, 8-role RBAC, product relationships, workflow collaboration, and enterprise search are all live on main.
-> - Pricing approved: STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom.
->
-> **Not allowed to say without further action:**
-> - Self-serve billing (Stripe integration is operator-mediated; no customer-facing Stripe checkout implemented)
-> - "100+ products published to Shopify" (requires recorded browser session — script-assisted only)
-> - OIDC fully enforced / mandatory (it is opt-in; runtime enforcement is live only when an IdP is configured by the admin)
->
-> **Pending ops / external actions (non-code):**
-> - Configure `STAGE3_*` secrets in GitHub `production` environment → trigger promote-stage3
-> - Clear `account-export` failed job + configure R2 on Railway staging
-> - Run `gate:run:sprint` on staging against Gate C features (target was 2026-05-23 — now overdue; must complete before enterprise claim is used externally)
-> - Create Stripe products at approved price points (BACKLOG-04)
-> - Remaining pricing sign-offs: CTO (infra cost), CFO (LTV/CAC), GTM (annual discount depth), Legal (public copy review)
+- Web route inventory: `69` `page.tsx` routes under `apps/web/src/app`
+- Primary route groups: auth/public, dashboard, catalog, quality, channels, operations, admin, settings, media, product detail, and internal/experimental surfaces
+- App roles: `admin`, `editor`, `publisher`, `approver`, `channel_manager`, `connector_admin`, `reviewer`, and `viewer`
+- Admin boundary roles: `product_admin`, `system_admin`, and `super_admin`
+- QA dataset scripts: core seed, ops seed, control-plane opt-in seed, cleanup, and isolation tests all exist in root `package.json`
 
-> **V10 Addendum (2026-05-20) — taxonomy soft-delete fix merged; E2E `delete_category` cleanup unblocked.**
->
-> **PR merged:**
-> | PR | Title | SHA |
-> |----|-------|-----|
-> | #116 | fix(taxonomy): exclude soft-deleted products from category delete constraint | `65c6562` |
->
-> **Bug fixed (PR #116):**
-> - `taxonomy.service.ts` `deleteCategory()` counted soft-deleted products (`deletedAt IS NOT NULL`) in the attached-products check — `DELETE /taxonomy/categories/:id` returned 400 even after all products were soft-deleted. Added `deletedAt: null` filter so only live products block category deletion. E2E `delete_category` cleanup step no longer skips.
->
-> **Updated engineering priority stack (V10):**
-> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
-> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
-> 3. **Browser UX test** — Chrome MCP journey for all 8 roles _(blocked on Chrome extension connection)_
-> 4. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
-> 5. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+## Current Route Reality
 
-> **V9 Addendum (2026-05-20) — 8-role RBAC audit complete; 9 bugs fixed and merged; all 13 product claims verified.**
->
-> **PRs merged today:**
-> | PR | Title | SHA |
-> |----|-------|-----|
-> | #114 | fix(rbac): 7 silent auth/access bugs + .env.staging cleanup | `67a5606` |
-> | #115 | fix(admin): expand invite form roles to include admin and reviewer | `8f2b026` |
->
-> **Bugs fixed (PR #114):**
-> - 5 `fetchJson` wrong-arg-position bugs in `connectors.ts` — `getDeltaSyncCandidates`, `getSyncStates`, `getConnectorSchedule`, `getShopifyConfig`, `getProductLinks` sent no auth header; Sync/Schedule/catalog-link tabs silently empty for every role
-> - `resolveTab()` missing `"sync"`, `"schedule"`, `"catalog-link"` — data fetch conditions were never true; tabs always showed overview data
-> - Unhandled 403s crashing `[installationId]/page.tsx` for `connector_admin` on `getConnectorPermissions` + `getSubmissions`
-> - Unhandled 403 crashing `catalog/products/page.tsx` for viewer/publisher/approver/reviewer on `getInstalledConnectors`
-> - Unhandled 403 crashing `admin/connectors/page.tsx` for `connector_admin` on `getConnectorPermissions`
-> - Backend `@Roles("admin", "editor")` on `GET /marketplace/channels` excluded `channel_manager` — mappings page silently empty
->
-> **Bug fixed (PR #115):**
-> - Admin invite form only offered editor/viewer — admin and reviewer excluded from `PILOT_VISIBLE_ROLES` and dropdown UI
->
-> **8-Role API verification (2026-05-20) — all PASS:**
-> | Role | Login | Catalog | Admin gates | Own endpoints |
-> |------|-------|---------|-------------|---------------|
-> | admin | ✅ | ✅ 200 | ✅ 200 | ✅ all 200 |
-> | editor | ✅ | ✅ 200 | ✅ 403 | ✅ import/bulk-edit 200 |
-> | publisher | ✅ | ✅ 200 | ✅ 403 | ✅ submissions 200 |
-> | approver | ✅ | ✅ 200 | ✅ 403 | ✅ issues/inbox 200 |
-> | channel_manager | ✅ | ✅ 200 | ✅ 403 | ✅ /marketplace/channels 200 |
-> | connector_admin | ✅ | ✅ 200 | ✅ 403 | ✅ connectors/installed 200 |
-> | reviewer | ✅ | ✅ 200 | ✅ 403 | ✅ issues/inbox 200 |
-> | viewer | ✅ | ✅ 200 | ✅ 403 | ✅ read-only 200 |
->
-> **13 product claims — all verified:** C-1 (216 products), C-2 (25 import jobs), C-3 (20 bulk-edit ops), C-4 (approval workflow), C-5 (5 connectors installed), C-6 (submissions), C-8 (dashboard + 14-snapshot trend), C-9 (audit), C-10 (auth policy), C-11 (tenant isolation), C-12 (cursor pagination), C-13 (full RBAC matrix)
->
-> **Auth credential correction:** Admin email is `admin@pim1.local` (not `admin@pim1.test`); API uses `PIM_AUTH_IDENTITIES_JSON` env-based auth, not `AUTH_MODE=db`. All 8 role users pre-configured in `.env` with password `vexa-pim-demo-password`.
->
-> **Updated engineering priority stack (V9):**
-> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
-> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
-> 3. **Browser UX test** — Chrome MCP journey for all 8 roles _(blocked on Chrome extension connection)_
-> 4. **Fix `delete_category` cleanup skip** in E2E journey _(engineering task, low urgency)_
-> 5. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
-> 6. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+Current page routes include:
 
-> **V8 Addendum (2026-05-20) — Staging pipeline fully green; both rollout windows satisfied; promote-stage3 ready.**
->
-> **Staging deploy pipeline — first full end-to-end success on HEAD `038ee8c`:**
-> - CI: ✅ · Deploy Staging: ✅ (all 19 steps including post-deploy verification, E2E smoke, rollout snapshot)
-> - Two final deploy fixes merged after the sprint: #112 (backfill `--tenant`), #113 (web service `PIM_API_BASE_URL` sync via `railway variables set`)
->
-> **E2E smoke result (run 26119883290, sha `038ee8c`):** 28/30 pass · 0 fail · 2 skip
-> - All functional checks pass: auth, catalog create/validate/submit/approve, mappings, dashboard, billing, users, audit
-> - `delete_category` cleanup skipped — soft-deleted product still referenced; functional test data correct, cleanup ordering only
-> - `delete_variant` skipped — no variant created in smoke path (expected)
->
-> **Rollout snapshot (2026-05-19T19:28:58Z):** ✅ ALL criteria met
-> | Gate | Required | Actual | Status |
-> |------|----------|--------|--------|
-> | Observation window covered | 14 days | 14 days | ✅ |
-> | SLO trend window covered | 14 days | 14 days | ✅ |
-> | Two consecutive E10 signoff runs | 2 | 2 | ✅ |
-> | Pilot workflow evidence | present | present | ✅ |
-> | Governance evidence | present | present | ✅ |
-> | Health endpoint | healthy | healthy | ✅ |
-> | Controlled rollout pending | 0 | 0 | ✅ |
-> | Broad rollout pending | 0 | 0 | ✅ |
->
-> **Promote-stage3 status: READY TO RUN** (pending ops secrets below)
->
-> **Required secrets before triggering promote-stage3:**
-> | Secret | Purpose |
-> |--------|---------|
-> | `STAGE3_DATABASE_URL_DIRECT` | Production DB — migrations + RLS verify |
-> | `STAGE3_DATABASE_URL` | Production DB — pooled connection |
-> | `STAGE3_WEB_URL` | Production web URL — post-deploy verification |
-> | `STAGE3_SMOKE_WORKSPACE` | Production smoke test workspace slug |
-> | `STAGE3_SMOKE_USER` | Production smoke test email |
-> | `STAGE3_SMOKE_PASSWORD` | Production smoke test password |
->
-> Dispatch input: `staging_url` = production API base URL (e.g. `https://api.vexapim.com`)
->
-> **Known staging gaps (non-blocking for promote):**
-> - `account-export` queue: 1 stale failed job — caused by missing `R2_*` secrets on Railway staging (Cloudflare R2 not configured). Ops task: add `R2_BUCKET_NAME`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` to Railway staging service vars, then use Bull board or `redis-cli` to clear the failed job.
-> - `delete_category` E2E cleanup: category deletion fails after soft-delete of product (category still sees soft-deleted product as a reference). Engineering task: fix cleanup ordering in `scripts/e2e-user-journey.cjs` to hard-purge or skip category cleanup when product was soft-deleted.
->
-> **Updated engineering priority stack:**
-> 1. **Configure `STAGE3_*` secrets** in GitHub `production` environment → trigger promote-stage3 _(target: this week)_
-> 2. **Clear `account-export` failed job + configure R2** on Railway staging _(ops task)_
-> 3. **Fix `delete_category` cleanup skip** in E2E journey _(engineering task, low urgency)_
-> 4. **`gate:run:sprint`** on staging against Gate C features _(target 2026-05-23)_
-> 5. **Enterprise customer demo** — RG-C4/C5/C6 feature tour on staging _(blocked only on scheduling)_
+- public/auth: `/login*`, `/signup*`, `/consent`, `/account-suspended`
+- workspace: `/dashboard`, `/search`, `/notifications`
+- catalog: `/catalog/*`, `/products/[id]`
+- quality: `/quality*`, `/rejection`
+- channels: `/channels*`, `/connectors*`
+- operations: `/operations*`
+- admin/settings: `/admin*`, `/settings*`
+- internal or experimental: `/ai`, `/internal/developer`, `/ondc`, `/media`
 
-> **V7 Addendum (2026-05-20) — All 11 PRs merged; main CI green; Deploy Staging unblocked.**
->
-> **Sprint closure complete.** All Gate C enterprise features are live on `main`. Enterprise
-> signoff is **unblocked** — no further engineering required per V6 addendum.
->
-> **Merge sequence (in order, all squash-merged):**
-> | PR | Title | SHA |
-> |----|-------|-----|
-> | #109 | fix(web): remove duplicate OIDC exports | `dd789c8` |
-> | #95 | fix(ondc): explicit tenant_key in raw SQL | `04c0552` |
-> | #96 | feat(deploy): Railway production deploy pipeline | `53cd926` |
-> | #97 | fix(flipkart): INC-10 ORM conversion | `4963167` |
-> | #102 | test(gates): full 96/96 integration coverage | `18ea7e1` |
-> | #103 | feat(meesho): validation and Excel export | `fd92b06` |
-> | #104 | fix(shopify): BUG-1 multi-variant + image | `f334a76` |
-> | #111 | feat(workflow): RG-C5 collaboration + SLA model | `544cefb` |
-> | #110 | feat(catalog): RG-C4 product relationships | `e887e3b` |
-> | #108 | feat(catalog): RG-C6 enterprise search | `c97c399` |
-> | #112 | fix(deploy): scope backfill to STAGING_SMOKE_TENANT_ID | `b9b796d` |
->
-> **Post-merge CI state (HEAD `b9b796d`):**
-> - CI workflow: ✅ success
-> - Deploy Staging: was ❌ failure on `c97c399` (backfill step lacked `--tenant` after
->   `assertTenantScope` guard landed in PR #96); fixed by PR #112 and now unblocked.
->
-> **Open PRs:** 0
->
-> **What is now live on main:**
-> - RG-C4: Product relationships, bundles, kits — full CRUD + tenant isolation + migration `000007`
-> - RG-C5: Workflow collaboration + SLA — change requests, SLA config, overdue count + migration `000006`
-> - RG-C6: Enterprise search — faceted filters (status/brand/category/channel/full-text), cursor pagination, 7-assertion proof
-> - Meesho: local validation rules + Excel export (xlsx magic bytes)
-> - Shopify: BUG-1 multi-variant `optionValues` + image filename fix
-> - 96/96 integration gates consolidated and passing in CI
-> - Railway production deploy pipeline (promote-stage3) with `assertTenantScope` guard
-> - ONDC raw SQL tenant isolation
-> - Flipkart INC-10 ORM conversion
->
-> **Immediate next priorities (engineering backlog):**
-> 1. Fresh staging rollout snapshot with `observationWindowDaysCovered` _(target 2026-05-21)_
-> 2. `gate:run:sprint` executed on staging _(target 2026-05-23)_
-> 3. Enterprise customer demo prep — RG-C4/C5/C6 feature tour against staging
-> 4. Promote-stage3 workflow first live run to production (gated on staging gate signoff)
+Current redirect-style paths include:
 
-> **V6 Addendum (2026-05-19) — Gate C implementation complete; CI-green; awaiting merge.**
->
-> **All three Gate C enterprise feature PRs have CI-passing implementations in `bhoivishal216-ai/PIM1`:**
-> - PR #110 (`feat/product-relationships-rg-c4`) — RG-C4: product relationships (bundles, kits, accessories, cross-sell). Schema + migrations + API + tenant isolation test. CI: ✅ success.
-> - PR #111 (`feat/workflow-collab-rg-c5`) — RG-C5: workflow collaboration + SLA model (change requests, SLA config, overdue count). CI: ✅ success.
-> - PR #108 (`feat/rg-c6-enterprise-search`) — RG-C6: enterprise-scale search — faceted filters (status, brand, category, channel, free-text OR), cursor pagination, 7-assertion integration proof. CI: ✅ success.
-> - PR #109 (`fix/web-lint-oidc-and-kpi-channel`) — prerequisite web lint fixes. CI: ✅ success.
->
-> **Repo migrated:** `RDKSAHV7233/PIM1` → `bhoivishal216-ai/PIM1` to restore GitHub Actions billing.
-> All 10 open PRs live with fresh CI runs. PRs #95, #96, #97, #102, #103, #104 CI runs in-progress.
->
-> **Updated posture:**
-> - Enterprise signoff is **merge-blocked** (not "not scheduled") — RG-C4/C5/C6 are implemented, CI-green, pending PR merge.
-> - "Enterprise-ready" claim remains **Forbidden** until all three PRs land on `main`.
-> - Approved merge order: `#109 → #95 → #96 → #97 → #102 → #103 → #104 → #111 → #110 → #108`
-> - When PRs merge, enterprise signoff unblocks with no further engineering required.
+- `/`
+- `/catalog`
+- `/reports`
+- `/products`
+- `/settings/plan`
+- `/settings/connectors`
+- `/settings/privacy`
+- `/connectors/[installationId]/mapping`
 
-> **V4 Addendum (2026-05-17, evening) — supersedes V3 release posture below.**
->
-> **Authoritative PO sign-off:** [PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md](./PO_SIGNOFF_CONTROLLED_PILOT_V4_2026-05-17.md). V3 is superseded.
->
-> **Engineering pass complete (CTO Execution Memo 2026-05-17):**
-> - PR #71 merged (worktree base `f6f9ce2`). Main HEAD includes `66bd13e` (ledger sync) and `5304ffe` (PR #72: CTO verification fixes).
-> - Web tests at **111/111 passing** (was 110 in V3 snapshot; one net test added).
-> - AuditLog composite index `idx_audit_logs_tenant_resource_action_created` added via migration `20260517000002_auditlog_resource_action_index` to support product revision and activity queries at scale.
-> - `approval-comments` and `product-activity-timeline` integration tests wired as named npm scripts and as gated steps in `scripts/run-increment-gates.cjs`.
-> - Meesho UI corrected to honestly disclose `In Development` status; export action guarded server-side.
-> - `.env.staging` converted to deprecation stub; `.env.staging.example` is the canonical template.
-> - Operations KPI counts now display `<limit>+` honestly when at the window cap.
-> - ADRs 005–010 filed: revisions-from-audit-log, allowFailure sunset policy, JSON attribute blob acceptance, billing operator-mediated, Smart Suggestions rule-based, OIDC opt-in.
-> - AuditLog retention policy drafted: `docs/runbooks/audit-log-retention.md`.
->
-> **What this changes in approved claims:**
-> - **Approval comments** — moved to Approved (was Forbidden in V3). Model + API + UI + test all proven.
-> - **Product activity timeline** — moved to Approved. Endpoint + service + tab + test all proven.
-> - **OIDC SSO login (bounded)** — added to Approved with operator-mediated configuration disclosure.
-> - **Browser-only live Shopify proof** — added to Forbidden (script-assisted only; no recorded session committed).
-> - **OIDC fully enforced** — explicitly added to Forbidden pending admin UI.
-> - **"100+ products published to Shopify"** — added to Forbidden pending recorded session.
->
-> **Outstanding engineering before broader-production claim:**
-> - INC-10 Flipkart publish loop closure (removes `allowFailure=true` from idempotency gate). Target 2026-06-07. Structural audit (2026-05-17): the two credential-path `$queryRawUnsafe` sites cited in the reopened-reason have been refactored to Prisma ORM; only `noteCredentialWarning` retains raw SQL (tenant-filtered, low risk). `allowFailure=true` may be stale — connector lead should run the test against live Postgres to confirm.
-> - ~~OIDC admin IdP configuration UI.~~ **Shipped in PR #76 (2026-05-17)** — `/admin/auth-policy/oidc` with `auth_config_high_risk` step-up scope. "OIDC enforced" remains Forbidden per PO V4 (Gate C required).
-> - Fresh staging rollout snapshot with full `observationWindowDaysCovered` schema field. Target 2026-05-21.
-> - `gate:run:sprint` executed on staging. Target 2026-05-23.
->
-> The V3-era posture below is preserved for historical reference. Where V3 conflicts with V4, **V4 wins.**
+## Current Connector Reality
 
-- Date: 2026-05-18
-- Repo HEAD: main — PR #71 merged (INC-36 localization schema + INC-39 OIDC SSO); PR #72 merged (CTO verification fixes); PR #73 merged (ST-CON-METRICS-001 connector KPI dashboard); PR #74 merged (OIDC self-serve admin UI); PR #75 merged (Railway staging recovery — web/API connectivity, deploy hardening); PR #76 merged (AuditLog index, Meesho honest UI, OIDC step-up hardening — v0.9.0-pilot tagged); PR #77 merged (zero-downtime staging deploy via preDeployCommand — RISK-P1-005 closed)
-- Scope: current code, current validation output, sellability proof slices, Large Import Mode MVP, release-governance state, hosting runbooks (3-stage), connector platform (PR #65 merged), Gate C enterprise increments (INC-35 RBAC + INC-36 localization + INC-39 OIDC all merged), connector KPI trends dashboard, OIDC self-serve IdP configuration with auth_config_high_risk step-up scope, AuditLog composite index, Meesho in-development UI, PO V4 sign-off, zero-downtime staging deploys
-- Naming note: customer-facing product brand is `Vexa PIM`; legacy repo/package/env identifiers still use `PIM1`
+Connectors present in code:
 
-## 1. Current Truth Summary
+- `amazon-in`
+- `flipkart`
+- `meesho`
+- `myntra`
+- `nykaa`
+- `shopify`
+- `woocommerce`
 
-- Staging deploy downtime on merge-to-main is resolved. `preDeployCommand` now runs Prisma migrations in a separate Railway container while the old app container keeps serving traffic. New container starts clean, passes healthcheck in ~5s, then Railway switches traffic and drains the old container. Zero-downtime deploy confirmed achievable on Railway Starter (no plan upgrade required). RISK-P1-005 closed.
-- Targeted code-level production-readiness blockers around web JWT/session fail-closed behavior, privileged internal route trust boundaries, web build/increment gate stability, submissions and DLQ count honesty, readiness proxy failure masking, and catalog products pagination have been closed in the current repo state.
-- Large Import Mode MVP is now implemented as an additive path for single-file CSV imports from `10,001` to `30,000` rows, with one parent run, one unified repair/result flow, and one combined error report.
-- The safe claim boundary for imports is now explicit: standard CSV/JSON imports remain capped at `10,000` rows; large mode is CSV-only and blocks files above `30,000` rows.
-- Sellability slices for revision-backed approvals, validate-before-import, responsive/accessibility hardening, golden-path browser proof, and user-guide traceability have been completed in the current repo state.
-- The current local validation bundle is green: API lint/build pass, web lint/build pass, web tests 111/111 pass, `gate:run:increment` exits 0 (Flipkart connector idempotency explicitly marked `allowFailure=true` pending INC-10 completion).
-- Large Import Mode API routes, DTO, and the `20260506194500_bulk_import_large_run_mvp` migration are now committed and tracked in git.
-- Media upload now guards against non-image MIME types. Product detail page is resilient to connector/compliance fetch failures via `.catch()` fallbacks.
-- Fresh release-governance evidence is now checked in: the latest staging rollout snapshot `docs/execution/rollout/2026-05-17T07-17-15.753Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` reports `controlledPending: []`, `broadPending: []`. All gates are green.
-- `INC-08` is complete. INC-36 (localization schema) and INC-39 (OIDC SSO) are now marked completed in the ledger after PR #71 merge.
-- ST-CON-METRICS-001 (connector KPI trends) is now complete: mapping completion rate, first publish success rate, and setup-time-to-first-publish are rendered as KpiCards in the dashboard Connector Performance section, sourced from the existing `/metrics/kpi-trends` API (PR #73 merged 2026-05-17).
-- `billing-metrics-overhaul` branch was created from April stash — tenant-boundary tests, March migration, and tenant-scoped uniqueness constraints committed and verified passing. Branch is superseded by main; may be deleted.
+Important launch-stage distinctions:
 
-## 2. Canonical Source-of-Truth Files
+- live: Flipkart, Shopify, Myntra
+- manual: Meesho, Nykaa
+- planned or preview posture: Amazon India, WooCommerce
 
-- Product baseline: `docs/product/PRD.md`
-- Execution ledger: `docs/execution/INCREMENT_STATE.json`
-- Runtime state notes: this file
-- Release-risk documentation: `docs/execution/PROD_READINESS_RISK_REGISTER.md`
-- UI/UX pilot execution record: `docs/execution/VEXA_PIM_UIUX_PILOT_READINESS_EXECUTION_PLAN_2026-04-30.md`
-- Product/CTO review history: `docs/execution/VEXA_PIM_PRODUCT_CTO_UIUX_REVIEW_2026-04-30.md`
-- User-guide traceability matrix: `docs/execution/USER_GUIDE_TRACEABILITY_MATRIX_2026-05-06.md`
+Marketplace channel routing currently centers on:
 
-## 3. Current Implemented Stack
+- `amazon`
+- `flipkart`
+- `meesho`
+- `shopify`
 
-- Web: Next.js 15, React, TypeScript, Tailwind CSS
-- API: NestJS on Express
-- Database: PostgreSQL with Prisma
-- Queue/cache: BullMQ/Redis for staging and production, in-memory locally
-- Media: Cloudflare R2-compatible object storage
-- Connectors: Amazon India, Flipkart, Shopify, and partial Meesho export support
+## Current Feature-Gate Reality
 
-## 4. Current Release Posture
+- Public signup is feature-flagged.
+- `/ai` is admin-only, non-production, and blocks `TRIAL` and `STARTER`.
+- `/ondc` is admin-only, non-production, and requires `FEATURE_ONDC_ENABLED=true`.
+- `/admin/commercial` requires admin app role, system-level boundary access, and a configured commercial ops token.
 
-> **See V11 Addendum at the top of this file for the current authoritative posture. The text below is preserved as historical context (valid as of 2026-05-18); where it conflicts with V11, V11 wins.**
+## Documentation Rule
 
-### Allowed to say (as of V11, 2026-05-28)
+If a dated execution note, review memo, or signoff document disagrees with code:
 
-- All production-readiness code blockers are closed.
-- Gate 3 fully closed (14/14 observation days, 2026-05-26) — PIM1 cleared for broad production rollout.
-- Enterprise-ready: RG-C4 (product relationships), RG-C5 (workflow collaboration + SLA), and RG-C6 (enterprise search) merged. Enterprise claim requires `gate:run:sprint` passage on staging before external use.
-- Large Import Mode MVP is available within the documented CSV-only `30,000`-row boundary.
-- OIDC SSO is self-serve and live when an IdP is configured.
-- Pricing approved: STARTER ₹4,499/month, GROWTH ₹11,999/month, ENTERPRISE custom.
-
-### Not allowed to say (as of V11, 2026-05-28)
-
-- Self-serve billing (Stripe checkout not implemented — operator-mediated only)
-- "100+ products published to Shopify" (requires recorded browser session)
-- OIDC fully enforced / mandatory
-
-### Current decision (as of V11, 2026-05-28)
-
-- Demo readiness: allowed
-- Controlled pilot posture: allowed (Gate 3 closed 2026-05-26)
-- Paid SMB / early mid-market posture: allowed
-- Production signoff: allowed — all gates green
-- Enterprise signoff: allowed pending `gate:run:sprint` passage on staging
-
-## 5. Validation Snapshot
-
-Most recent local validation (2026-05-28):
-
-- `npm run lint --workspace @pim1/api` - pass
-- `npm run build --workspace @pim1/api` - pass
-- `npm run lint --workspace @pim1/web` - pass
-- `npm run build --workspace @pim1/web` - pass
-- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=117 failed=1`; `auth-cookie-csrf.test.cjs` is permanent expected failure — requires live API build)
-
-Historical snapshot (2026-05-18, pre-V11):
-- `npm run test --workspace @pim1/web` - pass (`WEBTEST_SUMMARY total=111 failed=0`)
-- `npx playwright test apps/web/test/e2e/demo-tenant-end-to-end.spec.js --config playwright.config.cjs` - pass
-- `npx playwright test apps/web/test/e2e/publish-failure-recovery.spec.js --config playwright.config.cjs` - pass
-- `npx playwright test apps/web/test/e2e/pending-feedback.spec.js --config playwright.config.cjs` - pass
-- `npx playwright test apps/web/test/e2e/large-import-mode.spec.js --config playwright.config.cjs` - pass
-- `npx playwright test apps/web/test/e2e/viewport-core-workflows.spec.js --config playwright.config.cjs` - pass
-- `npx playwright test apps/web/test/e2e/keyboard-core-journey.spec.js --config playwright.config.cjs` - pass
-- `npm run gate:run:increment` - pass (exit 0, 2026-05-17; connector idempotency step explicitly marked KNOWN-FAILING pending INC-10 Flipkart publish loop completion)
-
-Additional release-readiness checks to rerun during governance review:
-
-- `npm run gate:run:sprint`
-- `npm audit --omit=dev --audit-level=high`
-- `git diff --check`
-- `git status --short`
-- `node -e "JSON.parse(require('fs').readFileSync('docs/execution/INCREMENT_STATE.json','utf8')); console.log('INCREMENT_STATE.json valid')"`
-
-## 6. Increment Status Snapshot
-
-Source: `docs/execution/INCREMENT_STATE.json`
-
-| Increment | Name | Status | Current interpretation |
-|---|---|---|---|
-| INC-01 through INC-07 | Core workflow through governance foundations | completed | locked and historically complete |
-| INC-08 | Release Readiness | completed | completed in the ledger, but current launch claims must still follow the newest live rollout evidence |
-| INC-09 | Connector Mapping Lifecycle + Publish Readiness | completed | code complete; do not overclaim runtime breadth from this alone |
-| INC-10 | Flipkart Publish Connector v1 | completed | increment completed, but runtime claims must still follow story/evidence truth |
-| INC-11 through INC-25 | Auth, UX, audit, access-policy, dependency, and alignment increments | completed | see ledger for story-level details |
-| INC-36 | Localization schema — Market, Currency, PriceList, ProductPrice, ProductTranslation, CategoryTranslation | completed | PR #71 merged 2026-05-17 |
-| INC-39 | OIDC SSO login flow | completed | PR #71 merged (login flow); PR #74 merged (self-serve /admin/oidc IdP config UI) 2026-05-17 |
-
-## 7. Active Production-Signoff Blockers
-
-Source: `docs/execution/INCREMENT_STATE.json` plus current validation truth
-
-1. The current authoritative rollout snapshot is `docs/execution/rollout/2026-05-17T07-17-15.753Z_CONTROLLED_ROLLOUT_SNAPSHOT.json` (`controlledPending: []`, `broadPending: []`). Daily automated captures keep this fresh; rerun `node scripts/capture-controlled-rollout-snapshot.cjs` before any external production claim.
-2. Historical April and early-May review documents remain useful context but must not be treated as current launch truth when they conflict with current code or the latest artifacts.
-3. INC-08 is complete. INC-36 (localization) and INC-39 (OIDC SSO) completed via PR #71 (2026-05-17). ST-CON-METRICS-001 (connector KPI trends) completed via PR #73 (2026-05-17). Remaining open stories: ST-FK-RUNTIME-003/004/005 (Flipkart publish loop) — gate step for Flipkart idempotency is explicitly `allowFailure=true` until these are delivered.
-4. Enterprise signoff blocked on RG-C4 (bundles), RG-C5 (workflow), RG-C6 (search) — none scheduled. Do not claim enterprise-ready.
-
-## 8. Future-Scope And Follow-Up Items
-
-- Add a dedicated backend path for hide-test-data filtered catalog totals if very large catalogs make the current slim-page scan too expensive.
-- Add stronger browser proof and operational evidence before broadening any import claim beyond the current `30,000`-row CSV boundary.
-- Keep connector/runtime claims bounded to connector-specific evidence.
-- Do not expand enterprise-role UX claims beyond the current four-role frontend plus delegated-scope explanation until dedicated shells are implemented and validated.
-
-## 9. Reviewer Guidance
-
-- For code and release truth, prefer current code plus the latest validation output over older review prose.
-- Use `docs/execution/INCREMENT_STATE.json` to judge whether release governance is actually closed.
-- Treat April 2026 execution and review docs as historical context unless their claims are still reproduced by the current repo state.
+1. trust code
+2. update the canonical docs
+3. leave the dated file as historical evidence unless there is a clear reason to delete it

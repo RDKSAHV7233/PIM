@@ -1,129 +1,122 @@
 # User Guide
 
-Status: Canonical  
-Last reviewed: 2026-05-28
+Status: Canonical
+Last reviewed: 2026-06-15
 
-## Main Areas
+## Workspace Areas
 
-Vexa PIM is organized around these implemented web areas:
+The implemented web app is organized around these route groups:
 
-- Dashboard: catalog, quality, signup, and operational summaries.
-- Catalog and Products: product lists, product detail, variants, completeness, and workflow actions.
-- Quality: overview, approvals, issue queues, compliance, and rejection intelligence.
-- Channels: marketplace health, connector detail pages, mapping, publish readiness, and submissions.
-- Connectors: connector catalog, setup entry points, catalog mapping, account details, and install health.
-- Media: asset upload, validation, associations, and approval-related metadata.
-- Operations: imports, jobs, bulk edit, repair, and operational recovery.
-- Admin: users, API keys, webhooks, connectors, plan, privacy, and audit access.
-- Settings: workspace and account settings.
+- Auth and public: `/login`, `/login/reset`, `/login/locked`, `/login/mfa`, `/login/enroll`, `/signup`, `/signup/verify`, `/consent`, `/account-suspended`
+- Core workspace: `/dashboard`, `/search`, `/notifications`
+- Catalog: `/catalog/products`, `/catalog/categories`, `/catalog/attributes`, `/catalog/media`, `/products/[id]`
+- Quality: `/quality`, `/quality/issues`, `/quality/validation`, `/quality/completeness`, `/quality/approvals`, `/rejection`
+- Channels: `/channels`, `/channels/connectors/*`, `/channels/health`, `/channels/mappings`, `/channels/submissions*`
+- Legacy connector routes: `/connectors`, `/connectors/setup`, `/connectors/[installationId]/mapping`
+- Operations: `/operations`, `/operations/imports`, `/operations/bulk-edit`, `/operations/jobs`, `/operations/repair`
+- Admin and settings: `/admin/*`, `/settings*`
+- Internal and experimental: `/ai`, `/internal/developer`, `/ondc`, `/media`
 
-## Login Guide
+Current route inventory from source: `69` `page.tsx` routes.
 
-All human users sign in from `/login` with the same three fields:
+## Login
+
+Human users sign in at `/login` with:
 
 - `Workspace`
 - `User ID`
 - `Password`
 
-The `Pilot Role Alignment` card is a persona guide, not a list of seven separate shells. Today, customer access is handled through the current role model below plus delegated scopes where needed.
+Public signup exists in code but is feature-flagged. Some environments will not expose `/signup`.
 
-### Persona Mapping
+## Roles In Code
 
-| Persona in UI | How to log in today | What this user normally does |
-|---|---|---|
-| Product admin | `admin` user login | Full workspace governance, catalog, operations, connectors, users, API keys, webhooks, and audit |
-| System admin | Not a normal customer-shell login | Internal/operator access outside the customer shell; hidden from normal tenant navigation |
-| Editor | `editor` user login | Catalog updates, imports, bulk edit, connector setup, and quality triage |
-| Reviewer | `reviewer` user login | Read catalog and operations data, then approve or reject review work where allowed |
-| Vendor | Usually `viewer` plus delegated scopes | Read-only frontend access today; dedicated vendor write journeys are future scope |
-| Category manager | Usually `editor` or `reviewer` plus delegated scopes | Category- or brand-bounded work; dedicated category-manager shell is future scope |
-| API/client operations | Admin-issued API key | Machine access managed through `Admin > API Keys`, not a normal interactive login |
+App roles:
 
-### Roles Available Today
+- `admin`
+- `editor`
+- `publisher`
+- `approver`
+- `channel_manager`
+- `connector_admin`
+- `reviewer`
+- `viewer`
 
-| Role | Login type | Main use |
-|---|---|---|
-| `admin` | Human login | Full admin and workspace control |
-| `editor` | Human login | Day-to-day catalog and operations write access |
-| `publisher` | Human login where provisioned | Queue channel submissions for approved products |
-| `approver` | Human login where provisioned | Approve or reject in-review products |
-| `channel_manager` | Human login where provisioned | Manage mappings, readiness, and channel configuration |
-| `connector_admin` | Human login where provisioned | Install and manage connector accounts and credentials |
-| `reviewer` | Human login | Read-only review visibility with approval-oriented workflows |
-| `viewer` | Human login | Read-only access |
+Important note:
 
-Notes:
+- customer-facing invite and shell flows are simpler than the full RBAC model
+- some specialist roles exist in the API and seeded/test environments even when they are not the default UI invite path
 
-- The customer-facing invite form currently centers on the broad roles `admin`, `editor`, `reviewer`, and `viewer`.
-- Specialist roles such as `publisher`, `approver`, `channel_manager`, and `connector_admin` exist in the RBAC model and can be provisioned through admin or seeded environment setup.
-- `vendor` and `category_manager` are not separate first-class shells yet; they are handled through a base role plus delegated scopes.
-- `system_admin` is an internal boundary role, not a standard tenant-facing user journey.
+## Main Product Workflow
 
-### Local Demo Logins
+1. Create or import products.
+2. Complete category, attributes, variants, pricing, and tax fields.
+3. Review quality, completeness, and approval state.
+4. Attach or validate media.
+5. Configure channel mappings and connector setup.
+6. Submit, publish, or export where the connector capability allows it.
+7. Monitor submissions, jobs, and recovery flows.
 
-Repo-truth local and test harnesses commonly use workspace `default`, but the sample email pattern varies by bootstrap path. Use these only for local or demo environments that intentionally load seeded auth config:
+## Product Detail
 
-| Context | Example account(s) | Notes |
-|---|---|---|
-| Playwright and test harness examples | `admin@vexa-pim.local`, `editor@vexa-pim.local`, `reviewer@vexa-pim.local`, `viewer@vexa-pim.local` | Common in E2E helpers and test setup |
-| Local dev and rollout runbook examples | `admin@pim1.local` | Appears in local startup and staging verification docs |
+`/products/[id]` is the product detail workbench. Current tabs are driven by the `tab` query value and include:
 
-Local/demo note:
+- content
+- attributes
+- variants
+- media
+- quality
+- channels
+- activity
 
-- The repo evidence shows a shared local demo password of `vexa-pim-demo-password` for seeded test identities.
-- Do not treat that shared password as a production credential pattern.
-- Some environments may also seed specialist-role users through `PIM_AUTH_IDENTITIES_JSON`, but those accounts are environment-specific rather than guaranteed in every deployment.
+## Redirects And Legacy Paths
 
-## Product Workflow
+Current redirect-style behavior in code includes:
 
-1. Create or import products through Catalog, Products, or Operations.
-2. Review completeness and required attributes.
-3. Attach or validate media assets.
-4. Resolve quality issues and approval requirements.
-5. Map product/category fields for target channels.
-6. Validate publish readiness.
-7. Publish to supported connectors where capability and account setup allow it.
-8. Track submissions, status sync, and channel errors.
+- `/` routes by tab/query into the main workspace
+- `/catalog` redirects to `/catalog/products`
+- `/reports` redirects to `/dashboard`
+- `/products` redirects to `/catalog/products`
+- `/settings/plan` redirects to `/admin/plan`
+- `/settings/connectors` redirects to `/admin/connectors`
+- `/settings/privacy` redirects to `/admin/privacy`
+- `/connectors/[installationId]/mapping` resolves installation context and then redirects to `/channels/mappings`
 
-## Connector Workflow
+## Connectors
 
-1. Open Connectors or Channels.
-2. Review each connector lane and install footprint.
-3. Start setup for connectors without installed accounts.
-4. Open account details for installed accounts that need attention.
-5. Open catalog mapping to manage channel taxonomy and field mappings.
-6. Use publish readiness before submitting products.
+There are three separate truths to keep straight:
 
-Current connector implementation status:
+1. Connector implementation in API code
+2. Launch stage and UI surfacing policy
+3. What is safe to present as live in normal customer flows
 
-| Connector | Slug | Status | Capabilities |
+Current repo-truth summary:
+
+| Connector | Slug | Implementation | Launch stage policy |
 |---|---|---|---|
-| Amazon India | `amazon-in` | Full | publish, validate, status sync, webhook receive |
-| Flipkart | `flipkart` | Full | publish, validate, status sync, webhook receive |
-| Shopify | `shopify` | Full | publish, validate, status sync, webhook receive |
-| Meesho | `meesho` | Partial | local validation and planned Excel export; direct publish is not implemented |
+| Amazon India | `amazon-in` | implemented | `planned` / experimental preview |
+| Flipkart | `flipkart` | implemented | live |
+| Meesho | `meesho` | partial export-only | manual |
+| Myntra | `myntra` | implemented | live |
+| Nykaa | `nykaa` | partial/manual export path | manual |
+| Shopify | `shopify` | implemented | live |
+| WooCommerce | `woocommerce` | partial implementation | planned / early-access posture |
 
-## Quality Workflow
+The `Channels` workspace shell currently centers on the marketplace channel set `amazon`, `flipkart`, `meesho`, and `shopify`, while the connector registry also supports additional connector slugs.
 
-Use Quality pages to review completeness, issue inbox items, approval queues, rejection intelligence, and compliance defects. Reviewer-specific behavior is covered by integration tests and route contracts in `apps/web/test/integration`.
+## Operations
 
-## Operations Workflow
+Operations pages cover imports, jobs, bulk edit, and repair.
 
-Use Operations pages for bulk imports, job visibility, bulk edit, and repair actions. Long-running marketplace work is processed by queue workers; staging and production require BullMQ.
+Current large-import boundary in code and docs:
 
-Current import boundary:
+- standard mode: up to `10,000` rows
+- large mode: `10,001` to `30,000` rows
+- over `30,000` rows: not supported
 
-- Standard mode:
-  - CSV or JSON
-  - up to `10,000` rows
-  - uses the existing bulk import job flow
-- Large import mode:
-  - CSV only
-  - `10,001` to `30,000` rows
-  - automatically stages a parent import run with internal background batches
-  - shows one run, one progress view, one repair surface, and one combined error report
-- Out of scope today:
-  - `>30,000` rows
-  - `.xlsx` / `.xls`
-  - direct browser-to-object-storage upload
+## Internal And Experimental Surfaces
 
+- `/ai` is admin-only, non-production, and blocks `TRIAL` and `STARTER`
+- `/ondc` is admin-only, non-production, and requires `FEATURE_ONDC_ENABLED=true`
+- `/internal/developer` is non-production only and requires the `admin` app role plus one of `product_admin`, `system_admin`, or `super_admin`
+- `/media` is an authenticated route and is also linked from internal workflows

@@ -1,17 +1,17 @@
 # Vexa PIM
 
-Vexa PIM is a multi-tenant product information management workspace for catalog operations, marketplace readiness, connector setup, publishing, media validation, quality review, and admin governance.
+Vexa PIM is a multi-tenant product information management workspace for catalog, quality, channel, operations, media, and admin workflows.
 
-The codebase is the source of truth. Use the documentation below for current workflows; older execution notes and imported planning artifacts are retained as history unless they are linked from this README.
+The repo code is the source of truth. Treat dated execution notes, review memos, and imported planning files as historical evidence unless a current canonical doc links to them explicitly.
 
 ## Current Stack
 
-- Web: Next.js 15, React, TypeScript, Tailwind CSS
+- Web: Next.js 15, React 19, TypeScript, Tailwind CSS
 - API: NestJS on Express
 - Database: PostgreSQL with Prisma
-- Queue/cache: in-memory locally or BullMQ/Redis for staging and production
-- Media: Cloudflare R2-compatible object storage
-- Connectors: Amazon India (limited), Flipkart, Shopify; Meesho (in development — export not yet live); ONDC (flag-gated)
+- Queue/cache: local fallback or BullMQ/Redis depending on environment
+- Media/object storage: R2-compatible object storage plus local export fallback paths
+- Connectors in code: Amazon India, Flipkart, Meesho, Myntra, Nykaa, Shopify, WooCommerce
 
 ## Quick Start
 
@@ -23,6 +23,11 @@ npm run prisma:generate
 npm run prisma:migrate:deploy
 npm run auth:bootstrap-admin
 npm run dev:api
+```
+
+In a second terminal:
+
+```bash
 npm run dev:web
 ```
 
@@ -33,6 +38,7 @@ Default local URLs:
 
 ## Canonical Documentation
 
+- [Documentation structure](docs/STRUCTURE.md)
 - [Getting started](docs/getting-started.md)
 - [Installation](docs/installation.md)
 - [Configuration](docs/configuration.md)
@@ -41,17 +47,17 @@ Default local URLs:
 - [API guide](docs/api.md)
 - [Developer guide](docs/developer-guide.md)
 - [Architecture](docs/architecture.md)
+- [Connector index](docs/connectors/README.md)
+- [Current state](docs/execution/CURRENT_STATE.md)
+- [QA data pack](qa/realistic-data/README.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [FAQ](docs/faq.md)
-- [Documentation audit, 2026-04-25](docs/documentation-audit-2026-04-25.md)
 
 ## Important Supporting References
 
-- Product source of truth: `docs/product/PRD.md`
-- Increment state: `docs/execution/INCREMENT_STATE.json`
-- Runtime state notes: `docs/execution/CURRENT_STATE.md`
-- Connector index: `docs/connectors/README.md`
-- Generated OpenAPI: `docs/openapi.yaml` and `docs/openapi.json`
+- Product source reference: `docs/product/PRD.md`
+- Increment tracking: `docs/execution/INCREMENT_STATE.json`
+- Generated API contract: `docs/openapi.yaml` and `docs/openapi.json`
 - Database package notes: `packages/db/README.md`
 
 ## Validation Commands
@@ -62,19 +68,18 @@ npm run build --workspace @pim1/api
 npm run lint --workspace @pim1/web
 npm run build --workspace @pim1/web
 npm run test --workspace @pim1/web
-npm run gate:run:increment
-npm run gate:run:sprint
-npm audit --omit=dev --audit-level=high
+npm run test:qa:realistic-data-pack
+npm run openapi:check
 git diff --check
 ```
 
-Run focused integration scripts from `package.json` when changing a specific route, connector, queue, auth, or admin surface.
+Run the narrowest relevant integration or e2e script from `package.json` when changing a specific route, auth flow, connector, or admin surface.
 
-## Release Posture
+## Repo-Truth Summary
 
-Current repo truth:
-
-- Targeted production-readiness code blockers around web session fail-closed behavior, privileged internal route guarding, web build/gate stability, submission and DLQ count honesty, readiness proxy failure handling, and catalog products pagination have been closed in code and revalidated locally.
-- `INC-08` in `docs/execution/INCREMENT_STATE.json` is now complete, supported by the latest checked-in staging rollout snapshot `docs/execution/rollout/2026-05-12_CONTROLLED_ROLLOUT_SNAPSHOT.json` with `healthOk: true`, `controlledPending: []`, and `broadPending: []`. All gates are green.
-- Vexa PIM is sellable for controlled paid pilot and early SMB / mid-market customers with proven catalog, import, approval, connector, publish, audit, account-security, and recovery workflows.
-- Enterprise-ready is not approved from the current evidence bundle and must not be claimed.
+- Web route inventory currently contains `69` `page.tsx` routes under `apps/web/src/app`.
+- The workspace is organized around Dashboard, Catalog, Quality, Channels, Operations, Admin, Settings, Media, and product detail tabs.
+- App roles in code are `admin`, `editor`, `publisher`, `approver`, `channel_manager`, `connector_admin`, `reviewer`, and `viewer`.
+- Admin boundary roles in code are `product_admin`, `system_admin`, and `super_admin`.
+- Public signup exists in code but is feature-flagged.
+- Experimental/internal surfaces such as AI Labs, ONDC, and the internal developer page are environment- and role-gated.
