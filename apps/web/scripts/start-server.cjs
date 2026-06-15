@@ -2,15 +2,20 @@
 
 const { spawn } = require("node:child_process");
 const path = require("node:path");
+const { loadWebRuntimeEnv } = require("./load-env.cjs");
+
+const webRoot = path.join(__dirname, "..");
+const env = loadWebRuntimeEnv();
 
 const port = String(process.env.PORT ?? "3000").trim() || "3000";
+env.PORT = port;
 const nextCli = require.resolve("next/dist/bin/next", {
-  paths: [path.join(__dirname, "..")],
+  paths: [webRoot],
 });
 
 const child = spawn(process.execPath, [nextCli, "start", "-p", port], {
-  cwd: path.join(__dirname, ".."),
-  env: process.env,
+  cwd: webRoot,
+  env,
   stdio: "inherit",
 });
 

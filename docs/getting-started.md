@@ -1,15 +1,15 @@
 # Getting Started
 
-Status: Canonical  
-Last reviewed: 2026-04-25
+Status: Canonical
+Last reviewed: 2026-06-15
 
 ## Who This Is For
 
-Use this guide when you need a local Vexa PIM workspace running for product, QA, design, or development review.
+Use this guide when you need a local Vexa PIM workspace for product review, QA, design review, or engineering work.
 
 ## Prerequisites
 
-- Node.js compatible with the repo lockfile and workspace packages
+- Node.js compatible with the repo lockfile
 - npm
 - Docker Desktop or another Docker Compose runtime
 - Git
@@ -37,16 +37,16 @@ Open:
 - Web app: `http://localhost:3000`
 - API health: `http://localhost:4000/api/v1/health`
 
-## First Workflow To Verify
+## First Checks
 
-1. Sign in with the bootstrapped admin account.
-2. Open Dashboard and confirm aggregate catalog and quality widgets load.
-3. Open Catalog or Products and verify product lists/detail pages load.
-4. Open Channels and Connectors to verify connector definitions and installation health.
-5. Open Operations to verify imports, jobs, bulk edit, and repair pages.
-6. Open Admin to verify users, API keys, webhooks, plan, and privacy pages.
+1. Sign in at `/login`.
+2. Verify `Dashboard` loads.
+3. Verify `Catalog > Products` and a product detail page load.
+4. Verify `Channels`, `Operations`, and `Quality` load.
+5. Verify `Admin` and `Settings` load for an admin user.
 
 ## Local Auth Notes
 
-Local development can use `AUTH_MODE=local` with credentials from `.env`. Staging and production must use `AUTH_MODE=db`; this is enforced by API startup validation.
-
+- Local development can run with `AUTH_MODE=local`.
+- Staging and production must use `AUTH_MODE=db`.
+- Public signup is feature-gated and may be absent unless `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`, or `FEATURE_PUBLIC_SIGNUP_ENABLED=true` when the public flag is unset.

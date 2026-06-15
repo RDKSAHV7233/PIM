@@ -1,55 +1,96 @@
 # Admin Guide
 
-Status: Canonical  
-Last reviewed: 2026-04-25
+Status: Canonical
+Last reviewed: 2026-06-15
 
 ## Admin Areas
 
-Implemented admin pages and APIs cover:
+Implemented admin pages include:
 
-- Workspace user management
-- API keys
-- Outbound webhooks
-- Connector administration
-- Plan, billing, and commercial upgrade requests
-- Privacy export and account deletion controls
-- Audit exploration
-- Platform tenant visibility for platform-level operations
+- `/admin`
+- `/admin/plan`
+- `/admin/users`
+- `/admin/api-keys`
+- `/admin/auth-policy`
+- `/admin/auth-policy/oidc`
+- `/admin/oidc`
+- `/admin/webhooks`
+- `/admin/privacy`
+- `/admin/audit`
+- `/admin/connectors`
+- `/admin/commercial`
+- `/admin/workspace`
 
-## Roles
+## Role Model
 
-Eight roles are enforced by the RBAC guard. Source of truth: `apps/api/src/common/rbac/roles.ts`.
+Source of truth:
 
-| Role | Primary surface |
-|------|----------------|
-| `admin` | All admin pages, user management, API keys, webhooks, OIDC, privacy, audit |
-| `editor` | Catalog operations, bulk import, bulk edit, category management |
-| `publisher` | Channel submissions, publish/export queueing |
-| `approver` | Approval queue (approve/reject in-review products) |
-| `channel_manager` | Channel mappings, connector configurations, readiness gates |
-| `connector_admin` | Connector installation, credentials, installation health |
-| `reviewer` | Read-only catalog and submissions, comments |
-| `viewer` | Read-only catalog and reporting |
+- app roles: `apps/api/src/common/rbac/roles.ts`
+- admin audience tiers: `apps/web/src/lib/admin-navigation.ts`
 
-Default write roles (undecorated mutations): `admin`, `editor`. Admin-boundary routes (API keys, workspace users) require `admin` and disallow machine API clients.
+App roles:
 
-## User Management
+- `admin`
+- `editor`
+- `publisher`
+- `approver`
+- `channel_manager`
+- `connector_admin`
+- `reviewer`
+- `viewer`
 
-Admins can manage workspace users through admin user routes and APIs. Relevant tests include workspace user CRUD and admin users route contracts.
+Admin boundary roles:
 
-## API Keys And Webhooks
+- `product_admin`
+- `system_admin`
+- `super_admin`
 
-Admin APIs expose API key and outbound webhook management under `/api/v1/admin/api-keys` and `/api/v1/admin/webhooks`.
+Blocked foundation roles defined in code:
 
-## Connector Administration
+- `category_manager`
+- `vendor`
 
-Connector administration includes definitions, installation flows, credential validation, permissions, OAuth callbacks, publication targets, payload previews, and account health. Connector setup is capability-gated; disabled or missing installs should not make a connector lane appear healthy.
+## Admin Navigation Audiences
 
-## Commercial And Plan Controls
+The admin sidebar uses five visibility tiers:
 
-Billing and commercial controls exist for plan overview, upgrade requests, commercial governance, tenant search, suspension, and related notifications. Staging and production require commercial contact configuration and `PIM_COMMERCIAL_OPS_TOKEN`.
+- `all`
+- `editor_plus`
+- `connector_admin_plus`
+- `admin`
+- `system_admin_gated`
 
-## Privacy Controls
+Important repo-truth note:
 
-Account privacy APIs support export and deletion workflows. Production behavior should be validated with the account privacy integration tests before release.
+- navigation visibility is not identical to direct-route behavior
+- some pages are hidden from normal admin navigation unless a boundary role is present, even though page code may still allow an `admin` app-role direct visit
+
+## Current Access Nuances
+
+- `admin/users` page code currently allows the `admin` app role and then loads governance data
+- `admin/api-keys` is plan-tier gated and shows upgrade messaging for `TRIAL` and `STARTER`
+- `admin/commercial` requires all of:
+  - authenticated admin app role
+  - `system_admin` or `super_admin` boundary role
+  - configured commercial ops token
+- when the commercial ops token is absent, `/admin/commercial` renders a not-configured state instead of loading the operator console
+
+## Connector And Governance Admin
+
+`/admin/connectors` is the main governance surface for connector permissions and access policies.
+
+Connector setup, installation detail, mappings, and recovery continue to live under the connector and channel route groups rather than only under `/admin`.
+
+## Privacy And Security
+
+- `/admin/privacy` covers privacy-export and deletion status
+- `/admin/auth-policy` and `/admin/oidc` cover auth policy and OIDC configuration
+- `/admin/audit` covers governance and audit visibility
+
+## Testing Guidance
+
+When validating admin behavior, test both:
+
+1. sidebar visibility by role and boundary-role claims
+2. direct URL access for the page itself
 

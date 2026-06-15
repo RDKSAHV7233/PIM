@@ -1,7 +1,7 @@
 # Developer Guide
 
-Status: Canonical  
-Last reviewed: 2026-04-25
+Status: Canonical
+Last reviewed: 2026-06-15
 
 ## Common Commands
 
@@ -13,45 +13,64 @@ npm test
 npm run build
 ```
 
-Focused scripts are listed in `package.json`. Prefer the narrowest relevant integration or e2e script when changing a single surface.
+Prefer the narrowest relevant script from `package.json` when changing a single surface.
 
 ## Code Organization
 
-- `apps/api/src`: NestJS modules, controllers, services, connector implementations, queues, auth, marketplace, catalog, media, and admin surfaces.
-- `apps/web/src/app`: Next.js app routes and route handlers.
-- `apps/web/test`: route contract and e2e tests.
-- `apps/api/test`: API integration tests.
-- `packages/db/prisma`: Prisma schema and migrations.
-- `scripts` and `tools`: release, gates, OpenAPI, auth, tenant, and QA helpers.
+- `apps/api/src`: NestJS modules, controllers, services, connectors, auth, billing, marketplace, media, and admin domains
+- `apps/web/src/app`: Next.js routes and route handlers
+- `apps/web/test`: web integration and e2e coverage
+- `apps/api/test`: API integration and seam coverage
+- `packages/db/prisma`: schema and migrations
+- `scripts` and `tools`: QA, release, OpenAPI, auth, tenant, and deployment helpers
 
-## Development Rules
+## Rules
 
-- Treat code and tests as the source of truth.
-- Keep generated OpenAPI files aligned with controller changes.
-- Add focused tests for connector capability gating, auth/tenant behavior, queue jobs, and user-visible route contracts.
-- Do not document planned features as implemented.
+- Code and tests beat docs.
+- Keep generated OpenAPI aligned with controller changes.
+- Do not document planned behavior as implemented behavior.
+- When changing route behavior, update the corresponding canonical doc in the same pass.
+
+## QA Dataset Commands
+
+```bash
+npm run qa:data:generate
+npm run qa:data:seed
+npm run qa:data:seed:ops
+npm run qa:data:seed:control-plane
+npm run qa:data:cleanup
+npm run test:qa:realistic-data-pack
+```
+
+Repo-truth notes:
+
+- `qa:data:seed` creates the core dataset only
+- ops-heavy artifacts are opt-in
+- control-plane mutations are opt-in
+- cleanup is dataset-owned only
 
 ## Connector Development
 
-Current connector code lives in `apps/api/src/connectors` and connector orchestration lives in connector framework, installer, marketplace, and channel mapping modules.
+Connector implementations live in `apps/api/src/connectors`.
 
-Use `docs/connectors/README.md` for connector-specific references, but verify against code before updating capability claims.
+Important supporting modules:
 
-## Database Development
+- `apps/api/src/connector-framework`
+- `apps/api/src/connector-installer`
+- `apps/api/src/marketplace`
+- `apps/web/src/app/connectors`
+- `apps/web/src/app/channels`
 
-Use Prisma commands from the root package scripts. RLS and tenant isolation have dedicated verification scripts and integration tests; run them when changing tenant-sensitive queries or raw SQL.
+Use `docs/connectors/README.md` as the connector entry point, but verify capability and launch-stage claims against code before changing docs.
 
 ## Release Validation
 
-Recommended broad validation before release:
+Recommended broad validation:
 
 ```bash
 npm run lint
 npm test
 npm run build
 npm run openapi:check
-npm run test:e2e:critical
+npm run test:qa:realistic-data-pack
 ```
-
-Run staging checks from `package.json` for deployment validation.
-

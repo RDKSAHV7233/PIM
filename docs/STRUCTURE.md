@@ -1,8 +1,10 @@
-# Vexa PIM Documentation Structure (Canonical)
+# Vexa PIM Documentation Structure
 
-Last updated: 2026-04-25
+Last updated: 2026-06-15
 
-The current codebase is the source of truth. Start with these canonical docs:
+The codebase is the source of truth. Start with the canonical docs below and use dated execution or review files only as historical evidence.
+
+## Canonical Entry Points
 
 - `../README.md`
 - `getting-started.md`
@@ -13,64 +15,54 @@ The current codebase is the source of truth. Start with these canonical docs:
 - `api.md`
 - `developer-guide.md`
 - `architecture.md`
+- `connectors/README.md`
+- `execution/CURRENT_STATE.md`
+- `../qa/realistic-data/README.md`
 - `troubleshooting.md`
 - `faq.md`
-- `documentation-audit-2026-04-25.md`
 
-Older execution snapshots, imported planning files, and transfer artifacts are historical unless a current canonical document explicitly links to them.
+## Canonical By Area
 
-- Current canonical snapshot: `docs/execution/CURRENT_STATE.md`
-- Connector documentation entry point: `docs/connectors/README.md`
+- `docs/connectors/README.md`
+  - Current connector index and launch-state summary
+  - Use this before opening any dated connector planning file
+- `docs/product/PRD.md`
+  - Product reference document
+  - Supporting reference only; code and tests still win on behavior
+- `docs/execution/CURRENT_STATE.md`
+  - Stable current-state summary
+  - Use this instead of older "Vx addendum" style status notes
+- `docs/openapi.yaml` and `docs/openapi.json`
+  - Generated API contract
+  - Do not hand-edit
+- `qa/realistic-data/README.md`
+  - Canonical realistic QA data pack guide
 
-## Active canonical structure
-- `docs/connectors/`
-  - `README.md` (canonical connector-documentation entry point)
-  - `VEXA_PIM_CONNECTOR_DEVELOPER_GUIDE.md` (developer-facing connector guide)
-  - `VEXA_PIM_CONNECTOR_INTERNAL_IMPLEMENTATION_GUIDE.md` (repo-first connector implementation guide)
-  - `VEXA_PIM_CONNECTOR_RECIPES.md` (connector workflow examples)
-  - `VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md` (compatibility pointer retained to avoid broken links)
-- `docs/product/`
-  - `PRD.md`
-  - `PRD_SOURCES.md`
-  - `FIRST_SELLER_ONBOARDING_PLAYBOOK.md`
-- `docs/architecture/`
-  - `VEXA_PIM_Final_Architecture_March2026_v3.docx`
-  - `VEXA_PIM_Connector_First_Redesign_March2026.docx`
-  - `enterprise-docs/` (generated reference bundle; useful reviewer material, not canonical source-of-truth)
-- `docs/execution/`
-  - `CURRENT_STATE.md`
-  - `INCREMENT_STATE.json`
-  - `INCREMENT_EXECUTION_MODEL.md`
-  - `VEXA_PIM_Execution_Plan_March2026_v2_(1)_tracked.docx`
-  - `PRD_TO_ENGINEERING_BACKLOG.md`
-  - execution evidence files under `E*.md`
-  - gate artifacts under `gates/`
-  - rollout artifacts under `rollout/`
-- `docs/strategy/`
-  - `VEXA_PIM_Enhanced_CTO_PO_Plan_March2026.docx`
-- `docs/design/`
-  - `VEXA_PIM_UI_Design_Review.html` (reference design review, not the live route/source contract)
-- `docs/product/user-guide/`
-  - generated operational guide bundle
-  - regenerated against the current mapping lifecycle and canonical `/channels/mappings` flow
-  - supporting reference only; not the primary connector implementation truth over PRD/code/INCREMENT state
-- `docs/ports/`
-  - `orbit-pim1-transfer-2026-03-06/` (historical transfer pack retained for traceability; not current implementation truth)
-- `docs/runbooks/`
-  - `auth-bootstrap-admin.md`
-  - `credential-key-rotation.md`
-  - `public-signup-production-rollout.md`
-  - `test-data-governance.md`
-- `docs/legal/`
-  - `terms-of-service.md`
-  - `privacy-policy.md`
-  - `data-retention-policy.md`
-  - `dpa.md`
+## Historical Or Supporting Material
 
-## Archived (legacy / duplicate)
-- `unused/docs-legacy/2026-03-03/` (older and duplicate imported document variants)
-- `unused/docs-legacy/codex-handoff-2026-03-02/` (older handoff pack)
-- `unused/docs-legacy/imports/` (previous import staging folder)
+These folders are intentionally retained, but they are not the live documentation set:
 
-## Rule
-When a newer canonical version is adopted, move superseded variants to `unused/docs-legacy/<date>/` and update this file.
+- `docs/execution/CURRENT_STATE.md`
+  - Canonical current-state summary retained inside the execution folder for discoverability
+- `docs/execution/INCREMENT_STATE.json`
+  - Active delivery-governance ledger
+- `docs/execution/**` except `CURRENT_STATE.md` and `INCREMENT_STATE.json`
+  - Dated evidence, rollout snapshots, gate outputs, and review records
+- `docs/review/**`
+  - Review packs, PR summaries, and signoff memos
+- `docs/product/user-guide/**`
+  - Older generated playbook bundle; useful for traceability, not canonical
+- `docs/ports/**`
+  - Historical transfer material
+- `docs/architecture/*.docx`, `docs/design/*.html`, `docs/*.pdf`
+  - Imported or exported reference artifacts
+- `unused/docs-legacy/**`
+  - Explicit legacy storage
+
+## Cleanup Rule
+
+When a document becomes superseded:
+
+1. Remove it from canonical entry points.
+2. Either delete the duplicate outright or move it under `unused/docs-legacy/` if it still has audit value.
+3. Update this file and `README.md` in the same change.

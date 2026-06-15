@@ -21,9 +21,19 @@ const {
 const forceEnforce = String(process.env.PIM_PLAN_GUARD_FORCE_ENFORCE ?? "").trim().toLowerCase() === "true";
 
 test.describe("Plan-Limit Enforcement", () => {
-  test("PlanGuard returns structured PLAN_LIMIT_EXCEEDED error for SKU limit", async () => {
-    test.skip(!forceEnforce, "Requires PIM_PLAN_GUARD_FORCE_ENFORCE=true");
+  test("CRITICAL: plan limit enforcement must be enabled", async () => {
+    // HARD FAIL if config is wrong (not skipped — actual failure)
+    if (!forceEnforce) {
+      throw new Error(
+        "CRITICAL CONFIG ERROR: PIM_PLAN_GUARD_FORCE_ENFORCE not set. " +
+          "Plan limits are NOT enforced in this environment. " +
+          "This test suite requires: PIM_PLAN_GUARD_FORCE_ENFORCE=true",
+      );
+    }
+  });
 
+  test("PlanGuard returns structured PLAN_LIMIT_EXCEEDED error for SKU limit", async () => {
+    // ✓ No longer using test.skip — will hard-fail if config is wrong
     const token = await apiLogin("editor");
     // Attempt to create product — if at limit, should get 402
     try {
@@ -38,16 +48,17 @@ test.describe("Plan-Limit Enforcement", () => {
       }, DEFAULT_API_URL);
       // If it succeeds, we're not at the limit — test passes trivially
     } catch (err) {
-      // If we hit the limit, verify the error structure
+      // If we hit the limit, verify the error structure is correct
       if (err.message.includes("402")) {
         expect(err.message).toMatch(/PLAN_LIMIT_EXCEEDED/);
+      } else if (err.message.includes("500")) {
+        throw new Error(`Plan limit enforcement returned 500: ${err.message}`);
       }
     }
   });
 
   test("PlanGuard returns structured error for submission limit", async () => {
-    test.skip(!forceEnforce, "Requires PIM_PLAN_GUARD_FORCE_ENFORCE=true");
-
+    // ✓ No longer using test.skip
     const token = await apiLogin("editor");
     // The submission endpoint requires a valid product/connector — verify the guard exists
     try {
@@ -56,9 +67,12 @@ test.describe("Plan-Limit Enforcement", () => {
         productIds: ["fake-id"],
       }, DEFAULT_API_URL);
     } catch (err) {
-      // Either 402 (plan limit) or 400/404 (bad request) — both are acceptable
+      // Either 402 (plan limit) or 400/404 (bad request) — both acceptable
       // The point is it doesn't crash with 500
-      expect(err.message).toMatch(/40[0-9]/);
+      if (err.message.includes("500")) {
+        throw new Error(`Plan guard returned 500 (server error): ${err.message}`);
+      }
+      expect(err.message).toMatch(/40[0-9]|402/);
     }
   });
 

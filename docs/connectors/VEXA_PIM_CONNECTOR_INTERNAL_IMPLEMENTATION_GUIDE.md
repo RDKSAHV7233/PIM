@@ -37,7 +37,7 @@ Supporting references:
 
 Historical context only:
 - `docs/archive/connectors/` once archived
-- `docs/connectors/VEXA_PIM_CONNECTOR_CURRENT_STATE_2026-03-08.md` as a compatibility pointer
+- `docs/connectors/README.md` for the current connector summary and launch-state map
 
 ## 3. Current Connector Model
 

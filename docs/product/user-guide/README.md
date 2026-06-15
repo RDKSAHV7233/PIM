@@ -1,17 +1,14 @@
 # Vexa PIM User Guide Bundle
 
-This folder now includes procedural, action-oriented documentation.
+Status: supporting historical bundle
 
-## Primary documents
-- `PAGE_ACTION_PLAYBOOK_INDEX.md` (page-by-page how-to index)
-- `playbooks/*.md` (one step-by-step playbook per route)
-- `FUNCTIONALITY_WISE_GUIDE.md` (workflow runbook by module)
-- `PAGE_GUIDE_INDEX.md` and `pages/*.md` (reference inventory, kept for traceability; connector-critical routes are manually aligned to the current lifecycle mapping flow)
+This folder is retained for traceability and deeper page-by-page notes, but it is not the canonical current user documentation set.
 
-## Coverage
-- Route playbooks: 47
-- Source scope: `apps/web/src/app/**/page.tsx` + first-level imported components
+Use first:
 
-## Validation policy
-- Uses only validated code references from current Vexa PIM source.
-- If control labels are dynamic/not explicit, playbooks keep wording generic and reference action IDs.
+- `docs/user-guide.md`
+- `docs/admin-guide.md`
+- `docs/connectors/README.md`
+- `docs/execution/CURRENT_STATE.md`
+
+Use this folder only when you need older playbook-style detail and are willing to verify each claim against current code.
