@@ -49,4 +49,4 @@ Open:
 
 - Local development can run with `AUTH_MODE=local`.
 - Staging and production must use `AUTH_MODE=db`.
-- Public signup is feature-flagged and may be absent unless both signup flags are enabled.
+- Public signup is feature-gated and may be absent unless `NEXT_PUBLIC_FEATURE_PUBLIC_SIGNUP_ENABLED=true`, or `FEATURE_PUBLIC_SIGNUP_ENABLED=true` when the public flag is unset.

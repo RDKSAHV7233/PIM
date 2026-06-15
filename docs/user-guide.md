@@ -61,10 +61,13 @@ Important note:
 
 `/products/[id]` is the product detail workbench. Current tabs are driven by the `tab` query value and include:
 
+- overview
 - content
 - attributes
 - variants
 - media
+- pricing
+- relationships
 - quality
 - channels
 - activity

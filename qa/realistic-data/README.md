@@ -28,6 +28,7 @@ npm run qa:data:generate
 npm run qa:data:seed
 npm run qa:data:seed:ops
 npm run qa:data:seed:control-plane
+npm run qa:data:seed:control-plane:ops
 npm run qa:data:cleanup
 npm run test:qa:realistic-data-pack
 ```
