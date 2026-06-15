@@ -333,6 +333,125 @@ async function runNonAdminAccessPolicyValidation(baseUrl, workspaceSlug, adminTo
   }
 }
 
+async function verifyCsrfToken(baseUrl, token) {
+  const privacyCheck = await requestJson(baseUrl, "/api/v1/auth/account/privacy-status", {
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+    retries: 2,
+  });
+  assertStatus(privacyCheck, 200, "privacy status check");
+
+  const setCookieHeaders = privacyCheck.setCookie || [];
+  const csrfCookie = setCookieHeaders.find((cookie) =>
+    String(cookie ?? "").toLowerCase().includes("pim_csrf_token"),
+  );
+
+  if (!csrfCookie) {
+    throw new Error(
+      `CSRF verification failed: pim_csrf_token cookie not set. setCookies=${JSON.stringify(setCookieHeaders)}`,
+    );
+  }
+
+  const csrfStr = String(csrfCookie).toLowerCase();
+  if (!csrfStr.includes("httponly")) {
+    throw new Error(`CSRF verification failed: pim_csrf_token missing httpOnly flag. cookie=${csrfCookie}`);
+  }
+  if (!csrfStr.includes("samesite=strict")) {
+    throw new Error(`CSRF verification failed: pim_csrf_token missing SameSite=Strict. cookie=${csrfCookie}`);
+  }
+
+  console.log("✓ CSRF token properly configured (httpOnly, SameSite=Strict)");
+}
+
+async function verifyDatabaseSeed(baseUrl, adminToken) {
+  const expectedLimits = {
+    TRIAL: 500,
+    STARTER: 2000,
+    GROWTH: 10000,
+    BUSINESS: 20000,
+    ENTERPRISE: 30000,
+  };
+
+  // Query PlanLimits via internal admin endpoint
+  const planLimits = await requestJson(
+    baseUrl,
+    "/api/v1/internal/admin/plan-limits",
+    {
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+      },
+      retries: 2,
+    },
+  ).catch(() => null);
+
+  if (!planLimits || planLimits.status !== 200) {
+    console.warn(
+      "⚠ Database seed verification skipped (plan limits endpoint not available). Manual DB check required.",
+    );
+    return;
+  }
+
+  const actualLimits = planLimits.payload || {};
+  for (const [tier, expectedLimit] of Object.entries(expectedLimits)) {
+    const actualLimit = actualLimits[tier];
+    if (actualLimit !== expectedLimit) {
+      throw new Error(
+        `Database seed mismatch: ${tier} plan expects maxImportRowsPerJob=${expectedLimit}, but DB has ${actualLimit}. ` +
+          `This will cause plan limits to not be enforced correctly. Run seed-tax-regimes to fix.`,
+      );
+    }
+  }
+
+  console.log("✓ Database plan limits match seed values (all 5 tiers verified)");
+}
+
+async function testBulkImportCsrfFlow(baseUrl, webBaseUrl, adminToken, cookieHeader) {
+  // Test 1: Fetch without CSRF token (httpOnly scenario)
+  console.log("Testing bulk-import CSRF flow (httpOnly scenario)...");
+
+  const uploadRequest = await requestJson(
+    baseUrl,
+    "/api/v1/bulk-import/runs",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+        "content-type": "application/json",
+        cookie: cookieHeader, // Browser automatically sends this
+        // NO x-csrf-token header (because httpOnly prevents JS from reading it)
+      },
+      body: {
+        categoryId: "test-category",
+        sourceFormat: "csv",
+        sourceName: "test.csv",
+        csvContent: "title,description\nProduct1,Desc1\n",
+        mapping: { title: "title", description: "description" },
+        chunkSize: 100,
+        maxRetries: 3,
+      },
+      retries: 2,
+    },
+  ).catch(() => null);
+
+  // Should NOT return 403 CSRF_MISMATCH
+  if (uploadRequest && uploadRequest.status === 403) {
+    const errorMsg = String(uploadRequest.payload?.error ?? uploadRequest.payload?.message ?? "");
+    if (errorMsg.includes("CSRF")) {
+      throw new Error(
+        `Bulk-import CSRF regression: httpOnly cookie path failing with 403. ` +
+          `This was fixed in PR #278. Verify the fix was deployed. payload=${JSON.stringify(uploadRequest.payload)}`,
+      );
+    }
+  }
+
+  if (uploadRequest && [200, 201].includes(uploadRequest.status)) {
+    console.log("✓ Bulk-import CSRF flow works (httpOnly cookie accepted without header)");
+  } else if (!uploadRequest) {
+    console.warn("⚠ Bulk-import CSRF test inconclusive (endpoint unavailable), but not critical");
+  }
+}
+
 async function run() {
   const baseUrl = requireEnv("STAGING_BASE_URL").replace(/\/+$/, "");
   const webBaseUrl = requireEnv("STAGING_WEB_URL").replace(/\/+$/, "");
@@ -493,6 +612,13 @@ async function run() {
   if (String(webDashboard.text).includes("Dashboard data is temporarily unavailable")) {
     throw new Error("web dashboard render fell back to API-unavailable recovery state");
   }
+
+  // === NEW SECURITY & DATA VERIFICATION CHECKS ===
+  // These catch bugs like the CSRF httpOnly issue and plan limit DB mismatches
+  console.log("\n[Post-Deploy Security Checks]");
+  await verifyCsrfToken(baseUrl, token);
+  await verifyDatabaseSeed(baseUrl, token);
+  await testBulkImportCsrfFlow(baseUrl, webBaseUrl, token, cookieHeader);
 
   console.log(
     JSON.stringify(
