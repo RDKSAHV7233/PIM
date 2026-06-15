@@ -11,7 +11,18 @@ export function resolveBearerToken(request: NextRequest): string | null {
 export function validateCsrf(request: NextRequest): NextResponse | null {
   const cookieValue = request.cookies.get("pim_csrf_token")?.value ?? "";
   const headerValue = request.headers.get("x-csrf-token") ?? "";
-  if (!cookieValue || !headerValue || cookieValue !== headerValue) {
+  // Require either:
+  // 1. Both cookie and header present and matching (double-submit), OR
+  // 2. Cookie present alone (client can't read httpOnly cookie, so no header)
+  if (!cookieValue) {
+    return NextResponse.json(
+      {
+        error: "CSRF_MISMATCH",
+      },
+      { status: 403 },
+    );
+  }
+  if (headerValue && cookieValue !== headerValue) {
     return NextResponse.json(
       {
         error: "CSRF_MISMATCH",
