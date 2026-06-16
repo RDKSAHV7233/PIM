@@ -163,6 +163,58 @@ test("account mismatch: draft created for installation-A cannot be published as 
         { timeout: 30000 },
       )
       .toBe("published");
+
+    // --- Regression: omitting installationId entirely must also be rejected when draft is scoped ---
+    // Create a second draft to test the bypass scenario (the first is now published).
+    const draft2 = await apiRequest("POST", "/marketplace/connectors/flipkart/mappings/versions", adminToken, {
+      categoryScope: String(category.id),
+      mappingLevel: "tenant_connector_category_mapping",
+      connectorDefinitionId: "flipkart",
+      connectorDefinitionVersion: "1.0.0",
+      compatibilityState: "compatible",
+      installationId: String(installationA.id),
+      mappingRules: {
+        field_mappings: {
+          title: "title",
+          hsnCode: "hsnCode",
+          gstRate: "gstRate",
+          "attributes.size": "attributes.size",
+          "attributes.color": "attributes.color",
+        },
+        category: { source: String(category.id), target: targetCategoryValue },
+      },
+      fallbackPolicy: { enabled: false },
+      fallbackAckRequired: false,
+    });
+    const versionId2 = String(draft2.id);
+    await apiRequest("POST", `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(versionId2)}/validate`, adminToken);
+
+    // Publish WITHOUT installationId — must be rejected because draft is scoped to installation A.
+    const bypassStepUpToken = await issueStepUpToken(adminToken);
+    const bypassResult = await apiRequestRaw(
+      "POST",
+      `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(versionId2)}/publish`,
+      adminToken,
+      { confirm: true },
+      { [STEP_UP_HEADER]: bypassStepUpToken },
+    );
+    expect(bypassResult.status).toBe(409);
+    const bypassCode = String(
+      bypassResult.payload?.message ?? bypassResult.payload?.error ?? bypassResult.payload ?? "",
+    );
+    expect(bypassCode).toContain("account_mismatch_draft_vs_publish");
+
+    // Clean up draft2
+    try {
+      const tok = await issueStepUpToken(adminToken);
+      await apiRequestWithHeaders(
+        "POST",
+        `/marketplace/connectors/flipkart/mappings/versions/${encodeURIComponent(versionId2)}/archive`,
+        adminToken,
+        { reason: "playwright_cleanup_bypass_test" },
+        { [STEP_UP_HEADER]: tok },
+      );
+    } catch {}
   } finally {
     if (versionId) {
       try {

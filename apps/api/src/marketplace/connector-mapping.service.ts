@@ -593,8 +593,12 @@ export class ConnectorMappingService {
       // Guard: if this draft was created for a specific account, the publish request must
       // name the same account. Prevents silent publishes that evaluated readiness under
       // a different installation than the one used to build the draft.
+      // Both conditions throw:
+      //   (a) publish names a different account — explicit mismatch
+      //   (b) publish omits the account entirely — implicit bypass attempt
+      // Exception: draftInstId null = old draft pre-migration; no guard (unknown original account).
       const draftInstId = (selectedRow as unknown as Record<string, unknown>).draftInstallationId as string | null | undefined;
-      if (draftInstId && input.installationId && draftInstId !== input.installationId) {
+      if (draftInstId && (!input.installationId || draftInstId !== input.installationId)) {
         throw new ConflictException("account_mismatch_draft_vs_publish");
       }
 
