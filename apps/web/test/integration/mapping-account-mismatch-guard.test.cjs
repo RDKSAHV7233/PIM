@@ -27,10 +27,10 @@ function run() {
     "'draftInstId && (!input.installationId || draftInstId !== ...)'.",
   );
 
-  // Verify draftInstallationId is read from the raw row at publish time.
+  // Verify draftInstallationId is read from the Prisma row at publish time (typed, not via raw cast).
   assert(
-    serviceSource.includes(".draftInstallationId as string | null | undefined"),
-    "publishVersion must extract draftInstallationId from the raw Prisma row before guarding.",
+    serviceSource.includes("selectedRow.draftInstallationId"),
+    "publishVersion must read draftInstallationId from the typed Prisma row.",
   );
 
   // Verify the error code used at the service level matches what the E2E test and UI check for.
@@ -45,6 +45,15 @@ function run() {
     "createDraft must store draftInstallationId from input.installationId.",
   );
 
+  // Verify the supersede query selects installationId so the scope filter can compare it.
+  // Without this select, the filter always sees undefined (null), making slug-scoped publishes
+  // incorrectly supersede account-scoped ones and account-scoped publishes supersede nothing.
+  assert(
+    serviceSource.includes("select: { id: true, installationId: true }"),
+    "publishVersion supersede query must select installationId so the account-scope filter works. " +
+    "select: { id: true } without installationId causes all scope comparisons to see null.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -54,6 +63,7 @@ function run() {
           "mismatch_guard_reads_draft_installation_id_from_row",
           "mismatch_guard_uses_canonical_error_code",
           "create_draft_persists_draft_installation_id",
+          "supersede_query_selects_installation_id_for_scope_filter",
         ],
         checkedAt: new Date().toISOString(),
       },

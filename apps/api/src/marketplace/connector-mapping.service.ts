@@ -597,13 +597,12 @@ export class ConnectorMappingService {
       //   (a) publish names a different account — explicit mismatch
       //   (b) publish omits the account entirely — implicit bypass attempt
       // Exception: draftInstId null = old draft pre-migration; no guard (unknown original account).
-      const draftInstId = (selectedRow as unknown as Record<string, unknown>).draftInstallationId as string | null | undefined;
+      const draftInstId = selectedRow.draftInstallationId;
       if (draftInstId && (!input.installationId || draftInstId !== input.installationId)) {
         throw new ConflictException("account_mismatch_draft_vs_publish");
       }
 
-      // Fetch all published rows at same slug+categoryScope, then post-filter by installationId
-      // to avoid Prisma client regeneration requirement for the new nullable column.
+      // Fetch all published rows at same slug+categoryScope, then post-filter by installationId.
       // Slug-scoped versions (installationId=null) must NOT supersede installation-scoped versions
       // and vice versa — each scope has its own independent "published" slot.
       const supersededCandidates = await tx.connectorMappingVersion.findMany({
@@ -613,13 +612,10 @@ export class ConnectorMappingService {
           lifecycleState: "published",
           NOT: { id: selected.id },
         },
-        select: { id: true },
+        select: { id: true, installationId: true },
       });
       const supersededRows = supersededCandidates.filter((row) => {
-        const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
-        const normalizedRowInstId = rowInstId ?? null;
-        const normalizedSelectedInstId = selected.installationId ?? null;
-        return normalizedRowInstId === normalizedSelectedInstId;
+        return (row.installationId ?? null) === (selected.installationId ?? null);
       });
       const supersededIds = supersededRows.map((row) => row.id);
       if (supersededIds.length > 0) {
@@ -748,14 +744,14 @@ export class ConnectorMappingService {
         orderBy: { createdAt: "desc" },
       });
       const currentlyPublishedRows = allCurrentlyPublishedRows.filter((row) => {
-        const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
-        return (rowInstId ?? null) === (source.installationId ?? null);
+        return (row.installationId ?? null) === (source.installationId ?? null);
       });
 
       const rollbackVersionId = randomUUID();
       // Copy installationId from source — rolled-back version must share the same scope.
-      // installationId is not in the Prisma-generated types yet (column added in Sprint 11
-      // without client regeneration), so we build the data as a plain Record and cast.
+      // Build rollback data as a plain record; installationId is spread conditionally so the
+      // TypeScript type stays narrow — Prisma's generated create type requires the spread
+      // to be cast at call time regardless.
       const rollbackCreateData: Record<string, unknown> = {
         id: rollbackVersionId,
         connectorSlug: input.connectorSlug,
@@ -961,9 +957,8 @@ export class ConnectorMappingService {
 
     // Post-filter: keep slug-scoped (null installationId) + installation-scoped for this installationId
     const candidateRows = rows.filter((row) => {
-      const rowInstId = (row as unknown as Record<string, unknown>).installationId as string | null | undefined;
-      if (!rowInstId) return true; // slug-scoped row — always keep
-      return rowInstId === installationId; // installation-scoped — keep only for matching installation
+      if (!row.installationId) return true; // slug-scoped row — always keep
+      return row.installationId === installationId; // installation-scoped — keep only for matching installation
     });
 
     const allVersions = candidateRows.map((row) => toVersion(row as unknown as Record<string, unknown>));
