@@ -36,7 +36,7 @@ function run() {
       pageSource.includes("installationId: selectedInstallationId || undefined") &&
       pageSource.includes("selectedProductId ? Promise.resolve([]) : getProducts") &&
       pageSource.includes("sampleProduct: previewProduct") &&
-      pageSource.includes("sampleProductMode={sampleProductMode}") &&
+      pageSource.includes("mode: sampleProductMode") &&
       pageSource.includes("connectorHealthHref={connectorHealthHref}") &&
       pageSource.includes("payloadPreviewHref={payloadPreviewHref}") &&
       pageSource.includes("priorityBlockers={priorityBlockers}") &&

@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const MAPPINGS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
+const FALLBACK_CONFIG_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-fallback-config.tsx");
 const ACTIONS_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "actions.ts");
 
 function assert(condition, message) {
@@ -15,6 +16,7 @@ function assert(condition, message) {
 
 function run() {
   const mappingsSource = fs.readFileSync(MAPPINGS_PAGE, "utf8");
+  const fallbackConfigSource = fs.readFileSync(FALLBACK_CONFIG_FILE, "utf8");
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
@@ -24,12 +26,12 @@ function run() {
   );
   assert(
     mappingsSource.includes("mapTarget::") &&
-      mappingsSource.includes("Fallback behavior") &&
-      mappingsSource.includes("Advanced JSON overrides"),
+      mappingsSource.includes("Advanced JSON overrides") &&
+      (mappingsSource.includes("Fallback behavior") || fallbackConfigSource.includes("Fallback behavior") || fallbackConfigSource.includes("fallback behavior")),
     "Mappings page must use structured field inputs with JSON only in an advanced override section.",
   );
   assert(
-    mappingsSource.includes("placeholder={mappingDraftRulesDefault}") &&
+    mappingsSource.includes("mappingRulesPlaceholder: viewModel.mappingDraftRulesDefault") &&
       !mappingsSource.includes("defaultValue={mappingDraftRulesDefault}"),
     "JSON mapping rules must not remain the default authoring surface.",
   );

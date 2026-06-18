@@ -91,6 +91,7 @@ export class MarketplaceController {
       mappingRules: dto.mappingRules,
       fallbackPolicy: dto.fallbackPolicy,
       fallbackAckRequired: dto.fallbackAckRequired,
+      installationId: dto.installationId ?? null,
       actorId: request.pimUserId,
     });
   }
@@ -123,6 +124,7 @@ export class MarketplaceController {
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),
       versionId: String(versionId ?? "").trim(),
       confirm: dto.confirm,
+      installationId: dto.installationId ?? null,
       actorId: request.pimUserId,
     });
   }

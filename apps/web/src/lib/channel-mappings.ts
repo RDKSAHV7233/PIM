@@ -394,3 +394,16 @@ export function statusToneForPreflight(
 ): "success" | "danger" {
   return state?.ok ? "success" : "danger";
 }
+
+export function describeReadinessCode(code: string): string {
+  if (code === "fallback_ack_required") return "Fallback acknowledgement is required before readiness can clear.";
+  if (code === "fallback_mapping_applied") return "A tenant fallback mapping is being applied for this category scope.";
+  if (code === "using_system_default_mapping") return "This scope is falling back to the system default mapping pack.";
+  if (code === "required_attribute_mapping_missing") return "One or more required attribute mappings are still missing.";
+  if (code === "field_mappings_missing") return "No field mappings are defined for this scope yet.";
+  if (code === "connector_not_installed") return "Connector not installed for this channel.";
+  if (code === "connector_credentials_expired") return "Connector credentials have expired.";
+  if (code === "mapping_compatibility_blocked") return "Mapping compatibility is blocked.";
+  if (code === "mapping_remap_required") return "Mapping remap is required.";
+  return code.replace(/_/g, " ");
+}

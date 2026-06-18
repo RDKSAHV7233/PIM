@@ -27,25 +27,19 @@ export function MappingsFilterCard({
   selectedProductId?: string;
   preserveFlags?: Partial<Record<"showContext" | "showTaxonomy" | "showResolved" | "showHistory", boolean>>;
 }) {
+  const hasMultipleAccounts = installations.length > 1;
+  const accountRequired = hasMultipleAccounts && !selectedInstallationId;
+
   return (
     <FilterBar>
-      <form method="get" className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_220px_minmax(0,1fr)_auto]">
+      <form
+        method="get"
+        className={`grid gap-3 ${hasMultipleAccounts ? "md:grid-cols-[220px_220px_minmax(0,1fr)_minmax(0,1fr)_auto]" : "md:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)_auto]"}`}
+      >
         {selectedProductId ? <input type="hidden" name="productId" value={selectedProductId} /> : null}
         {Object.entries(preserveFlags ?? {}).map(([key, enabled]) =>
           enabled ? <input key={key} type="hidden" name={key} value="1" /> : null,
         )}
-        <div className="space-y-1">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category">
-            Category
-          </label>
-          <Select id="mapping-category" name="categoryId" defaultValue={selectedCategoryId}>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.path}
-              </option>
-            ))}
-          </Select>
-        </div>
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-channel">
             Channel
@@ -58,13 +52,19 @@ export function MappingsFilterCard({
             ))}
           </Select>
         </div>
-        {installations.length > 0 ? (
+        {hasMultipleAccounts ? (
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-installation">
               Connector account
+              {accountRequired ? <span className="ml-1 text-red-500" aria-hidden="true">*</span> : null}
             </label>
-            <Select id="mapping-installation" name="installationId" defaultValue={selectedInstallationId || ""}>
-              {installations.length > 1 ? <option value="">Choose connector account</option> : null}
+            <Select
+              id="mapping-installation"
+              name="installationId"
+              defaultValue={selectedInstallationId || ""}
+              required={accountRequired}
+            >
+              <option value="">Choose connector account</option>
               {installations.map((installation) => {
                 const connectorLabel = installation.externalAccountRef
                   ? `${installation.accountAlias} - ${installation.externalAccountRef}`
@@ -76,8 +76,23 @@ export function MappingsFilterCard({
                 );
               })}
             </Select>
+            <p className="text-xs text-slate-500">
+              Readiness and publish gates are evaluated per account.
+            </p>
           </div>
         ) : null}
+        <div className="space-y-1">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-category">
+            Category
+          </label>
+          <Select id="mapping-category" name="categoryId" defaultValue={selectedCategoryId}>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.path}
+              </option>
+            ))}
+          </Select>
+        </div>
         <div className="space-y-1">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="mapping-taxonomy-q">
             Taxonomy search
