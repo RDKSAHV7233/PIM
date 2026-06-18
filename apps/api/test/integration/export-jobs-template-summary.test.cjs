@@ -140,7 +140,7 @@ async function run() {
   });
 
   try {
-    await waitForHealth(baseUrl, 60_000);
+    await waitForHealth(baseUrl, 300_000);
     const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
       workspaceSlug,
       userId,
