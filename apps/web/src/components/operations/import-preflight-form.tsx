@@ -64,7 +64,8 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
   const [validating, setValidating] = useState(false);
 
   const hasCategories = categories.length > 0;
-  const canImport = stagedRun?.preflightSummary?.canImport ?? false;
+  const validation = stagedRun?.preflightSummary ?? null;
+  const canImport = validation?.canImport ?? false;
   const isLargeMode = stagedRun?.effectiveMode === "large";
   const validationTone = useMemo(() => {
     if (!stagedRun) {
@@ -201,7 +202,25 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
       };
 
-      // Stage the run via the large-run–capable API
+      // Quick preflight via the direct validate route
+      const preflightResponse = await fetch("/api/bulk-import/validate", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      const preflightPayload = await preflightResponse.json();
+      if (!preflightResponse.ok) {
+        const serverMsg = (preflightPayload as { message?: string }).message ?? (preflightPayload as { error?: string }).error;
+        throw new Error(
+          serverMsg
+            ? String(serverMsg)
+            : preflightResponse.status >= 500
+              ? "The import file is too large to process. Try reducing the number of rows or using a smaller file."
+              : "Import validation failed.",
+        );
+      }
+
+      // Stage the run via the large-run–capable API for actual import execution
       const uploadResponse = await fetch("/api/bulk-import/runs", {
         method: "POST",
         headers,
@@ -210,28 +229,17 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
       const uploadPayload = await uploadResponse.json();
       if (!uploadResponse.ok || !uploadPayload.id) {
         const serverMsg = uploadPayload.message ?? uploadPayload.error;
-        throw new Error(
-          serverMsg
-            ? String(serverMsg)
-            : uploadResponse.status >= 500
-              ? "The import file is too large to process. Try reducing the number of rows or using a smaller file."
-              : "Failed to stage import run.",
-        );
+        throw new Error(serverMsg ? String(serverMsg) : "Failed to stage import run.");
       }
       const runId = uploadPayload.id;
 
-      // Validate the staged run — this path supports up to 30k rows
-      const validateResponse = await fetch(`/api/bulk-import/runs/${encodeURIComponent(runId)}/validate`, {
-        method: "POST",
-        headers,
-        body: "{}",
-      });
-      const validatePayload = await validateResponse.json();
-      if (!validateResponse.ok) {
-        const serverMsg = (validatePayload as { message?: string }).message ?? (validatePayload as { error?: string }).error;
-        throw new Error(serverMsg ? String(serverMsg) : "Import validation failed.");
-      }
-      setStagedRun(validatePayload as BulkImportRun);
+      // Merge preflight summary into the staged run shape
+      const mergedRun: BulkImportRun = {
+        ...(uploadPayload as BulkImportRun),
+        id: runId,
+        preflightSummary: (preflightPayload as BulkImportRun).preflightSummary ?? preflightPayload,
+      };
+      setStagedRun(mergedRun);
     } catch (error) {
       setStagedRun(null);
       setValidationError(error instanceof Error ? error.message : "Import validation failed.");
@@ -359,14 +367,8 @@ export function ImportPreflightForm({ categories, canWrite, submitAction }: Impo
         </button>
         <PendingSubmitButton
           type="submit"
-          disabled={!hasCategories || validating || stagedRun?.status !== "preflight_ready"}
-          idleLabel={
-            stagedRun?.status === "preflight_ready"
-              ? isLargeMode
-                ? "Start large import"
-                : "Start validated import"
-              : "Validate before importing"
-          }
+          disabled={!hasCategories || validating || !validation?.canImport}
+          idleLabel={validation?.canImport ? "Start validated import" : "Validate before importing"}
           pendingLabel="Uploading and starting import..."
         />
       </div>
