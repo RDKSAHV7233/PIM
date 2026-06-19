@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { FOUNDATION_ROLES, type FoundationRole, APP_ROLES, AppRole } from "../common/rbac/roles";
 
@@ -25,6 +25,7 @@ export interface PimJwtClaims {
   jti: string;
   role?: AppRole;
   assignedRoles?: FoundationRole[];
+  authConfigFingerprint?: string;
   tokenType?: PimJwtTokenType;
   stepUpScope?: StepUpScope;
   parentJti?: string;
@@ -53,6 +54,18 @@ function getJwtSecret(): string {
     return value;
   }
   throw new Error("JWT secret is not configured.");
+}
+
+function getAuthConfigFingerprint(): string {
+  const authConfig = {
+    authMode: String(process.env.AUTH_MODE ?? "").trim().toLowerCase(),
+    identitiesJson: String(process.env.PIM_AUTH_IDENTITIES_JSON ?? "").trim(),
+    workspacesJson: String(process.env.PIM_AUTH_WORKSPACES_JSON ?? "").trim(),
+    defaultTenantKey: String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim().toLowerCase(),
+    defaultWorkspaceSlug: String(process.env.PIM_DEFAULT_WORKSPACE_SLUG ?? "").trim().toLowerCase(),
+    defaultRole: String(process.env.PIM_DEFAULT_ROLE ?? "").trim().toLowerCase(),
+  };
+  return createHash("sha256").update(JSON.stringify(authConfig)).digest("base64url");
 }
 
 function toBase64Url(value: Buffer | string): string {
@@ -112,6 +125,7 @@ export function signPimJwt(input: SignJwtInput): string {
     assignedRoles: Array.isArray(input.assignedRoles)
       ? Array.from(new Set(input.assignedRoles.filter((role) => isFoundationRole(role))))
       : undefined,
+    authConfigFingerprint: getAuthConfigFingerprint(),
     tokenType,
     stepUpScope: tokenType === "step_up" ? input.stepUpScope : undefined,
     parentJti: tokenType === "step_up" ? input.parentJti?.trim() : undefined,
@@ -139,6 +153,10 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     const assignedRoles = Array.isArray(payload.assignedRoles)
       ? payload.assignedRoles.filter((value) => isFoundationRole(value))
       : undefined;
+    const authConfigFingerprint =
+      typeof payload.authConfigFingerprint === "string" && payload.authConfigFingerprint.trim()
+        ? payload.authConfigFingerprint.trim()
+        : undefined;
     const tokenType = isTokenType(payload.tokenType) ? payload.tokenType : "access";
     const stepUpScope = isStepUpScope(payload.stepUpScope) ? payload.stepUpScope : undefined;
     const parentJti = typeof payload.parentJti === "string" ? payload.parentJti.trim() : undefined;
@@ -150,7 +168,20 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
     if (tokenType === "step_up" && (!stepUpScope || !parentJti)) {
       return null;
     }
-    return { sub, tenantId, jti, role, assignedRoles, tokenType, stepUpScope, parentJti, mfaVerified, iat, exp };
+    return {
+      sub,
+      tenantId,
+      jti,
+      role,
+      assignedRoles,
+      authConfigFingerprint,
+      tokenType,
+      stepUpScope,
+      parentJti,
+      mfaVerified,
+      iat,
+      exp,
+    };
   } catch {
     return null;
   }
@@ -181,6 +212,10 @@ export function verifyPimJwt(token: string): PimJwtClaims | null {
 
   const now = Math.floor(Date.now() / 1000);
   if (claims.exp <= now) {
+    return null;
+  }
+
+  if (claims.authConfigFingerprint !== getAuthConfigFingerprint()) {
     return null;
   }
 

@@ -16,8 +16,45 @@ type ReadinessConnector = {
   notConnected?: boolean;
 };
 
+type ConnectorHealthAggregate = ReadinessConnector & {
+  installationCount: number;
+  activeInstallationCount: number;
+};
+
+type ConnectorInstallationHealthRow = {
+  installationId: string;
+  connectorId: string;
+  slug: string;
+  displayName: string;
+  accountAlias: string;
+  externalAccountRef: string | null;
+  status: string;
+  ready: number;
+  blocked: number;
+  pending: number;
+  lastSubmittedAt: string | null;
+};
+
 type ReadinessResponse = {
   connectors: ReadinessConnector[];
+  asOf: string;
+};
+
+type ConnectorInstallationsHealthResponse = {
+  connectors: ConnectorHealthAggregate[];
+  installations: ConnectorInstallationHealthRow[];
+  asOf: string;
+};
+
+type ConnectorSummaryResponse = {
+  connectors: ConnectorHealthAggregate[];
+  totals: {
+    ready: number;
+    blocked: number;
+    pending: number;
+    installations: number;
+    activeInstallations: number;
+  };
   asOf: string;
 };
 
@@ -63,6 +100,8 @@ type DashboardOperationsSummaryResponse = {
 
 type DashboardCachedValue =
   | ReadinessResponse
+  | ConnectorInstallationsHealthResponse
+  | ConnectorSummaryResponse
   | CatalogHealthResponse
   | DashboardHealthResponse
   | DashboardOperationsSummaryResponse;
@@ -141,6 +180,18 @@ export class DashboardService implements OnModuleDestroy {
     const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
     const cacheKey = `dashboard:readiness:${tenantKey}`;
     return this.getOrSetCache(cacheKey, async () => this.computeReadiness(tenantKey));
+  }
+
+  async getConnectorInstallationsHealth(): Promise<ConnectorInstallationsHealthResponse> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `dashboard:connector-installations-health:v1:${tenantKey}`;
+    return this.getOrSetCache(cacheKey, async () => this.computeConnectorInstallationsHealth(tenantKey));
+  }
+
+  async getConnectorSummary(): Promise<ConnectorSummaryResponse> {
+    const tenantKey = normalizeTenantKey(getTenantKeyFromContext());
+    const cacheKey = `dashboard:connector-summary:v1:${tenantKey}`;
+    return this.getOrSetCache(cacheKey, async () => this.computeConnectorSummary(tenantKey));
   }
 
   async getCatalogHealth(): Promise<CatalogHealthResponse> {
@@ -351,6 +402,25 @@ export class DashboardService implements OnModuleDestroy {
   }
 
   private async computeReadiness(tenantKey: string): Promise<ReadinessResponse> {
+    const summary = await this.computeConnectorInstallationsHealth(tenantKey);
+    const response: ReadinessResponse = {
+      connectors: summary.connectors.map((connector) => ({
+        slug: connector.slug,
+        displayName: connector.displayName,
+        ready: connector.ready,
+        blocked: connector.blocked,
+        pending: connector.pending,
+        notConnected: connector.notConnected,
+      })),
+      asOf: summary.asOf,
+    };
+    await this.emitReadinessAccuracyMetric(tenantKey, response.connectors);
+    return response;
+  }
+
+  private async computeConnectorInstallationsHealth(
+    tenantKey: string,
+  ): Promise<ConnectorInstallationsHealthResponse> {
     const [definitions, installations] = await Promise.all([
       this.prisma.tenant(tenantKey).connectorDefinition.findMany({
         where: { isActive: true },
@@ -370,6 +440,9 @@ export class DashboardService implements OnModuleDestroy {
         select: {
           id: true,
           connectorId: true,
+          accountAlias: true,
+          externalAccountRef: true,
+          status: true,
         },
       }),
     ]);
@@ -385,9 +458,16 @@ export class DashboardService implements OnModuleDestroy {
           select: {
             installationId: true,
             status: true,
+            submittedAt: true,
           },
         });
 
+    const definitionsById = new Map(
+      definitions.map((definition) => [
+        definition.id,
+        { slug: definition.slug, displayName: definition.displayName },
+      ]),
+    );
     const installationsByConnector = new Map<string, string[]>();
     for (const installation of installations) {
       const rows = installationsByConnector.get(installation.connectorId) ?? [];
@@ -395,14 +475,28 @@ export class DashboardService implements OnModuleDestroy {
       installationsByConnector.set(installation.connectorId, rows);
     }
 
-    const submissionCountsByInstallation = new Map<string, { ready: number; blocked: number; pending: number }>();
+    const submissionCountsByInstallation = new Map<
+      string,
+      { ready: number; blocked: number; pending: number; lastSubmittedAt: Date | null }
+    >();
     for (const submission of submissions) {
       const status = String(submission.status ?? "").trim().toUpperCase();
       const counts = submissionCountsByInstallation.get(submission.installationId) ?? {
         ready: 0,
         blocked: 0,
         pending: 0,
+        lastSubmittedAt: null,
       };
+      const submittedAt = submission.submittedAt instanceof Date
+        ? submission.submittedAt
+        : submission.submittedAt
+          ? new Date(submission.submittedAt)
+          : null;
+      if (submittedAt && !Number.isNaN(submittedAt.getTime())) {
+        if (!counts.lastSubmittedAt || submittedAt.getTime() > counts.lastSubmittedAt.getTime()) {
+          counts.lastSubmittedAt = submittedAt;
+        }
+      }
       if (status === "SUCCESS") {
         counts.ready += 1;
       } else if (status === "PENDING") {
@@ -413,8 +507,39 @@ export class DashboardService implements OnModuleDestroy {
       submissionCountsByInstallation.set(submission.installationId, counts);
     }
 
-    const results: ReadinessConnector[] = definitions.map((definition) => {
+    const installationRows: ConnectorInstallationHealthRow[] = installations.map((installation) => {
+      const definition = definitionsById.get(installation.connectorId);
+      const counts = submissionCountsByInstallation.get(installation.id) ?? {
+        ready: 0,
+        blocked: 0,
+        pending: 0,
+        lastSubmittedAt: null,
+      };
+      return {
+        installationId: installation.id,
+        connectorId: installation.connectorId,
+        slug: definition?.slug ?? "unknown",
+        displayName: definition?.displayName ?? "Unknown connector",
+        accountAlias: installation.accountAlias,
+        externalAccountRef: installation.externalAccountRef ?? null,
+        status: installation.status,
+        ready: counts.ready,
+        blocked: counts.blocked,
+        pending: counts.pending,
+        lastSubmittedAt: counts.lastSubmittedAt ? counts.lastSubmittedAt.toISOString() : null,
+      };
+    });
+
+    const rowsByConnector = new Map<string, ConnectorInstallationHealthRow[]>();
+    for (const row of installationRows) {
+      const rows = rowsByConnector.get(row.connectorId) ?? [];
+      rows.push(row);
+      rowsByConnector.set(row.connectorId, rows);
+    }
+
+    const connectors: ConnectorHealthAggregate[] = definitions.map((definition) => {
       const connectorInstallationIds = installationsByConnector.get(definition.id) ?? [];
+      const connectorInstallations = rowsByConnector.get(definition.id) ?? [];
       if (connectorInstallationIds.length === 0) {
         return {
           slug: definition.slug,
@@ -422,6 +547,8 @@ export class DashboardService implements OnModuleDestroy {
           ready: 0,
           blocked: 0,
           pending: 0,
+          installationCount: 0,
+          activeInstallationCount: 0,
           notConnected: true,
         };
       }
@@ -446,15 +573,31 @@ export class DashboardService implements OnModuleDestroy {
         ready: connectorCounts.ready,
         blocked: connectorCounts.blocked,
         pending: connectorCounts.pending,
+        installationCount: connectorInstallations.length,
+        activeInstallationCount: connectorInstallations.filter((installation) => installation.status === "ACTIVE").length,
       };
     });
 
-    const response: ReadinessResponse = {
-      connectors: results,
+    return {
+      connectors,
+      installations: installationRows,
       asOf: new Date().toISOString(),
     };
-    await this.emitReadinessAccuracyMetric(tenantKey, response.connectors);
-    return response;
+  }
+
+  private async computeConnectorSummary(tenantKey: string): Promise<ConnectorSummaryResponse> {
+    const health = await this.computeConnectorInstallationsHealth(tenantKey);
+    return {
+      connectors: health.connectors,
+      totals: {
+        ready: health.connectors.reduce((sum, connector) => sum + connector.ready, 0),
+        blocked: health.connectors.reduce((sum, connector) => sum + connector.blocked, 0),
+        pending: health.connectors.reduce((sum, connector) => sum + connector.pending, 0),
+        installations: health.installations.length,
+        activeInstallations: health.installations.filter((installation) => installation.status === "ACTIVE").length,
+      },
+      asOf: health.asOf,
+    };
   }
 
   private async computeCatalogHealth(tenantKey: string): Promise<CatalogHealthResponse> {

@@ -47,6 +47,17 @@ export class TaxonomyController {
     return this.taxonomyService.listCategories(pagination, { all: all === "true" }, this.resolveActor(request ?? {} as never));
   }
 
+  @Get("counts")
+  @FoundationRoleAccess("category_manager")
+  @ReadAccessPolicy("taxonomy_safe_metadata")
+  @ApiClientScopes("taxonomy.read")
+  @Header("Cache-Control", "private, max-age=60, stale-while-revalidate=300")
+  listCategoryCounts(
+    @Req() request?: Request & { pimUserId?: string; pimRole?: AppRole; pimTenant?: string; pimEffectiveRoles?: string[] },
+  ) {
+    return this.taxonomyService.listCategoryCounts(this.resolveActor(request ?? {} as never));
+  }
+
   @Get(":id")
   @FoundationRoleAccess("category_manager")
   @ReadAccessPolicy("taxonomy_safe_metadata")

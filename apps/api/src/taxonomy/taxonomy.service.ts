@@ -98,6 +98,49 @@ export class TaxonomyService {
     return category;
   }
 
+  async listCategoryCounts(actor?: ActorContext) {
+    const scopeWhere = await this.accessPolicy.buildCategoryScopeWhere(this.toPolicyActor(actor), "view");
+    const categories = await this.prisma.tenant().category.findMany({
+      where: scopeWhere,
+      orderBy: [{ path: "asc" }],
+      take: 5_000,
+      select: {
+        id: true,
+        parentId: true,
+      },
+    });
+    const categoryIds = categories.map((category) => category.id);
+    const productCounts = categoryIds.length === 0
+      ? []
+      : await this.prisma.tenant().product.groupBy({
+          by: ["categoryId"],
+          where: {
+            deletedAt: null,
+            categoryId: { in: categoryIds },
+          },
+          _count: { _all: true },
+        });
+
+    const childCountByCategoryId = categories.reduce<Map<string, number>>((acc, category) => {
+      if (category.parentId) {
+        acc.set(category.parentId, (acc.get(category.parentId) ?? 0) + 1);
+      }
+      return acc;
+    }, new Map());
+    const productCountByCategoryId = productCounts.reduce<Map<string, number>>((acc, row) => {
+      if (row.categoryId) {
+        acc.set(row.categoryId, row._count._all);
+      }
+      return acc;
+    }, new Map());
+
+    return categories.map((category) => ({
+      categoryId: category.id,
+      childCount: childCountByCategoryId.get(category.id) ?? 0,
+      productCount: productCountByCategoryId.get(category.id) ?? 0,
+    }));
+  }
+
   async createCategory(dto: CreateCategoryDto) {
     const parent = dto.parentId
       ? await this.prisma.tenant().category.findUnique({ where: { id: dto.parentId } })

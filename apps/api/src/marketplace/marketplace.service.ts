@@ -900,6 +900,54 @@ export class MarketplaceService implements OnModuleInit {
     return rows.map((row) => this.normalizeSubmissionRow(row));
   }
 
+  async countSubmissions(filters?: SubmissionFilters) {
+    const tenantKey = this.connectorFramework.getCurrentTenantKey();
+    const productId = filters?.productId ? String(filters.productId).trim() : "";
+    const connectorSlug = filters?.connectorSlug ? String(filters.connectorSlug).trim().toLowerCase() : "";
+    const installationId = filters?.installationId ? String(filters.installationId).trim() : "";
+    const status = filters?.status ? String(filters.status).trim().toUpperCase() : "";
+    const minAttempt = Number.isFinite(filters?.minAttempt)
+      ? Math.max(1, Math.floor(filters?.minAttempt ?? 1))
+      : null;
+
+    const params: Array<string | number> = [tenantKey];
+    const clauses: string[] = ["cs.tenant_key = $1"];
+
+    if (productId) {
+      params.push(productId);
+      clauses.push(`cs.product_id = $${params.length}`);
+    }
+    if (installationId) {
+      params.push(installationId);
+      clauses.push(`cs.installation_id = $${params.length}`);
+    } else if (connectorSlug) {
+      params.push(connectorSlug);
+      clauses.push(`LOWER(cd.slug) = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      clauses.push(`UPPER(cs.status) = $${params.length}`);
+    }
+    if (minAttempt !== null) {
+      params.push(minAttempt);
+      clauses.push(`cs.attempt_number >= $${params.length}`);
+    }
+
+    const rows = await tenantRaw<Array<{ count?: number | string | bigint }>>(
+      this.prisma.tenant(tenantKey),
+      `
+      SELECT COUNT(*)::int AS count
+      FROM connector_submissions cs
+      JOIN connector_installations ci ON ci.id = cs.installation_id
+      JOIN connector_definitions cd ON cd.id = ci.connector_id
+      WHERE ${clauses.join(" AND ")}
+      `,
+      params,
+    );
+    const count = rows[0]?.count;
+    return { count: Number(count ?? 0) };
+  }
+
   async listDeadLetterSubmissions(pagination?: CursorPaginationQuery) {
     if (isCursorPagination(pagination)) {
       const limit = resolveCursorLimit(pagination?.limit);

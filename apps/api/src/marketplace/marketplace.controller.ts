@@ -197,7 +197,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/taxonomy/search")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   searchConnectorTaxonomy(
     @Param("connectorSlug") connectorSlug: string,
     @Query() query: ConnectorTaxonomySearchQueryDto,
@@ -210,7 +210,7 @@ export class MarketplaceController {
   }
 
   @Get("connectors/:connectorSlug/taxonomy/unmapped")
-  @Roles("admin", "editor")
+  @Roles("admin", "editor", "channel_manager")
   listUnmappedConnectorTaxonomy(@Param("connectorSlug") connectorSlug: string) {
     return this.connectorMappingService.listUnmappedCategories({
       connectorSlug: String(connectorSlug ?? "").trim().toLowerCase(),

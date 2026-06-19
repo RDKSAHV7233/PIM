@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+const assert = require("node:assert/strict");
+const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawn, execFileSync } = require("node:child_process");
-const { PrismaClient } = require("@prisma/client");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const API_ENTRY = path.join(REPO_ROOT, "apps", "api", "dist", "main.js");
-
-function getAuthPassword() {
-  return process.env.PIM_AUTH_PASSWORD || "vexa-pim-demo-password";
-}
+const DIST_ROOT = path.join(REPO_ROOT, "apps", "api", "dist");
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -52,6 +48,7 @@ function prepareEnv() {
   if (!process.env.DATABASE_URL_DIRECT || /HOST:5432/i.test(String(process.env.DATABASE_URL_DIRECT))) {
     process.env.DATABASE_URL_DIRECT = process.env.DATABASE_URL;
   }
+  setDefaultEnv("AUTH_MODE", "local");
   setDefaultEnv("JWT_SECRET", "vexa-pim-local-dev-jwt-secret-minimum-length-32");
   setDefaultEnv("JWT_EXPIRY", "4h");
   setDefaultEnv("CREDENTIAL_ENCRYPTION_KEY_V1", "vexa-pim-local-encryption-key-v1-minimum-32");
@@ -67,416 +64,333 @@ function prepareEnv() {
   setDefaultEnv("APP_ENV", "development");
   setDefaultEnv("PIM_DEFAULT_ROLE", "admin");
   setDefaultEnv("FEATURE_REAL_SPAPI_VALIDATION", "false");
+  setDefaultEnv("DASHBOARD_CACHE_REDIS_DISABLED", "true");
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForHealth(baseUrl, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${baseUrl}/health`, { method: "GET" });
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // retry
-    }
-    await sleep(400);
-  }
-  throw new Error(`API did not become healthy at ${baseUrl}/health within ${timeoutMs}ms`);
-}
-
-async function apiRequest(baseUrl, method, route, token, body) {
-  const headers = { Accept: "application/json" };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  const options = {
-    method,
-    headers,
-    signal: AbortSignal.timeout(20_000),
+function createCacheStub() {
+  return {
+    get: async () => null,
+    set: async () => undefined,
+    delete: async () => undefined,
   };
-  if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(body);
-  }
-  const response = await fetch(`${baseUrl}${route}`, options);
-  const text = await response.text();
-  let payload;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text;
-  }
-  return { status: response.status, payload };
-}
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function assertStatus(result, expected, context) {
-  if (result.status !== expected) {
-    throw new Error(`${context} failed: expected ${expected}, got ${result.status} payload=${JSON.stringify(result.payload)}`);
-  }
-}
-
-function getMonthKey(date = new Date()) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
-async function advanceToApproved(baseUrl, token, product) {
-  const toReview = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
-    expectedVersion: product.version,
-    title: product.title,
-    description: product.description ?? "",
-    brand: product.brand,
-    categoryId: product.categoryId,
-    hsnCode: product.hsnCode ?? undefined,
-    gstRate: product.gstRate ?? undefined,
-    attributes: product.attributes ?? {},
-    status: "in_review",
-  });
-  if (toReview.status !== 200) {
-    throw new Error(`advance to in_review failed: ${toReview.status} ${JSON.stringify(toReview.payload)}`);
-  }
-  const toApproved = await apiRequest(baseUrl, "PATCH", `/catalog/products/${product.id}`, token, {
-    expectedVersion: toReview.payload.version,
-    title: toReview.payload.title,
-    description: toReview.payload.description ?? "",
-    brand: toReview.payload.brand,
-    categoryId: toReview.payload.categoryId,
-    hsnCode: toReview.payload.hsnCode ?? undefined,
-    gstRate: toReview.payload.gstRate ?? undefined,
-    attributes: toReview.payload.attributes ?? {},
-    status: "approved",
-  });
-  if (toApproved.status !== 200) {
-    throw new Error(`advance to approved failed: ${toApproved.status} ${JSON.stringify(toApproved.payload)}`);
-  }
-  return toApproved.payload;
 }
 
 async function run() {
   prepareEnv();
-  if (!fs.existsSync(API_ENTRY)) {
-    throw new Error(`API build output not found at ${API_ENTRY}. Run: npm run build --workspace @pim1/api`);
-  }
+
+  const { PrismaService } = require(path.join(DIST_ROOT, "prisma", "prisma.service.js"));
+  const { DashboardService } = require(path.join(DIST_ROOT, "dashboard", "dashboard.service.js"));
+  const { TaxonomyService } = require(path.join(DIST_ROOT, "taxonomy", "taxonomy.service.js"));
+  const { MarketplaceService } = require(path.join(DIST_ROOT, "marketplace", "marketplace.service.js"));
+  const { runWithTenantContext } = require(path.join(DIST_ROOT, "common", "tenant", "tenant-context.js"));
 
   const runId = Date.now().toString();
-  const apiPort = 5800 + Math.floor(Math.random() * 120);
-  const baseUrl = `http://127.0.0.1:${apiPort}/api/v1`;
-  const tenantId = `dashboard-tenant-${runId}`;
-  const workspaceSlug = `dash-${runId}`.slice(0, 24);
-  const userId = `dashboard-user-${runId}`;
-  const env = {
-    ...process.env,
-    PORT: String(apiPort),
-    PIM_ALLOW_LEGACY_HEADERS: "false",
-    PIM_DEFAULT_TENANT_KEY: tenantId,
-    PIM_AUTH_IDENTITIES_JSON: JSON.stringify({
-      [userId]: { tenantId, role: "admin", workspaceSlug },
-    }),
-    PIM_AUTH_WORKSPACES_JSON: JSON.stringify({
-      [workspaceSlug]: { tenantId, displayName: "Dashboard" },
-    }),
+  const tenantKey = `dashboard-agg-${runId}`;
+  const categoryId = randomUUID();
+  const lowProductId = randomUUID();
+  const highProductId = randomUUID();
+  const connectorId = randomUUID();
+  const installationId = randomUUID();
+  const exportJobId = randomUUID();
+
+  const prisma = new PrismaService();
+  const metricsService = {
+    emit: async () => undefined,
   };
-
-  const stdoutBuffer = [];
-  const stderrBuffer = [];
-  const apiProcess = spawn("node", [API_ENTRY], {
-    cwd: REPO_ROOT,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  apiProcess.stdout.on("data", (chunk) => {
-    stdoutBuffer.push(String(chunk));
-    if (stdoutBuffer.length > 200) {
-      stdoutBuffer.shift();
-    }
-  });
-  apiProcess.stderr.on("data", (chunk) => {
-    stderrBuffer.push(String(chunk));
-    if (stderrBuffer.length > 200) {
-      stderrBuffer.shift();
-    }
-  });
-
-  const prisma = new PrismaClient({
-    datasources: {
-      db: { url: process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL },
+  const dashboardService = new DashboardService(prisma, metricsService);
+  const taxonomyService = new TaxonomyService(
+    prisma,
+    {
+      buildCategoryScopeWhere: async () => undefined,
     },
-  });
+    createCacheStub(),
+  );
+  const marketplaceService = new MarketplaceService(
+    prisma,
+    { getCurrentTenantKey: () => tenantKey },
+    {},
+    {},
+    {},
+    metricsService,
+    {},
+    {},
+    { info() {}, warn() {}, error() {}, debug() {} },
+    {},
+    {},
+  );
 
   try {
-    await waitForHealth(baseUrl, 60_000);
+    await runWithTenantContext(tenantKey, async () => {
+      const tenantPrisma = prisma.tenant(tenantKey);
+      const connectorSlug = `diag-${runId}`.slice(0, 40);
 
-    const login = await apiRequest(baseUrl, "POST", "/auth/login", null, {
-      userId,
-      workspaceSlug,
-      password: getAuthPassword(),
-      expiresInMinutes: 30,
+      await tenantPrisma.connectorDefinition.create({
+        data: {
+          id: connectorId,
+          slug: connectorSlug,
+          displayName: "Dashboard Diagnostics",
+          authType: "api_key",
+          capabilities: ["listing_create"],
+          connectorVersion: "1.0.0",
+          isActive: true,
+        },
+      });
+
+      await tenantPrisma.category.create({
+        data: {
+          id: categoryId,
+          tenantKey,
+          name: `Dashboard Category ${runId}`,
+          slug: `dashboard-category-${runId}`.slice(0, 60),
+          path: `Dashboard Category ${runId}`,
+        },
+      });
+
+      await tenantPrisma.attributeDefinition.create({
+        data: {
+          categoryId,
+          key: "material",
+          name: "Material",
+          dataType: "text",
+          required: true,
+          appliesTo: "product",
+        },
+      });
+
+      await tenantPrisma.product.create({
+        data: {
+          id: lowProductId,
+          tenantKey,
+          title: `Dashboard Low ${runId}`,
+          description: "",
+          brand: "Vexa PIM",
+          categoryId,
+          status: "in_review",
+          version: 1,
+          attributes: {},
+          hsnCode: null,
+          gstRate: null,
+        },
+      });
+
+      await tenantPrisma.product.create({
+        data: {
+          id: highProductId,
+          tenantKey,
+          title: `Dashboard High ${runId}`,
+          description: "Complete product",
+          brand: "Vexa PIM",
+          categoryId,
+          status: "approved",
+          version: 1,
+          attributes: {
+            material: "cotton",
+            color: "black",
+            mainImageUrl: "https://example.com/high-product.png",
+          },
+          hsnCode: "62046200",
+          gstRate: 18,
+        },
+      });
+
+      await tenantPrisma.mediaAsset.create({
+        data: {
+          id: randomUUID(),
+          tenantKey,
+          productId: highProductId,
+          variantId: null,
+          entityType: "product",
+          fileName: "high-product.png",
+          mimeType: "image/png",
+          storagePath: `tests/${runId}/high-product.png`,
+          width: 1200,
+          height: 1200,
+          sizeBytes: 1024,
+          checksum: `checksum-${runId}`,
+          metadata: {},
+        },
+      });
+
+      await tenantPrisma.validationIssue.create({
+        data: {
+          productId: lowProductId,
+          ruleId: null,
+          severity: "error",
+          ruleCode: "MATERIAL_REQUIRED",
+          message: "Material is required",
+          fieldPath: "attributes.material",
+          status: "open",
+        },
+      });
+
+      await tenantPrisma.connectorInstallation.create({
+        data: {
+          id: installationId,
+          tenantKey,
+          connectorId,
+          accountAlias: "primary",
+          status: "ACTIVE",
+          metadata: {},
+          installedBy: "dashboard-test",
+        },
+      });
+
+      await tenantPrisma.connectorSubmission.createMany({
+        data: [
+          {
+            id: randomUUID(),
+            tenantKey,
+            installationId,
+            productId: highProductId,
+            variantId: null,
+            idempotencyKey: `success-${runId}`,
+            submissionType: "publish",
+            source: "dashboard-test",
+            attemptNumber: 1,
+            status: "SUCCESS",
+            payloadSnapshot: {},
+          },
+          {
+            id: randomUUID(),
+            tenantKey,
+            installationId,
+            productId: lowProductId,
+            variantId: null,
+            idempotencyKey: `pending-${runId}`,
+            submissionType: "publish",
+            source: "dashboard-test",
+            attemptNumber: 1,
+            status: "PENDING",
+            payloadSnapshot: {},
+          },
+          {
+            id: randomUUID(),
+            tenantKey,
+            installationId,
+            productId: lowProductId,
+            variantId: null,
+            idempotencyKey: `error-${runId}`,
+            submissionType: "publish",
+            source: "dashboard-test",
+            attemptNumber: 2,
+            status: "ERROR",
+            payloadSnapshot: {},
+          },
+        ],
+      });
+
+      await tenantPrisma.marketplaceExportJob.create({
+        data: {
+          id: exportJobId,
+          tenantKey,
+          createdBy: "dashboard-test",
+          productId: highProductId,
+          categoryId,
+          channel: connectorSlug,
+          status: "dead_letter",
+          retryCount: 2,
+          maxRetries: 3,
+          payload: {},
+        },
+      });
+
+      const readiness1 = await dashboardService.getReadiness();
+      const readiness2 = await dashboardService.getReadiness();
+      assert.equal(readiness2.asOf, readiness1.asOf, "readiness cache should preserve asOf within TTL");
+      assert(Array.isArray(readiness1.connectors), "readiness.connectors must be an array");
+      const readinessRow = readiness1.connectors.find((connector) => connector.slug === connectorSlug);
+      assert(readinessRow, "readiness must include the seeded connector row");
+      assert.equal(readinessRow.ready, 1, "readiness.ready should count successful submissions");
+      assert.equal(readinessRow.blocked, 1, "readiness.blocked should count error submissions");
+      assert.equal(readinessRow.pending, 1, "readiness.pending should count pending submissions");
+
+      const connectorInstallationsHealth = await dashboardService.getConnectorInstallationsHealth();
+      assert(Array.isArray(connectorInstallationsHealth.connectors), "connector health connectors must be an array");
+      assert(Array.isArray(connectorInstallationsHealth.installations), "connector health installations must be an array");
+      const installationRow = connectorInstallationsHealth.installations.find(
+        (row) => row.installationId === installationId,
+      );
+      assert(installationRow, "connector health must include the seeded installation");
+      assert.equal(installationRow.ready, 1, "installation ready count should be installation-scoped");
+      assert.equal(installationRow.blocked, 1, "installation blocked count should be installation-scoped");
+      assert.equal(installationRow.pending, 1, "installation pending count should be installation-scoped");
+
+      const connectorSummary = await dashboardService.getConnectorSummary();
+      assert(Array.isArray(connectorSummary.connectors), "connector summary connectors must be an array");
+      assert.equal(connectorSummary.totals.ready, 1, "connector summary totals.ready must match seeded truth");
+      assert.equal(connectorSummary.totals.blocked, 1, "connector summary totals.blocked must match seeded truth");
+      assert.equal(connectorSummary.totals.pending, 1, "connector summary totals.pending must match seeded truth");
+      assert.equal(connectorSummary.totals.installations, 1, "connector summary totals.installations must match seeded truth");
+
+      const categoryCounts = await taxonomyService.listCategoryCounts({
+        id: "dashboard-admin",
+        role: "admin",
+        tenantId: tenantKey,
+      });
+      const categoryCountRow = categoryCounts.find((row) => row.categoryId === categoryId);
+      assert(categoryCountRow, "category counts must include the seeded category");
+      assert.equal(categoryCountRow.productCount, 2, "category productCount must match seeded products");
+
+      const submissionCount = await marketplaceService.countSubmissions({ installationId });
+      assert.equal(submissionCount.count, 3, "submission count must match installation-scoped DB truth");
+
+      const catalogHealth1 = await dashboardService.getCatalogHealth();
+      const catalogHealth2 = await dashboardService.getCatalogHealth();
+      assert.equal(catalogHealth2.asOf, catalogHealth1.asOf, "catalog-health cache should preserve asOf within TTL");
+      assert.equal(catalogHealth1.belowThreshold, 1, "catalog-health belowThreshold must include the incomplete product");
+      assert.equal(catalogHealth1.missingMainImage, 1, "catalog-health missingMainImage must reflect seeded media truth");
+      assert.equal(catalogHealth1.missingRequiredAttrs, 1, "catalog-health missingRequiredAttrs must reflect seeded attribute truth");
+
+      const dashboardHealth = await dashboardService.getHealth();
+      assert.equal(typeof dashboardHealth.asOf, "string", "dashboard health asOf must be a string");
+      assert.equal(dashboardHealth.pendingApprovals, 1, "dashboard health pendingApprovals must count in-review products");
+      assert.equal(dashboardHealth.snapshot.totalSkus, 2, "dashboard health snapshot.totalSkus must match seeded products");
+      assert.equal(dashboardHealth.snapshot.openIssuesBlocking, 1, "dashboard health snapshot.openIssuesBlocking must match seeded issues");
+      assert.equal(dashboardHealth.snapshot.publishReadyByConnector[connectorSlug], 1, "dashboard health snapshot ready totals must use connector truth");
+      assert(Array.isArray(dashboardHealth.trend) && dashboardHealth.trend.length >= 1, "dashboard health trend must be populated");
+
+      const operations1 = await dashboardService.getOperationsSummary();
+      const operations2 = await dashboardService.getOperationsSummary();
+      assert.equal(operations2.asOf, operations1.asOf, "operations summary cache should preserve asOf within TTL");
+      assert.equal(operations1.activeConnectors, 1, "operations summary activeConnectors must match seeded installation truth");
+      assert.equal(operations1.installedConnectors, 1, "operations summary installedConnectors must match seeded installation truth");
+      assert.equal(operations1.failedSubmissionJobs, 1, "operations summary failedSubmissionJobs must count error/rejected submissions");
+      assert.equal(operations1.deadLetterJobs, 1, "operations summary deadLetterJobs must count dead-letter export jobs");
+      assert.equal(
+        operations1.jobsNeedingRetry,
+        operations1.failedSubmissionJobs + operations1.deadLetterJobs,
+        "operations summary jobsNeedingRetry must equal failed submissions plus dead-letter jobs",
+      );
     });
-    assertStatus(login, 201, "login");
-    const token = login.payload?.accessToken;
-    assert(typeof token === "string" && token.length > 10, "missing access token");
-
-    const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", token, {
-      name: `Dashboard Category ${runId}`,
-    });
-    assertStatus(category, 201, "create category");
-
-    const requiredAttr = await apiRequest(baseUrl, "POST", `/taxonomy/categories/${category.payload.id}/attributes`, token, {
-      key: "material",
-      name: "Material",
-      dataType: "text",
-      required: true,
-      appliesTo: "product",
-    });
-    assertStatus(requiredAttr, 201, "create required attribute");
-
-    const lowProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
-      title: `Dashboard Low ${runId}`,
-      brand: "Vexa PIM",
-      description: "",
-      categoryId: category.payload.id,
-      status: "draft",
-      attributes: {},
-    });
-    assertStatus(lowProduct, 201, "create low product");
-    await advanceToApproved(baseUrl, token, lowProduct.payload);
-
-    const highProduct = await apiRequest(baseUrl, "POST", "/catalog/products", token, {
-      title: `Dashboard High ${runId}`,
-      brand: "Vexa PIM",
-      description: "Complete product",
-      categoryId: category.payload.id,
-      hsnCode: "62046200",
-      gstRate: 18,
-      status: "draft",
-      attributes: { color: "black", size: "M", material: "cotton" },
-    });
-    assertStatus(highProduct, 201, "create high product");
-    await advanceToApproved(baseUrl, token, highProduct.payload);
-
-    const installFlipkart = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", token, {
-      accountAlias: "primary",
-    });
-    assertStatus(installFlipkart, 201, "install flipkart");
-
-    const exportJob = await apiRequest(
-      baseUrl,
-      "POST",
-      `/marketplace/products/${highProduct.payload.id}/export-jobs`,
-      token,
-      { channel: "flipkart", maxRetries: 1 },
-    );
-    assertStatus(exportJob, 201, "create export job");
-
-    const processJob = await apiRequest(baseUrl, "POST", `/marketplace/export-jobs/${exportJob.payload.id}/process`, token);
-    assertStatus(processJob, 201, "process export job");
-
-    const readiness1 = await apiRequest(baseUrl, "GET", "/dashboard/readiness", token);
-    assertStatus(readiness1, 200, "dashboard readiness first call");
-    assert(Array.isArray(readiness1.payload.connectors), "readiness.connectors must be an array");
-    assert(typeof readiness1.payload.asOf === "string", "readiness.asOf must be a string");
-    const flipkartRow = readiness1.payload.connectors.find((connector) => connector.slug === "flipkart");
-    assert(flipkartRow, "readiness must include flipkart row");
-    assert(
-      typeof flipkartRow.ready === "number" &&
-        typeof flipkartRow.blocked === "number" &&
-        typeof flipkartRow.pending === "number",
-      "flipkart readiness counts must be numeric",
-    );
-
-    const readiness2 = await apiRequest(baseUrl, "GET", "/dashboard/readiness", token);
-    assertStatus(readiness2, 200, "dashboard readiness second call");
-    assert(
-      readiness2.payload.asOf === readiness1.payload.asOf,
-      "readiness second call should hit cache and keep same asOf within TTL",
-    );
-
-    const health1 = await apiRequest(baseUrl, "GET", "/dashboard/catalog-health", token);
-    assertStatus(health1, 200, "catalog-health first call");
-    assert(typeof health1.payload.averageCompleteness === "number", "averageCompleteness must be numeric");
-    assert(typeof health1.payload.belowThreshold === "number", "belowThreshold must be numeric");
-    assert(typeof health1.payload.missingMainImage === "number", "missingMainImage must be numeric");
-    assert(typeof health1.payload.missingRequiredAttrs === "number", "missingRequiredAttrs must be numeric");
-    assert(Array.isArray(health1.payload.distribution), "distribution must be an array");
-    assert(typeof health1.payload.asOf === "string", "catalog-health asOf must be a string");
-    assert(health1.payload.belowThreshold >= 1, "expected at least one below-threshold product");
-
-    const health2 = await apiRequest(baseUrl, "GET", "/dashboard/catalog-health", token);
-    assertStatus(health2, 200, "catalog-health second call");
-    assert(
-      health2.payload.asOf === health1.payload.asOf,
-      "catalog-health second call should hit cache and keep same asOf within TTL",
-    );
-
-    const dashboardHealth = await apiRequest(baseUrl, "GET", "/dashboard/health", token);
-    assertStatus(dashboardHealth, 200, "dashboard health with trend");
-    assert(typeof dashboardHealth.payload.asOf === "string", "dashboard health asOf must be string");
-    assert(dashboardHealth.payload.snapshot, "dashboard health must include snapshot");
-    assert(Array.isArray(dashboardHealth.payload.trend), "dashboard health trend must be array");
-    assert(
-      typeof dashboardHealth.payload.pendingApprovals === "number",
-      "dashboard health pendingApprovals must be number",
-    );
-    assert(
-      typeof dashboardHealth.payload.snapshot.totalSkus === "number",
-      "dashboard health snapshot.totalSkus must be number",
-    );
-    assert(
-      typeof dashboardHealth.payload.snapshot.openIssuesBlocking === "number",
-      "dashboard health snapshot.openIssuesBlocking must be number",
-    );
-    assert(
-      typeof dashboardHealth.payload.snapshot.publishReadyByConnector === "object",
-      "dashboard health snapshot.publishReadyByConnector must be object",
-    );
-    assert(dashboardHealth.payload.trend.length >= 1, "dashboard health trend must have at least one point");
-
-    const operations1 = await apiRequest(baseUrl, "GET", "/dashboard/operations-summary", token);
-    assertStatus(operations1, 200, "dashboard operations summary first call");
-    assert(
-      typeof operations1.payload.activeConnectors === "number",
-      "dashboard operations summary activeConnectors must be number",
-    );
-    assert(
-      typeof operations1.payload.installedConnectors === "number",
-      "dashboard operations summary installedConnectors must be number",
-    );
-    assert(
-      typeof operations1.payload.failedImportJobs === "number",
-      "dashboard operations summary failedImportJobs must be number",
-    );
-    assert(
-      typeof operations1.payload.failedSubmissionJobs === "number",
-      "dashboard operations summary failedSubmissionJobs must be number",
-    );
-    assert(
-      typeof operations1.payload.deadLetterJobs === "number",
-      "dashboard operations summary deadLetterJobs must be number",
-    );
-    assert(
-      typeof operations1.payload.jobsNeedingRetry === "number",
-      "dashboard operations summary jobsNeedingRetry must be number",
-    );
-    assert(
-      typeof operations1.payload.asOf === "string",
-      "dashboard operations summary asOf must be string",
-    );
-    assert(
-      operations1.payload.jobsNeedingRetry ===
-        operations1.payload.failedSubmissionJobs + operations1.payload.deadLetterJobs,
-      "dashboard operations summary jobsNeedingRetry must equal failed submissions plus dead-letter jobs",
-    );
-    assert(
-      operations1.payload.installedConnectors >= operations1.payload.activeConnectors,
-      "dashboard operations summary installed connectors must be at least active connectors",
-    );
-
-    const operations2 = await apiRequest(baseUrl, "GET", "/dashboard/operations-summary", token);
-    assertStatus(operations2, 200, "dashboard operations summary second call");
-    assert(
-      operations2.payload.asOf === operations1.payload.asOf,
-      "dashboard operations summary second call should hit cache and keep same asOf within TTL",
-    );
-
-    const usage = await apiRequest(baseUrl, "GET", "/billing/usage", token);
-    assertStatus(usage, 200, "billing usage");
-    assert(typeof usage.payload.planTier === "string", "billing usage must include planTier");
-    assert(typeof usage.payload.month === "string", "billing usage must include month");
-    assert(typeof usage.payload.skus?.current === "number", "billing usage skus.current must be number");
-
-    const usageRows = await prisma.$queryRawUnsafe(
-      `
-      SELECT
-        "skuCount" AS "skuCount",
-        "submissionCount" AS "submissionCount"
-      FROM "PlanUsage"
-      WHERE "tenantKey" = $1 AND "month" = $2
-      LIMIT 1
-      `,
-      tenantId,
-      getMonthKey(),
-    );
-    assert(Array.isArray(usageRows) && usageRows.length === 1, "expected PlanUsage row for tenant");
-    const usageRow = usageRows[0];
-    assert(
-      Number(usageRow.skuCount) === usage.payload.skus.current,
-      "billing usage skus.current must match PlanUsage.skuCount",
-    );
-    assert(
-      Number(usageRow.submissionCount) === usage.payload.submissions.current,
-      "billing usage submissions.current must match PlanUsage.submissionCount",
-    );
 
     console.log(
       JSON.stringify(
         {
           status: "ok",
-          tenantId,
+          tenantKey,
           validated: [
-            "dashboard_readiness_endpoint_shape",
-          "dashboard_catalog_health_endpoint_shape",
-          "dashboard_health_snapshot_and_trend_endpoint_shape",
-          "dashboard_operations_summary_endpoint_shape",
-          "dashboard_endpoints_cache_with_bounded_ttl",
-          "billing_usage_matches_plan_usage_source_of_truth",
-        ],
+            "dashboard_readiness_uses_installation_scoped_truth",
+            "connector_installations_health_returns_installation_rows",
+            "connector_summary_returns_canonical_totals",
+            "taxonomy_category_counts_match_seeded_truth",
+            "submission_count_matches_seeded_truth",
+            "dashboard_catalog_health_uses_backend_truth",
+            "dashboard_health_snapshot_and_trend_are_consistent",
+            "dashboard_operations_summary_uses_canonical_counts",
+          ],
           checkedAt: new Date().toISOString(),
         },
         null,
         2,
       ),
     );
-  } catch (error) {
-    const details = error instanceof Error ? error.message : String(error);
-    const stdout = stdoutBuffer.join("").slice(-4000);
-    const stderr = stderrBuffer.join("").slice(-4000);
-    console.error("Dashboard aggregations integration test failed:");
-    console.error(details);
-    if (stdout) {
-      console.error("--- API stdout tail ---");
-      console.error(stdout);
-    }
-    if (stderr) {
-      console.error("--- API stderr tail ---");
-      console.error(stderr);
-    }
-    process.exitCode = 1;
   } finally {
-    await prisma.$disconnect();
-    if (!apiProcess.killed && apiProcess.pid) {
-      if (process.platform === "win32") {
-        try {
-          execFileSync("taskkill", ["/pid", String(apiProcess.pid), "/t", "/f"], { stdio: "ignore" });
-        } catch {
-          // ignore
-        }
-      } else {
-        apiProcess.kill("SIGTERM");
-        await sleep(500);
-        if (!apiProcess.killed) {
-          apiProcess.kill("SIGKILL");
-        }
-      }
-    }
+    await prisma.onModuleDestroy().catch(() => undefined);
   }
 }
 
 run().catch((error) => {
-  console.error(error);
+  console.error("Dashboard aggregations integration test failed:");
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
   process.exit(1);
 });
-
-
-

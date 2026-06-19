@@ -9,6 +9,7 @@ import { RequirePlanLimit } from "../billing/require-plan-limit.decorator";
 import { AdminBoundaryAccess } from "../common/rbac/admin-boundary.decorator";
 import { DisallowApiClient } from "../common/rbac/api-client-policy.decorator";
 import { AuthenticatedReadRoute, ReadAccessPolicy } from "../common/rbac/read-access-policy.decorator";
+import { DashboardService } from "../dashboard/dashboard.service";
 import {
   APP_ROLES,
   AppRole,
@@ -35,6 +36,7 @@ export class ConnectorInstallerController {
   constructor(
     private readonly connectorInstallerService: ConnectorInstallerService,
     private readonly planUsageService: PlanUsageService,
+    private readonly dashboardService: DashboardService,
   ) {}
 
   private resolveActor(request: AuthenticatedRequest) {
@@ -72,6 +74,22 @@ export class ConnectorInstallerController {
   @ApiResponse({ status: 200, description: "Installed connectors fetched" })
   listInstalled(@Query() query: ListInstalledConnectorsDto, @Req() request: AuthenticatedRequest) {
     return this.connectorInstallerService.listInstalled(query, undefined, this.resolveActor(request));
+  }
+
+  @Get("installations/health")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
+  @ApiOperation({ summary: "List installation-scoped connector health truth" })
+  @ApiResponse({ status: 200, description: "Connector installation health fetched" })
+  getInstallationHealth() {
+    return this.dashboardService.getConnectorInstallationsHealth();
+  }
+
+  @Get("summary")
+  @Roles("admin", "editor", "connector_admin", "channel_manager", "reviewer", "approver", "publisher")
+  @ApiOperation({ summary: "List connector summary truth for current tenant" })
+  @ApiResponse({ status: 200, description: "Connector summary fetched" })
+  getConnectorSummary() {
+    return this.dashboardService.getConnectorSummary();
   }
 
   @Post(":id/uninstall")
