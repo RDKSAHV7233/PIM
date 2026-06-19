@@ -16,8 +16,9 @@ function run() {
   const source = fs.readFileSync(FILE, "utf8");
   assert(source.includes("export function MappingsFilterCard"), "Taxonomy search module must export the filter card.");
   assert(source.includes("export function TaxonomyAlignmentCard"), "Taxonomy search module must export the alignment card.");
-  assert(source.includes("Taxonomy search"), "Taxonomy search module must render the taxonomy search input label.");
-  assert(source.includes("Show taxonomy search results"), "Taxonomy search module must render taxonomy result disclosure.");
+  assert(source.includes("Publish category search"), "Taxonomy search module must render the publish-category search input label.");
+  assert(source.includes("Use this category"), "Taxonomy search module must render a direct taxonomy selection action.");
+  assert(source.includes("Current scope"), "Taxonomy search module must summarize the selected scope before continuing.");
   console.log(JSON.stringify({ status: "ok", validated: ["taxonomy_search_module_exports_isolated_cards"] }, null, 2));
 }
 

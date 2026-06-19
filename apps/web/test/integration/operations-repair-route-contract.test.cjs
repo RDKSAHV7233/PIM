@@ -20,15 +20,19 @@ function run() {
     "Operations repair must derive shared server auth/session context.",
   );
   assert(
-    source.includes("const [importJobs, deadLetterRaw] = await Promise.all([") &&
-      source.includes("getBulkImportJobs({ role: actorRole, authHeader })") &&
-      source.includes("getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })"),
-    "Operations repair must fetch import backlog and dead-letter submissions together from the shared auth context.",
+    source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
+      source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
+      source.includes("const [importJobsResult, deadLetterResult] = await Promise.all([") &&
+      source.includes("loadSharedRead(getBulkImportJobs({ role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader }))"),
+    "Operations repair must fetch import backlog and dead-letter submissions together through explicit shared-read wrappers.",
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
-      source.includes("return Array.isArray(value.items) ? value.items : [];"),
-    "Operations repair must normalize dead-letter list payloads through the shared toItems helper.",
+      source.includes("return Array.isArray(value.items) ? value.items : [];") &&
+      source.includes("if (importJobsResult.state === \"restricted\") {") &&
+      source.includes("if (importJobsResult.state === \"unavailable\") {"),
+    "Operations repair must normalize dead-letter list payloads and gate the core import backlog feed honestly.",
   );
   assert(
     source.includes('const failedImports = importJobs.filter((job) => job.deadLetterRows > 0 || job.failedRows > 0);') &&
@@ -40,8 +44,10 @@ function run() {
     source.includes('label="Import Jobs Requiring Repair"') &&
       source.includes('label="Import Dead-Letter Rows"') &&
       source.includes('label="Import Failed Rows"') &&
-      source.includes('label="Submission Dead Letter Queue"'),
-    "Operations repair must surface KPI cards for both import-repair and submission dead-letter backlog.",
+      source.includes('label="Submission Dead Letter Queue"') &&
+      source.includes("Submission dead-letter totals are limited for your role.") &&
+      source.includes("Submission dead-letter totals are temporarily unavailable."),
+    "Operations repair must surface KPI cards for both import-repair and submission dead-letter backlog while keeping degraded supporting reads explicit.",
   );
   assert(
     source.includes("Repair playbook") &&
@@ -59,9 +65,13 @@ function run() {
     "Operations repair must deep-link operators into imports and jobs, including scoped repair links for failed import jobs.",
   );
   assert(
+    source.includes("Import repair access is restricted") &&
+      source.includes("Import repair is temporarily unavailable") &&
+      source.includes("Submission dead-letter details are restricted for your role.") &&
+      source.includes("Submission dead-letter details are temporarily unavailable.") &&
     source.includes('No import repair backlog.') &&
       source.includes('No dead-letter submission backlog.'),
-    "Operations repair must surface honest empty states for both repair queues.",
+    "Operations repair must surface honest restricted, unavailable, and empty states for both repair queues.",
   );
   assert(
     source.includes('StatusChip label={`${job.deadLetterRows} dead letter`} tone={job.deadLetterRows > 0 ? "danger" : "warning"}') &&
@@ -70,8 +80,9 @@ function run() {
     "Operations repair must expose meaningful status chips and failure reasons for both import and submission repair queues.",
   );
   assert(
-    source.includes('redirect(buildLoginRedirect("/operations/repair", error));'),
-    "Operations repair must redirect expired or forbidden sessions through the shared login helper.",
+    source.includes('if (error instanceof ApiHttpError && error.status === 401)') &&
+      source.includes('redirect(buildLoginRedirect("/operations/repair", error));'),
+    "Operations repair must redirect only expired sessions through the shared login helper.",
   );
 
   console.log(

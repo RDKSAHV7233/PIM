@@ -16,21 +16,27 @@ function run() {
   const source = fs.readFileSync(HEALTH_PAGE, "utf8");
 
   assert(
-      source.includes("await getServerSession();"),
+      source.includes("await getServerSession();") &&
+      source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
+      source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>"),
     "Channels health must derive server auth context from the shared auth/session helpers.",
   );
   assert(
-    source.includes("const health = await getDashboardHealth({ role: actorRole, authHeader });"),
-    "Channels health must load dashboard health through the shared API client and server auth context.",
+    source.includes("loadSharedRead(getDashboardHealth({ role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getConnectorInstallationsHealth({ role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getConnectorSummary({ role: actorRole, authHeader }))") &&
+      source.includes("loadSharedRead(getInstalledConnectors({ role: actorRole, authHeader }))"),
+    "Channels health must load dashboard health plus installation-scoped connector truth through the shared API client and server auth context.",
   );
   assert(
-    source.includes("const connectorEntries = Object.entries(health.snapshot.publishReadyByConnector);") &&
-      source.includes("const totalReady = connectorEntries.reduce((sum, [, count]) => sum + count, 0);") &&
-      source.includes("const totalBlocked = Object.values(health.snapshot.blockedByConnector).reduce((sum, count) => sum + count, 0);") &&
-      source.includes('const readyListings = typeof health.publishReadyTotal === "number" ? health.publishReadyTotal : totalReady;') &&
-      source.includes('const blockedListings = typeof health.blockedTotal === "number" ? health.blockedTotal : totalBlocked;') &&
-      source.includes('const connectorBreakdownRedacted = health.redactedSections?.includes("connector_breakdown") ?? false;'),
-    "Channels health must derive ready and blocked listing totals from the live dashboard health snapshot while honoring redacted aggregate fallbacks.",
+    source.includes("const connectorEntries = connectorHealth?.connectors ?? [];") &&
+      source.includes("const installationEntries = connectorHealth?.installations ?? [];") &&
+      source.includes("const readyListings =") &&
+      source.includes("const blockedListings =") &&
+      source.includes('connectorSummaryResult.value.totals.ready') &&
+      source.includes('connectorSummaryResult.value.totals.blocked') &&
+      source.includes('const connectorBreakdownRedacted = health?.redactedSections?.includes("connector_breakdown") ?? false;'),
+    "Channels health must derive ready and blocked listing totals from the connector summary truth while honoring redacted aggregate fallbacks.",
   );
   assert(
     source.includes('label="Ready Listings"') &&
@@ -50,8 +56,11 @@ function run() {
   );
   assert(
     source.includes("Per-channel connector breakdown is limited to editor and admin roles.") &&
+      source.includes("Per-channel connector breakdown is temporarily unavailable.") &&
       source.includes("The aggregate readiness and blocking") &&
       source.includes("totals above remain available for read-only quality review.") &&
+      source.includes("Store account labels are limited for your role.") &&
+      source.includes("Store account labels are temporarily unavailable.") &&
       source.includes('title="No channel readiness records yet"') &&
       source.includes('description="Install and configure connectors to start collecting readiness and blocked listing signals."') &&
       source.includes('action={{ label: "Open Connectors", href: "/channels/connectors" }}'),
@@ -59,15 +68,19 @@ function run() {
   );
   assert(
     source.includes('const healthTone = blocked > 0 ? "warning" : ready > 0 ? "success" : "neutral";') &&
-      source.includes('const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : "No activity";') &&
+      source.includes('installationEntries.map((inst) => {') &&
+      source.includes('const ready = inst.ready;') &&
+      source.includes('const blocked = inst.blocked;') &&
+      source.includes('const healthLabel = blocked > 0 ? "Attention" : ready > 0 ? "Healthy" : pending > 0 ? "Pending" : "No activity";') &&
       source.includes("StatusChip label={healthLabel} tone={healthTone}"),
-    "Channels health must derive per-channel health labels and tones from live ready and blocked counts.",
+    "Channels health must derive per-store health labels and tones from installation-scoped ready and blocked counts, not connector aggregates.",
   );
   assert(
     source.includes('href="/channels/submissions"') &&
       source.includes('href="/operations/jobs"') &&
+      source.includes('if (error instanceof ApiHttpError && error.status === 401)') &&
       source.includes('redirect(buildLoginRedirect("/channels/health", error));'),
-    "Channels health must deep-link operators into submissions/jobs and redirect auth failures through the shared login helper.",
+    "Channels health must deep-link operators into submissions/jobs and redirect only expired sessions through the shared login helper.",
   );
 
   console.log(
@@ -82,7 +95,8 @@ function run() {
           "channels_health_route_guides_triage_follow_up",
           "channels_health_route_handles_empty_state_honestly",
           "channels_health_route_derives_per_channel_health_labels",
-          "channels_health_route_links_and_redirects_auth_failures",
+          "channels_health_route_preserves_store_metadata_degraded_states",
+          "channels_health_route_redirects_only_expired_sessions",
         ],
         checkedAt: new Date().toISOString(),
       },

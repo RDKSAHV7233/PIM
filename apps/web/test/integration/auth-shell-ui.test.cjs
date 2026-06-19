@@ -22,12 +22,11 @@ function run() {
   const serverAuthSource = fs.readFileSync(SERVER_AUTH, "utf8");
 
   assert(
-      layoutSource.includes("hasServerAuthToken") &&
-      layoutSource.includes("const hasAuthToken = await hasServerAuthToken();") &&
+      layoutSource.includes("const hasAuthToken = Boolean(sessionClaims);") &&
       layoutSource.includes("<AuthenticatedShell actorRole={actorRole}") &&
       shellSource.includes("<LogoutButton />") &&
       layoutSource.includes("{hasAuthToken ? ("),
-    "Root layout must render the authenticated shell from auth-token presence, not only session claims.",
+    "Root layout must render the authenticated shell from verified session claims.",
   );
   assert(
     serverAuthSource.includes("export async function hasServerAuthToken()"),

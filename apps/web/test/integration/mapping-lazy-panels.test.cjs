@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE_FILE = path.join(REPO_ROOT, "apps", "web", "src", "app", "channels", "mappings", "page.tsx");
+const EDITOR_FILE = path.join(REPO_ROOT, "apps", "web", "src", "components", "channel", "mapping-editor.tsx");
 
 function assert(condition, message) {
   if (!condition) {
@@ -14,27 +15,27 @@ function assert(condition, message) {
 
 function run() {
   const source = fs.readFileSync(PAGE_FILE, "utf8");
+  const editorSource = fs.readFileSync(EDITOR_FILE, "utf8");
 
   assert(
-    source.includes("const showContext = isEnabled(query.showContext);") &&
-      source.includes("const showResolved = isEnabled(query.showResolved) || showContext;") &&
-      source.includes("const showTaxonomy = isEnabled(query.showTaxonomy)") &&
-      source.includes("const showHistory = isEnabled(query.showHistory)"),
-    "Mappings page must gate secondary panel fetches behind explicit lazy-load flags.",
+    source.includes("parseMappingWizardState(query)") &&
+      source.includes("resolveRequestedWizardStep") &&
+      source.includes("buildMappingRoute"),
+    "Mappings page must normalize incoming query state into the wizard contract instead of relying on the old lazy-panel flags.",
   );
   assert(
-    source.includes("showHistory") &&
-      source.includes("showResolved") &&
-      source.includes("showTaxonomy") &&
-      source.includes("showContext"),
-    "Mappings page must conditionally fetch history, resolved snapshot, taxonomy, and product context data.",
+    source.includes("showAdvanced") &&
+      source.includes("advancedPanel") &&
+      source.includes("step: \"scope\"") &&
+      source.includes("step: \"map\"") &&
+      source.includes("step: \"review\""),
+    "Mappings page must derive wizard navigation and advanced-surface state from explicit normalized params.",
   );
   assert(
-    source.includes("Open history") &&
-      source.includes("Open context") &&
-      source.includes("Open taxonomy") &&
-      source.includes("Open snapshot"),
-    "Mappings page must expose on-demand load actions for deferred secondary panels.",
+    source.includes("continueToMapHref") &&
+      source.includes("Change scope") &&
+      editorSource.includes("Open review step"),
+    "Mappings page must expose explicit wizard actions instead of on-demand lazy-panel loaders.",
   );
 
   console.log(
@@ -42,8 +43,8 @@ function run() {
       {
         status: "ok",
         validated: [
-          "mappings_page_defers_secondary_panels_with_explicit_flags",
-          "mappings_page_exposes_load_actions_for_deferred_panels",
+          "mappings_page_normalizes_query_state_into_wizard_contract",
+          "mappings_page_exposes_explicit_step_navigation_actions",
         ],
         checkedAt: new Date().toISOString(),
       },

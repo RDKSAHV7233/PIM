@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "oidc", "page.tsx");
+const ALIAS_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "oidc", "page.tsx");
 const ACTIONS = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "oidc", "actions.ts");
 const PARENT_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "auth-policy", "page.tsx");
 const ADMIN_PAGE = path.join(REPO_ROOT, "apps", "web", "src", "app", "admin", "page.tsx");
@@ -25,6 +26,7 @@ function read(filePath) {
 
 function run() {
   const page = read(PAGE);
+  const aliasPage = read(ALIAS_PAGE);
   const actions = read(ACTIONS);
   const parentPage = read(PARENT_PAGE);
   const adminPage = read(ADMIN_PAGE);
@@ -54,6 +56,13 @@ function run() {
       page.includes('status === "oidc-deleted"') &&
       page.includes('status === "oidc-error"'),
     "OIDC admin page must surface inline success, info, and failure feedback via the status query parameter.",
+  );
+
+  assert(
+    page.includes("OidcUnavailableState") &&
+      page.includes("OIDC configuration is temporarily unavailable") &&
+      page.includes("Retry OIDC settings"),
+    "OIDC admin page must expose a dedicated unavailable state instead of guessing config or plan truth when upstream reads fail.",
   );
 
   // ── Page exposes upsert form with required fields ──────────────────────────
@@ -170,6 +179,11 @@ function run() {
     "Parent auth-policy page must link to the OIDC configuration page next to the OIDC sign-in toggle.",
   );
 
+  assert(
+    aliasPage.includes('redirect(params.size > 0 ? `/admin/auth-policy/oidc?${params.toString()}` : "/admin/auth-policy/oidc")'),
+    "/admin/oidc must be a redirect-only alias to the canonical /admin/auth-policy/oidc surface.",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -191,6 +205,7 @@ function run() {
           "oidc_admin_server_action_redirects_with_canonical_status_keys",
           "oidc_admin_api_client_exposes_required_functions",
           "oidc_admin_navigation_links_are_present",
+          "oidc_admin_alias_redirects_to_canonical_surface",
         ],
         checkedAt: new Date().toISOString(),
       },

@@ -16,7 +16,9 @@ function run() {
   const source = fs.readFileSync(PAGE, "utf8");
 
   assert(
-    source.includes("const { authHeader, actorRole: role } = await getServerSession();"),
+    source.includes("await getServerSession();") &&
+      source.includes("authHeader") &&
+      source.includes("actorRole: role"),
     "Admin API keys must derive shared server auth/session context before loading data.",
   );
   assert(

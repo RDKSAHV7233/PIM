@@ -20,7 +20,9 @@ function run() {
   const eventsSource = fs.readFileSync(WEBHOOK_EVENTS, "utf8");
 
   assert(
-    source.includes("const { authHeader, actorRole: role } = await getServerSession();"),
+    source.includes("await getServerSession();") &&
+      source.includes("authHeader") &&
+      source.includes("actorRole: role"),
     "Admin webhooks must derive shared server auth/session context before loading data.",
   );
   assert(
