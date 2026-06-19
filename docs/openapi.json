@@ -1012,6 +1012,20 @@
         ]
       }
     },
+    "/api/v1/taxonomy/categories/counts": {
+      "get": {
+        "operationId": "TaxonomyController_listCategoryCounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Taxonomy"
+        ]
+      }
+    },
     "/api/v1/taxonomy/categories/{id}": {
       "get": {
         "operationId": "TaxonomyController_getCategory",
@@ -1554,6 +1568,36 @@
           }
         },
         "summary": "List installed connectors",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/installations/health": {
+      "get": {
+        "operationId": "ConnectorInstallerController_getInstallationHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Connector installation health fetched"
+          }
+        },
+        "summary": "List installation-scoped connector health truth",
+        "tags": [
+          "Connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/summary": {
+      "get": {
+        "operationId": "ConnectorInstallerController_getConnectorSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Connector summary fetched"
+          }
+        },
+        "summary": "List connector summary truth for current tenant",
         "tags": [
           "Connectors"
         ]
@@ -3397,6 +3441,62 @@
           }
         },
         "summary": "List submissions",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/submissions/count": {
+      "get": {
+        "operationId": "SubmissionsController_countSubmissions",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connectorSlug",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "installationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minAttempt",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submission count fetched"
+          }
+        },
+        "summary": "Count submissions",
         "tags": [
           "Marketplace"
         ]
