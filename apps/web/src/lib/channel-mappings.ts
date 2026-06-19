@@ -16,6 +16,155 @@ import {
 
 export type ProtectedMappingActionKind = "publish" | "archive" | "rollback";
 export type ConnectorTaxonomyOption = Pick<ConnectorTaxonomyItem, "id" | "path" | "requiredAttributes">;
+export type MappingWizardStep = "scope" | "map" | "review";
+export type MappingAdvancedPanel = "fallback" | "compatibility" | "resolved" | "json" | "diagnostics";
+
+export interface MappingWizardQueryState {
+  categoryId?: string;
+  channel?: string;
+  installationId?: string;
+  productId?: string;
+  publishCategoryId?: string;
+  fallbackAcknowledged?: string;
+  fallbackAckVersionId?: string;
+  fallbackAckError?: string;
+  stepUpAction?: string;
+  stepUpError?: string;
+  stepUpVersionId?: string;
+  taxonomyQ?: string;
+  showContext?: string;
+  showTaxonomy?: string;
+  showResolved?: string;
+  showHistory?: string;
+  showAdvanced?: string;
+  advancedPanel?: string;
+  step?: string;
+}
+
+export interface MappingWizardState {
+  step: MappingWizardStep;
+  categoryId: string;
+  channel: string;
+  installationId: string;
+  productId: string;
+  publishCategoryId: string;
+  fallbackAcknowledged: boolean;
+  fallbackAckVersionId: string;
+  fallbackAckError: string;
+  stepUpAction: string;
+  stepUpError: string;
+  stepUpVersionId: string;
+  taxonomyQ: string;
+  showAdvanced: boolean;
+  advancedPanel: MappingAdvancedPanel | "";
+}
+
+function normalizedWizardStep(value: string): MappingWizardStep | "" {
+  if (value === "scope" || value === "map" || value === "review") {
+    return value;
+  }
+  return "";
+}
+
+function normalizedAdvancedPanel(value: string): MappingAdvancedPanel | "" {
+  if (
+    value === "fallback" ||
+    value === "compatibility" ||
+    value === "resolved" ||
+    value === "json" ||
+    value === "diagnostics"
+  ) {
+    return value;
+  }
+  return "";
+}
+
+export function parseMappingWizardState(query: MappingWizardQueryState): MappingWizardState {
+  const legacyShowContext = String(query.showContext ?? "").trim() === "1";
+  const legacyShowTaxonomy = String(query.showTaxonomy ?? "").trim() === "1" || String(query.taxonomyQ ?? "").trim().length > 0;
+  const legacyShowResolved = String(query.showResolved ?? "").trim() === "1";
+  const legacyShowHistory = String(query.showHistory ?? "").trim() === "1";
+  const stepUpAction = String(query.stepUpAction ?? "").trim();
+  const stepUpVersionId = String(query.stepUpVersionId ?? "").trim();
+  const requestedStep = normalizedWizardStep(String(query.step ?? "").trim());
+  const inferredStep =
+    requestedStep ||
+    (legacyShowHistory || stepUpAction || stepUpVersionId
+      ? "review"
+      : legacyShowTaxonomy || legacyShowContext
+        ? "scope"
+        : legacyShowResolved
+          ? "review"
+          : "scope");
+  const requestedAdvanced = String(query.showAdvanced ?? "").trim() === "true" || legacyShowResolved;
+  const advancedPanel = normalizedAdvancedPanel(String(query.advancedPanel ?? "").trim()) || (legacyShowResolved ? "resolved" : "");
+
+  return {
+    step: inferredStep,
+    categoryId: String(query.categoryId ?? "").trim(),
+    channel: String(query.channel ?? "").trim(),
+    installationId: String(query.installationId ?? "").trim(),
+    productId: String(query.productId ?? "").trim(),
+    publishCategoryId: String(query.publishCategoryId ?? "").trim(),
+    fallbackAcknowledged: String(query.fallbackAcknowledged ?? "").trim() === "true",
+    fallbackAckVersionId: String(query.fallbackAckVersionId ?? "").trim(),
+    fallbackAckError: String(query.fallbackAckError ?? "").trim(),
+    stepUpAction,
+    stepUpError: String(query.stepUpError ?? "").trim(),
+    stepUpVersionId,
+    taxonomyQ: String(query.taxonomyQ ?? "").trim(),
+    showAdvanced: requestedAdvanced,
+    advancedPanel,
+  };
+}
+
+export function resolveRequestedWizardStep(
+  requestedStep: MappingWizardStep,
+  options: {
+    hasBaseScope: boolean;
+    hasPublishCategory: boolean;
+    hasDraftContext: boolean;
+  },
+): MappingWizardStep {
+  if (!options.hasBaseScope || !options.hasPublishCategory) {
+    return "scope";
+  }
+  if (requestedStep === "review" && !options.hasDraftContext) {
+    return "map";
+  }
+  return requestedStep;
+}
+
+export function buildMappingRoute(state: Partial<MappingWizardState> & { step?: MappingWizardStep | "" }): string {
+  const params = new URLSearchParams();
+  const entries: Array<[string, string | undefined | null | boolean]> = [
+    ["step", state.step ?? ""],
+    ["channel", state.channel],
+    ["categoryId", state.categoryId],
+    ["installationId", state.installationId],
+    ["productId", state.productId],
+    ["publishCategoryId", state.publishCategoryId],
+    ["taxonomyQ", state.taxonomyQ],
+    ["fallbackAcknowledged", state.fallbackAcknowledged ? "true" : ""],
+    ["fallbackAckVersionId", state.fallbackAckVersionId],
+    ["fallbackAckError", state.fallbackAckError],
+    ["showAdvanced", state.showAdvanced ? "true" : ""],
+    ["advancedPanel", state.advancedPanel],
+    ["stepUpAction", state.stepUpAction],
+    ["stepUpError", state.stepUpError],
+    ["stepUpVersionId", state.stepUpVersionId],
+  ];
+
+  for (const [key, rawValue] of entries) {
+    const value = String(rawValue ?? "").trim();
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `/channels/mappings?${query}` : "/channels/mappings";
+}
 
 export function normalizeChannel(
   value: string | undefined,
@@ -309,9 +458,13 @@ interface BuildMappingsViewModelArgs {
   selectedChannel: MarketplaceChannel;
   selectedProductId: string;
   selectedInstallationId?: string;
+  selectedPublishCategoryId?: string;
   fallbackAcknowledged?: boolean;
   fallbackAckVersionId?: string;
   taxonomyQ: string;
+  step?: MappingWizardStep;
+  showAdvanced?: boolean;
+  advancedPanel?: MappingAdvancedPanel | "";
 }
 
 export function buildMappingsViewModel({
@@ -325,19 +478,36 @@ export function buildMappingsViewModel({
   selectedChannel,
   selectedProductId,
   selectedInstallationId,
+  selectedPublishCategoryId,
   fallbackAcknowledged,
   fallbackAckVersionId,
   taxonomyQ,
+  step = "review",
+  showAdvanced = false,
+  advancedPanel = "",
 }: BuildMappingsViewModelArgs) {
-  const redirectTo = `/channels/mappings?categoryId=${encodeURIComponent(selectedCategoryId)}&channel=${encodeURIComponent(selectedChannel)}${selectedInstallationId ? `&installationId=${encodeURIComponent(selectedInstallationId)}` : ""}${taxonomyQ ? `&taxonomyQ=${encodeURIComponent(taxonomyQ)}` : ""}${selectedProductId ? `&productId=${encodeURIComponent(selectedProductId)}` : ""}${fallbackAcknowledged ? "&fallbackAcknowledged=true" : ""}${fallbackAckVersionId ? `&fallbackAckVersionId=${encodeURIComponent(fallbackAckVersionId)}` : ""}`;
+  const redirectTo = buildMappingRoute({
+    step,
+    categoryId: selectedCategoryId,
+    channel: selectedChannel,
+    installationId: selectedInstallationId,
+    productId: selectedProductId,
+    publishCategoryId: selectedPublishCategoryId,
+    taxonomyQ,
+    fallbackAcknowledged,
+    fallbackAckVersionId,
+    showAdvanced,
+    advancedPanel,
+  });
   const taxonomyDefaults = requiredAttributesFromTaxonomy(taxonomyMatches);
   const resolvedCategoryTarget = extractResolvedCategoryTarget(resolved?.resolvedMapping ?? null);
   const targetCategoryOptions = uniqueStrings([
+    selectedPublishCategoryId ?? "",
     resolvedCategoryTarget,
     ...taxonomyMatches.map((item) => item.id),
     ...unmappedCategories.map((item) => item.id),
   ]);
-  const selectedTargetCategory = resolvedCategoryTarget || targetCategoryOptions[0] || "";
+  const selectedTargetCategory = selectedPublishCategoryId || resolvedCategoryTarget || targetCategoryOptions[0] || "";
   const requiredTargetFields = uniqueStrings([...mapping.requiredFields, ...taxonomyDefaults]);
   const currentFieldMap = Object.fromEntries(
     Object.entries(mapping.fieldMap).map(([sourceField, targetField]) => [String(sourceField), String(targetField)]),

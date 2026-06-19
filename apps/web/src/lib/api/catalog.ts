@@ -59,6 +59,14 @@ export async function getCategoryTree(
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+export async function getCategoryCounts(options?: ApiRequestOptions) {
+  return fetchJson<Array<{ categoryId: string; childCount: number; productCount: number }>>(
+    "/taxonomy/categories/counts",
+    undefined,
+    options,
+  );
+}
+
 export async function getProductList(
   inputOrOptions?: ProductListQuery | ApiRequestOptions,
   maybeOptions?: ApiRequestOptions,
@@ -247,6 +255,7 @@ export interface WorkflowSlaConfig {
 
 export interface OverdueCountResponse {
   count: number;
+  asOf?: string;
 }
 
 export type ProductRelationshipType = "bundle_component" | "accessory" | "substitute" | "upsell";
