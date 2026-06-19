@@ -195,9 +195,9 @@
     "hosting:stage1:verify": "node scripts/staging-postdeploy-check.cjs",
     "hosting:stage2:verify": "node scripts/staging-postdeploy-check.cjs && node scripts/staging-public-signup-check.cjs",
     "hosting:stage3:verify": "node scripts/staging-postdeploy-check.cjs && node scripts/staging-public-signup-check.cjs && npm run tenant:verify-rls:ci",
-    "infra:up": "docker compose up -d",
-    "infra:down": "docker compose down",
-    "infra:logs": "docker compose logs -f"
+    "infra:up": "docker compose -f docker-compose.yml up -d --remove-orphans",
+    "infra:down": "docker compose -f docker-compose.yml down --remove-orphans",
+    "infra:logs": "docker compose -f docker-compose.yml logs -f"
   },
   "overrides": {
     "postcss": ">=8.5.10",

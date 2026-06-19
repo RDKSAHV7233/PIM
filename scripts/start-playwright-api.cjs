@@ -8,7 +8,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
-const apiEntryPath = path.join(root, "apps", "api", "dist", "main.js");
+const apiEntryPath = path.join(root, "apps", "api", "scripts", "start-built-api.cjs");
 
 function resolveDatabaseUrl(fileEnv) {
   const localDatabaseUrl =
