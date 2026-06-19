@@ -6,10 +6,11 @@ import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
-import { ApiHttpError, getCategoryTree, getProductList } from "@/lib/api";
+import { ApiHttpError, getCategoryTree } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { filterTestData } from "@/lib/test-data-filter";
 import { getServerSession } from "@/lib/server-session";
+import { getCategoryCounts } from "@/lib/api/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -52,27 +53,17 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
   const canAdmin = actorRole === "admin";
 
   try {
-    const [categories, products] = await Promise.all([
+    const [categories, categoryCounts] = await Promise.all([
       getCategoryTree({ all: true }, { role: actorRole, authHeader, revalidateSeconds: 60 }),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+      getCategoryCounts({ role: actorRole, authHeader }),
     ]);
     const filteredCategories = filterTestData(categories, hideTestData);
-    const filteredProducts = filterTestData(products, hideTestData);
     const visibleCategories = filteredCategories.slice(0, categoryLimit);
     const toggleHref = hideTestData ? "/catalog/categories?hideTestData=false" : "/catalog/categories";
     const showMoreHref = `/catalog/categories?categoryLimit=${categoryLimit + 100}${hideTestData ? "" : "&hideTestData=false"}`;
     const showAllHref = `/catalog/categories?categoryLimit=${filteredCategories.length}${hideTestData ? "" : "&hideTestData=false"}`;
 
-    const childCounts = filteredCategories.reduce<Record<string, number>>((acc, category) => {
-      if (category.parentId) {
-        acc[category.parentId] = (acc[category.parentId] ?? 0) + 1;
-      }
-      return acc;
-    }, {});
-    const productCounts = filteredProducts.reduce<Record<string, number>>((acc, product) => {
-      acc[product.categoryId] = (acc[product.categoryId] ?? 0) + 1;
-      return acc;
-    }, {});
+    const countsByCategoryId = new Map(categoryCounts.map((count) => [count.categoryId, count]));
 
     const returnParams = new URLSearchParams();
     if (query.hideTestData) {
@@ -91,12 +82,12 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
       {
         key: "children",
         header: "Children",
-        render: (category) => childCounts[category.id] ?? 0,
+        render: (category) => countsByCategoryId.get(category.id)?.childCount ?? 0,
       },
       {
         key: "products",
         header: "Products",
-        render: (category) => productCounts[category.id] ?? 0,
+        render: (category) => countsByCategoryId.get(category.id)?.productCount ?? 0,
       },
       ...(canAdmin
         ? [
@@ -106,8 +97,8 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
               headerClassName: "text-right",
               cellClassName: "text-right",
               render: (category) => {
-                const childCount = childCounts[category.id] ?? 0;
-                const productCount = productCounts[category.id] ?? 0;
+                const childCount = countsByCategoryId.get(category.id)?.childCount ?? 0;
+                const productCount = countsByCategoryId.get(category.id)?.productCount ?? 0;
                 const disabledReason =
                   childCount > 0
                     ? `This category has ${childCount} child ${childCount === 1 ? "category" : "categories"}.`
