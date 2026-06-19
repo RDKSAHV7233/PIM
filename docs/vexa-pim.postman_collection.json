@@ -3204,6 +3204,32 @@
           }
         },
         {
+          "name": "TaxonomyController_listCategoryCounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/taxonomy/categories/counts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "taxonomy",
+                "categories",
+                "counts"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "Get category",
           "request": {
             "method": "GET",
@@ -3837,6 +3863,57 @@
               ]
             },
             "description": "List installed connectors"
+          }
+        },
+        {
+          "name": "List installation-scoped connector health truth",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/installations/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "installations",
+                "health"
+              ]
+            },
+            "description": "List installation-scoped connector health truth"
+          }
+        },
+        {
+          "name": "List connector summary truth for current tenant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/connectors/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "connectors",
+                "summary"
+              ]
+            },
+            "description": "List connector summary truth for current tenant"
           }
         },
         {
@@ -6406,6 +6483,63 @@
               ]
             },
             "description": "List submissions"
+          }
+        },
+        {
+          "name": "Count submissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/submissions/count?productId=&connectorSlug=&installationId=&status=&minAttempt=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "submissions",
+                "count"
+              ],
+              "query": [
+                {
+                  "key": "productId",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "connectorSlug",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "installationId",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                },
+                {
+                  "key": "minAttempt",
+                  "value": "",
+                  "description": "(required)",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Count submissions"
           }
         },
         {

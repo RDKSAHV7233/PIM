@@ -37,6 +37,25 @@ export class SubmissionsController {
     );
   }
 
+  @Get("count")
+  @ApiOperation({ summary: "Count submissions" })
+  @ApiResponse({ status: 200, description: "Submission count fetched" })
+  countSubmissions(
+    @Query("productId") productId?: string,
+    @Query("connectorSlug") connectorSlug?: string,
+    @Query("installationId") installationId?: string,
+    @Query("status") status?: string,
+    @Query("minAttempt") minAttempt?: string,
+  ) {
+    return this.marketplaceService.countSubmissions({
+      productId,
+      connectorSlug,
+      installationId,
+      status,
+      minAttempt: minAttempt ? Number(minAttempt) : undefined,
+    });
+  }
+
   @Get("dead-letter")
   @ApiOperation({ summary: "List dead-letter submissions/jobs" })
   @ApiResponse({ status: 200, description: "Dead-letter submissions fetched" })

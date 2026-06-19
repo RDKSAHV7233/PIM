@@ -11,9 +11,28 @@ import { correlationMiddleware } from "./common/logging/correlation.middleware";
 import { LoggerService } from "./common/logging/logger.service";
 
 const EXPRESS_BODY_LIMIT = "10mb";
+const BOOT_DEBUG_ENABLED =
+  String(process.env.PLAYWRIGHT_BOOT_DEBUG ?? "").trim() === "1" ||
+  String(process.env.API_BOOT_DEBUG ?? "").trim().toLowerCase() === "true";
+
+function bootDebug(message: string, meta?: Record<string, unknown>) {
+  if (!BOOT_DEBUG_ENABLED) {
+    return;
+  }
+  const payload = meta ? ` ${JSON.stringify(meta)}` : "";
+  // eslint-disable-next-line no-console
+  console.log(`[api-boot] ${message}${payload}`);
+}
 
 async function bootstrap() {
+  bootDebug("bootstrap:start");
   const env = validateEnv();
+  bootDebug("env:validated", {
+    appEnv: env.APP_ENV,
+    authMode: env.AUTH_MODE,
+    queueBackend: env.QUEUE_BACKEND,
+    port: env.PORT,
+  });
 
   if (env.SENTRY_DSN) {
     try {
@@ -51,9 +70,11 @@ async function bootstrap() {
     }
   }
 
+  bootDebug("nest:create:start");
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
+  bootDebug("nest:create:done");
 
   app.use("/api/v1/billing/stripe/webhook", raw({ type: "*/*" }));
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
@@ -111,7 +132,9 @@ async function bootstrap() {
   }
 
   const port = Number(env.PORT ?? 4000);
+  bootDebug("listen:start", { port });
   await app.listen(port, "0.0.0.0");
+  bootDebug("listen:done", { port });
   app.get(LoggerService).info("API running", {
     port,
     baseUrl: `http://localhost:${port}/api/v1`,

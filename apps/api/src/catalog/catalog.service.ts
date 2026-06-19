@@ -1208,7 +1208,7 @@ export class CatalogService {
         deletedAt: null,
       },
     });
-    return { overdueCount: count, asOf: now.toISOString() };
+    return { count, asOf: now.toISOString() };
   }
 
   async getProductActivity(productId: string, actor: ActorContext, limit = 50) {

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build --builder tsc --path tsconfig.build.json",
-    "start": "node dist/main.js",
+    "start": "node scripts/start-built-api.cjs",
     "lint": "tsc -p tsconfig.build.json --noEmit",
     "test:unit": "jest --config jest.config.js",
     "credentials:rotate:script": "node -r ts-node/register ../../scripts/rotate-credentials.ts"
