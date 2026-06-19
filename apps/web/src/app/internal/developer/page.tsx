@@ -384,8 +384,6 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
     } catch (error: unknown) {
       if (error instanceof ApiHttpError) {
         opsError = `Commercial tools API returned ${error.status}.`;
-      } else if (error instanceof Error) {
-        opsError = error.message;
       } else {
         opsError = "Commercial tools could not be loaded.";
       }

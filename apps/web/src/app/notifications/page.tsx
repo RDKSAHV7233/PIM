@@ -4,12 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { NotificationItem, NotificationListResponse } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/format";
-
-// ── Severity helpers (mirrors notification-center.tsx) ────────────────────────
 
 function eventSeverity(eventType: NotificationItem["eventType"]): "info" | "warning" | "blocker" {
   if (
@@ -46,44 +45,139 @@ function severityClasses(severity: "info" | "warning" | "blocker", readAt: strin
 }
 
 function severityBadgeClasses(severity: "info" | "warning" | "blocker") {
-  if (severity === "blocker") return "bg-red-100 text-red-700";
-  if (severity === "warning") return "bg-amber-100 text-amber-700";
+  if (severity === "blocker") {
+    return "bg-red-100 text-red-700";
+  }
+  if (severity === "warning") {
+    return "bg-amber-100 text-amber-700";
+  }
   return "bg-blue-100 text-blue-700";
 }
 
 function severityActionClasses(severity: "info" | "warning" | "blocker") {
-  if (severity === "blocker") return "text-red-700";
-  if (severity === "warning") return "text-amber-700";
+  if (severity === "blocker") {
+    return "text-red-700";
+  }
+  if (severity === "warning") {
+    return "text-amber-700";
+  }
   return "text-blue-700";
 }
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
   return formatDateTime(date);
 }
 
 function readCookie(name: string): string {
-  if (typeof document === "undefined") return "";
+  if (typeof document === "undefined") {
+    return "";
+  }
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-// ── Page component ─────────────────────────────────────────────────────────────
+type NotificationFeedState = "loading" | "available" | "restricted" | "unavailable";
+type NotificationActionState = "idle" | "submitting";
+type NotificationFailure =
+  | { kind: "session_expired"; status: number; body?: unknown }
+  | { kind: "restricted" }
+  | { kind: "unavailable" };
+type NotificationFetchResult =
+  | { state: "available"; value: NotificationListResponse }
+  | { state: "failure"; failure: NotificationFailure };
 
 const PAGE_SIZE = 20;
+
+function isUnavailableStatus(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function parseJsonSafely(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function NotificationsStatusState({
+  title,
+  description,
+  tone,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  tone: "restricted" | "unavailable";
+  onRetry?: (() => void) | null;
+}) {
+  const isUnavailable = tone === "unavailable";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={`rounded-xl border px-4 py-5 shadow-sm ${
+        isUnavailable ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <h2 className={`text-sm font-semibold ${isUnavailable ? "text-amber-900" : "text-slate-900"}`}>
+        {title}
+      </h2>
+      <p className={`mt-2 text-sm ${isUnavailable ? "text-amber-900/90" : "text-slate-700"}`}>
+        {description}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {onRetry ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onRetry}
+          >
+            Retry notifications
+          </Button>
+        ) : null}
+        <Link
+          href="/dashboard"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Open dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function applyFailureState(failure: NotificationFailure): NotificationFeedState {
+  if (failure.kind === "restricted") {
+    return "restricted";
+  }
+  if (failure.kind === "unavailable") {
+    return "unavailable";
+  }
+  return "loading";
+}
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [feedState, setFeedState] = useState<NotificationFeedState>("loading");
+  const [actionState, setActionState] = useState<NotificationActionState>("idle");
+  const [actionNotice, setActionNotice] = useState<NotificationFailure | null>(null);
   const csrfToken = useMemo(() => readCookie("pim_csrf_token"), []);
 
-  const fetchPage = useCallback(async (cursor?: string | null) => {
+  const redirectToLogin = useCallback((failure: { status: number; body?: unknown }) => {
+    window.location.assign(buildLoginRedirect("/notifications", failure));
+  }, []);
+
+  const fetchPage = useCallback(async (cursor?: string | null): Promise<NotificationFetchResult> => {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
     if (cursor) {
       params.set("cursor", cursor);
@@ -93,50 +187,101 @@ export default function NotificationsPage() {
       method: "GET",
       cache: "no-store",
     });
-    if (!response.ok) return null;
-    return (await response.json()) as NotificationListResponse;
+    if (response.ok) {
+      return {
+        state: "available",
+        value: (await response.json()) as NotificationListResponse,
+      };
+    }
+    const body = await parseJsonSafely(response);
+    if (response.status === 401) {
+      return {
+        state: "failure",
+        failure: { kind: "session_expired", status: response.status, body },
+      };
+    }
+    if (response.status === 403) {
+      const errorCode =
+        body && typeof body === "object" ? String((body as { error?: unknown }).error ?? "").trim().toUpperCase() : "";
+      if (errorCode === "TENANT_SUSPENDED") {
+        return {
+          state: "failure",
+          failure: { kind: "session_expired", status: response.status, body },
+        };
+      }
+      return {
+        state: "failure",
+        failure: { kind: "restricted" },
+      };
+    }
+    return {
+      state: "failure",
+      failure: { kind: isUnavailableStatus(response.status) ? "unavailable" : "restricted" },
+    };
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const data = await fetchPage(null);
-        if (data) {
-          setItems(Array.isArray(data.items) ? data.items : []);
-          setUnreadCount(Number(data.unreadCount ?? 0));
-          setNextCursor(data.nextCursor ?? null);
-        }
-      } finally {
-        setLoading(false);
+  const loadInitialFeed = useCallback(async () => {
+    setFeedState("loading");
+    setActionNotice(null);
+    const result = await fetchPage(null);
+    if (result.state === "failure") {
+      if (result.failure.kind === "session_expired") {
+        redirectToLogin(result.failure);
+        return;
       }
-    })();
-  }, [fetchPage]);
+      setItems([]);
+      setUnreadCount(0);
+      setNextCursor(null);
+      setFeedState(applyFailureState(result.failure));
+      return;
+    }
+    setItems(Array.isArray(result.value.items) ? result.value.items : []);
+    setUnreadCount(Number(result.value.unreadCount ?? 0));
+    setNextCursor(result.value.nextCursor ?? null);
+    setFeedState("available");
+  }, [fetchPage, redirectToLogin]);
+
+  useEffect(() => {
+    void loadInitialFeed();
+  }, [loadInitialFeed]);
 
   async function loadMore() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
+    if (!nextCursor || feedState !== "available" || actionState === "submitting") {
+      return;
+    }
+    setActionState("submitting");
+    setActionNotice(null);
     try {
-      const data = await fetchPage(nextCursor);
-      if (data) {
-        setItems((prev) => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
-        setUnreadCount(Number(data.unreadCount ?? 0));
-        setNextCursor(data.nextCursor ?? null);
+      const result = await fetchPage(nextCursor);
+      if (result.state === "failure") {
+        if (result.failure.kind === "session_expired") {
+          redirectToLogin(result.failure);
+          return;
+        }
+        setActionNotice(result.failure);
+        return;
       }
+      setItems((previousItems) => [
+        ...previousItems,
+        ...(Array.isArray(result.value.items) ? result.value.items : []),
+      ]);
+      setUnreadCount(Number(result.value.unreadCount ?? 0));
+      setNextCursor(result.value.nextCursor ?? null);
     } finally {
-      setLoadingMore(false);
+      setActionState("idle");
     }
   }
 
   async function markAllRead() {
-    if (submitting || unreadCount === 0) return;
-    setSubmitting(true);
+    if (actionState === "submitting" || unreadCount === 0 || feedState !== "available") {
+      return;
+    }
+    setActionState("submitting");
+    setActionNotice(null);
     const previousItems = items;
     const previousUnread = unreadCount;
     const readAt = new Date().toISOString();
-    setItems((current) =>
-      current.map((item) => (item.readAt ? item : { ...item, readAt })),
-    );
+    setItems((current) => current.map((item) => (item.readAt ? item : { ...item, readAt })));
     setUnreadCount(0);
     try {
       const response = await fetch("/api/notifications", {
@@ -146,40 +291,63 @@ export default function NotificationsPage() {
           ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
       });
-      if (!response.ok) {
-        setItems(previousItems);
-        setUnreadCount(previousUnread);
+      if (response.ok) {
+        return;
       }
+      const body = await parseJsonSafely(response);
+      setItems(previousItems);
+      setUnreadCount(previousUnread);
+      if (response.status === 401 || (response.status === 403 && body && typeof body === "object" && String((body as { error?: unknown }).error ?? "").trim().toUpperCase() === "TENANT_SUSPENDED")) {
+        redirectToLogin({ status: response.status, body });
+        return;
+      }
+      setActionNotice({ kind: response.status === 403 ? "restricted" : "unavailable" });
     } finally {
-      setSubmitting(false);
+      setActionState("idle");
     }
   }
 
   async function openNotification(item: NotificationItem) {
-    if (submitting) return;
-    setSubmitting(true);
-    if (!item.readAt) {
-      const readAt = new Date().toISOString();
+    if (actionState === "submitting") {
+      return;
+    }
+    setActionState("submitting");
+    setActionNotice(null);
+    const didOptimisticallyRead = !item.readAt;
+    const optimisticReadAt = new Date().toISOString();
+    if (didOptimisticallyRead) {
       setItems((current) =>
-        current.map((entry) => (entry.id === item.id ? { ...entry, readAt } : entry)),
+        current.map((entry) => (entry.id === item.id ? { ...entry, readAt: optimisticReadAt } : entry)),
       );
       setUnreadCount((current) => Math.max(0, current - 1));
     }
     try {
-      if (!item.readAt) {
-        await fetch(`/api/notifications/${encodeURIComponent(item.id)}/read`, {
+      if (didOptimisticallyRead) {
+        const response = await fetch(`/api/notifications/${encodeURIComponent(item.id)}/read`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
           },
         });
+        if (!response.ok) {
+          const body = await parseJsonSafely(response);
+          setItems((current) =>
+            current.map((entry) => (entry.id === item.id ? { ...entry, readAt: item.readAt } : entry)),
+          );
+          setUnreadCount((current) => current + 1);
+          if (response.status === 401 || (response.status === 403 && body && typeof body === "object" && String((body as { error?: unknown }).error ?? "").trim().toUpperCase() === "TENANT_SUSPENDED")) {
+            redirectToLogin({ status: response.status, body });
+            return;
+          }
+          setActionNotice({ kind: response.status === 403 ? "restricted" : "unavailable" });
+        }
       }
       if (item.actionUrl) {
         router.push(item.actionUrl);
       }
     } finally {
-      setSubmitting(false);
+      setActionState("idle");
     }
   }
 
@@ -205,28 +373,59 @@ export default function NotificationsPage() {
             variant="secondary"
             size="sm"
             onClick={() => void markAllRead()}
-            disabled={submitting || unreadCount === 0}
+            disabled={actionState === "submitting" || unreadCount === 0 || feedState !== "available"}
           >
             Mark all read
           </Button>
         </div>
       </div>
 
-      {unreadCount > 0 ? (
+      {actionNotice?.kind === "restricted" ? (
+        <NotificationsStatusState
+          title="Notification updates are restricted"
+          description="You can still view the current feed, but marking notifications as read is limited for your role right now."
+          tone="restricted"
+        />
+      ) : actionNotice?.kind === "unavailable" ? (
+        <NotificationsStatusState
+          title="Notification updates are temporarily unavailable"
+          description="The notification feed is visible, but update actions could not be confirmed. Try again in a moment."
+          tone="unavailable"
+        />
+      ) : null}
+
+      {feedState === "restricted" ? (
+        <NotificationsStatusState
+          title="Notifications are restricted"
+          description="Your role can open the workspace, but the notification feed is not available to it."
+          tone="restricted"
+        />
+      ) : null}
+
+      {feedState === "unavailable" ? (
+        <NotificationsStatusState
+          title="Notifications are temporarily unavailable"
+          description="We could not load the notification feed right now. The page is held in an unavailable state instead of showing a false empty inbox."
+          tone="unavailable"
+          onRetry={() => void loadInitialFeed()}
+        />
+      ) : null}
+
+      {feedState === "available" && unreadCount > 0 ? (
         <p className="text-sm text-slate-600">
           <span className="font-semibold text-slate-900">{unreadCount}</span> unread notification{unreadCount !== 1 ? "s" : ""}
         </p>
       ) : null}
 
-      {loading ? (
+      {feedState === "loading" ? (
         <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
           ))}
         </div>
       ) : null}
 
-      {!loading && !hasItems ? (
+      {feedState === "available" && !hasItems ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-16 text-center">
           <p className="text-sm font-medium text-slate-700">You're up to date</p>
           <p className="mt-1 text-sm text-slate-500">
@@ -235,7 +434,7 @@ export default function NotificationsPage() {
         </div>
       ) : null}
 
-      {!loading && hasItems ? (
+      {feedState === "available" && hasItems ? (
         <ul className="space-y-3">
           {items.map((item) => {
             const severity = eventSeverity(item.eventType);
@@ -286,21 +485,21 @@ export default function NotificationsPage() {
         </ul>
       ) : null}
 
-      {!loading && nextCursor ? (
+      {feedState === "available" && nextCursor ? (
         <div className="flex justify-center pt-2">
           <Button
             type="button"
             variant="secondary"
             size="sm"
             onClick={() => void loadMore()}
-            disabled={loadingMore}
+            disabled={actionState === "submitting"}
           >
-            {loadingMore ? "Loading..." : "Load more"}
+            {actionState === "submitting" ? "Loading..." : "Load more"}
           </Button>
         </div>
       ) : null}
 
-      {!loading && hasItems && !nextCursor ? (
+      {feedState === "available" && hasItems && !nextCursor ? (
         <p className="text-center text-xs text-slate-400">All notifications loaded</p>
       ) : null}
     </div>

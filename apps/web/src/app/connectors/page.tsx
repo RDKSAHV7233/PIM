@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { EmptyState } from "@/components/ui/empty-state";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { JsonPreview } from "@/components/ui/json-preview";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -1321,6 +1322,18 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/channels/connectors", error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Connectors"
+          description="Channel connector data is temporarily unavailable."
+        />
+        <InlineAlert
+          tone="error"
+          title="Connectors unavailable"
+          message="Connector marketplace and installation data could not be loaded. Retry in a moment or contact support if the issue persists."
+        />
+      </div>
+    );
   }
 }

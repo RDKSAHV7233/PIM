@@ -11,6 +11,12 @@ import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
+type SharedReadState = "available" | "restricted" | "unavailable";
+type SharedReadResult<T> =
+  | { state: "available"; value: T }
+  | { state: "restricted" }
+  | { state: "unavailable" };
+
 function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   if (!value) {
     return [];
@@ -21,18 +27,122 @@ function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[] {
   return Array.isArray(value.items) ? value.items : [];
 }
 
+function isOperationsRepairApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 429 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>> {
+  try {
+    return {
+      state: "available",
+      value: await promise,
+    };
+  } catch (error) {
+    if (error instanceof ApiHttpError) {
+      if (error.status === 401) {
+        throw error;
+      }
+      if (error.status === 403) {
+        return { state: "restricted" };
+      }
+    }
+    if (isOperationsRepairApiUnavailable(error)) {
+      return { state: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+function OperationsRepairStatusState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Repair Center"
+        description="Resolve failed imports and dead-letter channel submissions."
+        breadcrumb={
+          <>
+            Dashboard / Operations / <span className="font-semibold text-slate-700">Repair Center</span>
+          </>
+        }
+      />
+      <Card aria-live="polite" aria-atomic="true">
+        <CardTitle>{title}</CardTitle>
+        <p className="mt-3 text-sm text-slate-600">{description}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/operations" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open operations overview
+          </Link>
+          <Link href="/operations/jobs" className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Open Jobs
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default async function OperationsRepairPage() {
   const { authHeader, actorRole } = await getServerSession();
 
   try {
-    const [importJobs, deadLetterRaw] = await Promise.all([
-      getBulkImportJobs({ role: actorRole, authHeader }),
-      getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader }),
+    const [importJobsResult, deadLetterResult] = await Promise.all([
+      loadSharedRead(getBulkImportJobs({ role: actorRole, authHeader })),
+      loadSharedRead(getDeadLetterSubmissions({ limit: 100 }, { role: actorRole, authHeader })),
     ]);
-    const deadLetterSubmissions = toItems(deadLetterRaw);
+
+    if (importJobsResult.state === "restricted") {
+      return (
+        <OperationsRepairStatusState
+          title="Import repair access is restricted"
+          description="Your role can open operations, but import repair backlog details are intentionally redacted."
+        />
+      );
+    }
+
+    if (importJobsResult.state === "unavailable") {
+      return (
+        <OperationsRepairStatusState
+          title="Import repair is temporarily unavailable"
+          description="We could not load import repair backlog right now. The page is held in an unavailable state instead of showing a false zero-repair queue."
+        />
+      );
+    }
+
+    const importJobs = importJobsResult.value;
+    const deadLetterSubmissions =
+      deadLetterResult.state === "available" ? toItems(deadLetterResult.value) : [];
     const failedImports = importJobs.filter((job) => job.deadLetterRows > 0 || job.failedRows > 0);
     const deadLetterRows = failedImports.reduce((sum, job) => sum + job.deadLetterRows, 0);
     const failedRows = failedImports.reduce((sum, job) => sum + job.failedRows, 0);
+    const submissionDeadLetterValue =
+      deadLetterResult.state === "available"
+        ? deadLetterSubmissions.length
+        : deadLetterResult.state === "restricted"
+          ? "Restricted"
+          : "Unavailable";
 
     return (
       <div className="space-y-5">
@@ -56,11 +166,52 @@ export default async function OperationsRepairPage() {
           }
         />
 
+        {deadLetterResult.state !== "available" ? (
+          <section
+            aria-live="polite"
+            aria-atomic="true"
+            role="status"
+            className={`rounded-xl border p-4 shadow-sm ${
+              deadLetterResult.state === "unavailable" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+            }`}
+          >
+            <h2 className={`text-sm font-semibold ${deadLetterResult.state === "unavailable" ? "text-amber-900" : "text-slate-900"}`}>
+              {deadLetterResult.state === "unavailable"
+                ? "Submission dead-letter data is temporarily unavailable"
+                : "Submission dead-letter data is restricted"}
+            </h2>
+            <p className={`mt-2 text-sm ${deadLetterResult.state === "unavailable" ? "text-amber-900/90" : "text-slate-700"}`}>
+              {deadLetterResult.state === "unavailable"
+                ? "We could not load escalated submission backlog right now. Dead-letter counts are held back instead of defaulting to healthy zeroes."
+                : "Your role can still review import repair backlog, but submission dead-letter details are intentionally redacted."}
+            </p>
+          </section>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Import Jobs Requiring Repair" value={failedImports.length} tone={failedImports.length > 0 ? "warning" : "success"} />
           <KpiCard label="Import Dead-Letter Rows" value={deadLetterRows} tone={deadLetterRows > 0 ? "danger" : "default"} />
           <KpiCard label="Import Failed Rows" value={failedRows} tone={failedRows > 0 ? "warning" : "default"} />
-          <KpiCard label="Submission Dead Letter Queue" value={deadLetterSubmissions.length} tone={deadLetterSubmissions.length > 0 ? "danger" : "default"} />
+          <KpiCard
+            label="Submission Dead Letter Queue"
+            value={submissionDeadLetterValue}
+            helper={
+              deadLetterResult.state === "available"
+                ? "Escalated submission backlog"
+                : deadLetterResult.state === "restricted"
+                  ? "Submission dead-letter totals are limited for your role."
+                  : "Submission dead-letter totals are temporarily unavailable."
+            }
+            tone={
+              deadLetterResult.state === "available"
+                ? deadLetterSubmissions.length > 0
+                  ? "danger"
+                  : "default"
+                : deadLetterResult.state === "unavailable"
+                  ? "warning"
+                  : "default"
+            }
+          />
         </section>
 
         <Card>
@@ -114,7 +265,11 @@ export default async function OperationsRepairPage() {
 
           <Card>
             <CardTitle>Submission Dead Letter Queue</CardTitle>
-            {deadLetterSubmissions.length === 0 ? (
+            {deadLetterResult.state === "restricted" ? (
+              <p className="mt-2 text-sm text-slate-600">Submission dead-letter details are restricted for your role.</p>
+            ) : deadLetterResult.state === "unavailable" ? (
+              <p className="mt-2 text-sm text-slate-600">Submission dead-letter details are temporarily unavailable.</p>
+            ) : deadLetterSubmissions.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">No dead-letter submission backlog.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-sm">
@@ -138,7 +293,7 @@ export default async function OperationsRepairPage() {
       </div>
     );
   } catch (error: unknown) {
-    if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/operations/repair", error));
     }
     throw error;
