@@ -31,6 +31,7 @@ function withTenantDatabaseUrl(databaseUrl: string, tenantKey: string): string {
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, PrismaClient>();
+  private readonly CLIENT_LIMIT = 50;
   private readonly poolApplicationName = String(process.env.DB_POOL_APP_NAME ?? "vexa-pim-api").trim() || "vexa-pim-api";
 
   private getBaseDatabaseUrl(): string {
@@ -69,6 +70,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     const existing = this.clients.get(normalizedTenant);
     if (existing) {
       return existing;
+    }
+    if (this.clients.size >= this.CLIENT_LIMIT) {
+      // FIFO eviction: Map iteration order is insertion order.
+      const [oldestKey, oldestClient] = this.clients.entries().next().value as [string, PrismaClient];
+      this.clients.delete(oldestKey);
+      void oldestClient.$disconnect();
     }
     const created = this.createClient(normalizedTenant);
     this.clients.set(normalizedTenant, created);

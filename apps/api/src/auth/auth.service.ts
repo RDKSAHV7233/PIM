@@ -1671,7 +1671,7 @@ export class AuthService implements OnModuleDestroy {
     const rawToken = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString("hex");
     const tokenHash = this.hashRecoveryToken(rawToken);
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS);
-    const prisma = this.prisma.tenant(DEFAULT_TENANT_KEY);
+    const prisma = this.prisma.tenant(identity.tenantId);
 
     await prisma.authRecoveryToken.updateMany({
       where: {
