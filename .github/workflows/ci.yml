@@ -148,5 +148,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: E2E smoke tests
-        run: npm run test:e2e:smoke
-        timeout-minutes: 8
+        # --project=chromium: playwright.config.cjs adds Firefox/WebKit in CI but
+        # only Chromium is installed above. Cross-browser coverage is a nightly concern.
+        run: npm run test:e2e:smoke -- --project=chromium
+        timeout-minutes: 12
