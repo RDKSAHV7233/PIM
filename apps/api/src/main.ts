@@ -76,6 +76,10 @@ async function bootstrap() {
   });
   bootDebug("nest:create:done");
 
+  // Trust the Railway/Heroku proxy layer so req.ip is the real client IP,
+  // not the proxy's IP. Required for IP-based rate limiting to be per-client.
+  app.set("trust proxy", 1);
+
   app.use("/api/v1/billing/stripe/webhook", raw({ type: "*/*" }));
   app.use(json({ limit: EXPRESS_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: EXPRESS_BODY_LIMIT }));

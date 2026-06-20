@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
@@ -35,6 +36,8 @@ interface AuthenticatedRequest extends Request {
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtBlocklistService: JwtBlocklistService,
@@ -83,12 +86,25 @@ export class JwtAuthGuard implements CanActivate {
           throw new UnauthorizedException({ error: "MFA_ENROLLMENT_TOKEN_NOT_ALLOWED_AS_ACCESS_TOKEN" });
         }
       }
-      const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+      // Fail-open at the guard level when Redis is down: short-lived access tokens
+      // are still bounded by JWT_EXPIRY (4h). Step-up operations remain fail-closed
+      // via StepUpGuard, which does NOT catch this exception.
+      let revoked = false;
+      try {
+        revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+      } catch {
+        this.logger.warn("JWT blocklist unavailable — failing open for access token revocation check");
+      }
       if (revoked) {
         throw new UnauthorizedException({ error: "TOKEN_REVOKED" });
       }
       const tenantId = normalizeTenantKey(claims.tenantId);
-      const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat);
+      let credRevoked = false;
+      try {
+        credRevoked = await this.jwtBlocklistService.isCredentialRevoked(tenantId, claims.sub, claims.iat);
+      } catch {
+        this.logger.warn("JWT blocklist unavailable — failing open for credential revocation check");
+      }
       if (credRevoked) {
         throw new UnauthorizedException({ error: "CREDENTIALS_CHANGED" });
       }
