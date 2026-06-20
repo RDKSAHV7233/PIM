@@ -372,7 +372,7 @@ const identityDirectory =
     : authMode === "db"
       ? ""
       : JSON.stringify({
-          "admin@vexa-pim.local": { tenantId: "default", role: "admin", assignedRoles: ["admin", "system_admin"] },
+          "admin@vexa-pim.local": { tenantId: "default", role: "admin", assignedRoles: ["admin", "product_admin", "system_admin"] },
           "editor@vexa-pim.local": { tenantId: "default", role: "editor" },
           "publisher@vexa-pim.local": { tenantId: "default", role: "publisher" },
           "approver@vexa-pim.local": { tenantId: "default", role: "approver" },

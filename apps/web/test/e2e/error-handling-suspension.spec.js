@@ -75,16 +75,23 @@ test.describe("Error Handling & Edge Cases", () => {
   test("signup page renders when feature is enabled", async ({ page }) => {
     await page.goto("/signup", { waitUntil: "domcontentloaded" });
 
-    // Should show signup form or redirect to login if feature is disabled
+    // Should show signup form or redirect elsewhere if feature is disabled.
+    // When FEATURE_PUBLIC_SIGNUP_ENABLED=false the app redirects to /contact
+    // (or /login in legacy builds). Accept any of the three.
     await expect(page.locator("body")).toBeVisible();
-    // Either shows signup form or redirects — both are valid
-    const isSignup = page.url().includes("/signup");
-    const isLogin = page.url().includes("/login");
-    expect(isSignup || isLogin).toBe(true);
+    const url = page.url();
+    const isSignup = url.includes("/signup");
+    const isLogin = url.includes("/login");
+    const isContact = url.includes("/contact");
+    expect(isSignup || isLogin || isContact).toBe(true);
   });
 
   test("privacy page loads for admin", async ({ page }) => {
     await loginViaUi(page, "admin");
+    // Wait for the dashboard's background API calls (BillingStatusBanner etc.)
+    // to finish streaming before navigating away — avoids ERR_ABORTED on the
+    // next navigation when the streaming connection is still open.
+    await page.waitForLoadState("networkidle");
     await page.goto("/admin/privacy", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator("main")).toBeVisible();
