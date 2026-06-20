@@ -69,9 +69,6 @@ export async function globalQuery<T = unknown>(
 }
 
 function assertTenantKeyPresent(sql: string): void {
-  if (process.env["NODE_ENV"] === "production") {
-    return; // rely on correct code in production; avoid runtime overhead
-  }
   if (!sql.toLowerCase().includes("tenant_key")) {
     throw new Error(
       `tenantRaw: SQL is missing a 'tenant_key' reference — cross-tenant data leak risk.\n` +

@@ -43,6 +43,13 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "ChangeRequest",      // requestChanges / listChangeRequests / resolveChangeRequest
   "ProductRelationship", // createRelationship / listRelationships / deleteRelationship (defense in depth)
   "WorkflowSla",        // upsertWorkflowSla / getWorkflowSla (defense in depth)
+  // Missing from initial set — confirmed present in schema.prisma.
+  "BulkImportRun",
+  "AuthRecoveryToken",
+  "UserMfaEnrollment",
+  "ConnectorSyncSchedule",
+  "ConnectorProductLink",
+  "TenantCommercialRequest",
 ]);
 
 const FILTER_WHERE_OPERATIONS = new Set<string>([
