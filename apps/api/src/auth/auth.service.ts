@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -1336,6 +1337,10 @@ export class AuthService implements OnModuleDestroy {
         this.markRedisUnavailable(`Failed to evaluate IP login rate limit in Redis: ${message}`);
       }
     }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Auth rate-limiting service unavailable.");
+    }
     return this.incrementAndCheckIpRateLimitInMemory(ipAddress, now);
   }
 
@@ -1392,6 +1397,10 @@ export class AuthService implements OnModuleDestroy {
         const message = error instanceof Error ? error.message : String(error ?? "unknown error");
         this.markRedisUnavailable(`Failed to evaluate password reset rate limit in Redis: ${message}`);
       }
+    }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Auth rate-limiting service unavailable.");
     }
     return this.checkAndIncrementResetRateLimitInMemory(email, now);
   }
