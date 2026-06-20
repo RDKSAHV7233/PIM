@@ -203,6 +203,9 @@ export class ConnectorFrameworkService {
     if (!installation.capabilities.includes("PUBLISH")) {
       throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
     }
+    if (installation.implementationStatus === "stub") {
+      throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
+    }
     if (!connector.publishProduct) {
       throw new CapabilityNotSupportedError(installation.slug, "PUBLISH");
     }
