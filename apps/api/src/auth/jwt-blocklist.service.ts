@@ -180,6 +180,12 @@ export class JwtBlocklistService implements OnModuleDestroy {
       return cached.value;
     }
 
+    // Explicitly disabled → no cross-process blocklist; treat as not revoked.
+    // This is different from "enabled but unreachable" which stays fail-closed below.
+    if (this.isRedisDisabled()) {
+      return false;
+    }
+
     await this.ensureRedisConnection();
     if (!this.redisAvailable || !this.redisClient) {
       if (process.env["JWT_BLOCKLIST_FAIL_OPEN"] === "true") {
@@ -237,6 +243,11 @@ export class JwtBlocklistService implements OnModuleDestroy {
     const cached = this.credRevCache.get(key);
     if (cached && cached.expiresAtMs > nowMs) {
       return iat < cached.epoch;
+    }
+
+    // Explicitly disabled → treat as not revoked (same rationale as isRevoked above).
+    if (this.isRedisDisabled()) {
+      return false;
     }
 
     await this.ensureRedisConnection();
