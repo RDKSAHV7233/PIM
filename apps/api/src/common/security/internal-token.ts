@@ -44,10 +44,8 @@ export function secureTokenEquals(submittedToken: string | undefined, expectedTo
 }
 
 function resolveRemoteAddress(request: Request | undefined): string {
-  const rawForwardedFor = request?.headers?.["x-forwarded-for"];
-  const forwardedFor = Array.isArray(rawForwardedFor) ? rawForwardedFor[0] : rawForwardedFor;
-  const firstForwardedIp = String(forwardedFor ?? "").split(",")[0]?.trim();
-  return firstForwardedIp || String(request?.ip ?? request?.socket?.remoteAddress ?? "unknown");
+  // Express populates req.ip from X-Forwarded-For when app.set('trust proxy', 1) is set.
+  return String(request?.ip ?? request?.socket?.remoteAddress ?? "unknown").trim() || "unknown";
 }
 
 function resolveBucket(key: string, now: number, windowMs: number): FailureBucket {

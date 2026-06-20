@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from "@nestjs/common";
 import { createClient } from "redis";
 
 const DEFAULT_REDIS_URL = "redis://localhost:6379";
@@ -182,8 +182,11 @@ export class JwtBlocklistService implements OnModuleDestroy {
 
     await this.ensureRedisConnection();
     if (!this.redisAvailable || !this.redisClient) {
-      this.cache.set(normalizedJti, { value: false, expiresAtMs: nowMs + CACHE_TTL_MS });
-      return false;
+      if (process.env["JWT_BLOCKLIST_FAIL_OPEN"] === "true") {
+        this.cache.set(normalizedJti, { value: false, expiresAtMs: nowMs + CACHE_TTL_MS });
+        return false;
+      }
+      throw new UnauthorizedException("Auth service temporarily unavailable.");
     }
 
     try {
@@ -238,8 +241,10 @@ export class JwtBlocklistService implements OnModuleDestroy {
 
     await this.ensureRedisConnection();
     if (!this.redisAvailable || !this.redisClient) {
-      // Fail open: don't block access when Redis is down.
-      return false;
+      if (process.env["JWT_BLOCKLIST_FAIL_OPEN"] === "true") {
+        return false;
+      }
+      throw new UnauthorizedException("Auth service temporarily unavailable.");
     }
     try {
       const raw = await this.redisClient.get(key);

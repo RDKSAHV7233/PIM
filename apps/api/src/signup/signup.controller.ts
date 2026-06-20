@@ -94,7 +94,7 @@ export class SignupController {
   }
 
   private getRequestIp(request: Request): string {
-    return String(request.ip ?? request.headers["x-forwarded-for"] ?? "unknown").trim() || "unknown";
+    return String(request.ip ?? "unknown").trim() || "unknown";
   }
 
   private rethrowMappedError(error: unknown, reply?: Response): never {
