@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Get Access — Vexa PIM",
   description: "Contact us to get access to Vexa PIM.",
