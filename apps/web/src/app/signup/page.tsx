@@ -2,7 +2,7 @@ import { SignupPageClient } from "@/components/auth/signup-page-client";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 import { isPublicSignupEnabled } from "@/lib/public-signup";
 import { cookies } from "next/headers";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ function getString(value: string | string[] | undefined): string {
 
 export default async function SignupPage({ searchParams }: SignupPageProps) {
   if (!isPublicSignupEnabled()) {
-    notFound();
+    redirect(process.env.PIM_COMMERCIAL_CONTACT_URL ?? "/contact");
   }
   const params = await searchParams;
   const cookieStore = await cookies();
