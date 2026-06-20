@@ -15,14 +15,15 @@ const {
   DEFAULT_API_URL,
 } = require("./helpers/vexa-pim.cjs");
 
-// Pages every authenticated role should be able to read (top-level sections)
+// Pages every authenticated role should be able to read (top-level sections).
+// /settings is intentionally excluded: it is a redirect-only page (→ /admin)
+// and was causing ERR_ABORTED after the redirect chain under load.
 const UNIVERSAL_READ_PAGES = [
   "/dashboard",
   "/catalog/products",
   "/catalog/categories",
   "/channels",
   "/quality/approvals",
-  "/settings",
 ];
 
 // Admin-only pages (system_admin_gated in sidebar)
