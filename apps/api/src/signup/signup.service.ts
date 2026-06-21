@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -619,6 +619,10 @@ export class SignupService implements OnModuleDestroy {
         this.markRedisUnavailable(`Failed to evaluate signup IP rate limit in Redis: ${message}`);
       }
     }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Signup rate-limiting service unavailable.");
+    }
     return this.incrementAndCheckInMemoryLimit(this.signupIpAttempts, this.normalizeRateKey(ipAddress), now, SIGNUP_WINDOW_MS, SIGNUP_IP_ATTEMPT_LIMIT);
   }
 
@@ -635,6 +639,10 @@ export class SignupService implements OnModuleDestroy {
         const message = error instanceof Error ? error.message : String(error ?? "unknown error");
         this.markRedisUnavailable(`Failed to evaluate signup email rate limit in Redis: ${message}`);
       }
+    }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Signup rate-limiting service unavailable.");
     }
     return this.incrementAndCheckInMemoryLimit(
       this.signupEmailAttempts,

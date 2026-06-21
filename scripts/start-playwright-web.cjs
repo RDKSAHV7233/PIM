@@ -51,8 +51,12 @@ const identityDirectory =
     : authMode === "db"
       ? ""
       : JSON.stringify({
-          "admin@vexa-pim.local": { tenantId: "default", role: "admin" },
+          "admin@vexa-pim.local": { tenantId: "default", role: "admin", assignedRoles: ["admin", "product_admin", "system_admin"] },
           "editor@vexa-pim.local": { tenantId: "default", role: "editor" },
+          "publisher@vexa-pim.local": { tenantId: "default", role: "publisher" },
+          "approver@vexa-pim.local": { tenantId: "default", role: "approver" },
+          "channel_manager@vexa-pim.local": { tenantId: "default", role: "channel_manager" },
+          "connector_admin@vexa-pim.local": { tenantId: "default", role: "connector_admin" },
           "reviewer@vexa-pim.local": { tenantId: "default", role: "reviewer" },
           "viewer@vexa-pim.local": { tenantId: "default", role: "viewer" },
         });
@@ -112,6 +116,19 @@ const env = {
 
 if (workspaceDirectory !== undefined) {
   env.PIM_AUTH_WORKSPACES_JSON = workspaceDirectory;
+}
+
+const child = spawn("npm", ["run", "start", "--workspace", "@pim1/web", "--", "-p", env.PORT], {
+  cwd: root,
+  shell: true,
+  stdio: "inherit",
+  env,
+});
+
+function shutdown(signal) {
+  if (!child.killed) {
+    child.kill(signal);
+  }
 }
 
 const child = spawn("npm", ["run", "start", "--workspace", "@pim1/web", "--", "-p", env.PORT], {

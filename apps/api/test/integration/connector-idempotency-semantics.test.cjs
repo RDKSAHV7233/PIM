@@ -230,13 +230,16 @@ function createFlipkartStub() {
             requestId: String(req.headers["x-flipkart-request-id"] || ""),
             payload,
           });
-          // Fail the first publish call to simulate a transient Flipkart error so that
-          // the export job transitions to retrying — this is what we use to verify that
-          // the idempotency key stays stable across the retry rather than changing per attempt.
+          // Fail the first publish call so the export job transitions to retrying — this is
+          // what we use to verify that the idempotency key stays stable across the retry
+          // rather than changing per attempt.
+          // Use 422 (not 500) because the connector-http-client retries on 5xx internally
+          // (RETRY_ON_STATUS includes 500). A 422 is returned immediately to the job handler
+          // so the job-level failure is visible to the assertion below.
           if (calls.publish.length === 1) {
-            res.statusCode = 500;
+            res.statusCode = 422;
             res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ error: "INTERNAL_SERVER_ERROR", message: "stub transient failure" }));
+            res.end(JSON.stringify({ error: "UNPROCESSABLE_ENTITY", message: "stub: first attempt must fail" }));
             return;
           }
           res.statusCode = 200;

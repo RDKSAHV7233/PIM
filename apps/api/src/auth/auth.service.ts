@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -608,15 +609,27 @@ export class AuthService implements OnModuleDestroy {
     if (!claims || claims.tokenType !== "refresh") {
       return { type: "invalid_token" };
     }
-    const revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+    // Fail-open when Redis is down: refresh tokens are short-lived and the
+    // access token check in JwtAuthGuard applies the same policy.
+    let revoked = false;
+    try {
+      revoked = await this.jwtBlocklistService.isRevoked(claims.jti);
+    } catch {
+      this.logger.warn("JWT blocklist unavailable during refresh — failing open");
+    }
     if (revoked) {
       return { type: "invalid_token" };
     }
-    const credRevoked = await this.jwtBlocklistService.isCredentialRevoked(
-      normalizeTenantKey(claims.tenantId),
-      claims.sub,
-      claims.iat,
-    );
+    let credRevoked = false;
+    try {
+      credRevoked = await this.jwtBlocklistService.isCredentialRevoked(
+        normalizeTenantKey(claims.tenantId),
+        claims.sub,
+        claims.iat,
+      );
+    } catch {
+      this.logger.warn("JWT blocklist unavailable during credential check on refresh — failing open");
+    }
     if (credRevoked) {
       return { type: "invalid_token" };
     }
@@ -1336,6 +1349,10 @@ export class AuthService implements OnModuleDestroy {
         this.markRedisUnavailable(`Failed to evaluate IP login rate limit in Redis: ${message}`);
       }
     }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Auth rate-limiting service unavailable.");
+    }
     return this.incrementAndCheckIpRateLimitInMemory(ipAddress, now);
   }
 
@@ -1392,6 +1409,10 @@ export class AuthService implements OnModuleDestroy {
         const message = error instanceof Error ? error.message : String(error ?? "unknown error");
         this.markRedisUnavailable(`Failed to evaluate password reset rate limit in Redis: ${message}`);
       }
+    }
+    const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "development");
+    if (appEnv === "production" || appEnv === "staging") {
+      throw new ServiceUnavailableException("Auth rate-limiting service unavailable.");
     }
     return this.checkAndIncrementResetRateLimitInMemory(email, now);
   }
@@ -1659,7 +1680,7 @@ export class AuthService implements OnModuleDestroy {
     const rawToken = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString("hex");
     const tokenHash = this.hashRecoveryToken(rawToken);
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS);
-    const prisma = this.prisma.tenant(DEFAULT_TENANT_KEY);
+    const prisma = this.prisma.tenant(identity.tenantId);
 
     await prisma.authRecoveryToken.updateMany({
       where: {

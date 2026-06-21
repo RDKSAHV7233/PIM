@@ -10,6 +10,7 @@ import type { Request } from "express";
 import { AuditService } from "../audit/audit.service";
 import { AppRole } from "../common/rbac/roles";
 import { PimJwtClaims, StepUpScope, extractBearerToken, verifyPimJwt } from "./jwt";
+import { JwtBlocklistService } from "./jwt-blocklist.service";
 import { STEP_UP_REQUIRED_KEY, StepUpRequirement } from "./step-up.decorator";
 
 export const PIM_STEP_UP_TOKEN_HEADER = "x-pim-step-up-token";
@@ -26,6 +27,7 @@ export class StepUpGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly auditService: AuditService,
+    private readonly jwtBlocklistService: JwtBlocklistService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -53,6 +55,11 @@ export class StepUpGuard implements CanActivate {
     if (!stepUpClaims || stepUpClaims.tokenType !== "step_up") {
       await this.auditDenied(accessClaims, requirement.scope, requirement.action, "invalid");
       throw new UnauthorizedException({ error: "STEP_UP_TOKEN_INVALID" });
+    }
+
+    if (stepUpClaims.jti && await this.jwtBlocklistService.isRevoked(stepUpClaims.jti)) {
+      await this.auditDenied(accessClaims, requirement.scope, requirement.action, "revoked");
+      throw new UnauthorizedException({ error: "STEP_UP_TOKEN_REVOKED" });
     }
 
     if (stepUpClaims.stepUpScope !== requirement.scope) {

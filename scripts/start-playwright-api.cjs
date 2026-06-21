@@ -8,7 +8,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const root = path.resolve(__dirname, "..");
 const envFile = path.join(root, ".env");
-const apiEntryPath = path.join(root, "apps", "api", "scripts", "start-built-api.cjs");
+const apiEntryPath = path.join(root, "apps", "api", "dist", "main.js");
 
 function resolveDatabaseUrl(fileEnv) {
   const localDatabaseUrl =
@@ -372,8 +372,12 @@ const identityDirectory =
     : authMode === "db"
       ? ""
       : JSON.stringify({
-          "admin@vexa-pim.local": { tenantId: "default", role: "admin" },
+          "admin@vexa-pim.local": { tenantId: "default", role: "admin", assignedRoles: ["admin", "product_admin", "system_admin"] },
           "editor@vexa-pim.local": { tenantId: "default", role: "editor" },
+          "publisher@vexa-pim.local": { tenantId: "default", role: "publisher" },
+          "approver@vexa-pim.local": { tenantId: "default", role: "approver" },
+          "channel_manager@vexa-pim.local": { tenantId: "default", role: "channel_manager" },
+          "connector_admin@vexa-pim.local": { tenantId: "default", role: "connector_admin" },
           "reviewer@vexa-pim.local": { tenantId: "default", role: "reviewer" },
           "viewer@vexa-pim.local": { tenantId: "default", role: "viewer" },
         });
