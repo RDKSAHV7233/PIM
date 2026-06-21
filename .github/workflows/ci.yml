@@ -139,3 +139,16 @@ jobs:
           node scripts/migrate-legacy-auth-password-hashes.test.cjs
           node apps/api/test/integration/railway-api-package-contract.test.cjs
           node apps/web/test/integration/railway-web-runtime-contract.test.cjs
+
+      - name: Integration tests (parallel)
+        run: npm run test:integration:parallel
+        timeout-minutes: 10
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E smoke tests
+        # --project=chromium: playwright.config.cjs adds Firefox/WebKit in CI but
+        # only Chromium is installed above. Cross-browser coverage is a nightly concern.
+        run: npm run test:e2e:smoke -- --project=chromium
+        timeout-minutes: 12

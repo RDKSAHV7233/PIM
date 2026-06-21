@@ -75,7 +75,6 @@ export class BillingController {
 
   @Get("usage")
   @AuthenticatedReadRoute({ classification: "admin_editor", responseHandling: "none", apiClientPolicy: "denied_human_only" })
-  @AdminBoundaryAccess({ allowedRoles: ["product_admin", "system_admin", "super_admin"] })
   @Roles("admin", "editor")
   @ApiOperation({ summary: "Get current tenant plan usage" })
   @ApiResponse({ status: 200, description: "Plan usage fetched", type: PlanUsageSummaryDto })

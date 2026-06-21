@@ -15,18 +15,22 @@ const {
   DEFAULT_API_URL,
 } = require("./helpers/vexa-pim.cjs");
 
-// Pages every authenticated role should be able to read (top-level sections)
+// Pages every authenticated role should be able to read (top-level sections).
+// /settings is excluded: redirect-only (→ /admin), causes ERR_ABORTED after redirect chain.
+// /quality/approvals is excluded: redirects all non-admin roles to login via RSC soft-redirect
+// (getBillingPlanProfile returns 403 for non-admin), which aborts mid-stream and causes
+// ERR_ABORTED for subsequent page.goto calls. Admin's access to /quality/approvals is
+// verified below via ADMIN_ONLY_PAGES.
 const UNIVERSAL_READ_PAGES = [
   "/dashboard",
   "/catalog/products",
   "/catalog/categories",
   "/channels",
-  "/quality/approvals",
-  "/settings",
 ];
 
-// Admin-only pages (system_admin_gated in sidebar)
+// Admin-only pages (system_admin_gated in sidebar) + pages that redirect non-admin roles
 const ADMIN_ONLY_PAGES = [
+  "/quality/approvals",
   "/admin/users",
   "/admin/api-keys",
   "/admin/webhooks",
@@ -37,9 +41,13 @@ const ADMIN_ONLY_PAGES = [
 
 async function verifyPagesLoad(page, role, pages) {
   await loginViaUi(page, role);
+  // Wait for dashboard's BillingStatusBanner streaming to settle before first navigation.
+  await page.waitForLoadState("networkidle").catch(() => {});
   for (const url of pages) {
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+    // Let the page's RSC streaming finish before the next navigation to avoid ERR_ABORTED.
+    await page.waitForLoadState("networkidle").catch(() => {});
   }
 }
 
