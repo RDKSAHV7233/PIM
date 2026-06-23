@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({}),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
   } catch {
     return NextResponse.json({ error: "AUTH_UPSTREAM_UNAVAILABLE" }, { status: 503 });

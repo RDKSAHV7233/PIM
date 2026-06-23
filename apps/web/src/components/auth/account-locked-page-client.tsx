@@ -54,6 +54,7 @@ export function AccountLockedPageClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, workspaceSlug }),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
         setMessage(authCopy.resendFailed);

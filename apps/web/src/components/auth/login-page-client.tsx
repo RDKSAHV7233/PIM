@@ -126,6 +126,7 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
           userId: userId.trim(),
           password,
         }),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (response.ok) {
@@ -236,8 +237,12 @@ export function LoginPageClient({ locale, reason, nextPath, initialWorkspaceSlug
       }
 
       setErrorMessage(authCopy.genericLoginFailure);
-    } catch {
-      setErrorMessage(authCopy.networkError);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setErrorMessage(authCopy.loginServiceUnavailable);
+      } else {
+        setErrorMessage(authCopy.networkError);
+      }
     } finally {
       setSubmitting(false);
     }

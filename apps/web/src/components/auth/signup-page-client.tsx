@@ -73,6 +73,7 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
         {
           method: "GET",
           cache: "no-store",
+          signal: AbortSignal.timeout(10_000),
         },
       );
       const payload = (await response.json().catch(() => null)) as { available?: boolean; reason?: string; error?: string } | null;
@@ -143,6 +144,7 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
           password,
           acceptedTerms,
         }),
+        signal: AbortSignal.timeout(20_000),
       });
       const payload = (await response.json().catch(() => null)) as
         | { status?: string; error?: string; retryAfterSeconds?: number }
@@ -219,133 +221,150 @@ export function SignupPageClient({ locale, initialWorkspaceSlug, initialEmail }:
         </div>
       </header>
 
-      <form className="space-y-5" onSubmit={onSubmit}>
-        <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <label htmlFor="display-name" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {authCopy.displayNameLabel}
-          </label>
-          <input
-            id="display-name"
-            type="text"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            required
-            className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="admin-email" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {authCopy.emailLabel}
-          </label>
-          <input
-            id="admin-email"
-            type="email"
-            value={adminEmail}
-            onChange={(event) => setAdminEmail(event.target.value)}
-            required
-            className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-          />
-        </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="workspace" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {authCopy.workspaceLabel}
-          </label>
-          <input
-            id="workspace"
-            type="text"
-            value={workspaceSlug}
-            onChange={(event) => {
-              setWorkspaceSlug(normalizeWorkspaceSlugInput(event.target.value));
-              setAvailability("idle");
-              setAvailabilityMessage("");
-            }}
-            onBlur={() => void checkAvailability()}
-            required
-            placeholder={authCopy.workspacePlaceholder}
-            className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-          />
-          {availabilityMessage ? (
-            <p
-              className={`text-xs leading-5 ${
-                availability === "available"
-                  ? "text-green-700"
-                  : availability === "taken"
-                    ? "text-red-700"
-                    : "text-slate-600"
-              }`}
-            >
-              {availabilityMessage}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {authCopy.passwordLabel}
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              required
-              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-            />
-            <p className="text-xs leading-5 text-slate-600">{authCopy.signupPasswordHelp}</p>
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="confirm-password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {authCopy.confirmPasswordLabel}
-            </label>
-            <input
-              id="confirm-password"
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              minLength={8}
-              required
-              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200/90 bg-slate-50/90 px-4 py-3 text-sm leading-6 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-            <input
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(event) => setAcceptedTerms(event.target.checked)}
-              className="mt-0.5"
-            />
-            <span>{authCopy.signupTermsLabel}</span>
-          </label>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
-          >
-            {submitting ? authCopy.signupSubmitting : authCopy.signupSubmit}
-          </button>
-        </div>
-
-        {success ? (
+      {success ? (
+        <div className="space-y-4">
           <p className="rounded-xl border border-green-300/80 bg-green-50 px-4 py-3 text-sm text-green-800 shadow-[0_10px_24px_rgba(34,197,94,0.08)]">
             {success}
           </p>
-        ) : null}
-        {error ? (
-          <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
-            {error}
-          </p>
-        ) : null}
-      </form>
+          <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-4 py-4 text-sm leading-6 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+            <p>
+              <strong>{authCopy.emailLabel}:</strong> {adminEmail}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Click the link in the email to verify your account. Check your spam folder if it doesn{"'"}t arrive within a minute.
+            </p>
+          </div>
+          <Link
+            href={loginHref}
+            className="inline-flex w-full justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
+          >
+            Go to sign in
+          </Link>
+        </div>
+      ) : (
+        <form className="space-y-5" onSubmit={onSubmit}>
+          <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="display-name" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {authCopy.displayNameLabel}
+            </label>
+            <input
+              id="display-name"
+              type="text"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              required
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="admin-email" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {authCopy.emailLabel}
+            </label>
+            <input
+              id="admin-email"
+              type="email"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              required
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            />
+          </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="workspace" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {authCopy.workspaceLabel}
+            </label>
+            <input
+              id="workspace"
+              type="text"
+              value={workspaceSlug}
+              onChange={(event) => {
+                setWorkspaceSlug(normalizeWorkspaceSlugInput(event.target.value));
+                setAvailability("idle");
+                setAvailabilityMessage("");
+              }}
+              onBlur={() => void checkAvailability()}
+              required
+              placeholder={authCopy.workspacePlaceholder}
+              className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            />
+            {availabilityMessage ? (
+              <p
+                className={`text-xs leading-5 ${
+                  availability === "available"
+                    ? "text-green-700"
+                    : availability === "taken"
+                      ? "text-red-700"
+                      : "text-slate-600"
+                }`}
+              >
+                {availabilityMessage}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {authCopy.passwordLabel}
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={8}
+                required
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+              <p className="text-xs leading-5 text-slate-600">{authCopy.signupPasswordHelp}</p>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="confirm-password" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {authCopy.confirmPasswordLabel}
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                minLength={8}
+                required
+                className="w-full rounded-xl border border-slate-300/90 bg-white px-3 py-3 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200/90 bg-slate-50/90 px-4 py-3 text-sm leading-6 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span>{authCopy.signupTermsLabel}</span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)] transition hover:bg-slate-800 disabled:opacity-60"
+            >
+              {submitting ? authCopy.signupSubmitting : authCopy.signupSubmit}
+            </button>
+          </div>
+
+          {error ? (
+            <p className="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-[0_10px_24px_rgba(239,68,68,0.08)]">
+              {error}
+            </p>
+          ) : null}
+        </form>
+      )}
 
       <Link
         href={loginHref}

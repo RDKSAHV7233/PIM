@@ -3,7 +3,8 @@ import { getApiBaseUrl } from "@/lib/api-base-url";
 import { resolveBearerToken, validateCsrf } from "../../_auth";
 
 function useSecureCookies(): boolean {
-  return String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return appEnv === "production" || appEnv === "staging";
 }
 
 function clearAuthCookies(response: NextResponse): NextResponse {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       ...(request.headers.get("cookie") ? { Cookie: request.headers.get("cookie") ?? "" } : {}),
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
   });
 
   // Logout is treated as idempotent at the web edge.

@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       Authorization: authHeader,
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   const contentType = response.headers.get("content-type") ?? "application/json";

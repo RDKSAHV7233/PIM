@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(error.body, { status: error.status });
       }
       return NextResponse.json(
-        { error: "billing_usage_failed", message: error.message },
+        { error: "billing_usage_failed" },
         { status: error.status },
       );
     }

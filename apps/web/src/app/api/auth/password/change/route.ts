@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
+import { resolveBearerToken, validateCsrf } from "../../../_auth";
 
 export async function POST(request: NextRequest) {
-  const cookieToken = request.cookies.get("pim_access_token")?.value ?? "";
-  if (!cookieToken) {
+  const csrfError = validateCsrf(request);
+  if (csrfError) return csrfError;
+
+  const authHeader = resolveBearerToken(request);
+  if (!authHeader) {
     return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   }
 
@@ -17,10 +21,11 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${cookieToken}`,
+        Authorization: authHeader,
       },
       body: JSON.stringify({ currentPassword, newPassword }),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
   } catch {
     return NextResponse.json({ error: "AUTH_UPSTREAM_UNAVAILABLE" }, { status: 503 });

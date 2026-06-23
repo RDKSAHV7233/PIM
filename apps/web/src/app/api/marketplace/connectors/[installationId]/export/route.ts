@@ -39,6 +39,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
       body: JSON.stringify(body),
       cache: "no-store",
+      signal: AbortSignal.timeout(60_000),
     },
   );
 

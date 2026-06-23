@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       Accept: "text/csv",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
   });
 
   const body = await response.text();

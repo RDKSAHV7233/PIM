@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import type { MfaStatus } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -140,6 +141,11 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <div>
+        <p className="mb-1 text-xs text-slate-500">
+          <Link href="/dashboard" className="hover:underline">Dashboard</Link>
+          {" / "}
+          <span className="font-semibold text-slate-700">Account Security</span>
+        </p>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account Security</h1>
         <p className="mt-1 text-sm text-slate-500">Manage two-factor authentication and review your access role.</p>
       </div>

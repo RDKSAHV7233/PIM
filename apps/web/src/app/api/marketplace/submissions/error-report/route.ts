@@ -64,6 +64,7 @@ async function fetchSubmissions(
   const resp = await fetch(`${baseUrl}/submissions?${params.toString()}`, {
     headers: { Authorization: authHeader, Accept: "application/json" },
     cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
   });
   if (!resp.ok) return null;
   return parseItems(await resp.json());

@@ -27,6 +27,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
   });
 
   const payload = await response.text();

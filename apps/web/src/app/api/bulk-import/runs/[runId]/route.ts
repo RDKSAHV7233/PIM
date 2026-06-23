@@ -22,6 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   const payload = await response.text();

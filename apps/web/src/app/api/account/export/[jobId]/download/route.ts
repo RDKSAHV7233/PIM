@@ -27,6 +27,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       Accept: "application/json, application/octet-stream",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
   });
 
   const contentType = response.headers.get("content-type") ?? "application/json";
