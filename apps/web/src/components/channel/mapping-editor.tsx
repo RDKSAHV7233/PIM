@@ -17,10 +17,6 @@ import type {
 } from "@/lib/api";
 import { type ConnectorTaxonomyOption, describeReadinessCode, presentCompatibilityState, statusToneForPreflight } from "@/lib/channel-mappings";
 
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}
-
 type MappingFieldRow = {
   targetField: string;
   selectedSource: string;

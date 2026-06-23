@@ -20,10 +20,6 @@ import {
 } from "@/lib/channel-mappings";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -123,7 +119,6 @@ function ProtectedMappingActionForm({
         {label}
       </summary>
       <form action={action} className="space-y-3 border-t border-slate-200 p-3">
-        <RoleHiddenInput role={actorRole} />
         <input type="hidden" name="connectorSlug" value={connectorSlug} />
         <input type="hidden" name="versionId" value={versionId} />
         <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -276,7 +271,6 @@ export function VersionManagerCard({
         canWrite ? (
           <div className="flex flex-wrap gap-2">
             <form action={validateConnectorMappingVersionAction}>
-              <RoleHiddenInput role={actorRole} />
               <input type="hidden" name="connectorSlug" value={connectorSlug} />
               <input type="hidden" name="versionId" value={version.id} />
               <input type="hidden" name="redirectTo" value={redirectTo} />

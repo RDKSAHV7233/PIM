@@ -361,7 +361,7 @@ export default function NotificationsPage() {
           description="Full history of import, publish, connector, mapping, and approval updates."
           breadcrumb={
             <nav className="mb-1 text-xs text-slate-500">
-              <Link href="/" className="hover:underline">Home</Link>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>
               <span className="mx-1">/</span>
               <span>Notifications</span>
             </nav>

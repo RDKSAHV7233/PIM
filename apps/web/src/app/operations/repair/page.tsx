@@ -151,7 +151,7 @@ export default async function OperationsRepairPage() {
           description="Resolve failed imports and dead-letter channel submissions."
           breadcrumb={
             <>
-              Dashboard / Operations / <span className="font-semibold text-slate-700">Repair Center</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Repair Center</span>
             </>
           }
           actions={

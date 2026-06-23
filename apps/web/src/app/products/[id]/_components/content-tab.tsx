@@ -4,7 +4,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getAllowedValues, RoleHiddenInput } from "./product-detail-shared";
+import { getAllowedValues } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 /**
@@ -29,7 +29,6 @@ export function ContentTab({ data }: { data: ProductDetailPageData }) {
           data-product-dirty-form="true"
           className="grid gap-3 md:grid-cols-2"
         >
-          <RoleHiddenInput role={data.actorRole} />
           <input type="hidden" name="productId" value={data.productId} />
           <input type="hidden" name="currentTab" value={data.activeTab} />
           <input type="hidden" name="returnTo" value={data.returnTo} />

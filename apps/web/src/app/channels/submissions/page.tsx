@@ -137,7 +137,7 @@ export default async function ChannelsSubmissionsPage({ searchParams }: Channels
           description="Track channel submission lifecycle and hand off failures to operations repair flows."
           breadcrumb={
             <>
-              Dashboard / Channels / <span className="font-semibold text-slate-700">Submissions</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<span className="font-semibold text-slate-700">Submissions</span>
             </>
           }
           actions={

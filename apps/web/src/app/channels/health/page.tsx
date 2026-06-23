@@ -197,7 +197,7 @@ export default async function ChannelsHealthPage() {
           description="Readiness and blocked listing status by channel."
           breadcrumb={
             <>
-              Dashboard / Channels / <span className="font-semibold text-slate-700">Health</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<span className="font-semibold text-slate-700">Health</span>
             </>
           }
           actions={

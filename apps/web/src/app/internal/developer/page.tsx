@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ApiHttpError, type PlanUpgradeRequest } from "@/lib/api";
@@ -392,15 +393,13 @@ export default async function DeveloperPage({ searchParams }: DeveloperPageProps
 
   return (
     <div className="space-y-5">
-      <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-xs text-slate-500">
-          Dashboard / Internal / <span className="font-semibold text-slate-700">Developer</span>
-        </p>
-        <h1 className="text-2xl font-semibold text-slate-900">Internal Tools</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Internal phase navigation, commercial request handling, and engineering utilities.
-        </p>
-      </header>
+      <PageHeader
+        title="Internal Tools"
+        description="Internal phase navigation, commercial request handling, and engineering utilities."
+        breadcrumb={
+          <><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/internal" className="hover:underline">Internal</Link>{" / "}<span className="font-semibold text-slate-700">Developer</span></>
+        }
+      />
       <Card>
         <CardTitle>Internal phase navigation</CardTitle>
         <div className="mt-3 flex flex-wrap gap-2 text-sm">

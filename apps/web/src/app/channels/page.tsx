@@ -141,7 +141,7 @@ export default async function ChannelsOverviewPage() {
           description="Catalog channel operations cockpit for connection health, mappings, issues, and governance."
           breadcrumb={
             <>
-              Dashboard / <span className="font-semibold text-slate-700">Connections</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Connections</span>
             </>
           }
         />

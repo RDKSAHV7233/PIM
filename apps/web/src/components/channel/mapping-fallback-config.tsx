@@ -4,10 +4,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AppRole } from "@/lib/api";
-
 export function MappingFallbackConfigCard({
-  actorRole,
   canWrite,
   connectorSlug,
   definitionId,
@@ -18,7 +15,6 @@ export function MappingFallbackConfigCard({
   fallbackPolicyDefault,
   fallbackTitle,
 }: {
-  actorRole: AppRole;
   canWrite: boolean;
   connectorSlug: string;
   definitionId: string;
@@ -42,7 +38,6 @@ export function MappingFallbackConfigCard({
       </p>
       {canWrite ? (
         <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
-          <input type="hidden" name="actorRole" value={actorRole} />
           <input type="hidden" name="connectorSlug" value={connectorSlug} />
           <input type="hidden" name="connectorDefinitionId" value={definitionId} />
           <input type="hidden" name="connectorDefinitionVersion" value={definitionVersion} />

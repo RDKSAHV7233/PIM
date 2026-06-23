@@ -117,7 +117,7 @@ export default async function ConnectorRecoveryPage({ params, searchParams }: Re
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Link
-                        href={`/products?issues=error`}
+                        href="/products?issues=error"
                         className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
                         Fix all

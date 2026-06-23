@@ -76,7 +76,7 @@ export default async function AdminWorkspacePage() {
         description={`This route is a compatibility handoff for older bookmarks. Use the admin modules available for your current ${actorRole} role below.`}
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">Workspace Admin Guide</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Workspace Admin Guide</span>
           </>
         }
       />

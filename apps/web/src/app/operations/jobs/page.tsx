@@ -447,7 +447,7 @@ export default async function OperationsJobsPage({ searchParams }: OperationsJob
           description="Submission jobs, recovery decisions, and retries across all channels."
           breadcrumb={
             <>
-              Dashboard / Operations / <span className="font-semibold text-slate-700">Jobs</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Jobs</span>
             </>
           }
           actions={

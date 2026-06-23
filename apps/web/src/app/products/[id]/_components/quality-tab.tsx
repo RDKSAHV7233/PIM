@@ -5,7 +5,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { ValidationIssuePanel } from "@/components/ui/validation-issue-panel";
 import { canDecideApproval } from "@/lib/role-capabilities";
-import { RoleHiddenInput } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function QualityTab({ data }: { data: ProductDetailPageData }) {
@@ -25,7 +24,6 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
                 : "Quality blockers are clear. Move this draft forward for reviewer approval."}
             </p>
             <form action={updateProductAction}>
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
               <input type="hidden" name="title" value={data.product.title} />
               <input type="hidden" name="description" value={data.product.description ?? ""} />
@@ -51,7 +49,6 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
               This product is awaiting a review decision. Approve to allow publishing, or reject with feedback.
             </p>
             <form action={decideProductReviewAction} className="flex flex-wrap gap-2">
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
               <input type="hidden" name="returnTo" value={returnTo} />
               <input type="hidden" name="status" value="approved" />
@@ -62,7 +59,6 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
               />
             </form>
             <form action={decideProductReviewAction} className="flex flex-wrap gap-2">
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
               <input type="hidden" name="returnTo" value={returnTo} />
               <input type="hidden" name="status" value="rejected" />
@@ -81,7 +77,6 @@ export function QualityTab({ data }: { data: ProductDetailPageData }) {
         <div className="space-y-3">
           {data.canWrite ? (
             <form id="product-validate-form" action={validateProductAction}>
-              <RoleHiddenInput role={data.actorRole} />
               <input type="hidden" name="productId" value={data.productId} />
               <Button type="submit">Run validation</Button>
             </form>

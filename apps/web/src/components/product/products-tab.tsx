@@ -114,6 +114,7 @@ interface ProductsTabProps {
   connectorManagementHref: string;
   initialView?: ProductFilter;
   initialSearch?: string;
+  initialCreate?: boolean;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -247,12 +248,13 @@ export function ProductsTab({
   connectorManagementHref,
   initialView = "all",
   initialSearch = "",
+  initialCreate = false,
 }: ProductsTabProps) {
   const canWrite = canEditWorkspace(role);
   const { skuUsagePercent } = usePlanUsage(role);
   const [selectedFilter, setSelectedFilter] = useState<ProductFilter>(initialView);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [showCreateProduct, setShowCreateProduct] = useState(initialCreate);
   const [readinessState, setReadinessState] = useState<ProductReadinessState>({});
   const [pendingArchive, setPendingArchive] = useState<{ productId: string; title: string } | null>(null);
   // Sprint 1: faceted search
@@ -811,7 +813,6 @@ export function ProductsTab({
         {showCreateProduct && canWrite ? (
           <section className="rounded-lg border border-slate-200 bg-white p-4">
             <CreateProductForm
-              role={role}
               categories={filteredCategories}
               onCreated={() => setShowCreateProduct(false)}
             />

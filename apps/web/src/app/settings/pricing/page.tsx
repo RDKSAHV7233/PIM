@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PricingSettingsContent } from "./_components/pricing-settings-content";
 import { ApiHttpError, getCurrencies, getMarkets, getPriceLists } from "@/lib/api";
@@ -26,7 +27,7 @@ export default async function PricingSettingsPage() {
           description="Configure markets, currencies, and price lists used across your catalog and channel integrations."
           breadcrumb={
             <span>
-              <a href="/admin" className="hover:underline">Admin</a>
+              <Link href="/admin" className="hover:underline">Admin</Link>
               {" / "}
               Pricing
             </span>

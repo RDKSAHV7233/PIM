@@ -508,7 +508,7 @@ export default async function DashboardPage() {
           actions={
             <>
               <Link
-                href="/catalog/products"
+                href="/catalog/products?create=1"
                 className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 New Product

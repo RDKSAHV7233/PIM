@@ -90,7 +90,7 @@ export default function ImportConfigPage() {
         description="Fetches metafield definitions, collections, and product taxonomy from your Shopify store and caches them for use in the mapping editor."
         breadcrumb={
           <>
-            Dashboard / Channels / Connections /{" "}
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<Link href="/channels/connectors" className="hover:underline">Connections</Link>{" / "}
             <Link href={returnHref} className="hover:underline text-slate-700">
               Connector
             </Link>{" "}

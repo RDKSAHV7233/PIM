@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createCategoryAction } from "@/app/actions";
 import { CategoryDeleteButton } from "@/components/catalog/category-delete-button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
 import { ApiHttpError, getCategoryTree } from "@/lib/api";
@@ -121,19 +123,18 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
 
     return (
       <div className="space-y-5">
-        <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold text-slate-900">Catalog Categories</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Review taxonomy structure and manage category hierarchy.
-              </p>
-            </div>
-            <a href={toggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+        <PageHeader
+          title="Catalog Categories"
+          description="Review taxonomy structure and manage category hierarchy."
+          breadcrumb={
+            <><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/catalog/products" className="hover:underline">Catalog</Link>{" / "}<span className="font-semibold text-slate-700">Categories</span></>
+          }
+          actions={
+            <Link href={toggleHref} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               {hideTestData ? "Show test data" : "Hide test data"}
-            </a>
-          </div>
-        </header>
+            </Link>
+          }
+        />
 
         {deleteStatus === "deleted" ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -154,12 +155,12 @@ export default async function CatalogCategoriesPage({ searchParams }: CatalogCat
                 Showing {visibleCategories.length} of {filteredCategories.length} categories.
               </p>
               <div className="flex gap-2">
-                <a href={showMoreHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                <Link href={showMoreHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                   Show 100 more
-                </a>
-                <a href={showAllHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                </Link>
+                <Link href={showAllHref} className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                   Show all
-                </a>
+                </Link>
               </div>
             </div>
           ) : null}

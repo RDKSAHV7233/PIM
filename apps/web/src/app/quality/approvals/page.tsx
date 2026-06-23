@@ -132,7 +132,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
             description="Review products in workflow review and resolve remaining publish-readiness blockers."
             breadcrumb={
               <>
-                Dashboard / Quality / <span className="font-semibold text-slate-700">Approval Queue</span>
+                <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Approval Queue</span>
               </>
             }
           />
@@ -243,7 +243,7 @@ export default async function QualityApprovalsPage({ searchParams }: QualityAppr
           description="Review products in workflow review and resolve remaining publish-readiness blockers."
           breadcrumb={
             <>
-              Dashboard / Quality / <span className="font-semibold text-slate-700">Approval Queue</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Approval Queue</span>
             </>
           }
         />

@@ -591,7 +591,7 @@ export default async function ChannelsMappingsPage({ searchParams }: ChannelsMap
           description="Choose the publish lane, map the required fields, then validate and publish one live mapping version."
           breadcrumb={
             <>
-              Dashboard / Channels / <span className="font-semibold text-slate-700">Mappings</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<span className="font-semibold text-slate-700">Mappings</span>
             </>
           }
           actions={
