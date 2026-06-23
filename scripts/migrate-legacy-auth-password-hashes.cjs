@@ -23,7 +23,7 @@ function readEnvFile(filePath) {
     const key = line.slice(0, idx).trim();
     const raw = line.slice(idx + 1).trim();
     const value = raw.replace(/^"|"$/g, "");
-    if (key && !process.env[key]) {
+    if (key && !(key in process.env)) {
       process.env[key] = value;
     }
   }
