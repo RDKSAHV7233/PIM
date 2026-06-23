@@ -710,6 +710,18 @@ export default async function ConnectorSetupPage({ searchParams }: ConnectorSetu
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/channels/connectors/setup", error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Connect a Channel"
+          description="Connector setup data is temporarily unavailable."
+        />
+        <InlineAlert
+          tone="error"
+          title="Connector setup unavailable"
+          message="Connector definitions could not be loaded. Retry in a moment or contact support if the issue persists."
+        />
+      </div>
+    );
   }
 }

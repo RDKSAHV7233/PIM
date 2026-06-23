@@ -177,7 +177,8 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
         if (isRedirectErrorLike(error)) {
           throw error;
         }
-        setSubmitError("Unable to create product. Please try again.");
+        const message = "Unable to create product. Please try again.";
+        setSubmitError(message);
       }
     });
   };

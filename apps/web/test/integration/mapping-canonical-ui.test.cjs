@@ -35,8 +35,9 @@ function run() {
     "Product detail must demote legacy templates to transition-only inventory.",
   );
   assert(
-    mappingsSource.includes("Legacy Template Compatibility (Transition Only)"),
-    "Mappings page must clearly label legacy templates as transitional.",
+    mappingsSource.includes("LegacyTemplateCompatibilityCard") &&
+      mappingsSource.includes("AdvancedDrawer"),
+    "Mappings page must preserve transition-only legacy template guidance inside the advanced drawer.",
   );
   assert(
     connectorMappingSource.includes('target.set("installationId", installation.id);') &&

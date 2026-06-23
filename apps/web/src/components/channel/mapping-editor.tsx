@@ -331,9 +331,9 @@ export function MappingEditorCard({
 
   return (
     <Card id="mapping-draft">
-      <CardTitle>Step 2: Build draft mapping</CardTitle>
+      <CardTitle>Step 2: Map Required Fields</CardTitle>
       {canWrite ? (
-        <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3">
+        <form action={createConnectorMappingVersionAction} className="mt-3 grid gap-3" data-mapping-dirty-form="true" id="mapping-edit-form">
           <RoleHiddenInput role={actorRole} />
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -342,13 +342,13 @@ export function MappingEditorCard({
               <StatusChip label={`${missingRequiredCount} missing`} tone={missingRequiredCount > 0 ? "warning" : "success"} />
             </div>
             <p className="mt-2 text-sm text-slate-700">
-              Start by mapping the missing required fields below. Optional fields and advanced JSON overrides are available after the required fields are covered.
+              Start with the missing required fields below. Optional fields and advanced controls stay available, but they no longer interrupt the primary mapping lane.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               {sampleProductMode === "selected" && sampleProductLabel
                 ? `Sample source values come from the selected product: ${sampleProductLabel}.`
                 : sampleProductMode === "category_sample" && sampleProductLabel
-                  ? `Sample source values use a category example product: ${sampleProductLabel}.`
+                ? `Sample source values use a category example product: ${sampleProductLabel}.`
                   : "Sample source values are unavailable until a product context is available for this category."}
             </p>
           </div>
@@ -484,11 +484,14 @@ export function MappingEditorCard({
           <input type="hidden" name="connectorDefinitionVersion" value={definitionVersion} />
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              Save the draft here, then jump to version history to validate and publish it.
+              Save the draft here, then continue to the review step to validate and publish it.
             </p>
-            <Button type="submit" className="w-fit">
-              Save draft version
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" className="w-fit">
+                Save draft version
+              </Button>
+              <span className="text-xs text-slate-500">Open review step after saving to validate and publish.</span>
+            </div>
           </div>
         </form>
       ) : (

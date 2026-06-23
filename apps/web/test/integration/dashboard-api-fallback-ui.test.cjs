@@ -35,6 +35,11 @@ function run() {
       source.includes("return <DashboardUnavailableState />;"),
     "Dashboard must return the recovery state instead of rethrowing upstream outage errors.",
   );
+  assert(
+    source.includes('if (healthResult.state === "unavailable") {') &&
+      source.includes("return <DashboardUnavailableState />;"),
+    "Dashboard must keep the dedicated recovery state when the core dashboard health feed is unavailable even after shared-read hardening.",
+  );
 
   console.log(
     JSON.stringify(
@@ -44,6 +49,7 @@ function run() {
           "dashboard_detects_api_gateway_and_fetch_outages",
           "dashboard_renders_recovery_ui_for_api_outages",
           "dashboard_returns_recovery_state_instead_of_throwing_on_api_outages",
+          "dashboard_uses_recovery_state_when_core_health_read_is_unavailable",
         ],
         checkedAt: new Date().toISOString(),
       },

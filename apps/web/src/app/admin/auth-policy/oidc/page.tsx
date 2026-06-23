@@ -28,6 +28,65 @@ function StatusBanner({ tone, message }: { tone: "success" | "error" | "info"; m
   return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
 }
 
+function isOidcApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+function OidcUnavailableState() {
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="OIDC SSO Configuration"
+        description="The canonical OIDC configuration surface is temporarily unavailable while identity or billing reads reconnect."
+        breadcrumb={
+          <>
+            Dashboard / Admin / Auth Policy /{" "}
+            <span className="font-semibold text-slate-700">OIDC</span>
+          </>
+        }
+      />
+      <Card>
+        <CardTitle>OIDC configuration is temporarily unavailable</CardTitle>
+        <p className="mt-2 text-sm text-slate-600">
+          We couldn&apos;t confirm either the current OIDC configuration or the plan entitlement for this workspace, so this
+          page will not guess whether SSO is configured or writable right now.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/admin/auth-policy/oidc"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Retry OIDC settings
+          </Link>
+          <Link
+            href="/admin/auth-policy"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Back to Auth Policy
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 async function loadConfig(): Promise<OidcConfigView | null> {
   try {
     const { authHeader: loadAuthHeader, actorRole: loadRole } = await getServerSession();
@@ -76,8 +135,19 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
     );
   }
 
-  const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
-  const planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+  let planTier: string;
+  try {
+    const planProfile = await getBillingPlanProfile({ role: actorRole, authHeader });
+    planTier = String(planProfile.planTier ?? "TRIAL").toUpperCase();
+  } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 401) {
+      redirect(buildLoginRedirect("/admin/auth-policy/oidc", error.status));
+    }
+    if (isOidcApiUnavailable(error)) {
+      return <OidcUnavailableState />;
+    }
+    throw error;
+  }
   if (planTier !== "ENTERPRISE") {
     return (
       <div className="space-y-5">
@@ -111,7 +181,18 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
     );
   }
 
-  const config = await loadConfig();
+  let config: OidcConfigView | null;
+  try {
+    config = await loadConfig();
+  } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 401) {
+      redirect(buildLoginRedirect("/admin/auth-policy/oidc", error.status));
+    }
+    if (isOidcApiUnavailable(error)) {
+      return <OidcUnavailableState />;
+    }
+    throw error;
+  }
   const banner =
     status === "oidc-saved"
       ? <StatusBanner tone="success" message="OIDC configuration saved. Test the sign-in flow before announcing to your team." />

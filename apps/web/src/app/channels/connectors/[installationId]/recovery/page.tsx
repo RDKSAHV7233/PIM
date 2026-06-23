@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
-import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
@@ -165,6 +166,18 @@ export default async function ConnectorRecoveryPage({ params, searchParams }: Re
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect(`/channels/connectors/${installationId}/recovery`, error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Recovery Center"
+          description="Recovery data is temporarily unavailable."
+        />
+        <InlineAlert
+          tone="error"
+          title="Recovery data unavailable"
+          message="Sync failure data could not be loaded. Check the connector health and retry in a moment."
+        />
+      </div>
+    );
   }
 }

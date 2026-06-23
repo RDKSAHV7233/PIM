@@ -32,6 +32,21 @@ function run() {
     "Server session handling must never trust unverified JWT payloads.",
   );
   assert(
+    sessionSource.includes("authConfigFingerprint") &&
+      sessionSource.includes("getAuthConfigFingerprint()") &&
+      sessionSource.includes("if (claims.authConfigFingerprint !== getAuthConfigFingerprint())"),
+    "Server session handling must reject tokens whose auth config fingerprint no longer matches the current env.",
+  );
+  assert(
+    sessionSource.includes('return { authHeader: undefined, actorRole: "viewer", adminBoundaryRoles: [] };'),
+    "Server session handling must treat invalid tokens as unauthenticated instead of downgrading them to viewer sessions.",
+  );
+  assert(
+    read("apps/web/src/app/layout.tsx").includes("const hasAuthToken = Boolean(sessionClaims);") &&
+      read("apps/web/src/app/layout.tsx").includes("const actorRole = sessionClaims?.role ?? \"viewer\";"),
+    "Root layout must key the authenticated shell off verified session claims.",
+  );
+  assert(
     developerActionsSource.includes('process.env.APP_ENV === "production"'),
     "Internal developer actions must repeat the production guard instead of relying on page-only gating.",
   );
@@ -43,6 +58,8 @@ function run() {
         validated: [
           "server_sessions_fail_closed_without_verification_secret",
           "server_sessions_never_parse_unverified_jwt_claims",
+          "server_sessions_reject_stale_auth_config_tokens",
+          "authenticated_shell_requires_verified_session_claims",
           "developer_actions_repeat_production_guard",
         ],
         checkedAt: new Date().toISOString(),

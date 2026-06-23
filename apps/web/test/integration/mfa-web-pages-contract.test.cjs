@@ -130,8 +130,11 @@ function run() {
       securityPage.includes("AccountSecurityClient") &&
       securityPage.includes('buildLoginRedirect("/settings/security"') &&
       securityPage.includes("getServerSessionClaims") &&
-      securityPage.includes("assignedRoles"),
-    "Account security page must load MFA status, auth policy, session claims, pass role/assignedRoles to AccountSecurityClient, and redirect unauthenticated requests.",
+      securityPage.includes("assignedRoles") &&
+      securityPage.includes("mfaStatusState") &&
+      securityPage.includes("policyState") &&
+      securityPage.includes("planState"),
+    "Account security page must load MFA status, auth policy, session claims, pass role/assignedRoles plus degraded-state flags to AccountSecurityClient, and redirect unauthenticated requests.",
   );
 
   assert(
@@ -142,8 +145,12 @@ function run() {
       securityClient.includes("/api/auth/mfa/request-enrollment-token") &&
       securityClient.includes("window.location.assign") &&
       securityClient.includes("role") &&
-      securityClient.includes("assignedRoles"),
-    "Account security client must display role/boundary, MFA enrollment status, backup codes remaining, regenerate form, and self-service enrollment CTA.",
+      securityClient.includes("assignedRoles") &&
+      securityClient.includes("We couldn&apos;t load complete MFA settings right now.") &&
+      securityClient.includes("Enrollment status is temporarily unavailable.") &&
+      securityClient.includes("Workspace MFA policy is temporarily unavailable.") &&
+      securityClient.includes("Plan-based MFA entitlement is temporarily unavailable."),
+    "Account security client must display role/boundary, MFA enrollment status, backup codes remaining, self-service enrollment CTA, and an explicit unavailable state when supporting security reads fail.",
   );
 
   assert(

@@ -465,6 +465,25 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/admin/audit", error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Audit Logs"
+          description="Governance event log is temporarily unavailable."
+          breadcrumb={
+            <>
+              <Link href="/dashboard" className="underline">Dashboard</Link>
+              <span> / </span>
+              <Link href="/admin" className="underline">Admin</Link>
+              <span> / </span>
+              <span className="font-semibold text-slate-700">Audit Logs</span>
+            </>
+          }
+        />
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Audit log unavailable.</strong> Governance events could not be retrieved. Retry in a moment — if the issue persists, contact your system administrator.
+        </div>
+      </div>
+    );
   }
 }

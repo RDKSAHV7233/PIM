@@ -44,6 +44,23 @@ export default async function PricingSettingsPage() {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/settings/pricing", error));
     }
-    throw error;
+    return (
+      <div className="space-y-6 p-6">
+        <PageHeader
+          title="Pricing Settings"
+          description="Pricing configuration is temporarily unavailable."
+          breadcrumb={
+            <span>
+              <a href="/admin" className="hover:underline">Admin</a>
+              {" / "}
+              Pricing
+            </span>
+          }
+        />
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Pricing settings unavailable.</strong> Markets, currencies, and price list data could not be loaded. Retry in a moment.
+        </div>
+      </div>
+    );
   }
 }

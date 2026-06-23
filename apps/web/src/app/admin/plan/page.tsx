@@ -78,7 +78,16 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/admin/plan", error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Plan & Usage"
+          description="Plan and billing information is temporarily unavailable."
+          breadcrumb={<><Link href="/dashboard" className="underline">Dashboard</Link><span> / </span><Link href="/admin" className="underline">Admin</Link><span> / </span><span className="font-semibold text-slate-700">Plan &amp; Usage</span></>}
+        />
+        <InlineAlert tone="error" title="Plan data unavailable" message="Billing and usage information could not be loaded. Retry in a moment or contact support if the issue persists." />
+      </div>
+    );
   }
 
   const commercialStatusAlert = resolveCommercialStatusAlert(usage.profile);

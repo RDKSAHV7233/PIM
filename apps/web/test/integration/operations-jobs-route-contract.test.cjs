@@ -26,19 +26,23 @@ function run() {
     "Operations jobs must normalize status, connector slug, and submission selection filters before fetching.",
   );
   assert(
-    source.includes("const [submissionsResponse, deadLetterResponse] = await Promise.all([") &&
-      source.includes("getSubmissions(") &&
+    source.includes('type SharedReadState = "available" | "restricted" | "unavailable";') &&
+      source.includes("async function loadSharedRead<T>(promise: Promise<T>): Promise<SharedReadResult<T>>") &&
+      source.includes("const [submissionsResult, deadLetterResult] = await Promise.all([") &&
+      source.includes("loadSharedRead(getSubmissions(") &&
       source.includes("status: statusFilter || undefined,") &&
       source.includes("connectorSlug: connectorSlug || undefined,") &&
-      source.includes("getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader })"),
-    "Operations jobs must fetch submissions and dead-letter records together from the shared auth context.",
+      source.includes("loadSharedRead(getDeadLetterSubmissions({ limit: deadLetterLimit }, { role: actorRole, authHeader }))"),
+    "Operations jobs must fetch submissions and dead-letter records together through explicit shared-read wrappers.",
   );
   assert(
     source.includes("function toItems<T>(value: T[] | { items: T[] } | null | undefined): T[]") &&
       source.includes("return Array.isArray(value.items) ? value.items : [];") &&
+      source.includes("if (submissionsResult.state === \"restricted\") {") &&
+      source.includes("if (submissionsResult.state === \"unavailable\") {") &&
       source.includes("const selectedSubmission = selectedSubmissionId") &&
       source.includes("submissions.find((submission) => submission.id === selectedSubmissionId) ?? null"),
-    "Operations jobs must normalize list payload shapes and resolve the selected submission from the current result set.",
+    "Operations jobs must normalize list payload shapes, gate the core submission feed honestly, and resolve the selected submission from the current result set.",
   );
   assert(
     source.includes("const statusCounts = submissions.reduce<Record<string, number>>(") &&
@@ -47,8 +51,9 @@ function run() {
       source.includes('label="Pending"') &&
       source.includes('label="Rejected / Error"') &&
       source.includes('label="Dead Letter"') &&
-      source.includes("Latest ${deadLetterLimit} dead-letter jobs"),
-    "Operations jobs must derive the jobs KPI cards from live normalized submission counts and dead-letter volume.",
+      source.includes("Combined failure totals are temporarily unavailable.") &&
+      source.includes("Dead-letter volume is limited for your role."),
+    "Operations jobs must derive the jobs KPI cards from live submission counts while keeping dead-letter truth explicit when that supporting feed is restricted or unavailable.",
   );
   assert(
     source.includes("<RefreshOnInterval intervalMs={30_000} />") &&
@@ -61,8 +66,10 @@ function run() {
   assert(
     source.includes('title="No submission jobs found"') &&
       source.includes('description="No jobs match the current filter scope."') &&
+      source.includes("Job recovery access is restricted") &&
+      source.includes("Job recovery is temporarily unavailable") &&
       source.includes('secondaryAction={{ label: "Open Repair Center", href: "/operations/repair" }}'),
-    "Operations jobs must surface an honest empty state with a repair-center escalation path.",
+    "Operations jobs must surface honest restricted, unavailable, and empty states with a repair-center escalation path.",
   );
   assert(
     source.includes('className={`border-t border-slate-200 ${') &&
@@ -76,8 +83,9 @@ function run() {
   assert(
     source.includes('href="/operations/repair"') &&
       source.includes('href="/channels/connectors"') &&
+      source.includes('if (error instanceof ApiHttpError && error.status === 401)') &&
       source.includes('redirect(buildLoginRedirect("/operations/jobs", error));'),
-    "Operations jobs must deep-link operators into repair/channel workspaces and redirect auth failures through the shared login helper.",
+    "Operations jobs must deep-link operators into repair/channel workspaces and redirect only expired sessions through the shared login helper.",
   );
 
   console.log(

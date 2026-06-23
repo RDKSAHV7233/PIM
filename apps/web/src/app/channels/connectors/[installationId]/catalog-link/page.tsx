@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataGrid, type Column } from "@/components/ui/data-grid";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -214,6 +215,18 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect(returnPath, error));
     }
-    throw error;
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Catalog Link"
+          description="Catalog link data is temporarily unavailable."
+        />
+        <InlineAlert
+          tone="error"
+          title="Catalog link unavailable"
+          message="Shopify catalog link data could not be loaded. Check the connector health and retry in a moment."
+        />
+      </div>
+    );
   }
 }

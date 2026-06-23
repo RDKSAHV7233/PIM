@@ -33,6 +33,7 @@ Notes:
 
 - `npm run dev` starts only the API.
 - The web app is started separately with `npm run dev:web`.
+- On Windows `cmd.exe`, you can also use `scripts\\start-vexa-local.cmd` to start and `scripts\\stop-vexa-local.cmd` to stop the local stack.
 
 ## Database And Infra
 

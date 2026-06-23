@@ -23,13 +23,72 @@ function StatusBanner({ tone, message }: { tone: "success" | "error"; message: s
   return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
 }
 
+function isAuthPolicyApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
+}
+
+function AdminAuthPolicyUnavailableState() {
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Auth Policy"
+        description="Tenant authentication policy is temporarily unavailable while identity or billing surfaces reconnect."
+        breadcrumb={
+          <>
+            Dashboard / Admin / <span className="font-semibold text-slate-700">Auth Policy</span>
+          </>
+        }
+      />
+
+      <Card>
+        <CardTitle>Auth policy data is temporarily unavailable</CardTitle>
+        <p className="mt-2 text-sm text-slate-600">
+          We couldn&apos;t load the current auth policy or plan entitlement, so this page will not guess whether defaults,
+          plan gating, or live runtime enforcement are in effect right now.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/admin/auth-policy"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Retry auth policy
+          </Link>
+          <Link
+            href="/admin/audit"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Review audit evidence
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function InfoCards({ policy }: { policy: Awaited<ReturnType<typeof getTenantAuthPolicy>> }) {
   return (
     <section className="grid gap-4 xl:grid-cols-3">
       <Card>
         <CardTitle>Policy State</CardTitle>
         <div className="mt-3 flex flex-wrap gap-2">
-          <StatusChip label={policy.isPersisted ? "persisted" : "defaults"} tone={policy.isPersisted ? "success" : "info"} />
+          <StatusChip label={policy.isPersisted ? "persisted" : "not configured"} tone={policy.isPersisted ? "success" : "info"} />
           <StatusChip label={`timeout ${policy.sessionTimeoutMinutes}m`} tone="info" />
           <StatusChip label={policy.mfaRequired ? "mfa required" : "mfa off"} tone={policy.mfaRequired ? "warning" : "neutral"} />
         </div>
@@ -89,8 +148,34 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
     redirect(buildLoginRedirect("/admin/auth-policy", 401));
   }
   const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
-  if (actorRole !== "admin" || !isSystemAdmin) {
+  if (!isSystemAdmin) {
     redirect("/admin");
+  }
+  if (actorRole !== "admin") {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Auth Policy"
+          description="Tenant authentication policy overview."
+          breadcrumb={
+            <>
+              Dashboard / Admin / <span className="font-semibold text-slate-700">Auth Policy</span>
+            </>
+          }
+        />
+        <Card>
+          <CardTitle>Admin Role Required</CardTitle>
+          <p className="mt-2 text-sm text-slate-600">
+            Viewing and editing tenant auth policy changes stay admin-only. Your current role does not have write access to this surface.
+          </p>
+          <div className="mt-4">
+            <Link href="/admin" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+              Back to Admin
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
   }
   const status = String(query.status ?? "").trim();
   const errorMessage = String(query.message ?? "").trim();
@@ -323,8 +408,11 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
       </div>
     );
   } catch (error) {
-    if (error instanceof ApiHttpError) {
+    if (error instanceof ApiHttpError && error.status === 401) {
       redirect(buildLoginRedirect("/admin/auth-policy", error.status));
+    }
+    if (isAuthPolicyApiUnavailable(error)) {
+      return <AdminAuthPolicyUnavailableState />;
     }
     throw error;
   }

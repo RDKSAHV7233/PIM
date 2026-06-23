@@ -17,6 +17,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
   ApiHttpError,
+  getAllProductsSlim,
   getCategoryAttributes,
   getConnectorPublications,
   getConnectorPermissions,
@@ -24,7 +25,6 @@ import {
   getConnectorSchedule,
   getDeltaSyncCandidates,
   getInstalledConnectors,
-  getProductList,
   getProductIssues,
   getProductVariants,
   getSubmissions,
@@ -697,7 +697,7 @@ export default async function ChannelConnectorDetailPage({
         }
         throw err;
       }),
-      getProductList({ slim: true }, { role: actorRole, authHeader }),
+      getAllProductsSlim({ role: actorRole, authHeader }),
       shopifyPublicationStatePromise,
     ]);
     const submissions = toItems(submissionsRaw);

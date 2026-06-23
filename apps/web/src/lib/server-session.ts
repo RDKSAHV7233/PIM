@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { AppRole } from "@/lib/api";
 
@@ -10,6 +10,7 @@ interface PimJwtClaims {
   jti: string;
   role?: AppRole;
   assignedRoles?: string[];
+  authConfigFingerprint?: string;
   adminBoundaryRoles?: AdminBoundaryRole[];
   iat: number;
   exp: number;
@@ -38,6 +39,18 @@ function signSegment(input: string, secret: string): string {
   return toBase64Url(createHmac("sha256", secret).update(input).digest());
 }
 
+function getAuthConfigFingerprint(): string {
+  const authConfig = {
+    authMode: String(process.env.AUTH_MODE ?? "").trim().toLowerCase(),
+    identitiesJson: String(process.env.PIM_AUTH_IDENTITIES_JSON ?? "").trim(),
+    workspacesJson: String(process.env.PIM_AUTH_WORKSPACES_JSON ?? "").trim(),
+    defaultTenantKey: String(process.env.PIM_DEFAULT_TENANT_KEY ?? "").trim().toLowerCase(),
+    defaultWorkspaceSlug: String(process.env.PIM_DEFAULT_WORKSPACE_SLUG ?? "").trim().toLowerCase(),
+    defaultRole: String(process.env.PIM_DEFAULT_ROLE ?? "").trim().toLowerCase(),
+  };
+  return createHash("sha256").update(JSON.stringify(authConfig)).digest("base64url");
+}
+
 function getJwtSecret(): string | null {
   const value = String(process.env.JWT_SECRET ?? process.env.PIM_JWT_SECRET ?? "").trim();
   return value.length > 0 ? value : null;
@@ -62,10 +75,24 @@ function parseClaims(payloadSegment: string): PimJwtClaims | null {
       return null;
     }
     const rawAssignedRoles = Array.isArray(payload.assignedRoles) ? payload.assignedRoles : [];
+    const authConfigFingerprint =
+      typeof payload.authConfigFingerprint === "string" && payload.authConfigFingerprint.trim()
+        ? payload.authConfigFingerprint.trim()
+        : undefined;
     const adminBoundaryRoles = rawAssignedRoles
       .map((r) => String(r).trim().toLowerCase())
       .filter((r): r is AdminBoundaryRole => ADMIN_BOUNDARY_ROLES.includes(r as AdminBoundaryRole));
-    return { sub, tenantId, jti, role, assignedRoles: rawAssignedRoles.map(String), adminBoundaryRoles, iat, exp };
+    return {
+      sub,
+      tenantId,
+      jti,
+      role,
+      assignedRoles: rawAssignedRoles.map(String),
+      authConfigFingerprint,
+      adminBoundaryRoles,
+      iat,
+      exp,
+    };
   } catch {
     return null;
   }
@@ -97,6 +124,9 @@ function verifyToken(token: string): PimJwtClaims | null {
   }
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (claims.exp <= nowSeconds) {
+    return null;
+  }
+  if (claims.authConfigFingerprint !== getAuthConfigFingerprint()) {
     return null;
   }
   return claims;
@@ -152,9 +182,12 @@ export async function getServerSession(): Promise<{
 }> {
   const cookieStore = await cookies();
   const token = String(cookieStore.get("pim_access_token")?.value ?? "").trim();
-  const authHeader = token ? `Bearer ${token}` : undefined;
-
   if (!token) {
+    return { authHeader: undefined, actorRole: "viewer", adminBoundaryRoles: [] };
+  }
+
+  const claims = await getServerSessionClaims();
+  if (!claims) {
     return { authHeader: undefined, actorRole: "viewer", adminBoundaryRoles: [] };
   }
 
@@ -163,12 +196,10 @@ export async function getServerSession(): Promise<{
     if (requiresVerifiedSessions()) {
       throw new Error("JWT_SECRET or PIM_JWT_SECRET is required for verified web sessions.");
     }
-    return { authHeader, actorRole: "viewer", adminBoundaryRoles: [] };
+    return { authHeader: undefined, actorRole: "viewer", adminBoundaryRoles: [] };
   }
 
-  const claims = verifyToken(token);
-  const actorRole: AppRole =
-    claims?.role && APP_ROLES.includes(claims.role) ? claims.role : "viewer";
+  const actorRole: AppRole = claims.role && APP_ROLES.includes(claims.role) ? claims.role : "viewer";
   const adminBoundaryRoles: AdminBoundaryRole[] = claims?.adminBoundaryRoles ?? [];
-  return { authHeader, actorRole, adminBoundaryRoles };
+  return { authHeader: `Bearer ${token}`, actorRole, adminBoundaryRoles };
 }

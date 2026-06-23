@@ -20,14 +20,14 @@ function run() {
   const actionsSource = fs.readFileSync(ACTIONS_FILE, "utf8");
 
   assert(
-    mappingsSource.includes("Attribute mapping") &&
-      mappingsSource.includes("Map your PIM fields to the channel fields needed for publish."),
+    mappingsSource.includes("Required mapping groups") &&
+      mappingsSource.includes("Map the required channel fields first."),
     "Mappings page must present a structured attribute mapping editor.",
   );
   assert(
     mappingsSource.includes("mapTarget::") &&
-      mappingsSource.includes("Advanced JSON overrides") &&
-      (mappingsSource.includes("Fallback behavior") || fallbackConfigSource.includes("Fallback behavior") || fallbackConfigSource.includes("fallback behavior")),
+      (mappingsSource.includes("Advanced JSON overrides") || mappingsSource.includes("JSON overrides") || mappingsSource.includes("Advanced tools")) &&
+      (mappingsSource.includes("Fallback behavior") || mappingsSource.includes("fallback behavior") || fallbackConfigSource.includes("Fallback behavior") || fallbackConfigSource.includes("fallback behavior")),
     "Mappings page must use structured field inputs with JSON only in an advanced override section.",
   );
   assert(

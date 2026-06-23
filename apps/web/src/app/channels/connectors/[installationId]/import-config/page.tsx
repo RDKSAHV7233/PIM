@@ -77,7 +77,7 @@ export default function ImportConfigPage() {
       setPhase("done");
     } catch (err) {
       setPhase("error");
-      setErrorMessage(err instanceof Error ? err.message : "Import failed. Check your Shopify credentials and try again.");
+      setErrorMessage("Import failed. Check your Shopify credentials and try again.");
     }
   }
 

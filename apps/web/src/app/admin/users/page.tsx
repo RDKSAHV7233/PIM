@@ -15,28 +15,29 @@ import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_TENANT_AUTH_POLICY: TenantAuthPolicy = {
-  id: null,
-  tenantKey: "",
-  externalIdentityMode: false,
-  mfaRequired: false,
-  mfaGracePeriodDays: 0,
-  sessionTimeoutMinutes: 0,
-  allowedAuthMethods: ["password"],
-  isPersisted: false,
-  createdBy: null,
-  updatedBy: null,
-  createdAt: null,
-  updatedAt: null,
-  runtimeApplied: {
-    sessionTimeout: false,
-    mfaEnrollment: false,
-    externalIdentity: false,
-  },
-};
-
 interface AdminUsersPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
+}
+
+function isAuthPolicyApiUnavailable(error: unknown): boolean {
+  if (error instanceof ApiHttpError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  const cause = "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+  const causeDetails =
+    cause && typeof cause === "object"
+      ? `${String((cause as { code?: unknown }).code ?? "")} ${String((cause as { message?: unknown }).message ?? "")}`.toLowerCase()
+      : String(cause ?? "").toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    causeDetails.includes("econnrefused") ||
+    causeDetails.includes("enotfound") ||
+    causeDetails.includes("socket hang up")
+  );
 }
 
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
@@ -59,16 +60,18 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
       getRoleCapabilities({ role: actorRole, authHeader }),
     ]);
 
-    let authPolicy: TenantAuthPolicy = {
-      ...DEFAULT_TENANT_AUTH_POLICY,
-      tenantKey: usage.profile.tenantKey,
-    };
+    let authPolicy: TenantAuthPolicy | null = null;
+    let authPolicyUnavailable = false;
     try {
       authPolicy = await getTenantAuthPolicy({ role: actorRole, authHeader });
     } catch (error: unknown) {
       if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
         redirect(buildLoginRedirect("/admin/users", error));
       }
+      if (!isAuthPolicyApiUnavailable(error)) {
+        throw error;
+      }
+      authPolicyUnavailable = true;
     }
 
     const byPrincipalType = connectorPermissions.reduce<Record<string, number>>((acc, item) => {
@@ -93,6 +96,7 @@ export default async function AdminUsersPage({ searchParams }: AdminUsersPagePro
         accessScopeAssignments={accessScopeAssignments}
         capabilities={capabilities}
         authPolicy={authPolicy}
+        authPolicyUnavailable={authPolicyUnavailable}
         byPrincipalType={byPrincipalType}
         activeUsers={activeUsers}
         lockedUsers={lockedUsers}

@@ -6,10 +6,13 @@ import { formatDateTime } from "@/lib/format";
 
 interface AccountSecurityClientProps {
   mfaStatus: MfaStatus | null;
-  mfaRequired: boolean;
+  mfaRequired: boolean | null;
+  mfaStatusState: "available" | "unavailable";
+  policyState: "available" | "unavailable";
   role: string;
   assignedRoles: string[];
-  planTier: string;
+  planTier: string | null;
+  planState: "available" | "unavailable";
 }
 
 const ROLE_CAPABILITY_MAP: Record<string, string> = {
@@ -19,8 +22,17 @@ const ROLE_CAPABILITY_MAP: Record<string, string> = {
   viewer: "Read-only access across catalog, channels, and operations.",
 };
 
-export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRoles, planTier }: AccountSecurityClientProps) {
-  const mfaAvailable = planTier !== "TRIAL" && planTier !== "STARTER";
+export function AccountSecurityClient({
+  mfaStatus,
+  mfaRequired,
+  mfaStatusState,
+  policyState,
+  role,
+  assignedRoles,
+  planTier,
+  planState,
+}: AccountSecurityClientProps) {
+  const mfaAvailable = planTier !== null && planTier !== "TRIAL" && planTier !== "STARTER";
   const enrolled = mfaStatus?.enrollmentStatus === "active";
   const [regenCode, setRegenCode] = useState("");
   const [regenSubmitting, setRegenSubmitting] = useState(false);
@@ -136,6 +148,8 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
   const roleCapability = ROLE_CAPABILITY_MAP[role] ?? "Access defined by assigned role.";
   const displayRole = role ? `${role.charAt(0).toUpperCase()}${role.slice(1)}` : "Unknown";
   const foundationRole = assignedRoles.length > 0 ? assignedRoles[0] : null;
+  const mfaSectionUnavailable =
+    mfaStatusState === "unavailable" || policyState === "unavailable" || planState === "unavailable";
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
@@ -231,28 +245,44 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
           <h2 className="text-base font-semibold text-slate-900">Two-Factor Authentication</h2>
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-              enrolled
+              mfaStatusState === "unavailable"
+                ? "bg-amber-100 text-amber-800"
+                : enrolled
                 ? "bg-emerald-100 text-emerald-800"
                 : "bg-slate-100 text-slate-600"
             }`}
           >
-            {enrolled ? "Active" : "Not enrolled"}
+            {mfaStatusState === "unavailable" ? "Unavailable" : enrolled ? "Active" : "Not enrolled"}
           </span>
         </div>
 
-        {!enrolled && mfaRequired && (
+        {mfaSectionUnavailable ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">We couldn&apos;t load complete MFA settings right now.</p>
+            <ul className="mt-2 list-disc pl-5 text-sm text-amber-900/90">
+              {mfaStatusState === "unavailable" ? <li>Enrollment status is temporarily unavailable.</li> : null}
+              {policyState === "unavailable" ? <li>Workspace MFA policy is temporarily unavailable.</li> : null}
+              {planState === "unavailable" ? <li>Plan-based MFA entitlement is temporarily unavailable.</li> : null}
+            </ul>
+            <p className="mt-2">
+              This page won&apos;t guess whether MFA is required or available until those reads recover.
+            </p>
+          </div>
+        ) : null}
+
+        {!mfaSectionUnavailable && !enrolled && mfaRequired && (
           <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Your workspace requires MFA. You will be prompted to set it up at your next sign-in.
           </p>
         )}
 
-        {!enrolled && !mfaRequired && (
+        {!mfaSectionUnavailable && !enrolled && mfaRequired === false && (
           <p className="mt-3 text-sm text-slate-500">
             MFA is not required for this workspace, but you can enable it now for extra security.
           </p>
         )}
 
-        {!enrolled && mfaAvailable && (
+        {!mfaSectionUnavailable && !enrolled && mfaAvailable && (
           <div className="mt-4">
             <button
               type="button"
@@ -269,7 +299,7 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
           </div>
         )}
 
-        {!enrolled && !mfaAvailable && (
+        {!mfaSectionUnavailable && !enrolled && !mfaAvailable && (
           <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Two-factor authentication is available on the Growth plan and above.{" "}
             <a href="/admin/plan" className="font-medium text-blue-700 hover:underline">
@@ -278,7 +308,7 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
           </p>
         )}
 
-        {enrolled && mfaStatus && (
+        {!mfaSectionUnavailable && enrolled && mfaStatus && (
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-slate-500">Backup codes remaining</dt>
@@ -302,7 +332,7 @@ export function AccountSecurityClient({ mfaStatus, mfaRequired, role, assignedRo
         )}
       </div>
 
-      {enrolled && (
+      {!mfaSectionUnavailable && enrolled && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold text-slate-900">Regenerate Backup Codes</h2>
           <p className="mt-1 text-sm text-slate-500">

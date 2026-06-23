@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import { Buffer } from "node:buffer";
-import ExcelJS from "exceljs";
 import { LoggerService } from "../../common/logging/logger.service";
 import {
   buildEncryptedCredential,
@@ -282,6 +281,7 @@ export class FlipkartConnector implements ConnectorInterface {
     _ctx: ConnectorContext,
     products: ProductPayload[],
   ): Promise<ExportFile> {
+    const { default: ExcelJS } = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Vexa PIM";
     workbook.created = new Date();

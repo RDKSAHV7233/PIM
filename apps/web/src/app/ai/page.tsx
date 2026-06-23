@@ -82,7 +82,7 @@ export default async function AiPage({ searchParams }: AiPageProps) {
     if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
       redirect(buildLoginRedirect("/ai", error));
     }
-    throw error;
+    products = [];
   }
   const filteredProducts = filterTestData(products, true);
   const [titleSuggestion, attributeSuggestion, categorySuggestion] = productId
