@@ -2,7 +2,7 @@ import { updateProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getAllowedValues, RoleHiddenInput } from "./product-detail-shared";
+import { getAllowedValues } from "./product-detail-shared";
 import type { ProductDetailPageData } from "./product-detail-types";
 
 export function AttributesTab({ data }: { data: ProductDetailPageData }) {
@@ -11,7 +11,6 @@ export function AttributesTab({ data }: { data: ProductDetailPageData }) {
       <CardTitle>Category-Specific Attributes</CardTitle>
       {data.canWrite ? (
         <form action={updateProductAction} data-product-dirty-form="true" className="mt-4 grid gap-3 md:grid-cols-2">
-          <RoleHiddenInput role={data.actorRole} />
           <input type="hidden" name="productId" value={data.productId} />
           <input type="hidden" name="currentTab" value="attributes" />
           <input type="hidden" name="returnTo" value={data.returnTo} />

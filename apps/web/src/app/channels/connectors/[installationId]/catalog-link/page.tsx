@@ -46,7 +46,7 @@ export default async function CatalogLinkPage({ params, searchParams }: PageProp
           description={`Match existing Shopify listings to Vexa products for ${installation.accountAlias ?? installationId}.`}
           breadcrumb={
             <>
-              Dashboard / Channels / Connections /{" "}
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<Link href="/channels/connectors" className="hover:underline">Connections</Link>{" / "}
               <Link href={`/channels/connectors/${installationId}`} className="hover:underline text-slate-700">
                 {installation.accountAlias ?? installationId}
               </Link>{" "}

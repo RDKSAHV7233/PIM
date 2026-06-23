@@ -12,7 +12,6 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiHttpError,
-  AppRole,
   MarketplaceChannel,
   getMediaAssets,
   getMediaAssetValidation,
@@ -44,10 +43,6 @@ function normalizeChannel(value: MarketplaceChannel | undefined): MarketplaceCha
     READINESS_CHANNELS,
     READINESS_CHANNELS[0] ?? DEFAULT_MARKETPLACE_CHANNEL,
   );
-}
-
-function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
 }
 
 function isMediaApiUnavailable(error: unknown): boolean {
@@ -245,7 +240,6 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
         header: "Governance",
         render: (asset) => (
           <form action={updateMediaGovernanceAction} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-            <RoleHiddenInput role={actorRole} />
             <input type="hidden" name="assetId" value={asset.id} />
             <input type="hidden" name="productId" value={productId} />
             <input type="hidden" name="variantId" value={variantId} />
@@ -337,7 +331,7 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           description="Upload assets, validate channel requirements, and manage product-level media associations."
           breadcrumb={
             <>
-              Dashboard / Catalog / <span className="font-semibold text-slate-700">Media</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/catalog/products" className="hover:underline">Catalog</Link>{" / "}<span className="font-semibold text-slate-700">Media</span>
             </>
           }
           actions={
@@ -432,7 +426,6 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           <CardTitle>Upload Media</CardTitle>
           {canWrite ? (
             <form action={uploadMediaAssetAction} className="grid gap-3 md:grid-cols-2">
-              <RoleHiddenInput role={actorRole} />
               <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="media-upload-product-id">
                   Product
@@ -523,7 +516,6 @@ export default async function MediaPage({ searchParams }: MediaPageProps) {
           <CardTitle>Bulk Media Association (CSV)</CardTitle>
           {canWrite ? (
             <form action={bulkAssociateMediaCsvAction} className="space-y-3">
-              <RoleHiddenInput role={actorRole} />
               <p className="text-xs text-slate-500">
                 Headers: <code>skuCode,imageUrl,contentBase64,fileName,mimeType,width,height</code>. Use{" "}
                 <code>contentBase64</code> or <code>imageUrl</code>.

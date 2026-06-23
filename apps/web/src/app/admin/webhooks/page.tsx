@@ -90,7 +90,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
             description="Send Vexa notification events to tenant-managed HTTP endpoints."
             breadcrumb={
               <>
-                Dashboard / Admin / <span className="font-semibold text-slate-700">Outbound Webhooks</span>
+                <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Outbound Webhooks</span>
               </>
             }
           />
@@ -128,7 +128,7 @@ export default async function WebhookAdminPage({ searchParams }: WebhookAdminPag
           description="Send Vexa notification events to tenant-managed HTTP endpoints."
           breadcrumb={
             <>
-              Dashboard / Admin / <span className="font-semibold text-slate-700">Outbound Webhooks</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Outbound Webhooks</span>
             </>
           }
         />

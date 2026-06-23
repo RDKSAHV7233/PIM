@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 interface SearchPageProps {
   searchParams: Promise<{
     q?: string;
+    page?: string;
   }>;
 }
 
@@ -32,11 +33,19 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   const params = await searchParams;
   const query = (params.q ?? "").trim();
+  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
 
+  const PAGE_SIZE = 20;
   let results: Awaited<ReturnType<typeof searchCatalogProducts>> = [];
+  let hasNextPage = false;
   if (query.length > 0) {
     try {
-      results = await searchCatalogProducts({ q: query, limit: 20 }, { authHeader });
+      const raw = await searchCatalogProducts(
+        { q: query, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE },
+        { authHeader },
+      );
+      hasNextPage = raw.length > PAGE_SIZE;
+      results = hasNextPage ? raw.slice(0, PAGE_SIZE) : raw;
     } catch {
       results = [];
     }
@@ -124,6 +133,30 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               ))
             )}
           </div>
+
+          {(page > 1 || hasNextPage) && (
+            <nav className="flex items-center justify-center gap-1" aria-label="Search results pages">
+              {page > 1 && (
+                <Link
+                  href={`/search?q=${encodeURIComponent(query)}&page=${page - 1}`}
+                  className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  aria-label="Previous page"
+                >
+                  ← Prev
+                </Link>
+              )}
+              <span className="px-3 py-1.5 text-xs font-medium text-slate-900">Page {page}</span>
+              {hasNextPage && (
+                <Link
+                  href={`/search?q=${encodeURIComponent(query)}&page=${page + 1}`}
+                  className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  aria-label="Next page"
+                >
+                  Next →
+                </Link>
+              )}
+            </nav>
+          )}
         </>
       )}
     </div>

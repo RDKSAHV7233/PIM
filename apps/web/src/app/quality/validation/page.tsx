@@ -139,7 +139,7 @@ export default async function QualityValidationPage() {
           description="Central workspace for blocking checks, warnings, and compliance readiness."
           breadcrumb={
             <>
-              Dashboard / Quality / <span className="font-semibold text-slate-700">Validation</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/quality" className="hover:underline">Quality</Link>{" / "}<span className="font-semibold text-slate-700">Validation</span>
             </>
           }
         />

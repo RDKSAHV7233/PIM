@@ -3,19 +3,16 @@
 import { useState } from "react";
 import { deleteProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
-import type { AppRole } from "@/lib/api";
 
 interface ArchiveProductButtonProps {
   productId: string;
-  actorRole: AppRole;
 }
 
-export function ArchiveProductButton({ productId, actorRole }: ArchiveProductButtonProps) {
+export function ArchiveProductButton({ productId }: ArchiveProductButtonProps) {
   const [confirmingArchive, setConfirmingArchive] = useState(false);
 
   return (
     <form action={deleteProductAction} className="mt-3 flex flex-wrap items-center gap-2">
-      <input type="hidden" name="actorRole" value={actorRole} />
       <input type="hidden" name="productId" value={productId} />
       <input type="hidden" name="returnTo" value="/catalog/products" />
       {confirmingArchive ? (

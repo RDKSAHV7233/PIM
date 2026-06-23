@@ -86,7 +86,7 @@ export default async function AdminPage() {
         description={`Workspace settings and governance controls available for your current ${actorRole} role.`}
         breadcrumb={
           <>
-            Dashboard / <span className="font-semibold text-slate-700">Admin</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Admin</span>
           </>
         }
       />

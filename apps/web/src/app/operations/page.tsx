@@ -175,7 +175,7 @@ export default async function OperationsPage() {
           description="Throughput workspace for imports, bulk edits, jobs, and repairs."
           breadcrumb={
             <>
-              Dashboard / <span className="font-semibold text-slate-700">Operations</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Operations</span>
             </>
           }
         />

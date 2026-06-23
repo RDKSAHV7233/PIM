@@ -120,7 +120,7 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
           description="Tenant OIDC identity provider configuration is limited to workspace admins."
           breadcrumb={
             <>
-              Dashboard / Admin / Auth Policy /{" "}
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<Link href="/admin/auth-policy" className="hover:underline">Auth Policy</Link>{" / "}
               <span className="font-semibold text-slate-700">OIDC</span>
             </>
           }
@@ -156,7 +156,7 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
           description="Tenant OIDC identity provider configuration is limited to workspace admins."
           breadcrumb={
             <>
-              Dashboard / Admin / Auth Policy /{" "}
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<Link href="/admin/auth-policy" className="hover:underline">Auth Policy</Link>{" / "}
               <span className="font-semibold text-slate-700">OIDC</span>
             </>
           }
@@ -209,7 +209,7 @@ export default async function AdminOidcConfigPage({ searchParams }: AdminOidcCon
         description="Connect your identity provider (Okta, Azure AD, Google Workspace, Auth0, etc.) for sign-in. This is a pilot-period administrative surface; some advanced controls are operator-mediated."
         breadcrumb={
           <>
-            Dashboard / Admin / <Link className="underline" href="/admin/auth-policy">Auth Policy</Link> /{" "}
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<Link href="/admin/auth-policy" className="hover:underline">Auth Policy</Link>{" / "}
             <span className="font-semibold text-slate-700">OIDC</span>
           </>
         }

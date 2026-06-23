@@ -172,7 +172,7 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
             description="Apply field changes across multiple products in a single operation."
             breadcrumb={
               <>
-                Dashboard / Operations / <span className="font-semibold text-slate-700">Bulk Edit</span>
+                <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Bulk Edit</span>
               </>
             }
           />
@@ -282,13 +282,13 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
 
     return (
       <div className="space-y-5">
-        <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs text-slate-500">
-            Dashboard / Operations / <span className="font-semibold text-slate-700">Bulk Edit</span>
-          </p>
-          <h1 className="text-2xl font-semibold text-slate-900">Operations Bulk Edit</h1>
-          <p className="mt-1 text-sm text-slate-600">Run scoped mass updates and review historical operations.</p>
-        </header>
+        <PageHeader
+          title="Operations Bulk Edit"
+          description="Run scoped mass updates and review historical operations."
+          breadcrumb={
+            <><Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Bulk Edit</span></>
+          }
+        />
 
         <Card>
           <CardTitle>Bulk Edit Products</CardTitle>
@@ -448,7 +448,6 @@ export default async function OperationsBulkEditPage({ searchParams }: Operation
               ) : null}
               {previewResult && canWrite && previewResult.requestedCount > 0 ? (
                 <BulkEditDiffPreview
-                  actorRole={actorRole}
                   requestedCount={previewResult.requestedCount}
                   products={previewProducts}
                   updates={parsedUpdates}

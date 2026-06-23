@@ -4,6 +4,7 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { ApiHttpError, getBillingPlans, getBillingUpgradeRequest, getBillingUsage } from "@/lib/api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { formatDate } from "@/lib/format";
 import { resolveCommercialContactTarget } from "@/lib/commercial-contact";
 import { getServerSession, getServerSessionClaims } from "@/lib/server-session";
 import { UsageMeters } from "./_components/usage-meters";
@@ -30,10 +31,10 @@ function formatAccessStatus(value: string): string {
 }
 
 function resolveCommercialStatusAlert(profile: Awaited<ReturnType<typeof getBillingUsage>>["profile"]) {
-  const trialEndsAt = profile.trialEndsAt ? new Date(profile.trialEndsAt).toLocaleDateString("en-IN") : null;
-  const graceEndsAt = profile.graceEndsAt ? new Date(profile.graceEndsAt).toLocaleDateString("en-IN") : null;
-  const paidThroughAt = profile.paidThroughAt ? new Date(profile.paidThroughAt).toLocaleDateString("en-IN") : null;
-  const suspendedAt = profile.suspendedAt ? new Date(profile.suspendedAt).toLocaleDateString("en-IN") : null;
+  const trialEndsAt = profile.trialEndsAt ? formatDate(profile.trialEndsAt) : null;
+  const graceEndsAt = profile.graceEndsAt ? formatDate(profile.graceEndsAt) : null;
+  const paidThroughAt = profile.paidThroughAt ? formatDate(profile.paidThroughAt) : null;
+  const suspendedAt = profile.suspendedAt ? formatDate(profile.suspendedAt) : null;
 
   if (profile.accessStatus === "suspended") return { tone: "border-rose-200 bg-rose-50 text-rose-900", title: "Workspace access is suspended", body: profile.suspensionReason ? `${profile.suspensionReason}${suspendedAt ? ` Since ${suspendedAt}.` : ""}` : `Contact Vexa commercial ops to restore access.` };
   if (profile.billingStatus === "past_due") return { tone: "border-amber-200 bg-amber-50 text-amber-900", title: "Billing needs attention", body: graceEndsAt ? `Payment is past due. Resolve before ${graceEndsAt} to avoid interruption.` : "Contact Vexa commercial ops to avoid interruption." };

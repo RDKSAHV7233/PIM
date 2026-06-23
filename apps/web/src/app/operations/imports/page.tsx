@@ -386,7 +386,7 @@ export default async function OperationsImportsPage({ searchParams }: Operations
           description="Run imports in a strict operator sequence: pre-validate the file, review readiness, start the queued job, then move into result and repair."
           breadcrumb={
             <>
-              Dashboard / Operations / <span className="font-semibold text-slate-700">Imports</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/operations" className="hover:underline">Operations</Link>{" / "}<span className="font-semibold text-slate-700">Imports</span>
             </>
           }
           actions={

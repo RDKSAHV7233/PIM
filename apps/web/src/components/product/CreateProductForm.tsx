@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createProductAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AppRole, AttributeDefinition, Category } from "@/lib/api";
+import type { AttributeDefinition, Category } from "@/lib/api";
 import { formatINR } from "@/lib/format";
 
 interface CreateProductFormProps {
-  role: AppRole;
   categories: Category[];
   onCreated?: () => void;
 }
@@ -76,7 +76,8 @@ function isRedirectErrorLike(error: unknown): boolean {
   return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
 }
 
-export function CreateProductForm({ role, categories, onCreated }: CreateProductFormProps) {
+export function CreateProductForm({ categories, onCreated }: CreateProductFormProps) {
+  const router = useRouter();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
   const [attributeValues, setAttributeValues] = useState<Record<string, AttributeInputValue>>({});
@@ -144,7 +145,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
       });
 
     return () => controller.abort();
-  }, [role, selectedCategoryId]);
+  }, [selectedCategoryId]);
 
   const attributesJson = useMemo(() => {
     const payload: Record<string, unknown> = {};
@@ -167,12 +168,16 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
           setSubmitError(result.error);
           return;
         }
+        const productId = result && "productId" in result ? result.productId : undefined;
         setSelectedCategoryId("");
         setDefinitions([]);
         setAttributeValues({});
         setMrp("");
         setSellingPrice("");
         onCreated?.();
+        if (productId) {
+          router.push(`/products/${productId}`);
+        }
       } catch (error: unknown) {
         if (isRedirectErrorLike(error)) {
           throw error;
@@ -188,7 +193,6 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
 
   return (
     <form action={submitAction} className="grid gap-3 md:grid-cols-2">
-      <input type="hidden" name="actorRole" value={role} />
       <input type="hidden" name="attributes" value={attributesJson} />
       <input type="hidden" name="status" value="draft" />
 

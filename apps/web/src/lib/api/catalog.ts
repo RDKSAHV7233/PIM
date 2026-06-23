@@ -140,7 +140,7 @@ export async function getProductRevisions(productId: string, options?: ApiReques
 }
 
 export async function searchCatalogProducts(
-  input: { q: string; limit?: number },
+  input: { q: string; limit?: number; offset?: number },
   options?: ApiRequestOptions,
 ) {
   const params = new URLSearchParams();
@@ -149,6 +149,9 @@ export async function searchCatalogProducts(
   }
   if (typeof input.limit === "number" && Number.isFinite(input.limit)) {
     params.set("limit", String(Math.max(1, Math.floor(input.limit))));
+  }
+  if (typeof input.offset === "number" && input.offset > 0) {
+    params.set("offset", String(Math.floor(input.offset)));
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return fetchJson<CatalogSearchResult[]>(`/catalog/products/search${query}`, undefined, options);

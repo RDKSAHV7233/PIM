@@ -95,7 +95,7 @@ function InfoCards({ policy }: { policy: Awaited<ReturnType<typeof getTenantAuth
         <p className="mt-3 text-sm text-slate-600">
           Session timeout and MFA enrollment enforcement are active in database mode. Allowed auth methods (password vs
           OIDC gating) are enforced at login. Configure your OIDC identity provider in{" "}
-          <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+          <Link href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</Link>.
         </p>
       </Card>
 
@@ -193,7 +193,11 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
         description="Store and audit tenant identity posture now, while keeping current password login backward compatible until later MFA and OIDC slices land."
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">Auth Policy</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>
+            {" / "}
+            <Link href="/admin" className="hover:underline">Admin</Link>
+            {" / "}
+            <span className="font-semibold text-slate-700">Auth Policy</span>
           </>
         }
       />
@@ -385,7 +389,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
                   <span className="font-medium text-slate-900">OIDC sign-in</span>
                   <span className="mt-1 block text-slate-600">
                     Enables OIDC-based login. Configure your identity provider in{" "}
-                    <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+                    <Link href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</Link>.
                   </span>
                 </span>
               </label>
@@ -400,7 +404,7 @@ export default async function AdminAuthPolicyPage({ searchParams }: AdminAuthPol
               </button>
               <span className="text-xs text-slate-500">
                 Session timeout takes effect now. MFA enrollment and allowed auth methods enforcement are active in database mode. OIDC sign-in requires an active IdP configuration — see{" "}
-                <a href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</a>.
+                <Link href="/admin/auth-policy/oidc" className="text-blue-700 hover:underline">Admin → OIDC / SSO</Link>.
               </span>
             </div>
           </form>

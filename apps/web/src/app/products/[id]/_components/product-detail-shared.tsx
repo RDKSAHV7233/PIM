@@ -99,7 +99,3 @@ export function getAllowedValues(value: unknown): string[] {
 export function formatDateTime(value: string): string {
   return fmtDT(value);
 }
-
-export function RoleHiddenInput({ role }: { role: AppRole }) {
-  return <input type="hidden" name="actorRole" value={role} />;
-}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ProductsTab } from "@/components/product/products-tab";
 import { PageHeader } from "@/components/ui/page-header";
@@ -32,6 +33,7 @@ interface CatalogProductsPageProps {
     view?: string;
     page?: string;
     limit?: string;
+    create?: string;
     // Sprint 1: faceted search params
     categoryId?: string;
     brand?: string;
@@ -192,6 +194,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
   const hideTestData = resolveHideTestData(query.hideTestData);
   const initialView = resolveProductView(query.view);
   const initialSearch = resolveProductSearch(query.search);
+  const initialCreate = query.create === "1";
   const page = resolvePositiveInteger(query.page, 1, 10_000);
   const limit = resolvePositiveInteger(query.limit, 50, 200);
   // Sprint 1: faceted search
@@ -268,7 +271,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           description="Daily catalog workspace for triage, fixes, and publish readiness."
           breadcrumb={
             <>
-              Dashboard / Catalog / <span className="font-semibold text-slate-700">Products</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/catalog/products" className="hover:underline">Catalog</Link>{" / "}<span className="font-semibold text-slate-700">Products</span>
             </>
           }
         />
@@ -287,6 +290,7 @@ export default async function CatalogProductsPage({ searchParams }: CatalogProdu
           connectorManagementHref="/channels/connectors"
           initialView={initialView}
           initialSearch={initialSearch}
+          initialCreate={initialCreate}
         />
       </div>
     );

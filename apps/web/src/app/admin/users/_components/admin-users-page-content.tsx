@@ -139,7 +139,7 @@ export function AdminUsersPageContent({
         description="Manage workspace access while keeping the role model and connector overrides visible in one place."
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">Users & Roles</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">Users & Roles</span>
           </>
         }
         actions={

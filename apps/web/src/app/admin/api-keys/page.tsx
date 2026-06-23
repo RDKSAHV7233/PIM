@@ -72,7 +72,7 @@ export default async function ApiKeysPage({ searchParams }: ApiKeysPageProps) {
         description="Tenant-scoped machine credentials for integrations using the public API."
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">API Keys</span>
+            <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/admin" className="hover:underline">Admin</Link>{" / "}<span className="font-semibold text-slate-700">API Keys</span>
           </>
         }
       />
