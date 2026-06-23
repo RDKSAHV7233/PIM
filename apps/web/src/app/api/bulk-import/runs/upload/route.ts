@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
     },
     body: outbound,
     cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
   });
 
   const payload = await response.text();

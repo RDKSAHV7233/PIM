@@ -62,6 +62,7 @@ export function SignupVerifyPageClient({
           body: JSON.stringify({
             token: initialToken,
           }),
+          signal: AbortSignal.timeout(15_000),
         });
         const payload = (await response.json().catch(() => null)) as
           | { workspaceSlug?: string; userId?: string; error?: string }
@@ -98,6 +99,7 @@ export function SignupVerifyPageClient({
         body: JSON.stringify({
           adminEmail: email.trim().toLowerCase(),
         }),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
         setError(authCopy.signupResendError);

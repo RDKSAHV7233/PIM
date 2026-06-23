@@ -47,6 +47,7 @@ export function MfaEnrollPageClient({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ enrollmentToken }),
+          signal: AbortSignal.timeout(15_000),
         });
         if (cancelled) return;
         if (!response.ok) {
@@ -124,6 +125,7 @@ export function MfaEnrollPageClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enrollmentToken, code: code.trim().replace(/\s/g, "") }),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (response.ok) {

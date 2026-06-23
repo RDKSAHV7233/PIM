@@ -65,6 +65,7 @@ export function PasswordResetPageClient({
             token,
             password,
           }),
+          signal: AbortSignal.timeout(15_000),
         });
         const payload = (await response.json().catch(() => null)) as { workspaceSlug?: string; error?: string } | null;
         if (!response.ok) {
@@ -88,6 +89,7 @@ export function PasswordResetPageClient({
         body: JSON.stringify({
           email: email.trim(),
         }),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
         setError(authCopy.resetError);

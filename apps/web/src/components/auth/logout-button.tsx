@@ -28,6 +28,7 @@ export function LogoutButton() {
         headers: {
           ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
+        signal: AbortSignal.timeout(10_000),
       });
     } finally {
       setSubmitting(false);

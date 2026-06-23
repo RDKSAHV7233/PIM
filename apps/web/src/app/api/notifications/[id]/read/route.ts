@@ -21,7 +21,7 @@ export async function PATCH(
       if (error.body && typeof error.body === "object") {
         return NextResponse.json(error.body, { status: error.status });
       }
-      return NextResponse.json({ error: "notification_mark_failed", message: error.message }, { status: error.status });
+      return NextResponse.json({ error: "notification_mark_failed" }, { status: error.status });
     }
     return NextResponse.json({ error: "notification_mark_failed" }, { status: 500 });
   }

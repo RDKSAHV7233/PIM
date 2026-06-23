@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(error.body, { status: error.status });
       }
       return NextResponse.json(
-        { error: "navigation_summary_failed", message: error.message },
+        { error: "navigation_summary_failed" },
         { status: error.status },
       );
     }

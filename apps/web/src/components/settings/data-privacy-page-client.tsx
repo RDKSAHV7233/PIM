@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/page-header";
 import type { AppRole } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 
@@ -205,16 +206,12 @@ export function DataPrivacyPageClient({ actorRole }: DataPrivacyPageClientProps)
 
   return (
     <div className="space-y-5">
-      <Link href="/" className="text-sm underline">
-        Back to dashboard
-      </Link>
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Data and Privacy</h1>
-        <p className="text-sm text-slate-600">
-          Manage the signed-in account&apos;s privacy status and deletion workflow. Account exports are prepared asynchronously and can be downloaded here when ready.
-        </p>
-        <p className="text-sm text-slate-500">{scopeNote}</p>
-      </header>
+      <PageHeader
+        title="Data and Privacy"
+        description="Manage the signed-in account's privacy status and deletion workflow. Account exports are prepared asynchronously and can be downloaded here when ready."
+        breadcrumb={<><Link href="/dashboard">Dashboard</Link>{" / "}<span className="font-semibold text-slate-700">Data & Privacy</span></>}
+      />
+      {scopeNote ? <p className="text-sm text-slate-500">{scopeNote}</p> : null}
 
       <section className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
         <h2 className="text-base font-semibold text-slate-900">Current account privacy status</h2>

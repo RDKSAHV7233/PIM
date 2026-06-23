@@ -25,12 +25,10 @@ export async function POST(request: NextRequest) {
       },
       body,
       cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
     });
-  } catch (error) {
-    return NextResponse.json(
-      { error: "UPSTREAM_UNAVAILABLE", message: error instanceof Error ? error.message : "API unreachable" },
-      { status: 503 },
-    );
+  } catch {
+    return NextResponse.json({ error: "UPSTREAM_UNAVAILABLE" }, { status: 503 });
   }
 
   const payload = await response.text();

@@ -38,17 +38,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(loginPayload),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
     return NextResponse.json(
-      {
-        error: "AUTH_UPSTREAM_UNAVAILABLE",
-        apiBaseUrl,
-        detail: error instanceof Error ? error.message : String(error ?? "upstream fetch failed"),
-      },
-      {
-        status: 503,
-      },
+      { error: "AUTH_UPSTREAM_UNAVAILABLE" },
+      { status: 503 },
     );
   }
 

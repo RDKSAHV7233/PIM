@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     },
     body: JSON.stringify(body),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   const contentType = response.headers.get("content-type") ?? "application/json";

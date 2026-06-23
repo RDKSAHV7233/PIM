@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { PIM_LOCALE_COOKIE, resolveLocale } from "@/lib/locale";
 
 function useSecureCookies(): boolean {
-  return String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+  const appEnv = String(process.env.APP_ENV ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  return appEnv === "production" || appEnv === "staging";
 }
 
 export async function POST(request: NextRequest) {
