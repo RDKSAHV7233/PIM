@@ -49,7 +49,7 @@ export default async function ProductPage({ params, searchParams }: PageProps) {
   const activeTab = normalizeDetailTab(query.tab);
   const selectedChannel = normalizeChannel(query.channel);
   const selectedTemplateId = normalizeTemplateId(query.templateId);
-  const returnTo = String(query.returnTo ?? "").trim().startsWith("/") ? String(query.returnTo ?? "").trim() : "";
+  const returnTo = ((): string => { const v = String(query.returnTo ?? "").trim(); return /^\/(?!\/)/.test(v) ? v : ""; })();
   const updateStatus = String(query.updateStatus ?? "").trim();
   const conflictVersion = String(query.currentVersion ?? "").trim();
   const deleteStatus = String(query.deleteStatus ?? "").trim();

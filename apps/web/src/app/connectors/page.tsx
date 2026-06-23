@@ -642,7 +642,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
           description="Run your catalog channel portfolio like a connector workspace: see what is live, what needs setup, which accounts need attention, and where to jump next."
           breadcrumb={
             <>
-              Dashboard / Channels / <span className="font-semibold text-slate-700">Connectors</span>
+              <Link href="/dashboard" className="hover:underline">Dashboard</Link>{" / "}<Link href="/channels" className="hover:underline">Channels</Link>{" / "}<span className="font-semibold text-slate-700">Connectors</span>
             </>
           }
           actions={

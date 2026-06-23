@@ -31,7 +31,7 @@ function redirectWithError(message: string, redirectTo = "/admin/auth-policy") {
 
 function resolveRedirectTarget(formData: FormData, key: string, fallback: string) {
   const raw = String(formData.get(key) ?? "").trim();
-  return raw.startsWith("/") ? raw : fallback;
+  return /^\/(?!\/)/.test(raw) ? raw : fallback;
 }
 
 export async function updateTenantAuthPolicyAction(formData: FormData) {

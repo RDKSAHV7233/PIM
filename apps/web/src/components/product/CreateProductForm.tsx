@@ -163,7 +163,7 @@ export function CreateProductForm({ role, categories, onCreated }: CreateProduct
       setSubmitError("");
       try {
         const result = await createProductAction(formData);
-        if (result?.error) {
+        if (result && "error" in result) {
           setSubmitError(result.error);
           return;
         }

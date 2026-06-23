@@ -511,17 +511,17 @@ export async function resolveIssueInboxWarningsAction(formData: FormData) {
   });
 
   revalidatePath("/quality/issues");
-  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
-  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/quality/issues";
-  redirect(returnTo || "/quality/issues");
+  const returnTo = sanitizePath(String(formData.get("returnTo") ?? ""), "/quality/issues");
+  redirect(returnTo);
+}
+
+function sanitizePath(raw: string, fallback: string): string {
+  const trimmed = raw.trim();
+  return /^\/(?!\/)/.test(trimmed) ? trimmed : fallback;
 }
 
 function resolveReturnToPath(formData: FormData, fallback: string): string {
-  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
-  if (returnToRaw.startsWith("/")) {
-    return returnToRaw;
-  }
-  return fallback;
+  return sanitizePath(String(formData.get("returnTo") ?? ""), fallback);
 }
 
 function resolveDeleteErrorMessage(error: unknown): string {
@@ -590,7 +590,7 @@ export async function decideProductReviewAction(
   }
 
   const returnToRaw = String(formData.get("returnTo") ?? "").trim();
-  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/quality/approvals";
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : "/quality/approvals";
 
   try {
     await decideProductReviewRequest(
@@ -627,7 +627,7 @@ export async function addApprovalCommentAction(formData: FormData) {
 
 export async function createProductAction(
   formData: FormData,
-): Promise<{ error: string } | undefined> {
+): Promise<{ error: string } | { productId: string } | undefined> {
   const title = String(formData.get("title") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
   if (!title || !categoryId) {
@@ -671,7 +671,7 @@ export async function createProductAction(
   attributes.pricing = pricing;
 
   try {
-    await postJsonForAction(formData, "/catalog/products", {
+    const created = await postJsonForAction<{ id: string }>(formData, "/catalog/products", {
       title,
       description: String(formData.get("description") ?? "").trim(),
       brand: String(formData.get("brand") ?? "").trim(),
@@ -681,6 +681,9 @@ export async function createProductAction(
       attributes,
       status: "draft",
     });
+    revalidatePath("/catalog/products");
+    revalidatePath("/dashboard");
+    return { productId: created?.id };
   } catch (error: unknown) {
     const redirectPath = withPlanLimitQuery("/catalog/products", error);
     if (redirectPath) {
@@ -694,8 +697,6 @@ export async function createProductAction(
           : "Unable to create product.";
     return { error: message };
   }
-  revalidatePath("/catalog/products");
-  revalidatePath("/dashboard");
 }
 
 export async function updateProductAction(formData: FormData) {
@@ -717,10 +718,14 @@ export async function updateProductAction(formData: FormData) {
     : parseJsonObject(formData.get("attributes"), "Product attributes");
   const basePath = `/products/${encodeURIComponent(productId)}`;
   const returnToRaw = String(formData.get("returnTo") ?? "").trim();
-  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : undefined;
+  const returnTo = /^\/(?!\/)/.test(returnToRaw) ? returnToRaw : undefined;
   const currentTab = String(formData.get("currentTab") ?? "").trim() || undefined;
 
   const taxCodes = parseTaxCodes(formData);
+  const rawStatus = String(formData.get("status") ?? "draft");
+  const productStatus = ["draft", "in_review", "approved", "rejected", "active", "archived"].includes(rawStatus)
+    ? rawStatus
+    : "draft";
 
   try {
     await patchJsonForAction(formData, `/catalog/products/${productId}`, {
@@ -732,7 +737,7 @@ export async function updateProductAction(formData: FormData) {
       hsnCode: String(formData.get("hsnCode") ?? "").trim() || undefined,
       gstRate: parseNumber(formData.get("gstRate")),
       attributes,
-      status: String(formData.get("status") ?? "draft"),
+      status: productStatus,
       ...(taxCodes !== undefined ? { taxCodes } : {}),
     });
     revalidatePath(`/products/${productId}`);
@@ -1006,7 +1011,7 @@ export async function updateMappingTemplateAction(formData: FormData) {
   if (!templateId) {
     throw new Error("Template id is required.");
   }
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "");
 
   const name = String(formData.get("name") ?? "").trim();
   const channel = String(formData.get("channel") ?? "").trim();
@@ -1052,7 +1057,7 @@ export async function cloneMappingTemplateAction(formData: FormData) {
   if (!templateId) {
     throw new Error("Template id is required.");
   }
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "");
   const payload: Record<string, unknown> = {};
   const name = String(formData.get("name") ?? "").trim();
   if (name.length > 0) {
@@ -1077,7 +1082,7 @@ export async function deleteMappingTemplateAction(formData: FormData) {
   if (!templateId) {
     throw new Error("Template id is required.");
   }
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "");
 
   await deleteJsonForAction(formData, `/marketplace/templates/${templateId}`);
   revalidatePath("/channels/mappings");
@@ -1369,7 +1374,7 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
     ? parseJsonObject(formData.get("fallbackPolicy"), "Fallback policy")
     : parseStructuredConnectorFallbackPolicy(formData);
   const fallbackAckRequired = String(formData.get("fallbackAckRequired") ?? "").trim() === "true";
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
 
   await postJsonForAction(formData, `/marketplace/connectors/${encodeURIComponent(connectorSlug)}/mappings/versions`, {
     categoryScope,
@@ -1388,7 +1393,7 @@ export async function createConnectorMappingVersionAction(formData: FormData) {
 export async function validateConnectorMappingVersionAction(formData: FormData) {
   const connectorSlug = String(formData.get("connectorSlug") ?? "").trim().toLowerCase();
   const versionId = String(formData.get("versionId") ?? "").trim();
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
   if (!connectorSlug || !versionId) {
     throw new Error("Connector slug and version id are required.");
   }
@@ -1402,7 +1407,7 @@ export async function validateConnectorMappingVersionAction(formData: FormData) 
 }
 
 export async function setMappingFallbackAcknowledgementAction(formData: FormData) {
-  const redirectTo = String(formData.get("redirectTo") ?? "").trim() || "/channels/mappings";
+  const redirectTo = sanitizePath(String(formData.get("redirectTo") ?? ""), "/channels/mappings");
   const versionId = String(formData.get("versionId") ?? "").trim();
   const acknowledged = String(formData.get("fallbackAcknowledged") ?? "").trim() === "true";
   redirect(
@@ -2012,10 +2017,14 @@ export async function retryConnectorRecoveryGroupAction(
   errorFamily: string,
 ): Promise<{ queued: number }> {
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    throw new Error("Forbidden: admin role required.");
+  }
   const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
   const options: ApiRequestOptions = {
     authHeader,
-    role: "admin",
+    role: actorRole,
     tenantKey,
   };
   const result = await postJson<{ queued: number }>(
@@ -2033,10 +2042,14 @@ export async function importShopifyConfigAction(
   installationId: string,
 ): Promise<{ metafields: number; collections: number; taxonomy: number; fetchedAt: string }> {
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    throw new Error("Forbidden: admin role required.");
+  }
   const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
   const options: ApiRequestOptions = {
     authHeader,
-    role: "admin",
+    role: actorRole,
     tenantKey,
   };
   const result = await postJson<{ metafields: unknown[]; collections: unknown[]; taxonomy: unknown[]; fetchedAt: string }>(
@@ -2151,8 +2164,12 @@ export async function confirmCatalogLinksAction(
 ): Promise<{ confirmed: number }> {
   "use server";
   const authHeader = await getServerAuthHeader();
+  const actorRole = await getServerActorRole();
+  if (actorRole !== "admin") {
+    throw new Error("Forbidden: admin role required.");
+  }
   const tenantKey = process.env.PIM_DEFAULT_TENANT_KEY || "default";
-  const options: ApiRequestOptions = { authHeader, role: "admin", tenantKey };
+  const options: ApiRequestOptions = { authHeader, role: actorRole, tenantKey };
   const result = await postJson<{ confirmed: number }>(
     `/marketplace/connectors/shopify/${encodeURIComponent(installationId)}/catalog-link/confirm`,
     { links },
