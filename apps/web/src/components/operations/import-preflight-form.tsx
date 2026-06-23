@@ -52,7 +52,6 @@ const DEFAULT_MAPPING = JSON.stringify({
   brand: "brand",
   hsnCode: "hsnCode",
   gstRate: "gstRate",
-  status: "status",
   attributes: "attributes",
 });
 

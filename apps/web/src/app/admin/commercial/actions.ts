@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getServerSession } from "@/lib/server-session";
 import {
   setTenantPlanTier,
@@ -35,9 +36,8 @@ export async function changePlanTierAction(formData: FormData) {
     revalidatePath("/admin/commercial");
     redirect(`/admin/commercial?success=tier_changed&tenant=${encodeURIComponent(tenantKey)}&tier=${planTier}`);
   } catch (error) {
-    if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
-    const message = error instanceof Error ? error.message : "Unknown error";
-    redirect(`/admin/commercial?error=${encodeURIComponent(message)}`);
+    if (isRedirectError(error)) throw error;
+    redirect("/admin/commercial?error=action_failed");
   }
 }
 
@@ -57,8 +57,7 @@ export async function resolveUpgradeRequestAction(formData: FormData) {
     revalidatePath("/admin/commercial");
     redirect(`/admin/commercial?success=request_${status}`);
   } catch (error) {
-    if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
-    const message = error instanceof Error ? error.message : "Unknown error";
-    redirect(`/admin/commercial?error=${encodeURIComponent(message)}`);
+    if (isRedirectError(error)) throw error;
+    redirect("/admin/commercial?error=action_failed");
   }
 }
