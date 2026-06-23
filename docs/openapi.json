@@ -970,16 +970,7 @@
     "/api/v1/taxonomy/categories": {
       "get": {
         "operationId": "TaxonomyController_listCategories",
-        "parameters": [
-          {
-            "name": "all",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
