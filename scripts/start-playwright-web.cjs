@@ -131,19 +131,6 @@ function shutdown(signal) {
   }
 }
 
-const child = spawn("npm", ["run", "start", "--workspace", "@pim1/web", "--", "-p", env.PORT], {
-  cwd: root,
-  shell: true,
-  stdio: "inherit",
-  env,
-});
-
-function shutdown(signal) {
-  if (!child.killed) {
-    child.kill(signal);
-  }
-}
-
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
