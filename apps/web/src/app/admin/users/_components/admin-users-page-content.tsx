@@ -95,7 +95,7 @@ function formatDateTime(value: string | null) {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString();
+  return parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function resolveInviteFieldErrors(message: string) {

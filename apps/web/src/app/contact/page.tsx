@@ -1,4 +1,6 @@
+import { getServerSessionClaims } from "@/lib/server-session";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +9,11 @@ export const metadata: Metadata = {
   description: "Contact us to get access to Vexa PIM.",
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const claims = await getServerSessionClaims();
+  if (claims) {
+    redirect("/dashboard");
+  }
   const contactEmail = process.env.PIM_COMMERCIAL_CONTACT_EMAIL ?? "";
 
   return (
