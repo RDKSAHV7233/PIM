@@ -1,4 +1,13 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ApiHttpError, getOidcConfig } from "@/lib/api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { getServerSession } from "@/lib/server-session";
+import { formatDateTime } from "@/lib/format";
+import { Card, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusChip } from "@/components/ui/status-chip";
+import { deleteOidcConfigAction, saveOidcConfigAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -6,11 +15,37 @@ interface OidcPageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
+function StatusBanner({ tone, message }: { tone: "success" | "error"; message: string }) {
+  const classes =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : "border-rose-200 bg-rose-50 text-rose-800";
+  return <div className={`rounded-md border px-3 py-2 text-sm ${classes}`}>{message}</div>;
+}
+
 export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(await searchParams)) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      params.set(key, value);
+  const query = await searchParams;
+  const { authHeader, actorRole, adminBoundaryRoles } = await getServerSession();
+  if (!authHeader) {
+    redirect(buildLoginRedirect("/admin/oidc", 401));
+  }
+  const isSystemAdmin = adminBoundaryRoles.includes("system_admin") || adminBoundaryRoles.includes("super_admin");
+  if (actorRole !== "admin" || !isSystemAdmin) {
+    redirect("/admin");
+  }
+  const status = String(query.status ?? "").trim();
+  const errorMessage = String(query.message ?? "").trim();
+
+  let existingConfig: Awaited<ReturnType<typeof getOidcConfig>> | null = null;
+  try {
+    existingConfig = await getOidcConfig({ role: actorRole, authHeader });
+  } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 404) {
+      existingConfig = null;
+    } else if (error instanceof ApiHttpError) {
+      redirect(buildLoginRedirect("/admin/oidc", error.status));
+    } else {
+      throw error;
     }
   }
 
@@ -225,5 +260,4 @@ export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
       ) : null}
     </div>
   );
-  redirect(params.size > 0 ? `/admin/auth-policy/oidc?${params.toString()}` : "/admin/auth-policy/oidc");
 }
