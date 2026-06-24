@@ -202,7 +202,7 @@ export default async function CommercialOpsPage({ searchParams }: CommercialPage
         <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Billing</div>
           <div className="mt-1 space-y-1 text-sm">
-            <div>Trial: <span className="font-semibold">{t.billingStatusCounts.trial}</span></div>
+            <div>In trial: <span className="font-semibold">{t.billingStatusCounts.trial}</span></div>
             <div>Paid: <span className="font-semibold">{t.billingStatusCounts.activePaid}</span></div>
             <div>Past due: <span className="font-semibold text-amber-600">{t.billingStatusCounts.pastDue}</span></div>
           </div>

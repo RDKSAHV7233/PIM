@@ -26,7 +26,7 @@ export function ProductDetailSideRail({ data }: { data: ProductDetailPageData })
           label={data.simulation.exportReady ? "Ready" : "Blocked"}
           tone={data.simulation.exportReady ? "success" : "danger"}
         />
-        <p className="text-xs text-slate-500">{data.simulation.missingFields.length} required fields missing</p>
+        <p className="text-xs text-slate-500">{data.simulation.missingFields.length} required field{data.simulation.missingFields.length !== 1 ? "s" : ""} missing</p>
         <p className="text-xs text-slate-500">
           {connectorBlocked ? "Connector account needs attention." : "Connector account is ready."}
         </p>
