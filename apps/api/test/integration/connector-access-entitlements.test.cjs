@@ -233,10 +233,12 @@ async function run() {
       `set starter plan failed: expected 200/201, got ${setStarter.status} payload=${JSON.stringify(setStarter.payload)}`,
     );
 
-    const installAmazon = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", adminToken, {
+    // Amazon-IN is now in CONNECTOR_LAUNCH_STAGE_PLANNED (experimental preview); use Meesho
+    // (manual stage, accountAlias-only install) as the first connector slot instead.
+    const installMeesho = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", adminToken, {
       accountAlias: "primary",
     });
-    assertStatus(installAmazon, 201, "install amazon");
+    assertStatus(installMeesho, 201, "install meesho");
 
     const installFlipkart = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
       accountAlias: "primary",
@@ -268,8 +270,8 @@ async function run() {
       "expected active connector installation count to drop after disable",
     );
 
-    // Meesho is in PLANNED launch stage and cannot be installed. Use flipkart with a new
-    // alias to verify that freeing an active slot permits a fresh installation on starter plan.
+    // Meesho is export-only (manual stage). Use flipkart with a new alias to verify that freeing
+    // an active slot permits a fresh installation on starter plan.
     const installFlipkartSecondary = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
       accountAlias: "secondary",
     });
@@ -306,7 +308,7 @@ async function run() {
     const editorReconnectDenied = await apiRequest(
       baseUrl,
       "POST",
-      `/connectors/${encodeURIComponent(String(installAmazon.payload.id))}/reconnect`,
+      `/connectors/${encodeURIComponent(String(installMeesho.payload.id))}/reconnect`,
       editorToken,
       {},
     );
@@ -319,7 +321,7 @@ async function run() {
     const grantEditorReconnect = await apiRequest(baseUrl, "POST", "/connectors/permissions", adminToken, {
       principalType: "role",
       principalId: "editor",
-      connectorSlug: "amazon-in",
+      connectorSlug: "meesho",
       accountAlias: "primary",
       action: "reconnect",
     });
@@ -328,7 +330,7 @@ async function run() {
     const editorReconnectAllowed = await apiRequest(
       baseUrl,
       "POST",
-      `/connectors/${encodeURIComponent(String(installAmazon.payload.id))}/reconnect`,
+      `/connectors/${encodeURIComponent(String(installMeesho.payload.id))}/reconnect`,
       editorToken,
       {},
     );
@@ -341,21 +343,21 @@ async function run() {
       : Array.isArray(editorInstalled.payload)
       ? editorInstalled.payload
       : [];
-    const amazonItem = installedItems.find((item) => item.slug === "amazon-in");
-    assert(amazonItem, "expected amazon installation in list");
-    assert(amazonItem.actions?.reconnect?.allowed === true, "expected reconnect allowed in action matrix for editor");
+    const meeshoItem = installedItems.find((item) => item.slug === "meesho");
+    assert(meeshoItem, "expected meesho installation in list");
+    assert(meeshoItem.actions?.reconnect?.allowed === true, "expected reconnect allowed in action matrix for editor");
 
-    // Meesho is in PLANNED launch stage — its install.allowed is always false regardless of plan
-    // tier (applyInstallLaunchStageRule overrides the plan result). Use amazon-in to verify that
+    // Amazon-IN is in PLANNED launch stage — its install.allowed is always false regardless of plan
+    // tier (applyInstallLaunchStageRule overrides the plan result). Use meesho to verify that
     // the definitions endpoint reflects plan-tier changes: starter plan at capacity → blocked;
     // after enterprise upgrade → allowed.
     const definitionsBeforeUpgrade = await apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken);
     assertStatus(definitionsBeforeUpgrade, 200, "definitions before upgrade");
-    const amazonBefore = Array.isArray(definitionsBeforeUpgrade.payload)
-      ? definitionsBeforeUpgrade.payload.find((item) => item.slug === "amazon-in")
+    const meeshoBefore = Array.isArray(definitionsBeforeUpgrade.payload)
+      ? definitionsBeforeUpgrade.payload.find((item) => item.slug === "meesho")
       : null;
-    assert(amazonBefore, "expected amazon-in definition before upgrade");
-    assert(amazonBefore.actions?.install?.allowed === false, "amazon-in install should be blocked before plan upgrade (starter at capacity)");
+    assert(meeshoBefore, "expected meesho definition before upgrade");
+    assert(meeshoBefore.actions?.install?.allowed === false, "meesho install should be blocked before plan upgrade (starter at capacity)");
 
     const setEnterprise = await commercialPlanRequest(baseUrl, commercialToken, tenantId, "ENTERPRISE");
     assert(
@@ -365,18 +367,18 @@ async function run() {
 
     const definitionsAfterUpgrade = await apiRequest(baseUrl, "GET", "/connectors/definitions", adminToken);
     assertStatus(definitionsAfterUpgrade, 200, "definitions after upgrade");
-    const amazonAfter = Array.isArray(definitionsAfterUpgrade.payload)
-      ? definitionsAfterUpgrade.payload.find((item) => item.slug === "amazon-in")
+    const meeshoAfter = Array.isArray(definitionsAfterUpgrade.payload)
+      ? definitionsAfterUpgrade.payload.find((item) => item.slug === "meesho")
       : null;
-    assert(amazonAfter, "expected amazon-in definition after upgrade");
-    assert(amazonAfter.actions?.install?.allowed === true, "amazon-in install should be allowed after plan upgrade (enterprise has capacity)");
+    assert(meeshoAfter, "expected meesho definition after upgrade");
+    assert(meeshoAfter.actions?.install?.allowed === true, "meesho install should be allowed after plan upgrade (enterprise has capacity)");
 
-    // Meesho is in PLANNED launch stage. Verify plan-limit lift by reinstalling flipkart primary
-    // (its record was deleted above) which confirms enterprise plan now allows additional installs.
+    // Amazon-IN is in PLANNED launch stage. Verify plan-limit lift with a fresh Flipkart alias
+    // to prove enterprise plan now allows additional installs beyond the STARTER cap.
     const installFlipkartAfterUpgrade = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", adminToken, {
-      accountAlias: "primary",
+      accountAlias: "post-upgrade",
     });
-    assertStatus(installFlipkartAfterUpgrade, 201, "flipkart primary reinstall after enterprise upgrade");
+    assertStatus(installFlipkartAfterUpgrade, 201, "flipkart post-upgrade reinstall after enterprise upgrade");
 
     const foreignTenantKey = `foreign-tenant-${runId}`;
     await prisma.$executeRawUnsafe(

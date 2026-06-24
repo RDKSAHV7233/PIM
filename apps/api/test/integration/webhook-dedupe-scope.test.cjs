@@ -211,15 +211,16 @@ async function run() {
       `set plan tier failed: expected 200/201, got ${setPlanTier.status} payload=${JSON.stringify(setPlanTier.payload)}`,
     );
 
-    const installPrimary = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", token, {
+    // Amazon-IN is now in PLANNED launch stage; use flipkart instead.
+    const installPrimary = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", token, {
       accountAlias: "primary",
     });
-    assertStatus(installPrimary, 201, "install amazon primary");
+    assertStatus(installPrimary, 201, "install flipkart primary");
 
-    const installSecondary = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", token, {
+    const installSecondary = await apiRequest(baseUrl, "POST", "/connectors/flipkart/install", token, {
       accountAlias: "secondary",
     });
-    assertStatus(installSecondary, 201, "install amazon secondary");
+    assertStatus(installSecondary, 201, "install flipkart secondary");
 
     const eventId = `evt-${runId}`;
     const insertSql = `
