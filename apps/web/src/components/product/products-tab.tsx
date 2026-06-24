@@ -578,7 +578,7 @@ export function ProductsTab({
                     className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
                     onClick={(event) => handleDeleteClick(event, product.id, product.title)}
                   >
-                    Delete
+                    Archive
                   </button>
                 </div>
               ),

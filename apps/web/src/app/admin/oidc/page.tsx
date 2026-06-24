@@ -56,7 +56,7 @@ export default async function AdminOidcPage({ searchParams }: OidcPageProps) {
         description="Connect your workspace to an external identity provider using OpenID Connect. Admins can configure issuer, credentials, and role claim mapping."
         breadcrumb={
           <>
-            Dashboard / Admin / <span className="font-semibold text-slate-700">OIDC / SSO</span>
+            Dashboard / Admin / <span className="font-semibold text-slate-700">OIDC &amp; SSO</span>
           </>
         }
       />
