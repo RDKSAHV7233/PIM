@@ -208,15 +208,16 @@ async function run() {
     const token = String(login.payload?.accessToken ?? "");
     assert(token.length > 10, "missing access token from login");
 
-    // Meesho is in PLANNED launch stage — the install endpoint rejects it with 400.
+    // Amazon-IN is in PLANNED launch stage — the install endpoint rejects it with 400.
+    // (Meesho was moved from PLANNED to MANUAL stage and is now installable.)
     // This IS the capability gate: a connector in PLANNED stage cannot be installed
     // and therefore can never receive publish jobs. We verify the gate here, then
     // also verify that the export-jobs endpoint enforces the same gate independently
     // (connector must be installed before jobs can be queued).
-    const install = await apiRequest(baseUrl, "POST", "/connectors/meesho/install", token, {
+    const install = await apiRequest(baseUrl, "POST", "/connectors/amazon-in/install", token, {
       accountAlias: "primary",
     });
-    assertStatus(install, 400, "install meesho connector should be rejected (PLANNED launch stage)");
+    assertStatus(install, 400, "install amazon-in connector should be rejected (PLANNED launch stage)");
     const installBody = JSON.stringify(install.payload ?? {});
     assert(
       installBody.includes("CONNECTOR_LAUNCH_STAGE_PLANNED") || installBody.includes("PLANNED"),
@@ -224,7 +225,7 @@ async function run() {
     );
 
     // Verify the export-jobs endpoint also gates on connector availability:
-    // even without an installation, queuing a job for meesho must return 400.
+    // even without an installation, queuing a job for amazon-in must return 400.
     const category = await apiRequest(baseUrl, "POST", "/taxonomy/categories", token, {
       name: `Capability Gating Category ${runId}`,
     });
@@ -251,15 +252,15 @@ async function run() {
       `/marketplace/products/${product.payload.id}/export-jobs`,
       token,
       {
-        channel: "meesho",
+        channel: "amazon-in",
         maxRetries: 1,
       },
     );
-    assertStatus(exportAttempt, 400, "meesho publish attempt should be blocked");
+    assertStatus(exportAttempt, 400, "amazon-in publish attempt should be blocked");
     const exportBody = JSON.stringify(exportAttempt.payload ?? {});
     assert(
       exportBody.length > 0,
-      `expected non-empty error payload for meesho export attempt, got empty response`,
+      `expected non-empty error payload for amazon-in export attempt, got empty response`,
     );
 
     console.log(

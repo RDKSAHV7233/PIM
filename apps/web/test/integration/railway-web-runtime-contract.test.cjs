@@ -50,7 +50,7 @@ function main() {
   assert(
     railwayToml.includes('healthcheckPath = "/health"') &&
       mirroredRailwayToml === railwayToml,
-    "Prepared Railway web package must target the dedicated /health endpoint and mirror railway.toml at both the flat package root and apps/web.",
+    "Prepared Railway web package must target the dedicated /health endpoint and keep the package-root railway.toml mirrored under apps/web for compatibility.",
   );
   assert(
     railwayToml.includes('installCommand = "npm ci --include=dev"') &&

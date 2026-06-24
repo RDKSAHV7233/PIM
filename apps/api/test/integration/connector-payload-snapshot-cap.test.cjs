@@ -283,7 +283,7 @@ async function run() {
     const expectedLocalPath = path.join(
       REPO_ROOT,
       "storage",
-      "submissions",
+      "connector-snapshots",
       tenantId,
       `${jobId}-payload.json`,
     );

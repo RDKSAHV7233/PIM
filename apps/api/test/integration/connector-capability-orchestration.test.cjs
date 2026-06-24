@@ -116,10 +116,11 @@ async function run() {
   };
 
   const prismaStub = { tenant: () => ({}) };
+  const mockLogger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 
   const publishGuardService = new ConnectorFrameworkService(prismaStub, {
     getConnector: () => noPublishConnector,
-  });
+  }, mockLogger);
   await expectCapabilityError(
     () => publishGuardService.publish(buildInstallation(), buildPayload()),
     "PUBLISH",
@@ -127,7 +128,7 @@ async function run() {
 
   const exportOnlyService = new ConnectorFrameworkService(prismaStub, {
     getConnector: () => noPublishConnector,
-  });
+  }, mockLogger);
   const exportOnlyResult = await exportOnlyService.submitOrExport(buildInstallation(), buildPayload());
   assert(exportOnlyResult.mode === "export_only", "Expected export-only completion mode for Meesho.");
   assert(
@@ -137,7 +138,7 @@ async function run() {
 
   const publishService = new ConnectorFrameworkService(prismaStub, {
     getConnector: () => publishConnector,
-  });
+  }, mockLogger);
   const publishResult = await publishService.submitOrExport(
     buildInstallation({
       slug: "flipkart",
@@ -153,7 +154,7 @@ async function run() {
 
   const unsupportedService = new ConnectorFrameworkService(prismaStub, {
     getConnector: () => noSubmissionConnector,
-  });
+  }, mockLogger);
   await expectCapabilityError(
     () =>
       unsupportedService.submitOrExport(
